@@ -1,6 +1,6 @@
 #include <QDialog>
 #include <QLabel>
-
+#include <QDebug>
 // Debug窗体，显示调试信息
 class DebugDialog : public QDialog {
 public:
@@ -22,6 +22,7 @@ public:
 #include <QList>
 #include "DeskFileModel.h"
 #include "DeskFileUi.h"
+
 
 // 主窗体，铺满整个windows视窗
 class LinDesk : public QWidget {
@@ -64,12 +65,14 @@ private:
     }
 };
 
-
-
-// int main is defined only once in this file
+#include "wil/com.h"
+#include "OS.h"
+using namespace OS_Module;
 int main(int argc, char *argv[])
 {
+    printHi();
     QApplication app(argc, argv);
+	qDebug() << "Application Dir:" << app.applicationDirPath();
     LinDesk w;
     w.show();
     return app.exec();

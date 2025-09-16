@@ -10,7 +10,10 @@ void DeskFileUi::setModel(DeskFileModel* model) {
 }
 
 void DeskFileUi::paintEvent(QPaintEvent* event) {
+    //添加注释
+    
     Q_UNUSED(event);
+
     QPainter painter(this);
     if (!m_model) return;
     int iconSize = 64;

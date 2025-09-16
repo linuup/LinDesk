@@ -1,3 +1,12 @@
 # Ignore build artifacts
+.vs/
+
+.vscode/
+
 build/
 build/**/*
+out/
+out/**/*
+vcpkg_installed/
+vcpkg_installed/**/*
+CMakeUserPresets.json
