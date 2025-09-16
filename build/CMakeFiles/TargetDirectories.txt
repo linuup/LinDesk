@@ -1,3 +1,0 @@
-C:/Users/a/Desktop/LinDesk/build/CMakeFiles/LinDesk.dir
-C:/Users/a/Desktop/LinDesk/build/CMakeFiles/edit_cache.dir
-C:/Users/a/Desktop/LinDesk/build/CMakeFiles/rebuild_cache.dir
