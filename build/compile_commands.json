@@ -1,0 +1,20 @@
+[
+{
+  "directory": "C:/Users/a/Desktop/LinDesk/build",
+  "command": "c:\\Qt\\Tools\\mingw810_64\\bin\\g++.exe -DQT_CORE_LIB -DQT_GUI_LIB -DQT_WIDGETS_LIB @CMakeFiles/LinDesk.dir/includes_CXX.rsp -g -o CMakeFiles\\LinDesk.dir\\main.cpp.obj -c C:\\Users\\a\\Desktop\\LinDesk\\main.cpp",
+  "file": "C:/Users/a/Desktop/LinDesk/main.cpp",
+  "output": "CMakeFiles/LinDesk.dir/main.cpp.obj"
+},
+{
+  "directory": "C:/Users/a/Desktop/LinDesk/build",
+  "command": "c:\\Qt\\Tools\\mingw810_64\\bin\\g++.exe -DQT_CORE_LIB -DQT_GUI_LIB -DQT_WIDGETS_LIB @CMakeFiles/LinDesk.dir/includes_CXX.rsp -g -o CMakeFiles\\LinDesk.dir\\DeskFileUi.cpp.obj -c C:\\Users\\a\\Desktop\\LinDesk\\DeskFileUi.cpp",
+  "file": "C:/Users/a/Desktop/LinDesk/DeskFileUi.cpp",
+  "output": "CMakeFiles/LinDesk.dir/DeskFileUi.cpp.obj"
+},
+{
+  "directory": "C:/Users/a/Desktop/LinDesk/build",
+  "command": "c:\\Qt\\Tools\\mingw810_64\\bin\\g++.exe -DQT_CORE_LIB -DQT_GUI_LIB -DQT_WIDGETS_LIB @CMakeFiles/LinDesk.dir/includes_CXX.rsp -g -o CMakeFiles\\LinDesk.dir\\DeskFileModel.cpp.obj -c C:\\Users\\a\\Desktop\\LinDesk\\DeskFileModel.cpp",
+  "file": "C:/Users/a/Desktop/LinDesk/DeskFileModel.cpp",
+  "output": "CMakeFiles/LinDesk.dir/DeskFileModel.cpp.obj"
+}
+]
