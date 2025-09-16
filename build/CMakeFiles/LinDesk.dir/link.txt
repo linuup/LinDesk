@@ -1,0 +1,3 @@
+C:\software1\cmake\bin\cmake.exe -E rm -f CMakeFiles\LinDesk.dir/objects.a
+C:\Qt\Tools\mingw810_64\bin\ar.exe qc CMakeFiles\LinDesk.dir/objects.a @CMakeFiles\LinDesk.dir\objects1.rsp
+c:\Qt\Tools\mingw810_64\bin\g++.exe -g -Wl,--whole-archive CMakeFiles\LinDesk.dir/objects.a -Wl,--no-whole-archive -o LinDesk.exe -Wl,--out-implib,libLinDesk.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\LinDesk.dir\linkLibs.rsp
