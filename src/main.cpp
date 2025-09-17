@@ -1,17 +1,7 @@
+#include <Windows.h>
 #include <QDialog>
 #include <QLabel>
 #include <QDebug>
-// Debug窗体，显示调试信息
-class DebugDialog : public QDialog {
-public:
-    DebugDialog(int iconCount, QWidget* parent = nullptr) : QDialog(parent) {
-        setWindowTitle("Debug");
-        QLabel* label = new QLabel(QString("图标数量：%1").arg(iconCount), this);
-        label->setAlignment(Qt::AlignCenter);
-        resize(200, 80);
-    }
-};
-
 #include <QApplication>
 #include <QWidget>
 #include <QScreen>
@@ -22,7 +12,22 @@ public:
 #include <QList>
 #include "DeskFileModel.h"
 #include "DeskFileUi.h"
+#include <Shobjidl.h>
+#include "OS.h"
+#include "core/Data/FolderEnumerator.h"
+#include "wil/com.h"
+#include <iostream>
 
+// Debug窗体，显示调试信息
+class DebugDialog : public QDialog {
+public:
+    DebugDialog(int iconCount, QWidget* parent = nullptr) : QDialog(parent) {
+        setWindowTitle("Debug");
+        QLabel* label = new QLabel(QString("图标数量：%1").arg(iconCount), this);
+        label->setAlignment(Qt::AlignCenter);
+        resize(200, 80);
+    }
+};
 
 // 主窗体，铺满整个windows视窗
 class LinDesk : public QWidget {
@@ -48,7 +53,7 @@ public:
         }
         // 显示Debug窗体
         DebugDialog* debug = new DebugDialog(m_fileModels.size(), this);
-        debug->show();
+        //debug->show();
     }
 
 private:
@@ -65,29 +70,12 @@ private:
     }
 };
 
-#include "OS.h"
-#include "SystemApi/SystemApi.h"
-#include "core/Data/FolderEnumerator.h"
-using namespace OS_Module;
 int main(int argc, char *argv[])
 {
     SetConsoleOutputCP(CP_UTF8);
     // 获取桌面上所有文件的列表
     /*CSystemApi c;
     vector<IconItem> items = CSystemApi.GetDesktopIconsItems(CSystemApi::FindSysListView32());*/
-    LPITEMIDLIST folderPidl = nullptr;
-    if (SUCCEEDED(SHGetSpecialFolderLocation(nullptr, CSIDL_DESKTOP, &folderPidl))) {
-        auto items = FolderEnumerator::enumerate(folderPidl);
-
-        for (const auto& item : items) {
-            qDebug() << "文件名:" << item.text();
-            qDebug() << "路径:" << item.filePath();
-            qDebug() << "大小:" << item.fileSize();
-            qDebug() << "类型:" << item.fileType();
-        }
-
-        ILFree(folderPidl); // 释放父路径 PIDL
-    }
 
     QApplication app(argc, argv);
 	qDebug() << "Application Dir:" << app.applicationDirPath();

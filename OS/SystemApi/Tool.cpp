@@ -1,8 +1,5 @@
 #include "Tool.h"
-#include <cstring>
-#include <stdexcept>
-#include <memory>
-#include <stringapiset.h>
+#include <Windows.h>
 
 class Tool;
 
@@ -22,11 +19,11 @@ ResourceInfo Tool::GetResourceInfo(const char* input)
         int index = std::strtol(commaPos + 1, &endPtr, 10);
         ri.index = std::abs(index); // Convert to integer
         if (*endPtr != '\0') { // Check if there's any non-digit character after the number
-            throw std::invalid_argument("Invalid index format");
+            // throw std::invalid_argument("Invalid index format");
         }
     }
     else {
-        throw std::invalid_argument("Invalid resource string format: Missing comma separator");
+        // throw std::invalid_argument("Invalid resource string format: Missing comma separator");
     }
     //return uptr.get();
     return ri;

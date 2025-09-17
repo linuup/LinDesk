@@ -1,4 +1,4 @@
-ďťż#pragma once
+#pragma once
 #include <qstring.h>
 #include <qdebug.h>
 #include <qicon.h>
@@ -22,7 +22,6 @@ enum FileType
     SpecialFolder,//特殊文件夹
     DiskLetter,//磁盘分区
     BackGround,//背景
-};
     DiskLetter,//磁盘分区
     BackGround,//背景
 };

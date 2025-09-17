@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <memory>
 /// <summary>
 /// 
 /// Example @C:\Program Files (x86)\Common Files\Microsoft Shared\MSEnv\1033\VSLauncherUI.dll,-1002
