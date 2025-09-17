@@ -5,8 +5,8 @@
             "name": "windows-base",
             "hidden": true,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "installDir": "${sourceDir}/out/install/${presetName}",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "installDir": "${sourceDir}/install/${presetName}",
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "cl.exe",
                 "CMAKE_CXX_COMPILER": "cl.exe"
@@ -21,13 +21,11 @@
             "name": "x64-debug",
             "displayName": "x64 Debug",
             "inherits": "windows-base",
-            "architecture": {
-                "value": "x64",
-                "strategy": "external"
-            },
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            }
+          "cacheVariables": {
+            "CMAKE_BUILD_TYPE": "Debug",
+            "CMAKE_C_FLAGS": "/D_AMD64_",
+            "CMAKE_CXX_FLAGS": "/D_AMD64_"
+          }
         },
         {
             "name": "x64-release",

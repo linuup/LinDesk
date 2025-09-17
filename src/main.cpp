@@ -65,12 +65,30 @@ private:
     }
 };
 
-#include "wil/com.h"
 #include "OS.h"
+#include "SystemApi/SystemApi.h"
+#include "core/Data/FolderEnumerator.h"
 using namespace OS_Module;
 int main(int argc, char *argv[])
 {
-    printHi();
+    SetConsoleOutputCP(CP_UTF8);
+    // 获取桌面上所有文件的列表
+    /*CSystemApi c;
+    vector<IconItem> items = CSystemApi.GetDesktopIconsItems(CSystemApi::FindSysListView32());*/
+    LPITEMIDLIST folderPidl = nullptr;
+    if (SUCCEEDED(SHGetSpecialFolderLocation(nullptr, CSIDL_DESKTOP, &folderPidl))) {
+        auto items = FolderEnumerator::enumerate(folderPidl);
+
+        for (const auto& item : items) {
+            qDebug() << "文件名:" << item.text();
+            qDebug() << "路径:" << item.filePath();
+            qDebug() << "大小:" << item.fileSize();
+            qDebug() << "类型:" << item.fileType();
+        }
+
+        ILFree(folderPidl); // 释放父路径 PIDL
+    }
+
     QApplication app(argc, argv);
 	qDebug() << "Application Dir:" << app.applicationDirPath();
     LinDesk w;
