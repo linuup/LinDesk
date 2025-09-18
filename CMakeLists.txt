@@ -15,6 +15,12 @@ set(CMAKE_PREFIX_PATH "C:/Qt/5.15.2/msvc2019_64/lib/cmake")
 
 # 查找 Qt5 库
 find_package(Qt5 COMPONENTS Widgets WinExtras REQUIRED)
+# 包含 Qt 的 MOC 生成
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+
 
 add_subdirectory("OS")
 
@@ -45,6 +51,8 @@ add_executable(LinDesk ${SOURCES})
 
 target_link_libraries(LinDesk 
     PRIVATE
+        Shell32
+        Shlwapi
         Qt5::Widgets
         Qt5::WinExtras
         "OS"

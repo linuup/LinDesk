@@ -1,8 +1,86 @@
 #include "Tool.h"
-#include <Windows.h>
 
 class Tool;
 
+unique_pidl_absolute Tool::GetRootPidl()
+{
+    // While using SHGetKnownFolderIDList() with FOLDERID_Desktop would be simpler than the method
+    // used here, that method fails in Windows PE (with ERROR_FILE_NOT_FOUND). That failure is
+    // unusual, since although the filesystem desktop folder doesn't exist, the virtual desktop
+    // folder at the root of the shell namespace is still accessible and the pidl returned by
+    // SHGetKnownFolderIDList() represents the root folder.
+    // Retrieving the pidl using the method below works consistently, however.
+    // Example:
+    // unique_pidl_absolute rootPidl;
+    // HRESULT hr = GetRootPidl(wil::out_param(rootPidl));
+    HRESULT hr;
+    unique_pidl_absolute pidl;
+    hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidl));
+    if (FAILED(hr)) {
+        // 如果获取 PIDL 失败，输出错误并返回 nullptr
+        std::cout << "Failed to get PIDL from desktop folder. HRESULT: " << hr;
+        return nullptr;
+    }
+    //HRESULT hr;
+    //wil::com_ptr_nothrow<IShellFolder> desktop;
+    //hr = SHGetDesktopFolder(&desktop);
+    //if (FAILED(hr)) {
+    //    // 如果失败，输出错误并返回 nullptr
+    //    std::cout << "Failed to get desktop folder. HRESULT: " << hr;
+    //    return nullptr;
+    //}
+    //// 获取桌面文件夹的 PIDL
+    //hr = SHGetIDListFromObject(desktop.get(), pidl);
+    //if (FAILED(hr)) {
+    //    // 如果获取 PIDL 失败，输出错误并返回 nullptr
+    //    std::cout << "Failed to get PIDL from desktop folder. HRESULT: " << hr;
+    //    return nullptr;
+    //}
+    return pidl;// 使用传入的pidl参数
+}
+
+HRESULT Tool::BindToIdl(PIDLIST_ABSOLUTE pidl, REFIID riid, void** ppv)
+{
+    IShellFolder* pDesktop = nullptr;
+
+    HRESULT hr = SHGetDesktopFolder(&pDesktop);
+
+    if (SUCCEEDED(hr))
+    {
+        /* See http://blogs.msdn.com/b/oldnewthing/archive/2011/08/30/10202076.aspx. */
+        if (pidl->mkid.cb)
+        {
+            hr = pDesktop->BindToObject(pidl, nullptr, riid, ppv);
+        }
+        else
+        {
+            hr = pDesktop->QueryInterface(riid, ppv);
+        }
+
+        pDesktop->Release();
+    }
+
+    return hr;
+}
+
+
+// Helper function to convert wide string (wchar_t*) to UTF-8 std::string
+std::string Tool::WideToUtf8(const wchar_t* wideStr)
+{
+    if (!wideStr) return std::string();
+
+    // 计算 UTF-8 缓冲区大小
+    int utf8_length = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0, nullptr, nullptr);
+    if (utf8_length == 0) return std::string();
+
+    // 创建 std::string 并分配空间
+    std::string utf8_string(utf8_length - 1, 0); // 不需要末尾 \0
+
+    // 执行转换
+    WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8_string.data(), utf8_length, nullptr, nullptr);
+
+    return utf8_string;
+}
 ResourceInfo Tool::GetResourceInfo(const char* input)
 {
     //std::unique_ptr<ResourceInfo> uptr(new ResourceInfo());

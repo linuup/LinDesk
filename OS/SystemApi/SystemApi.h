@@ -14,6 +14,7 @@
 #include <codecvt>
 #include <iostream>
 #include <CommCtrl.h>
+#include "Tool.h"
 using namespace std;
 
 //图标结构体
@@ -21,6 +22,7 @@ struct IconItem
 {
     std::string name;
     POINT position;
+    LPITEMIDLIST pidl_p;
 };
 //  右键基本操作
 enum File_RightMenu_Operations {
@@ -39,7 +41,6 @@ enum PathType {
     DirectoryPath = 2   //文件夹路径
 };
 
-// This class is exported from the dll
 class CSystemApi {
 public:
 	CSystemApi(void);
@@ -72,6 +73,7 @@ public:
      * @param operation 操作ID，见FileRightMenus枚举
     */
     static void File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_Operations operation);
+
     //获取ListView32句柄
     static HWND FindSysListView32();
     /// <summary>
@@ -91,6 +93,7 @@ public:
     * @return 图标信息数组
     */
     vector<IconItem> GetDesktopIconsItems(HWND sysListView32);
+    
     /// <summary>
     /// 从dll中获取字符
     /// </summary>
