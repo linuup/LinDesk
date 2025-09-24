@@ -69,7 +69,7 @@ void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
     HRESULT hr;
     switch (sf)
     {
-    case SpecialFolders::UnknownObj:
+    case SpecialFolders::UnknownFolder:
         break;
     case SpecialFolders::ThisPc:
         hr= SHGetKnownFolderIDList(FOLDERID_ComputerFolder, 0, NULL, wil::out_param(pidlsf));
@@ -83,7 +83,7 @@ void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
     case SpecialFolders::Network:
         hr = SHGetKnownFolderIDList(FOLDERID_NetworkFolder, 0, NULL, wil::out_param(pidlsf));
         break;
-    case SpecialFolders::User:
+    case SpecialFolders::UserFolder:
         hr = SHGetKnownFolderIDList(FOLDERID_UsersFiles, 0, NULL, wil::out_param(pidlsf));
         break;
     }

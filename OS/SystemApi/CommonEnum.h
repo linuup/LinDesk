@@ -1,10 +1,14 @@
-#pragma once
+﻿#pragma once
 
 enum SpecialFolders {
-    UnknownObj,
+    Empty,
+	UnknownFolder,
     ThisPc,//桌面
     RecycleBin,
     ControlPanel,
+    ControlPanel2,
     Network,
-    User
+    UserFolder,
+    Libraries,
+    Linux
 };

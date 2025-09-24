@@ -1,13 +1,13 @@
-// SystemApi.cpp : Defines the exported functions for the DLL.
+﻿// SystemApi.cpp : Defines the exported functions for the DLL.
 #include "SystemApi.h"
 #include "Tool.h"
+#include <Shlwapi.h>
 
 // 静态成员变量定义（必须在类外部进行）
 HWND CSystemApi::global_SysListView32 = nullptr;
 HWND CSystemApi::global_realDesktop = nullptr;
 //reference
 //https://github.com/Puellaquae/Desktop-Snake
-// This is the constructor of a class that has been exported.
 void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize)
 {
     LVITEM curItem{};
@@ -38,6 +38,8 @@ void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int 
         VirtualFreeEx(MMEListViewProcess, stringBuffer, 0, MEM_RELEASE);
     }
 }
+
+
 
 // Helper function to convert wide string (wchar_t*) to UTF-8 std::string
 std::string WideToUtf8(const wchar_t* wideStr)
@@ -201,6 +203,136 @@ vector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
     return iconItemList;
 }
 
+vector<IconItem> CSystemApi::GetDesktopPIDLItems()
+{
+	//vector<IconItem>* iconItems = new vector<IconItem>();
+	vector <IconItem> iconItems;
+    // 获取桌面文件夹的 PIDL
+    unique_pidl_absolute pidl = Tool::GetRootPidl();
+
+    // 获取桌面文件夹的 ShellFolder
+    wil::com_ptr_nothrow<IShellFolder> deskISF;
+    HRESULT hr = SHGetDesktopFolder(&deskISF);
+    if (FAILED(hr)) {
+        // 如果加载失败，打印错误信息并返回 nullptr
+        DWORD error = GetLastError();
+        _tprintf(_T("Failed to get desktop folder interface: Error %d\n"), error);
+        return iconItems;
+    }
+    // 创建枚举器以枚举桌面上的所有项
+    IEnumIDList* pEnumIDList;
+    /*SHCONTF_CHECKING_FOR_CHILDREN |
+        SHCONTF_FOLDERS |
+        SHCONTF_NONFOLDERS |
+        SHCONTF_INCLUDEHIDDEN |
+        SHCONTF_INIT_ON_FIRST_NEXT |
+        SHCONTF_NETPRINTERSRCH |
+        SHCONTF_SHAREABLE |
+        SHCONTF_STORAGE |
+        SHCONTF_NAVIGATION_ENUM |
+        SHCONTF_FASTITEMS |
+        SHCONTF_FLATLIST |
+        SHCONTF_ENABLE_ASYNC |
+        SHCONTF_INCLUDESUPERHIDDEN*/
+    hr = deskISF->EnumObjects(NULL,
+        SHCONTF_FOLDERS |
+        SHCONTF_NONFOLDERS |
+        SHCONTF_INCLUDEHIDDEN |
+        SHCONTF_INCLUDESUPERHIDDEN |
+        SHCONTF_ENABLE_ASYNC
+        , &pEnumIDList);
+
+    if (FAILED(hr)) {
+        DWORD error = GetLastError();
+        _tprintf(_T("Failed to get enumeration of desktop items:",error));
+        return iconItems;
+    }
+
+    // 枚举每个文件项
+    LPITEMIDLIST pidlItem = nullptr;  // 临时存储PIDL
+
+    while (pEnumIDList->Next(1, &pidlItem, NULL) == S_OK) {
+        // 通过智能指针使用 pidlItem
+        STRRET strret;
+        IconItem i;
+        wchar_t szPath[MAX_PATH];
+        wchar_t szName[MAX_PATH];
+        // 获取名称（SHGDN_NORMAL）
+        hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL, &strret);
+        if (SUCCEEDED(hr)) {
+            StrRetToBufW(&strret, pidlItem, szName, MAX_PATH);
+            i.name = Tool::WstrToStr(szName);
+        }
+        else {
+            DWORD error = GetLastError();
+            _tprintf(_T("Failed to get name:\n", error));
+        }
+
+        // 获取路径（SHGDN_FORPARSING）
+        hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &strret);
+        if (SUCCEEDED(hr)) {
+            StrRetToBufW(&strret, pidlItem, szPath, MAX_PATH);
+            i.path = Tool::WstrToStr(szPath);
+			//Tool::ConvertToGUID(L"{20D04FE0-3AEA-1069-A2D8-08002B30309D}");
+        }
+        else {
+            DWORD error = GetLastError();
+            //_tprintf(_T("Failed to get path:\n",error));
+        }
+        std::wcout << L"Name: " << szName << L", Path: " << szPath << std::endl;
+        i.pidl_p = std::move(pidlItem);
+		i.specialFolder = getFolderTypeFromName(szPath);
+        iconItems.push_back(i);
+#ifndef NDEBUG
+		std::wcout << L"\nName: " << szName << L", Path: " << szPath << std::endl;
+#endif
+        
+    }
+    // 释放枚举器
+    pEnumIDList->Release();
+    return iconItems;
+}
+
+const wchar_t* L_MY_COMPUTER(TEXT(MY_COMPUTER_CLS));
+
+const wchar_t* L_RECYCLE_BIN(TEXT(RECYCLE_BIN_CLS));
+const wchar_t* L_CONTROL_PANEL(TEXT(CONTROL_PANEL_CLS));
+const wchar_t* L_CONTROL_PANEL2(TEXT(CONTROL_PANEL_CLS2));
+const wchar_t* L_NETWORK(TEXT(NETWORK_CLS));
+const wchar_t* L_USER_FOLDER(TEXT(USER_FOLDER_CLS));
+const wchar_t* L_LIARIES(TEXT(LIBRARIES_CLS));
+const wchar_t* L_LINUX(TEXT(LINUX_CLS));
+SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
+{
+    if (!name) return SpecialFolders::Empty;
+
+    if (wcsstr(name, L_MY_COMPUTER)) {
+        return SpecialFolders::ThisPc;
+    }
+    else if (wcsstr(name, L_RECYCLE_BIN)) {
+        return SpecialFolders::RecycleBin;
+    }
+    else if (wcsstr(name, L_CONTROL_PANEL)) {
+        return SpecialFolders::ControlPanel;
+    }
+    else if (wcsstr(name, L_CONTROL_PANEL2)) {
+        return SpecialFolders::ControlPanel2;
+    }
+    else if (wcsstr(name, L_NETWORK)) {
+        return SpecialFolders::Network;
+    }
+    else if (wcsstr(name, L_USER_FOLDER)) {
+        return SpecialFolders::UserFolder;
+    }
+    else if (wcsstr(name, L_LIARIES)) {
+        return SpecialFolders::Libraries;
+    }
+    else if (wcsstr(name, L_LINUX)) {
+        return SpecialFolders::Linux;
+    }
+
+    return SpecialFolders::UnknownFolder;  // 如果没有匹配到任何特殊文件夹，返回未知
+}
 const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
 {
     // 加载 DLL 文件
@@ -260,7 +392,7 @@ bool CSystemApi::IsLinkFile(const wchar_t* filePath)
 */
 bool CSystemApi::DeleteFileNative(const wchar_t* filePath)
 {
-    if (::DeleteFileW(filePath) == TRUE)
+    if (::DeleteFile(filePath) == TRUE)
     {
         // 文件删除成功
         return true;

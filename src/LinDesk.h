@@ -9,6 +9,7 @@
 #include "ListItem.h"
 #include <QUuid>
 #include <QVector>
+#include <QSharedPointer>
 
 class DebugDialog : public QDialog {
 public:
@@ -27,10 +28,14 @@ class LinDesk : public QWidget {
 public:
     // 获取单例对象
     static LinDesk* instance(QWidget* parent = nullptr);
+	// 加载所有桌面图标数据
+    std::vector<ListItemData> loadAllItemsData();
 
+	void initialize();
+    
     void loadIconLayer();
 
-    QVector<ListItem*> getAllItems() const;
+    //QVector<ListItem*> getAllItems();
 
 private:
     explicit LinDesk(QWidget* parent = nullptr);

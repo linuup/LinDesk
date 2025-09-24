@@ -45,5 +45,6 @@ public:
 
 	static std::string WideToUtf8(const wchar_t* wstr);
 	static std::string WstrToStr(const wchar_t* wstr);		//宽字符串转WString
+	static void ConvertToGUID(const std::wstring& clsidStr);
 };
 

@@ -125,3 +125,24 @@ std::string Tool::WstrToStr(const wchar_t* wstr)
     WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &strTo[0], sizeNeeded, nullptr, nullptr);
     return strTo;
 }
+
+void Tool::ConvertToGUID(const std::wstring& clsidStr)
+{
+    CLSID clsid;
+    HRESULT hr = CLSIDFromString(clsidStr.c_str(), &clsid);
+
+    if (SUCCEEDED(hr))
+    {
+        // Êä³ö GUID
+        wprintf(L"GUID: {%08lX-%04X-%04X-%04X-%04X%04X%04X}\n",
+            clsid.Data1, clsid.Data2, clsid.Data3,
+            (clsid.Data4[0] << 8) | clsid.Data4[1],
+            (clsid.Data4[2] << 8) | clsid.Data4[3],
+            (clsid.Data4[4] << 8) | clsid.Data4[5],
+            (clsid.Data4[6] << 8) | clsid.Data4[7]);
+    }
+    else
+    {
+        std::wcout << L"Failed to convert string to GUID" << std::endl;
+    }
+}
