@@ -279,12 +279,11 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             DWORD error = GetLastError();
             //_tprintf(_T("Failed to get path:\n",error));
         }
-        std::wcout << L"Name: " << szName << L", Path: " << szPath << std::endl;
         i.pidl_p = std::move(pidlItem);
 		i.specialFolder = getFolderTypeFromName(szPath);
         iconItems.push_back(i);
 #ifndef NDEBUG
-		std::wcout << L"\nName: " << szName << L", Path: " << szPath << std::endl;
+		//std::wcout << L"\nName: " << szName << L", Path: " << szPath << std::endl;
 #endif
         
     }

@@ -11,7 +11,9 @@ class ListItem : public QWidget {
 public:
     explicit ListItem(QWidget* parent = nullptr)
         : QWidget(parent) {
-		this->resize(90, 90); // 设置默认大小
+		//this->resize(76, 88); // 设置默认大小
+
+        setStyleSheet("background-color: yellow;");
     }
 
     // 禁止拷贝构造函数
@@ -23,12 +25,10 @@ public:
 		qDebug() << "ListItem deleted:" << this->objectName();
     }
 
-    QString aaa;
      // 设置对应的 ListItemData
      void setItemData(ListItemData data) {
          m_itemData = data;
-		 qDebug() << "======ListItem=======" << " Name:" << m_itemData.text();
-         //update();  // 数据改变时请求重绘
+         update();  // 数据改变时请求重绘
      }
      //获取对应的 ListItemData
 	 ListItemData getItemData(){
@@ -37,6 +37,8 @@ public:
 
 protected:
     void ListItem::paintEvent(QPaintEvent* event) {
+        
+        //qDebug() << this->size();
         if (&m_itemData == nullptr) {
             return;
         }
@@ -52,22 +54,25 @@ protected:
         else {
             pen.setColor(Qt::blue);  // 设置边框颜色为蓝色
         }
+		painter.fillRect(0, 0, 76, 88, Qt::yellow);
+        // 绘制图标
+        QPixmap pixmap = m_itemData.icon().pixmap(48, 48); // 获取48x48的图标
+        //QPixmap pixmap = QIcon("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\devenv.exe").pixmap(64, 64); // 获取48x48的图标
+        int iconX = (width() - pixmap.width()) / 2; // 图标水平居中
+        int iconY = 10; // 图标距离顶部10像素
+		painter.drawPixmap(iconX, iconY, pixmap);
         
-    
-        pen.setWidth(1);  // 设置边框宽度为 3
-        painter.setPen(pen);  // 应用 QPen
         
-        // 绘制矩形边框，使用控件的大小
-        painter.drawRect(0, 0, width() - 1, height() - 1);  // 绘制边框，减去 1 防止外部溢出
-
-        // 绘制一个蓝色圆形
-        painter.setBrush(QBrush(Qt::blue));  // 设置填充颜色为蓝色
-        int radius = 30;  // 圆的半径
-        int centerX = width() / 2;  // 圆心的 X 坐标
-        int centerY = height() / 2;  // 圆心的 Y 坐标
-        //painter.drawEllipse(centerX - radius, centerY - radius, 2 * radius, 2 * radius);  // 绘制圆形
+        // 计算文字宽度并居中
+        int textWidth = painter.fontMetrics().horizontalAdvance(m_itemData.fullName());
+        int textX = (width() - textWidth) / 2; // 文本水平居中
+        int textY = height() - 10; // 距离底部10像素
+        painter.setBrush(QBrush(Qt::white));
+        // 绘制文字
+        painter.drawText(10, height()-10, m_itemData.fullName());
         
-        painter.drawText(centerX - radius, centerY - radius, m_itemData.text());
+        
+        
     }
     
 

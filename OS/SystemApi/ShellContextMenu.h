@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <windows.h>
 #include <optional>
 #include <functional>
@@ -107,7 +107,9 @@ public:
         diskLetter,//盘符
         BackGround//背景
     };
-    
+    void setOperationType(OperationType type) {
+        operationType = type;
+    }
     ShellContextMenu() {
     
     }

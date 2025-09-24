@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <QWidget>
 #include <QDialog>
 #include <QLabel>
@@ -10,6 +10,7 @@
 #include <QUuid>
 #include <QVector>
 #include <QSharedPointer>
+#include <RightMenu.h>
 
 class DebugDialog : public QDialog {
 public:
@@ -44,4 +45,9 @@ private:
     QVector<ListItem*> m_listItems;
 
     static LinDesk* m_instance;
+
+    RightMenu* rightMenu;   //右键菜单对象
+
+protected:
+	void contextMenuEvent(QContextMenuEvent* event) override;
 };

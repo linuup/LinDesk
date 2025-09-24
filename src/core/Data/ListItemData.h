@@ -12,6 +12,10 @@
 #include <wil/resource.h>
 #include <QtWinExtras/qwinfunctions.h>
 #include <SystemApi.h>
+#include <QFileIconProvider>
+
+
+
 
 const QSet<QString> SystemFolderCLSIDs = {
     "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}",  // This PC
@@ -38,9 +42,36 @@ ListItemData& operator=(const ListItemData&) = delete;*/
         setPIDL(item.pidl_p);
         setFileType(item.specialFolder);
         m_filePath = item.path.c_str();
-		m_text = item.name.c_str();
+        m_fullName = item.name.c_str();
+        m_fileInfo = QFileInfo(m_filePath).exists() ? QFileInfo(m_filePath) : QFileInfo();
+
+        QFileIconProvider icon_provider;
+        if (m_fileInfo.suffix().isEmpty() || !m_fileInfo.exists()) {
+
+            // 如果文件存在并且不是一个符号链接，则检查它是否是一个 .lnk 文件
+            QString lnkPath = m_filePath + ".lnk";
+            QFileInfo tmp(lnkPath);
+            //bool isLink = CSystemApi::IsLinkFile(reinterpret_cast<const wchar_t*>(lnkPath.utf16()));
+            if (tmp.exists() && tmp.isSymLink()) {
+                qDebug() << "is linkFile";
+                //Lnk File
+                //qDebug() << tmp.filePath() << "is a lnkFile" << tmp.isSymLink();
+                m_icon = icon_provider.icon(tmp); // 获取特定文件的图标
+            }
+            m_fileInfo = tmp;
+        }
+        if (m_icon.isNull()) {
+            if (m_fileInfo.isFile()) {
+                m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
+            }
+            else {
+                m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
+            }
+        }
+        
+        qDebug() << "\nFullName:" << m_fullName;
+        qDebug() << "\nPath:" << m_filePath;
     };
-    QString aa;
 
     void setIconItem(const IconItem& item) {
         m_iconItem = item;
@@ -62,9 +93,9 @@ ListItemData& operator=(const ListItemData&) = delete;*/
     ListItemData& operator=(const ListItemData&) = delete;*/
     // 获取文件信息
   // const IconItem& iconItem() const { return m_iconItem; }
-   const QString& text() const { return m_text; }
+   const QString& fullName() const { return m_fullName; }
   // const QString& data() const { return m_data; }
-  // const QIcon& icon() const { return m_icon; }
+   const QIcon& icon() const { return m_icon; }
   // const QString& filePath() const { return m_filePath; }
   // qint64 fileSize() const { return m_fileSize; }
   // QDateTime lastModified() const { return m_lastModified; }
@@ -78,7 +109,6 @@ private:
     
     bool updatePropertiesFromPIDL() {
         if (!m_pidl) return false;
-        qDebug() << "Name:" << m_text << "\nPath:" << m_filePath << "\nType:" << m_fileType;
        // 获取路径
        //wchar_t path[MAX_PATH];
        //if (SHGetPathFromIDList(m_pidl.get(), path)) {
@@ -108,9 +138,12 @@ private:
     }
     //Shell信息
     IconItem m_iconItem;
+
+	QFileInfo m_fileInfo;
     // 文件信息
-    QString m_text;
-    QString m_data;
+    QString m_baseName;           //基本文件名
+    QString m_suffixName;         //文件后缀名
+    QString m_fullName;
     QIcon m_icon;
     QString m_filePath;
     qint64 m_fileSize = 0;

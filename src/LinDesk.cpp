@@ -1,6 +1,8 @@
 ﻿#include "LinDesk.h"
 #include <QDebug>
 #include <SystemApi.h>
+#include <ShellContextMenu.h>
+#include <QContextMenuEvent>
 
 // 静态成员初始化
 LinDesk* LinDesk::m_instance = nullptr;
@@ -24,11 +26,22 @@ LinDesk::LinDesk(QWidget* parent) : QWidget(parent) {
 
     // 按y展开，到底部开始第二列
     loadIconLayer();
+
+    rightMenu = RightMenu::getInstance();
+    rightMenu->setHWND((HWND)this->winId());
 }
 
 LinDesk::~LinDesk() {
     // 清理 ListItem 对象
     //qDeleteAll(m_listItems);
+}
+
+void LinDesk::contextMenuEvent(QContextMenuEvent* event)
+{
+    if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
+        rightMenu->setShowType(ObjectType::BackGround);
+        rightMenu->showMenu(event->globalPos());
+    }
 }
 
 LinDesk* LinDesk::instance(QWidget* parent) {
@@ -63,8 +76,8 @@ void LinDesk::loadIconLayer()
     int col = 24;
     int rowSpacing = 5; // 每行之间的间距
     int colSpacing = 10; // 每列之间的间距
-    int iconWidth = 78;  // 图标宽度
-    int iconHeight = 78; // 图标高度
+    int iconWidth = 76;  // 图标宽度
+    int iconHeight = 88; // 图标高度
 
     // 初始位置
     int Icon_X = 2;   // 第一列的 X 坐标
@@ -77,20 +90,20 @@ void LinDesk::loadIconLayer()
     for (auto it=allDatas.begin();it!=allDatas.end(); it++)
     {
         ListItem* listItem = new ListItem(this);
+        listItem->resize(iconWidth, iconHeight);
         listItem->setItemData(std::move(*it));
         listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
         listItem->move(Icon_X, Icon_Y);  // 设置图标位置
         listItems.push_back(listItem);
         // 更新 Y 坐标，增加图标高度和列间距
-        Icon_Y = Icon_Y + iconHeight + colSpacing;
+        Icon_Y = Icon_Y + iconHeight + rowSpacing;
 
         // 如果超出窗口高度，切换到下一列，Y 坐标重置为顶部
         if (Icon_Y + iconHeight > height()) {
             // 切换到下一列
-            Icon_X = Icon_X + iconWidth + rowSpacing;
+            Icon_X = Icon_X + iconWidth + colSpacing;
             Icon_Y = 8;  // 重置 Y 坐标为顶部
         }
-        qDebug() << listItem->objectName() << " X:" << Icon_X << " Y:" << Icon_Y << listItem->size() << listItem->parentWidget();
     }
     m_listItems = listItems;
 }

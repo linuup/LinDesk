@@ -1,4 +1,4 @@
-# CMakeLists.txt for a Qt project that creates a window and draws text with QPainter
+﻿# CMakeLists.txt for a Qt project that creates a window and draws text with QPainter
 cmake_minimum_required(VERSION 3.14)
 #C++17 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -44,6 +44,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.h"
     "src/core/*.h"
     "src/core/Data/*.h"
+    "src/core/Data/*.h"
 )
 
 # 添加可执行文件
@@ -53,6 +54,7 @@ target_link_libraries(LinDesk
     PRIVATE
         Shell32
         Shlwapi
+        Comctl32
         Qt5::Widgets
         Qt5::WinExtras
         "OS"

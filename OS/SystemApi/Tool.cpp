@@ -1,4 +1,4 @@
-#include "Tool.h"
+ï»¿#include "Tool.h"
 
 class Tool;
 
@@ -17,7 +17,7 @@ unique_pidl_absolute Tool::GetRootPidl()
     unique_pidl_absolute pidl;
     hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidl));
     if (FAILED(hr)) {
-        // Èç¹û»ñÈ¡ PIDL Ê§°Ü£¬Êä³ö´íÎó²¢·µ»Ø nullptr
+        // å¦‚æœè·å– PIDL å¤±è´¥ï¼Œè¾“å‡ºé”™è¯¯å¹¶è¿”å› nullptr
         std::cout << "Failed to get PIDL from desktop folder. HRESULT: " << hr;
         return nullptr;
     }
@@ -25,18 +25,18 @@ unique_pidl_absolute Tool::GetRootPidl()
     //wil::com_ptr_nothrow<IShellFolder> desktop;
     //hr = SHGetDesktopFolder(&desktop);
     //if (FAILED(hr)) {
-    //    // Èç¹ûÊ§°Ü£¬Êä³ö´íÎó²¢·µ»Ø nullptr
+    //    // å¦‚æœå¤±è´¥ï¼Œè¾“å‡ºé”™è¯¯å¹¶è¿”å› nullptr
     //    std::cout << "Failed to get desktop folder. HRESULT: " << hr;
     //    return nullptr;
     //}
-    //// »ñÈ¡×ÀÃæÎÄ¼ş¼ĞµÄ PIDL
+    //// è·å–æ¡Œé¢æ–‡ä»¶å¤¹çš„ PIDL
     //hr = SHGetIDListFromObject(desktop.get(), pidl);
     //if (FAILED(hr)) {
-    //    // Èç¹û»ñÈ¡ PIDL Ê§°Ü£¬Êä³ö´íÎó²¢·µ»Ø nullptr
+    //    // å¦‚æœè·å– PIDL å¤±è´¥ï¼Œè¾“å‡ºé”™è¯¯å¹¶è¿”å› nullptr
     //    std::cout << "Failed to get PIDL from desktop folder. HRESULT: " << hr;
     //    return nullptr;
     //}
-    return pidl;// Ê¹ÓÃ´«ÈëµÄpidl²ÎÊı
+    return pidl;// ä½¿ç”¨ä¼ å…¥çš„pidlå‚æ•°
 }
 
 HRESULT Tool::BindToIdl(PIDLIST_ABSOLUTE pidl, REFIID riid, void** ppv)
@@ -69,14 +69,14 @@ std::string Tool::WideToUtf8(const wchar_t* wideStr)
 {
     if (!wideStr) return std::string();
 
-    // ¼ÆËã UTF-8 »º³åÇø´óĞ¡
+    // è®¡ç®— UTF-8 ç¼“å†²åŒºå¤§å°
     int utf8_length = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0, nullptr, nullptr);
     if (utf8_length == 0) return std::string();
 
-    // ´´½¨ std::string ²¢·ÖÅä¿Õ¼ä
-    std::string utf8_string(utf8_length - 1, 0); // ²»ĞèÒªÄ©Î² \0
+    // åˆ›å»º std::string å¹¶åˆ†é…ç©ºé—´
+    std::string utf8_string(utf8_length - 1, 0); // ä¸éœ€è¦æœ«å°¾ \0
 
-    // Ö´ĞĞ×ª»»
+    // æ‰§è¡Œè½¬æ¢
     WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8_string.data(), utf8_length, nullptr, nullptr);
 
     return utf8_string;
@@ -133,7 +133,7 @@ void Tool::ConvertToGUID(const std::wstring& clsidStr)
 
     if (SUCCEEDED(hr))
     {
-        // Êä³ö GUID
+        // è¾“å‡º GUID
         wprintf(L"GUID: {%08lX-%04X-%04X-%04X-%04X%04X%04X}\n",
             clsid.Data1, clsid.Data2, clsid.Data3,
             (clsid.Data4[0] << 8) | clsid.Data4[1],
