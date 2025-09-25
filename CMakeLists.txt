@@ -11,9 +11,6 @@ project("LinDesk")
 
 add_compile_options("/utf-8")
 
-# 添加子目录，先编译库，再编译主程序lib
-# set(CMAKE_PREFIX_PATH "F:/Qt/5.15.2/msvc2019_64/lib/cmake")
-
 # 查找 Qt5 库
 find_package(Qt5 COMPONENTS Widgets WinExtras REQUIRED)
 # 包含 Qt 的 MOC 生成
@@ -27,20 +24,6 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 endif()
 
 add_subdirectory("OS")
-
-
-# 你的 vcpkg 安装路径
-# set(CMAKE_TOOLCHAIN_FILE "D:/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
-
-message(STATUS "Vcpkg include dir: ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/installed/x64-windows/include")
-# set(VCPKG_MANIFEST_MODE ON)
-
-# 找到 WIL
-# find_path(WIL_INCLUDE_DIRS "wil")
-# if (NOT WIL_INCLUDE_DIRS)
-#    message(FATAL_ERROR "WIL not found! Please install it with vcpkg: vcpkg install wil:x64-windows")
-# endif()
-# message(STATUS "WIL include dir: ${WIL_INCLUDE_DIRS}")
 
 # 自动收集 src 下所有 .cpp 和 .h 文件
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
