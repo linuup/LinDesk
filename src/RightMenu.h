@@ -5,19 +5,11 @@
 #include <qmenu.h>
 #include <qsettings.h>
 #include <ShellContextMenu.h>
+#include "CommonEnum.h"
 #define HKEY_ROOT "HKEY_CLASSES_ROOT\\"
 #define HKEY_USER "HKEY_CURRENT_USER\\"
 
-//类型
-enum ObjectType
-{
-	File,//文件
-	ZFolder,//文件夹
-	Link,//快捷方式
-	SpecialFolder,//特殊文件夹
-	DiskLetter,//盘符
-	BackGround,//背景
-};
+
 class RightMenuCreateFile;
 /// <summary>
 /// From Regedit get desktop right menu
@@ -60,8 +52,7 @@ public:
 	/// Show RightMenu
 	/// </summary>
 	/// <param name="pos"></param>
-	void showMenu(QPoint pos) const;
-
+	void showMenu(QPoint pos, QString path = nullptr) const;
 	/// <summary>
 	/// 设置显示的窗口句柄
 	/// </summary>
@@ -89,6 +80,7 @@ signals:
 private:
 	RightMenu() {}; // 私有构造函数
 	ShellContextMenu* shellContextMenu;
+
 	// 删除拷贝构造函数和赋值操作符
 	RightMenu(const RightMenu&) = delete;
 	RightMenu& operator=(const RightMenu&) = delete;
@@ -96,8 +88,9 @@ private:
 	HWND hwnd;	//要显示的窗口句柄
 
 	QString currentObjPath;		//右键要显示对象的路径
+	//SpecialFolders sf;		//特殊文件夹类型
 	ObjectType fileType;		//类型
-	SpecialFolders sf;		//特殊文件夹类型
+	
 	/// <summary>
 	/// 
 	/// </summary>

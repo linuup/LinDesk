@@ -38,6 +38,16 @@ public:
 
     //QVector<ListItem*> getAllItems();
 
+    /// <summary>
+    /// 请求系统右键菜单
+    /// </summary>
+    /// <param name="objType"></param>
+    /// <param name="point"></param>
+    /// <param name="objPath">不传参，默认请求桌面右键菜单</param>
+    void requestSystemRightMenu(ObjectType objType, QPoint point, const QString objPath = nullptr) const {
+        rightMenu->setShowType(objType);
+        rightMenu->showMenu(point, objPath);
+    }
 private:
     explicit LinDesk(QWidget* parent = nullptr);
     ~LinDesk();
@@ -50,4 +60,6 @@ private:
 
 protected:
 	void contextMenuEvent(QContextMenuEvent* event) override;
+
+    
 };

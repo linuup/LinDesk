@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QPainter>
 #include "core/Data/ListItemData.h"
+class LinDesk;
 
 class ListItem : public QWidget {
     Q_OBJECT
@@ -36,6 +37,12 @@ public:
     }
 
 protected:
+    void contextMenuEvent(QContextMenuEvent* event) {
+        qDebug() << this->objectName();
+        auto l = qobject_cast<LinDesk*>(this->parent());
+        //l->requestSystemRightMenu(Objec);
+        
+    }
     void ListItem::paintEvent(QPaintEvent* event) {
         
         //qDebug() << this->size();

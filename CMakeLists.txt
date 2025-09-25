@@ -1,5 +1,6 @@
 ﻿# CMakeLists.txt for a Qt project that creates a window and draws text with QPainter
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.31)
+
 #C++17 标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,7 +12,7 @@ project("LinDesk")
 add_compile_options("/utf-8")
 
 # 添加子目录，先编译库，再编译主程序lib
-set(CMAKE_PREFIX_PATH "C:/Qt/5.15.2/msvc2019_64/lib/cmake")
+# set(CMAKE_PREFIX_PATH "F:/Qt/5.15.2/msvc2019_64/lib/cmake")
 
 # 查找 Qt5 库
 find_package(Qt5 COMPONENTS Widgets WinExtras REQUIRED)
@@ -20,13 +21,16 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-
+# 使用预设中的 CMAKE_TOOLCHAIN_FILE（如果没有预设，则回退到默认值）
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  message(WARNING "未指定 vcpkg 工具链文件，请通过预设配置！")
+endif()
 
 add_subdirectory("OS")
 
 
 # 你的 vcpkg 安装路径
-set(CMAKE_TOOLCHAIN_FILE "C:/software1/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
+# set(CMAKE_TOOLCHAIN_FILE "D:/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
 
 message(STATUS "Vcpkg include dir: ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/installed/x64-windows/include")
 # set(VCPKG_MANIFEST_MODE ON)

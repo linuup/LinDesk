@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+
 enum SpecialFolders {
     Empty,
 	UnknownFolder,
@@ -12,3 +13,14 @@ enum SpecialFolders {
     Libraries,
     Linux
 };
+//对象类型
+enum ObjectType
+{
+    File,//文件
+    ZFolder,//文件夹
+    Link,//快捷方式
+    SpecialFolder,//特殊文件夹
+    DiskLetter,//盘符
+    BackGround,//背景
+};
+

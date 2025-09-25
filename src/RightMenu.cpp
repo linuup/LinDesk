@@ -41,9 +41,12 @@
 //	return false;
 //}
 
-void RightMenu::showMenu(QPoint pos) const
+void RightMenu::showMenu(QPoint pos, QString path) const
 {
-	POINT p;
+	if (path == nullptr) {
+		fileType == ObjectType::BackGround;
+	}
+	POINT p = {};
 	p.x = pos.x();
 	p.y = pos.y();
 	const POINT* position = &p;
@@ -52,17 +55,17 @@ void RightMenu::showMenu(QPoint pos) const
 	if (fileType == ObjectType::BackGround) {
 		scm.DisplayDesktopContextMenu();
 	}else if (fileType == ObjectType::File) {
-		scm.DisplayFileContextMenu(objPath());
+		//scm.DisplayFileContextMenu(objPath());
 	}
 	else if (fileType == ObjectType::ZFolder) {
-		scm.DisplayFileContextMenu(objPath());
+		//scm.DisplayFileContextMenu(objPath());
 	}
 	else if (fileType == ObjectType::Link) {
-		QString str = QString(currentObjPath).append(".lnk");
-		scm.DisplayLinkContextMenu(objPath(str));
+		/*QString str = QString(currentObjPath).append(".lnk");
+		scm.DisplayLinkContextMenu(objPath(str));*/
 	}
 	else if (fileType == ObjectType::SpecialFolder) {
-		scm.DisplaySpecialFolderContextMenu(this->sf);
+		//scm.DisplaySpecialFolderContextMenu(this->sf);
 	}
 	else if (fileType == ObjectType::DiskLetter) {
 
@@ -79,6 +82,7 @@ const wchar_t* RightMenu::objPath(QString str) const
 {
 	return reinterpret_cast<const wchar_t*>(str.utf16());
 }
+
 
 
 

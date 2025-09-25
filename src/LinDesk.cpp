@@ -39,7 +39,7 @@ LinDesk::~LinDesk() {
 void LinDesk::contextMenuEvent(QContextMenuEvent* event)
 {
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
-        rightMenu->setShowType(ObjectType::BackGround);
+        requestSystemRightMenu(ObjectType::BackGround,event->pos());
         rightMenu->showMenu(event->globalPos());
     }
 }
