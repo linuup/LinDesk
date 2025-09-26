@@ -16,8 +16,9 @@ enum SpecialFolders {
 //对象类型
 enum ObjectType
 {
+    Empty_ObjectType,
     File,//文件
-    ZFolder,//文件夹
+    Folder_ObjectType,//文件夹
     Link,//快捷方式
     SpecialFolder,//特殊文件夹
     DiskLetter,//盘符

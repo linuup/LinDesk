@@ -1,4 +1,4 @@
-#include <Windows.h>
+﻿#include <Windows.h>
 #include <shlobj.h>
 #include <shellapi.h>
 #include <QDebug>
@@ -8,6 +8,7 @@
 #include "LinDesk.h"
 #include "SystemApi/SystemApi.h"
 #include "SystemApi/Tool.h"
+#include "ListView.h"
 int main(int argc, char *argv[])
 {
     SetConsoleOutputCP(CP_UTF8);
@@ -23,5 +24,7 @@ int main(int argc, char *argv[])
 	qDebug() << "Application Dir:" << app.applicationDirPath();
     LinDesk *lindesk = LinDesk::instance();
     lindesk->show();
+    ListView* listView = ListView::instance();
+    listView->show();
     return app.exec();
 }

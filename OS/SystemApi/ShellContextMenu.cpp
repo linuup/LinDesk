@@ -1,4 +1,4 @@
-
+﻿
 #include "ShellContextMenu.h"
 
 void ShellContextMenu::DisplayDesktopContextMenu()
@@ -306,7 +306,7 @@ IShellFolder* ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
         hr = m_pDesktopFolder->ParseDisplayName(NULL, NULL, (LPWSTR)path, NULL, &m_pPIDL, NULL);
         if (FAILED(hr) || m_pPIDL == nullptr)
         {
-            OutputDebugString(L"Failed to parse display name for the file.");
+            OutputDebugString(L"\nFailed to parse display name for the file:");
             return nullptr;
         }
         return m_pDesktopFolder;

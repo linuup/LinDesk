@@ -51,14 +51,13 @@ void RightMenu::showMenu(QPoint pos, QString path) const
 	p.y = pos.y();
 	const POINT* position = &p;
 	ShellContextMenu scm;
-	
 	if (fileType == ObjectType::BackGround) {
 		scm.DisplayDesktopContextMenu();
 	}else if (fileType == ObjectType::File) {
-		//scm.DisplayFileContextMenu(objPath());
+		scm.DisplayFileContextMenu(reinterpret_cast<const wchar_t*>(path.utf16()));
 	}
-	else if (fileType == ObjectType::ZFolder) {
-		//scm.DisplayFileContextMenu(objPath());
+	else if (fileType == ObjectType::Folder_ObjectType) {
+		scm.DisplayFileContextMenu(reinterpret_cast<const wchar_t*>(path.utf16()));
 	}
 	else if (fileType == ObjectType::Link) {
 		/*QString str = QString(currentObjPath).append(".lnk");

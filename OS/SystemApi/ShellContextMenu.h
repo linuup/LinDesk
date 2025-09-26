@@ -191,7 +191,7 @@ private:
     IShellFolder* m_pDesktopFolder;
     //IShellFolder文件夹接口...
     IShellFolder* m_pShellFolder;
-    LPITEMIDLIST m_pPIDL;
+    LPITEMIDLIST m_pPIDL = nullptr;
 
     // 解析路径获取IShellFolder
     IShellFolder* GetIshellFolderByPath(const wchar_t* path);

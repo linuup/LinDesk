@@ -52,6 +52,9 @@ public:
 	/// Show RightMenu
 	/// </summary>
 	/// <param name="pos"></param>
+	/// <param name="path">
+	/// ShellPath : C:\\**\\
+	/// </param>
 	void showMenu(QPoint pos, QString path = nullptr) const;
 	/// <summary>
 	/// 设置显示的窗口句柄

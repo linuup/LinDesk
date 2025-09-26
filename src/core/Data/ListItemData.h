@@ -13,6 +13,7 @@
 #include <QtWinExtras/qwinfunctions.h>
 #include <SystemApi.h>
 #include <QFileIconProvider>
+#include <QContextMenuEvent>
 
 
 
@@ -40,10 +41,12 @@ ListItemData& operator=(const ListItemData&) = delete;*/
     ListItemData(IconItem item) {
         setIconItem(item);
         setPIDL(item.pidl_p);
-        setFileType(item.specialFolder);
         m_filePath = item.path.c_str();
         m_fullName = item.name.c_str();
         m_fileInfo = QFileInfo(m_filePath).exists() ? QFileInfo(m_filePath) : QFileInfo();
+        setItemDateType(item.specialFolder);
+        
+        
 
         QFileIconProvider icon_provider;
         if (m_fileInfo.suffix().isEmpty() || !m_fileInfo.exists()) {
@@ -83,8 +86,20 @@ ListItemData& operator=(const ListItemData&) = delete;*/
         if (!m_pidl) return false;
         return updatePropertiesFromPIDL();
     }
-    void setFileType(const SpecialFolders type) {
-		m_fileType = type;
+    void setItemDateType(const SpecialFolders type) {
+        //设置为特殊文件夹
+        if (type != SpecialFolders::UnknownFolder || SpecialFolders::Empty) {
+            m_specialFolderType = type;
+        }else {
+            //判断对象类型
+            if (m_fileInfo.isFile()) {
+                m_type = ObjectType::File;
+                //m_type = ObjectType::Link;
+            }
+            else if (m_fileInfo.isDir()) {
+                m_type = ObjectType::Folder_ObjectType;
+            }
+        }
     }
          //移动构造函数，禁止复制
     /*ListItemData(ListItemData&&) noexcept = default;
@@ -92,14 +107,16 @@ ListItemData& operator=(const ListItemData&) = delete;*/
     ListItemData(const ListItemData&) = delete;
     ListItemData& operator=(const ListItemData&) = delete;*/
     // 获取文件信息
+    const QFileInfo& fileInfo() const { return m_fileInfo; };
   // const IconItem& iconItem() const { return m_iconItem; }
    const QString& fullName() const { return m_fullName; }
   // const QString& data() const { return m_data; }
    const QIcon& icon() const { return m_icon; }
-  // const QString& filePath() const { return m_filePath; }
+   const QString& filePath() const { return m_filePath; }
   // qint64 fileSize() const { return m_fileSize; }
   // QDateTime lastModified() const { return m_lastModified; }
-   const SpecialFolders fileType() const { return m_fileType; }
+   const ObjectType type() const { return m_type; }
+   const SpecialFolders specialFolderType() const { return m_specialFolderType; }
    //LPITEMIDLIST pidl() const { return m_pidl.get(); }
 
     /*bool isSystemFolder(const QString& path) {
@@ -143,11 +160,13 @@ private:
     // 文件信息
     QString m_baseName;           //基本文件名
     QString m_suffixName;         //文件后缀名
-    QString m_fullName;
+    QString m_fullName;     
     QIcon m_icon;
     QString m_filePath;
+    QString m_shellPath;    //Shell需要的路径 ：C:\\Users\\a\\Desktop
     qint64 m_fileSize = 0;
     QDateTime m_lastModified;
-    SpecialFolders m_fileType;
+    ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
+    SpecialFolders m_specialFolderType = SpecialFolders::Empty;  //特殊文件夹类型
     LPITEMIDLIST m_pidl;       // PIDL
 };
