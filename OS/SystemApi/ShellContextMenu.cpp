@@ -240,7 +240,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NODEFAULT);
+        CMF_EXPLORE | CMF_NORMAL);
 
     if (operationType == OperationType::BackGround) { RemoveTencentDeskGoMenu(hMenu.get()); }
 

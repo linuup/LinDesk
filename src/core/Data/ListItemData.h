@@ -31,49 +31,22 @@ const QSet<QString> SystemFolderCLSIDs = {
 class ListItemData {
 public:
     /*using unique_pidl = wil::unique_<LPITEMIDLIST, decltype(&ILFree), ILFree>;*/
-    //ListItemData() = default;
+
     //移动构造函数，禁止复制
 /*ListItemData(ListItemData&&) noexcept = default;
 ListItemData& operator=(ListItemData&&) noexcept = default;
 ListItemData(const ListItemData&) = delete;
 ListItemData& operator=(const ListItemData&) = delete;*/
 	ListItemData() = default;
+
     ListItemData(IconItem item) {
         setIconItem(item);
         setPIDL(item.pidl_p);
-        m_filePath = item.path.c_str();
-        m_fullName = item.name.c_str();
-        m_fileInfo = QFileInfo(m_filePath).exists() ? QFileInfo(m_filePath) : QFileInfo();
         setItemDateType(item.specialFolder);
-        
-        
+		m_fullName = QString::fromStdString(item.name.c_str());
 
-        QFileIconProvider icon_provider;
-        if (m_fileInfo.suffix().isEmpty() || !m_fileInfo.exists()) {
-
-            // 如果文件存在并且不是一个符号链接，则检查它是否是一个 .lnk 文件
-            QString lnkPath = m_filePath + ".lnk";
-            QFileInfo tmp(lnkPath);
-            //bool isLink = CSystemApi::IsLinkFile(reinterpret_cast<const wchar_t*>(lnkPath.utf16()));
-            if (tmp.exists() && tmp.isSymLink()) {
-                qDebug() << "is linkFile";
-                //Lnk File
-                //qDebug() << tmp.filePath() << "is a lnkFile" << tmp.isSymLink();
-                m_icon = icon_provider.icon(tmp); // 获取特定文件的图标
-            }
-            m_fileInfo = tmp;
-        }
-        if (m_icon.isNull()) {
-            if (m_fileInfo.isFile()) {
-                m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
-            }
-            else {
-                m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
-            }
-        }
-        
         qDebug() << "\nFullName:" << m_fullName;
-        qDebug() << "\nPath:" << m_filePath;
+        qDebug() << "\nPath:" << QString::fromStdString(item.path.c_str());
     };
 
     void setIconItem(const IconItem& item) {
@@ -87,16 +60,19 @@ ListItemData& operator=(const ListItemData&) = delete;*/
         return updatePropertiesFromPIDL();
     }
     void setItemDateType(const SpecialFolders type) {
+        auto pathTmp = m_iconItem.path.c_str();
+        QFileInfo tmp(pathTmp);
+        tmp = tmp.exists() ? tmp : QFileInfo();
         //设置为特殊文件夹
         if (type != SpecialFolders::UnknownFolder || SpecialFolders::Empty) {
             m_specialFolderType = type;
         }else {
             //判断对象类型
-            if (m_fileInfo.isFile()) {
+            if (tmp.isFile()) {
                 m_type = ObjectType::File;
                 //m_type = ObjectType::Link;
             }
-            else if (m_fileInfo.isDir()) {
+            else if (tmp.isDir()) {
                 m_type = ObjectType::Folder_ObjectType;
             }
         }
@@ -106,13 +82,12 @@ ListItemData& operator=(const ListItemData&) = delete;*/
     ListItemData& operator=(ListItemData&&) noexcept = default;
     ListItemData(const ListItemData&) = delete;
     ListItemData& operator=(const ListItemData&) = delete;*/
-    // 获取文件信息
-    const QFileInfo& fileInfo() const { return m_fileInfo; };
+    
   // const IconItem& iconItem() const { return m_iconItem; }
    const QString& fullName() const { return m_fullName; }
+   const QString filePath() const { return QString(m_iconItem.path.c_str()); }
   // const QString& data() const { return m_data; }
-   const QIcon& icon() const { return m_icon; }
-   const QString& filePath() const { return m_filePath; }
+   
   // qint64 fileSize() const { return m_fileSize; }
   // QDateTime lastModified() const { return m_lastModified; }
    const ObjectType type() const { return m_type; }
@@ -156,16 +131,11 @@ private:
     //Shell信息
     IconItem m_iconItem;
 
-	QFileInfo m_fileInfo;
+	
     // 文件信息
-    QString m_baseName;           //基本文件名
-    QString m_suffixName;         //文件后缀名
-    QString m_fullName;     
-    QIcon m_icon;
-    QString m_filePath;
+    
+    QString m_fullName;
     QString m_shellPath;    //Shell需要的路径 ：C:\\Users\\a\\Desktop
-    qint64 m_fileSize = 0;
-    QDateTime m_lastModified;
     ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
     SpecialFolders m_specialFolderType = SpecialFolders::Empty;  //特殊文件夹类型
     LPITEMIDLIST m_pidl;       // PIDL

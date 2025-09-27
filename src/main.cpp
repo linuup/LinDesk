@@ -19,11 +19,11 @@ int main(int argc, char *argv[])
     
     //vector<IconItem> items = c.GetDesktopIconsItems(CSystemApi::FindSysListView32());
     //qSetMessagePattern("%{time yyyy-MM-dd hh:mm:ss}--[%{type}]--%{file}--%{function}--%{line}:%{message}");
-    qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
+    //qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
     QApplication app(argc, argv);
 	qDebug() << "Application Dir:" << app.applicationDirPath();
-    LinDesk *lindesk = LinDesk::instance();
-    lindesk->show();
+    //LinDesk *lindesk = LinDesk::instance();
+    //lindesk->show();
     ListView* listView = ListView::instance();
     listView->show();
     return app.exec();

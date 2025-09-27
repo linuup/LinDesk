@@ -2,21 +2,64 @@
 #include "ListView.h"
 class ListView;
 
-ListItem::ListItem(QWidget* parent) : QWidget(parent)
-{
-		//this->resize(76, 88); // 设置默认大小
-
-		setStyleSheet("background-color: yellow;");
-}
-
 ListItem::~ListItem()
 {
+}
+
+void ListItem::initData()
+{
+	qDebug() << "ListItem initData" << this;
+	m_type = m_itemData.type();
+    if(m_type != ObjectType::Empty_ObjectType)
+    {
+        m_filePath = m_itemData.filePath();
+        m_fileInfo = QFileInfo(m_filePath);
+        m_baseName = m_fileInfo.baseName();
+        QFileIconProvider icon_provider;
+        if (m_fileInfo.suffix().isEmpty() || !m_fileInfo.exists()) {
+
+            // 如果文件存在并且不是一个符号链接，则检查它是否是一个 .lnk 文件
+            QString lnkPath = m_filePath + ".lnk";
+            QFileInfo tmp(lnkPath);
+            //bool isLink = CSystemApi::IsLinkFile(reinterpret_cast<const wchar_t*>(lnkPath.utf16()));
+            if (tmp.exists() && tmp.isSymLink()) {
+                qDebug() << "is linkFile";
+                //Lnk File
+                //qDebug() << tmp.filePath() << "is a lnkFile" << tmp.isSymLink();
+                m_icon = icon_provider.icon(tmp); // 获取特定文件的图标
+            }
+            m_fileInfo = tmp;
+        }
+        if (m_icon.isNull()) {
+            if (m_fileInfo.isFile()) {
+                m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
+            }
+            else {
+                m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
+            }
+        }
+
+		//根据图标大小设置区域
+		m_itemRect = QRect(m_itemPos, m_itemSize);
+        return;
+    }
+    
 }
 
 void ListItem::setItemData(ListItemData data)
 {
     m_itemData = data;
     //update();  // 数据改变时请求重绘
+}
+
+void ListItem::setItemSize(int width, int heigh)
+{
+	m_itemSize = QSize(width, heigh);
+}
+
+void ListItem::setItemPos(int startX, int startY)
+{
+    m_itemPos = QPoint(startX, startY);
 }
 
 ListItemData ListItem::getItemData()
@@ -30,46 +73,14 @@ void ListItem::contextMenuEvent(QContextMenuEvent* event) {
     ListView* lin = qobject_cast<ListView*>(this->parent());
     if (lin) {
         //传全局坐标
-        lin->requestSystemRightMenu(m_itemData.type(), mapToGlobal(event->pos()), this->m_itemData.filePath());
+        //lin->requestSystemRightMenu(m_itemData.type(), mapToGlobal(event->pos()), this->m_itemData.filePath());
     }
 	
 }
 
 void ListItem::paintEvent(QPaintEvent* event) {
 
-
-    //qDebug() << this->size();
-    if (&m_itemData == nullptr) {
-        return;
-    }
-    QPainter painter(this);
-
-    painter.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
-
-    // 设置蓝色边框的颜色和宽度
-    QPen pen;
-    if (m_itemData.specialFolderType() == SpecialFolders::UnknownFolder) {
-        pen.setColor(Qt::red);  // 设置边框颜色为蓝色
-    }
-    else {
-        pen.setColor(Qt::blue);  // 设置边框颜色为蓝色
-    }
-    painter.fillRect(0, 0, 76, 88, Qt::yellow);
-    // 绘制图标
-    QPixmap pixmap = m_itemData.icon().pixmap(48, 48); // 获取48x48的图标
-    //QPixmap pixmap = QIcon("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\devenv.exe").pixmap(64, 64); // 获取48x48的图标
-    int iconX = (width() - pixmap.width()) / 2; // 图标水平居中
-    int iconY = 10; // 图标距离顶部10像素
-    painter.drawPixmap(iconX, iconY, pixmap);
-
-
-    // 计算文字宽度并居中
-    int textWidth = painter.fontMetrics().horizontalAdvance(m_itemData.fullName());
-    int textX = (width() - textWidth) / 2; // 文本水平居中
-    int textY = height() - 10; // 距离底部10像素
-    painter.setBrush(QBrush(Qt::white));
-    // 绘制文字
-    painter.drawText(10, height() - 10, m_itemData.fullName());
+    
 
 
 

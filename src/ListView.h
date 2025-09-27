@@ -14,14 +14,16 @@
 #include <QSharedPointer>
 #include "ListItem.h"
 #include "RightMenu.h"
+#include <SelectArea.h>
 
 class ListView : public QWidget {
 	Q_OBJECT
 
 public:
-	enum class ViewMode {
-		IconView,
-		DetailedView
+	//桌面图标是否与网格对齐
+	enum class IconPosMode {
+		AlignIconToGrid,
+		UnAlignIconToGrid
 	};
 	// 获取单例对象
 	static ListView* instance(QWidget* parent = nullptr);
@@ -76,10 +78,33 @@ public:
 
 	// 获取背景壁纸图片路径
 	QString backgroundImage() const;
-
+	QPoint startPos;    //鼠标点击坐标
+	bool choosingFlag = false;   //是否移动
+	IconPosMode iconPosMode; //将图标与网格对齐
+	QRect drawingMaskRect;    //拖拽选择框矩形
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
 	void contextMenuEvent(QContextMenuEvent* event) override;
+	void mouseMoveEvent(QMouseEvent* event);
+	void enterEvent(QEvent* event) override;
+	//# 鼠标按下
+	void mousePressEvent(QMouseEvent* event) {
+		selectArea->show();
+		choosingFlag = true;
+		startPos = event->pos();
+		selectArea->setGeometry(startPos.x(), startPos.y(), 0, 0);
+		drawingMaskRect = QRect(event->x(), event->y(), 0, 0);
+		update();
+	}
+	// 鼠标松开
+	void mouseReleaseEvent(QMouseEvent* event) {
+		selectArea->hide();
+		choosingFlag = false;
+		selectArea->setGeometry(0, 0, 0, 0);
+		drawingMaskRect = QRect(0, 0, 0, 0);
+		update();
+	}
+		
 //signals:
 //	void itemSelected(ListItem* item);
 //	void selectionCleared();
@@ -88,16 +113,17 @@ protected:
 private:
 	explicit ListView(QWidget* parent = nullptr);
 	~ListView();
-	QVector<ListItem*> m_listItems;
 
-	static ListView* m_instance;
+	static ListView* m_instance;	//图标视图
 
+	int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
+	QRect currentHoverItemRect;  // 当前鼠标悬停的图标区域
 	RightMenu* rightMenu;   //右键菜单对象
-
+	SelectArea* selectArea; //选择区域对象
+	
 	QVector<ListItem*> m_items;             // 存储所有 ListItem 对象
 	QVector<ListItem*> m_selectedItems;      // 存储所有选中的项
 	bool m_isMultiSelection;               // 是否启用多选
-	ViewMode m_viewMode;
 	QPixmap m_backgroundImage;             // 存储背景壁纸图片
 
 	
