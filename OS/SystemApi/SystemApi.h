@@ -72,7 +72,6 @@ public:
 	CSystemApi(void);
     ~CSystemApi();
 
-	// TODO: add your methods here.
     /*
     * 是不是快捷方式
     *

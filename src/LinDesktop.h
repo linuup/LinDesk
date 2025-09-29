@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <QWidget>
 #include <QDialog>
 #include <QLabel>
@@ -25,7 +25,7 @@ public:
 
 	QPoint startPos;    //鼠标点击坐标
 
-	bool choosingFlag = false;   //是否移动
+	bool selecting = false;   //是否移动
 	QRect drawingMaskRect;    //拖拽选择框矩形
     int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
     int previousHoverItemIndex = -1; // 上一个鼠标悬停的图标索引
@@ -45,43 +45,70 @@ private:
     RightMenu* rightMenu;
 
 protected:
+
+    void paintEvent(QPaintEvent* event) {
+		QPainter hoverMaskPainter(this);    // 用于绘制悬浮遮罩
+		QPainter painter(this);
+		painter.fillRect(rect(), QColor(171, 100, 192)); // Clear with transparent color
+        if (currentHoverItemIndex != -1) {
+
+        hoverMaskPainter.setRenderHint(QPainter::Antialiasing);  // 开启抗锯齿
+
+        // 设置填充颜色为半透明蓝色
+        //hoverMaskPainter.setBrush(QBrush(QColor(0, 0, 255, 50)));  // 半透明蓝色
+
+        // 设置边框颜色为红色，边框宽度为 10
+        //hoverMaskPainter.setPen(QPen(Qt::red, 10));
+
+        // 绘制圆角矩形
+        hoverMaskPainter.fillRect(this->currentHoverItemRect, QBrush(QColor(255, 255, 255, 50)));
+
+        // 绘制圆角矩形
+
+        //q.drawRoundedRect(this->currentHoverItemRect, 5, 5);  // x, y, width, height, border radius X, border radius Y
+    }
+    };
+
     //void contextMenuEvent(QContextMenuEvent* event) override;
 	void mouseMoveEvent(QMouseEvent* event) {
         // draw mouse hover effect
-        //if (!this->choosingFlag) {
-        //    auto currentPoint = event->pos();
-        //    // 如果鼠标悬浮的位置没变化，直接返回
-        //    if (currentHoverItemRect.contains(currentPoint)) {
-        //        previousHoverItemIndex = currentHoverItemIndex;
-        //        /*qDebug() << "currentHoverItemIndex:" << currentHoverItemIndex;
-        //        qDebug() << "previousHoverItemIndex:"<< previousHoverItemIndex;*/
-        //        return; // 不进行重复更新
-        //    }
+        if (!this->selecting) {
+            auto currentPoint = event->pos();
+            // 如果鼠标悬浮的位置没变化，直接返回
+            if (currentHoverItemRect.contains(currentPoint)) {
 
-        //    //&& currentHoverItemIndex == previousHoverItemIndex
-        //    currentHoverItemIndex = -1;
-        //    update();
-        //    for (auto it = m_items.begin(); it != m_items.end(); it++)
-        //    {
-        //        ListItem* item = *it;
-        //        QRect itemRect = item->rect();
-        //        if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
-        //            return;
-        //        }
-        //        if (itemRect.contains(currentPoint)) {
+                //previousHoverItemIndex = currentHoverItemIndex;
+                qDebug() << "CurrentHoverItemIndex:" << currentHoverItemIndex;
+                return; // 不进行重复更新
+            }
 
-        //            // 鼠标右键点击位置在该图标区域内，显示该图标的右键菜单
-        //            currentHoverItemIndex = std::distance(m_items.begin(), it);
-        //            currentHoverItemRect = itemRect;
+            //&& currentHoverItemIndex == previousHoverItemIndex
+            //currentHoverItemIndex = -1;
+            update();
+            auto items = listView->items();
+            for (auto it = items.begin(); it != items.end(); it++)
+            {
+                ListItem* item = *it;
+                QRect itemRect = item->rect();
+                if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
+                    return;
+                }
+                if (itemRect.contains(currentPoint)) {
 
-        //            //qDebug() << "MouseMoveEvent:Hovering on item[Index:"<<currentHoverItemIndex <<"]" << item->baseName();
-        //            // 使用 QRegion 来更新特定区域
-        //            QRegion region(currentHoverItemRect);
-        //            update(region);  // 仅更新悬浮项区域
-        //            return; // 退出循环，避免重复处理
-        //        }
-        //    }
-        //}
+                    // 鼠标右键点击位置在该图标区域内，显示该图标的右键菜单
+                    currentHoverItemIndex = std::distance(items.begin(), it);
+                    currentHoverItemRect = itemRect;
+
+                    qDebug() << "MouseMoveEvent:Hovering on item[Index:"<<currentHoverItemIndex <<"]" << item->baseName();
+                    // 使用 QRegion 来更新特定区域
+                    QRegion region(currentHoverItemRect);
+                    update(region);  // 仅更新悬浮项区域
+                    return; // 退出循环，避免重复处理
+                }
+            }
+			currentHoverItemRect = QRect();
+            currentHoverItemIndex = -1;
+        }
 
 
         //qDebug() << "MouseMoveEvent:CurrentPoint:" << currentPoint;
@@ -121,7 +148,7 @@ protected:
 		//# 鼠标按下
 	void mousePressEvent(QMouseEvent* event) {
 		selectArea->show();
-		choosingFlag = true;
+		selecting = true;
 		startPos = event->pos();
 		selectArea->setGeometry(startPos.x(), startPos.y(), 0, 0);
 		update();
@@ -129,7 +156,7 @@ protected:
 	// 鼠标松开
 	void mouseReleaseEvent(QMouseEvent* event) {
 		selectArea->hide();
-		choosingFlag = false;
+		selecting = false;
 		selectArea->setGeometry(0, 0, 0, 0);
 		update();
 	}

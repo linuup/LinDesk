@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QPainter>
+#include <QLabel>
 #include "core/Data/ListItemData.h"
 
 
@@ -42,6 +43,9 @@ public:
 protected:
     void ListItem::contextMenuEvent(QContextMenuEvent* event);
     void ListItem::paintEvent(QPaintEvent* event);
+    void ListItem::moveEvent(QMoveEvent* event) {
+		
+    };
     
 
 private:
@@ -52,8 +56,9 @@ private:
      QFileInfo m_fileInfo;
      QString m_baseName;           //基本文件名
      QString m_suffixName;         //文件后缀名
+     QLabel* m_iconWidget;       //图标控件
      QIcon m_icon;
      ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
-     QString m_filePath;
+	 QString m_filePath;    //Windows 文件路径
 };
 #endif // LISTITEM_H

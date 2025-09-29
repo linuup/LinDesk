@@ -8,19 +8,19 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     // 设置桌面背景图片
     //SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, (PVOID)imagePath.toStdString().c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
     
-    setMouseTracking(true);
+    
     // 设置无边框窗口
-    //setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
+    setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 
     // 设置透明背景
-    //setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_TranslucentBackground);
 
     // 设置透明并允许透过窗口看到后面的内容
-    //setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
+    setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
     //setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
 
     setGeometry(QApplication::primaryScreen()->geometry());
-    setAutoFillBackground(true);
+    //setAutoFillBackground(true);
 
     // 按y展开，到底部开始第二列
     loadIconLayer();
@@ -29,14 +29,14 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     
     
     this->raise();
-    show();
-    //QPushButton* b = new QPushButton(this);
-    //b->setText("加载图标");
-    //b->move(200, 200);
-    //// 连接按钮的点击信号到槽函数
-    //connect(b, &QPushButton::clicked, this, [this](){
-    //   
-    //});
+    
+    QPushButton* b = new QPushButton(this);
+    b->setText("First Floor");
+    b->move(200, 200);
+    // 连接按钮的点击信号到槽函数
+    connect(b, &QPushButton::clicked, this, [this](){
+        hide();
+    });
 
 }
 
@@ -49,7 +49,10 @@ ListView::~ListView() {
 
 void ListView::paintEvent(QPaintEvent* event)
 {
-    QPainter hoverMaskPainter(this);
+    
+    QPainter painter(this);
+    painter.fillRect(0,600,1920,1080, QColor(60, 200, 171)); // Clear with transparent color
+    
     //qDebug() << "MouseMoveEvent:Drawing";
     QPainter q(this);
     //q.fillRect(0, 0, 1920, 1080, QColor(228, 171, 171, 255));
@@ -57,23 +60,13 @@ void ListView::paintEvent(QPaintEvent* event)
     if (m_items.size() <= 0) {
         return;
     }
-    //if (currentHoverItemIndex != -1) {
-
-    //    hoverMaskPainter.setRenderHint(QPainter::Antialiasing);  // 开启抗锯齿
-
-    //    // 设置填充颜色为半透明蓝色
-    //    //hoverMaskPainter.setBrush(QBrush(QColor(0, 0, 255, 50)));  // 半透明蓝色
-
-    //    // 设置边框颜色为红色，边框宽度为 10
-    //    //hoverMaskPainter.setPen(QPen(Qt::red, 10));
-
-    //    // 绘制圆角矩形
-    //    hoverMaskPainter.fillRect(this->currentHoverItemRect, QBrush(QColor(255, 255, 255, 50)));
-
-    //    // 绘制圆角矩形
-
-    //    //q.drawRoundedRect(this->currentHoverItemRect, 5, 5);  // x, y, width, height, border radius X, border radius Y
-    //}
+    // 绘制父控件的内容
+    /*if (parentWidget()) {
+        QPixmap pixmap(parentWidget()->size());
+        parentWidget()->render(&pixmap);
+        painter.drawPixmap(0, 0, pixmap);
+    }*/
+    
     //qPainter_item.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
     //for (auto it = m_items.begin(); it != m_items.end(); it++)
     //{
@@ -99,7 +92,7 @@ void ListView::paintEvent(QPaintEvent* event)
     //    qPainter_item.drawText(pos, item->baseName());
     //    //qDebug() << "=====================" << item->baseName();
     //}
-    /*if (choosingFlag) {
+    /*if (selecting) {
         q.fillRect(drawingMaskRect, Qt::blue);
         update(drawingMaskRect);
     }*/
@@ -176,6 +169,7 @@ void ListView::loadIconLayer()
         
         listItem->move(Icon_X, Icon_Y);
         listItem->resize(iconWidth, iconHeight);
+		listItem->show();
         //listItem->update();
         listItems.push_back(listItem);
         // 更新 Y 坐标，增加图标高度和列间距
