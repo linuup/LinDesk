@@ -12,7 +12,7 @@ project("LinDesk")
 add_compile_options("/utf-8")
 
 # 查找 Qt5 库
-find_package(Qt5 COMPONENTS Widgets WinExtras REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core REQUIRED)
 # 包含 Qt 的 MOC 生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -43,6 +43,7 @@ target_link_libraries(LinDesk
         Shlwapi
         Comctl32
         Qt5::Widgets
+        Qt5::Core
         Qt5::WinExtras
         "OS"
 )

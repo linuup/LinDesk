@@ -6,11 +6,11 @@
 #include "core/Data/ListItemData.h"
 
 
-class ListItem : public QObject {
+class ListItem : public QWidget {
     Q_OBJECT
 
 public:
-    explicit ListItem() = default;
+    explicit ListItem(QWidget* parent = nullptr);
 
     // 禁止拷贝构造函数
     //ListItem(const ListItem&) = delete;
@@ -37,7 +37,7 @@ public:
     void setItemPos(int startX,int startY);
      //获取对应的 ListItemData
     
-
+    bool isReady = false;
 	bool isSelected = false; // 是否被选中
 protected:
     void ListItem::contextMenuEvent(QContextMenuEvent* event);
