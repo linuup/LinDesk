@@ -74,9 +74,33 @@ public:
 	
 	IconPosMode iconPosMode; //将图标与网格对齐
 	
+	bool IsSelecting() {
+		return m_isSelecting;
+	}
+	void DisableSelecting() { m_isSelecting = false; }
+
+	int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
+	int previousHoverItemIndex = -1; // 上一个鼠标悬停的图标索引
+	QRect currentHoverItemRect;  // 当前鼠标悬停的图标区域
+
+	/// <summary>
+	/// 请求系统右键菜单
+	/// </summary>
+	/// <param name="objType"></param>
+	/// <param name="point">相对屏幕的坐标</param>
+	/// <param name="objPath">不传参，默认请求桌面右键菜单</param>
+	void requestSystemRightMenu(ObjectType objType, QPoint point, const QString objPath = nullptr) const {
+		RightMenu* r = RightMenu::getInstance();
+		r->setShowType(objType);
+		r->showMenu(point, objPath);
+	}
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
-	
+	void contextMenuEvent(QContextMenuEvent* event) override; //右键菜单事件
+	void mousePressEvent(QMouseEvent* event) override;
+	void mouseMoveEvent(QMouseEvent* event) override;
+	void mouseReleaseEvent(QMouseEvent* event) override;
+
 	
 	void enterEvent(QEvent* event) override;
 
@@ -90,14 +114,19 @@ private:
 	~ListView();
 
 	static ListView* m_instance;	//图标视图
-	
+	RightMenu* rightMenu;
 	
 
 	QVector<ListItem*> m_items;             // 存储所有 ListItem 对象
 	QVector<ListItem*> m_selectedItems;      // 存储所有选中的项
+
 	bool m_isMultiSelection;               // 是否启用多选
 	QPixmap m_backgroundImage;             // 存储背景壁纸图片
 
-
+	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
+	bool m_isDragging = false;  // 是否正在拖动
+	bool m_isSelecting = false;  // 是否正在拖拽选择
+	QPoint m_dragm_startPos;     // 拖动开始时的位置
+	QPoint m_startPos;     // 鼠标点击开始时的位置
 
 };

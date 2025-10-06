@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QWidget>
 #include <qlabel.h>
@@ -14,10 +14,15 @@ public:
 	~SelectArea();
 public:
     //鼠标点击坐标
-    QPoint startPos;
+    QPoint m_startPos;
     QRect rect;  //拖拽选择矩形
     //QPixmap* selectArea; //拖拽选择绘制区域
+	QPixmap pixmap; //拖拽选择绘制区域
+    QImage image;
 private:
+
+    
+
     //鼠标松开
     void mouseReleaseEvent(QMouseEvent* event) override;
     //鼠标移动

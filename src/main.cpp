@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
     //qSetMessagePattern("%{time yyyy-MM-dd hh:mm:ss}--[%{type}]--%{file}--%{function}--%{line}:%{message}");
     //qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
     QApplication app(argc, argv);
-	qDebug() << "Application Dir:" << app.applicationDirPath();
+	//qDebug() << "Application Dir:" << app.applicationDirPath();
     //LinDesk *lindesk = LinDesk::instance();
     //lindesk->show();
     LinDesktop* linDesktop = new LinDesktop();

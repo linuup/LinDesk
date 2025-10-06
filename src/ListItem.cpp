@@ -1,4 +1,5 @@
 ﻿#include "ListItem.h"
+#include "ListView.h"
 class ListView;
 
 ListItem::ListItem(QWidget* parent)
@@ -13,7 +14,7 @@ ListItem::ListItem(QWidget* parent)
     //setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
     //setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
     //setStyleSheet("background-color:rgb(25,255,255);");
-    
+    setAttribute(Qt::WA_TransparentForMouseEvents);
 }
 
 ListItem::~ListItem()
@@ -101,37 +102,30 @@ void ListItem::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void ListItem::paintEvent(QPaintEvent* event) {
-    if (this->isReady == false) {
+    //if (!event->region().intersects(rect())) {
+    //    return; // 跳过无关绘制
+    //}
+    qDebug() << "ListItem painted";
+    /*ListView* l = qobject_cast<ListView*>(this->parentWidget());
+    if (this->isReady == false|| l->IsSelecting() == true) {
         return;
-    }
+    }*/
     /*QPainter q(this);
     qDebug() << this->pos() << size() << this->baseName();
     q.fillRect(0, 0, this->width(), this->height(), QColor(228, 171, 171, 255));*/
-
-    QPainter hoverMaskPainter(this);
-    //qDebug() << "MouseMoveEvent:Drawing";
-    //q.fillRect(0, 0, 1920, 1080, QColor(228, 171, 171, 255));
     QPainter qPainter_item(this);
     
     qPainter_item.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
-        QPoint pos = this->pos();
-        QSize size = this->size();
-        //qPainter_item.fillRect(item->rect(), Qt::yellow);
+    QPoint pos = this->pos();
+    QSize size = this->size();
 
-        // 绘制图标
-        //QPixmap pixmap = this->icon().pixmap(48, 48); // 获取48x48的图标
-        //int iconX = (size.width() - pixmap.width()) / 2; // 图标水平居中
-        //int iconY = 10; // 图标距离顶部10像素
-        // qPainter_item.drawPixmap(0,0, pixmap);
-
-
-        // 计算文字宽度并居中
-        int textWidth = qPainter_item.fontMetrics().horizontalAdvance(this->baseName());
-        int textX = (size.width() - textWidth) / 2; // 文本水平居中
-        int textY = size.height() - 10; // 距离底部10像素
-        // 绘制文字
-        qPainter_item.setPen(Qt::white);
-        qPainter_item.drawText(12,12, this->baseName());
+    // 计算文字宽度并居中
+    int textWidth = qPainter_item.fontMetrics().horizontalAdvance(this->baseName());
+    int textX = (size.width() - textWidth) / 2; // 文本水平居中
+    int textY = size.height() - 10; // 距离底部10像素
+    // 绘制文字
+    qPainter_item.setPen(Qt::white);
+    qPainter_item.drawText(12,12, this->baseName());
     
 
 }

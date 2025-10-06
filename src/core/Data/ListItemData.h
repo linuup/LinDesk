@@ -45,8 +45,8 @@ ListItemData& operator=(const ListItemData&) = delete;*/
         setItemDateType(item.specialFolder);
 		m_fullName = QString::fromStdString(item.name.c_str());
 
-        qDebug() << "\nFullName:" << m_fullName;
-        qDebug() << "\nPath:" << QString::fromStdString(item.path.c_str());
+        /*qDebug() << "\nFullName:" << m_fullName;
+        qDebug() << "\nPath:" << QString::fromStdString(item.path.c_str());*/
     };
 
     void setIconItem(const IconItem& item) {
