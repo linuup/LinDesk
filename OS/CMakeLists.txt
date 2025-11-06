@@ -15,6 +15,3 @@ target_include_directories(OS PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/SystemApi
 )
-
-#导入vcpkg安装的头文件
-# target_include_directories(OS PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg_installed/x64-windows/include)

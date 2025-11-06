@@ -1,0 +1,108 @@
+#pragma once
+#include <qstring.h>
+#include <qsettings.h>
+#include <qicon.h>
+#include <QtWinExtras/qwinfunctions.h>
+#include <qdir.h>
+#include <QDebug>
+
+
+//定义函数原型
+//__declspec(dllimport) UINT PrivateExtractIcons(
+//LPCTSTR lpszFile,
+//    int nIconIndex,
+//    int cxIcon,
+//    int cyIcon,
+//    HICON* phicon,
+//    UINT* piconid,
+//    UINT nIcons,
+//    UINT flags
+//);
+
+typedef UINT(WINAPI* PrivateExtractIcons_t)(
+    LPCTSTR lpszFile,
+    int nIconIndex,
+    int cxIcon,
+    int cyIcon,
+    HICON* phicon,
+    UINT* piconid,
+    UINT nIcons,
+    UINT flags
+);
+
+//=================================System Icons=================================
+enum SystemIcon
+{
+    PERSONALIZE,    // 个性化
+    DISPLAY_SETTINGS     // 显示设置
+};
+namespace ShortcutArrowManager {
+    // 检查系统是否显示快捷方式箭头
+    static bool isShortcutArrowEnabled()
+    {
+#ifdef Q_OS_WIN
+        QSettings registry("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+            QSettings::NativeFormat);
+        return registry.value("ShowShortcutArrow", true).toBool();
+#else
+        return false;
+#endif
+    }
+
+    // 检查是否使用UAC盾牌图标
+    static bool isUACShieldEnabled()
+    {
+#ifdef Q_OS_WIN
+        QSettings registry("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer",
+            QSettings::NativeFormat);
+        return registry.value("ShowShortcutArrowOverlay", 1).toInt() == 1;
+#else
+        return false;
+#endif
+    }
+}
+namespace SysInfoUtil{
+
+    /// <summary>
+    /// 从注册表获取桌面系统图标状态
+    /// </summary>
+    /// <returns></returns>
+    //QMap<QString, SysFileIcon>* SysIconRegedit_State();
+    
+    //把系统图标信息添加到集合
+    //void AddSysFileIcon(QList<FileIcon> *lists);
+    /// <summary>
+    /// 提取系统图标
+    /// </summary>
+    /// <param name="iconName"></param>
+    /// <returns></returns>
+    QIcon ExtractSystemIcon(SystemIcon iconName);
+
+    /// <summary>
+    /// 从指定的可执行文件路径提取图标，并返回一个QIcon对象
+    /// </summary>
+    /// <param name="exePath"></param>
+    /// <param name="iconIndex"></param>
+    /// <returns></returns>
+    QIcon ExtractIconFromExe(const QString& exePath, int iconIndex = 0);
+    
+    // 从DLL提取系统图标
+    QIcon SysFileIconByDLL(int index = 0, int maxSize = 256, QString dllName = "shell32.dll");
+    QIcon SysFileIconByDLL(int index = 0, QString dllName = "shell32.dll");
+
+    /**
+    * @brief MkMutiDir  创建多级目录
+    * @param path	     未创建的目录
+    * @return 	     返回已创建的目录
+    */
+    QString MkMutiDir(const QString path);
+
+    //保存图标到数据文件夹
+    QString SaveIconInDataDir(const QString iconName, const QIcon* icon);
+
+    //从注册表获取桌面背景路径
+    QString GetDesktopWallpaperPath();
+}
+
+/* General helper functions. */
+bool IsKeyDown(int nVirtKey);

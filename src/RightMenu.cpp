@@ -3,52 +3,17 @@
 #include <qmenu.h>
 #include <qdebug.h>
 #include "../SystemApi/SystemApi.h"
-
 #include <QProcess>
 #include <qstandardpaths.h>
 #include "../SystemApi/Tool.h"
 
-//bool RightMenu::setupMenuForFileType(FileWidget* fileWidget)
-//{
-//	bool res = false;
-//	try
-//	{
-//		auto iconStruct = fileWidget->getFileIconStruct();
-//		fileType = iconStruct->fileType;
-//		this->sf = iconStruct->sf;
-//		currentObjPath = iconStruct->filePath.replace("/", "\\");
-//		res = true;
-//		// 根据文件类型设置菜单
-//		if (fileType == FileType::SpecialFolder) {
-//			
-//		}
-//		else if (fileType == FileType::DiskLetter) {
-//
-//		}
-//	}
-//	catch (const std::exception&)
-//	{
-//		res == false;
-//	}
-//	// 其他文件类型...
-//	return res;
-//}
-
-//bool RightMenu::setupMenuForFileType(QMap<QString, FileWidget*>* &allChooseFiles)
-//{
-//	qDebug() << "Multiple files";
-//
-//	return false;
-//}
 
 void RightMenu::showMenu(QPoint pos, QString path) const
 {
 	if (path == nullptr) {
 		fileType == ObjectType::BackGround;
 	}
-	POINT p = {};
-	p.x = pos.x();
-	p.y = pos.y();
+	POINT p = { pos.x(),pos.y() };
 	const POINT* position = &p;
 	ShellContextMenu scm;
 	if (fileType == ObjectType::BackGround) {
@@ -71,7 +36,19 @@ void RightMenu::showMenu(QPoint pos, QString path) const
 	}
 	scm.ShowMenu(this->hwnd, position, nullptr);
 }
-
+void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const {
+	vector<LPITEMIDLIST> pidls;
+	for (auto it = items.begin(); it != items.end(); it++) {
+		ListItem* item = *it;
+		auto pidl = item->getItemData().pidl();
+		pidls.push_back(pidl);
+	}
+	POINT p = { pos.x(),pos.y() };
+	const POINT* position = &p;
+	ShellContextMenu scm;
+	scm.DisplayMultipleContextMenu(pidls);
+	scm.ShowMenu(this->hwnd, position, nullptr);
+}
 const wchar_t* RightMenu::objPath() const
 {
 	return reinterpret_cast<const wchar_t*>(currentObjPath.utf16());

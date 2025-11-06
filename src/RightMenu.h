@@ -6,6 +6,7 @@
 #include <qsettings.h>
 #include <ShellContextMenu.h>
 #include "CommonEnum.h"
+#include <ListItem.h>
 #define HKEY_ROOT "HKEY_CLASSES_ROOT\\"
 #define HKEY_USER "HKEY_CURRENT_USER\\"
 
@@ -56,6 +57,8 @@ public:
 	/// ShellPath : C:\\**\\
 	/// </param>
 	void showMenu(QPoint pos, QString path = nullptr) const;
+
+	void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const;
 	/// <summary>
 	/// 设置显示的窗口句柄
 	/// </summary>

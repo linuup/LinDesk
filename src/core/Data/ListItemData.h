@@ -92,7 +92,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
   // QDateTime lastModified() const { return m_lastModified; }
    const ObjectType type() const { return m_type; }
    const SpecialFolders specialFolderType() const { return m_specialFolderType; }
-   //LPITEMIDLIST pidl() const { return m_pidl.get(); }
+   LPITEMIDLIST pidl() const { return m_pidl; }
 
     /*bool isSystemFolder(const QString& path) {
         return SystemFolderCLSIDs.contains(path);

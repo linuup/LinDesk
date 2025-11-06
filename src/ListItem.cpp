@@ -1,131 +1,254 @@
 ﻿#include "ListItem.h"
 #include "ListView.h"
+#include <SysInfoUtil.h>
 class ListView;
 
 ListItem::ListItem(QWidget* parent)
 {
-    // 设置无边框窗口
-    setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
+	// 设置无边框窗口
+	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 
-    // 设置透明背景
-    setAttribute(Qt::WA_TranslucentBackground);
+	// 设置透明背景
+	setAttribute(Qt::WA_TranslucentBackground);
 
-    // 设置透明并允许透过窗口看到后面的内容
-    //setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-    //setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
-    //setStyleSheet("background-color:rgb(25,255,255);");
-    setAttribute(Qt::WA_TransparentForMouseEvents);
+	// 设置透明并允许透过窗口看到后面的内容
+	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
+	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
+	//setStyleSheet("background-color:rgb(25,255,255);");
+	setAttribute(Qt::WA_TransparentForMouseEvents);
+
+
+	// 创建阴影滤镜实现描边效果
+	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
+	
+	shadowEffect->setBlurRadius(5);           // 增加模糊半径，让效果更柔和
+	shadowEffect->setColor(QColor(0, 0, 0, 200)); // 使用更深的黑色，增加不透明度
+	shadowEffect->setOffset(-1, 1);              // 增加偏移量，让描边更明显
+
+
+
+	textLabel = new QLabel(this);
+	textLabel->setGraphicsEffect(shadowEffect);
+
+
+	// 设置微软雅黑字体
+	QFont yaheiFont;
+	yaheiFont.setFamily("Microsoft YaHei");
+	yaheiFont.setPointSize(10);
+	yaheiFont.setWeight(QFont::ExtraLight);
+	//textLabel->setFont(yaheiFont);
+
+	
+	textLabel->setStyleSheet("color: white; background: transparent;");
 }
 
 ListItem::~ListItem()
 {
 }
 
+
 void ListItem::initData()
 {
 	m_type = m_itemData.type();
-    if(m_type != ObjectType::Empty_ObjectType)
-    {
-        m_filePath = m_itemData.filePath();
-        m_fileInfo = QFileInfo(m_filePath.replace("LNK","lnk"));
-        m_baseName = m_fileInfo.baseName();
-        QFileIconProvider icon_provider;
-        /*qDebug() << m_filePath;
-        qDebug() << this->baseName() << m_filePath;*/
-        QString targetPath = m_fileInfo.symLinkTarget();
-        if (!targetPath.isEmpty()) {
-            QFileInfo targetData(targetPath);
-            m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
-        }
-        if (m_icon.isNull()) {
-            if (m_fileInfo.isFile()) {
-                m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
-            }
-            else {
-                m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
-            }
-        }
-        
-        /*qDebug() << this->baseName() << m_filePath;
-        for (auto a : m_icon.availableSizes()) {
+	if (m_type != ObjectType::Empty_ObjectType)
+	{
+		m_filePath = m_itemData.filePath();
+		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
+		m_baseName = m_fileInfo.baseName();
+
+		QFileIconProvider icon_provider;
+		/*qDebug() << m_filePath;
+		qDebug() << this->baseName() << m_filePath;*/
+		QString targetPath = m_fileInfo.symLinkTarget();
+		if (!targetPath.isEmpty()) {
+			QFileInfo targetData(targetPath);
+			m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
+		}
+		if (m_icon.isNull()) {
+			if (m_fileInfo.isFile()) {
+				m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
+			}
+			else {
+				//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
+				m_icon = SysInfoUtil::SysFileIconByDLL(4,"shell32.dll");
+			}
+		}
+
+		qDebug() << this->baseName() << m_filePath;
+		for (auto a : m_icon.availableSizes()) {
 			qDebug() << "ListItem initData icon size:" << a;
-        }*/
-        int iconIndex=m_icon.availableSizes().size();
+		}
+
+
 		//根据图标大小设置区域
-		m_itemRect = QRect(m_itemPos, m_itemSize);
-        m_iconWidget = new QLabel(this);
-        // 设置透明背景
-        m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
-        m_iconWidget->resize(m_itemSize);
-        // 设置透明并允许透过窗口看到后面的内容
-        //m_iconWidget->setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-        m_iconWidget->setGeometry(0, 0, m_itemSize.width(), m_itemSize.height());
-		m_iconWidget->setPixmap(m_icon.pixmap(m_icon.availableSizes().at(1))); // 设置QIcon中的第N个尺寸的图标
-  //      qDebug() << "ListItem Icon Widget:" << m_iconWidget->geometry();
-		//qDebug() << "ListItem initData icon:" << m_iconWidget->geometry();
-        isReady = true;
-        return;
-    }
-    
+		//m_itemRect = QRect(m_itemPos, m_itemSize);
+
+
+		//显示图标
+		m_iconWidget = new QLabel(this);
+		m_iconWidget->setPixmap(m_icon.pixmap(m_icon.availableSizes().at(2))); // 设置QIcon中的第N个尺寸的图标
+		// 设置透明背景
+		m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
+		// 计算居中位置
+		int topMargin = 5; // 距离顶部高度，可自定义
+		int centerX = (m_itemSize.width() - m_iconWidget->pixmap()->width()) / 2; // 水平居中
+		m_iconWidget->move(centerX, topMargin);  // 居中显示，顶部自定义高度
+		// 设置透明并允许透过窗口看到后面的内容
+		m_iconWidget->setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
+
+
+		isReady = true;
+
+	}
+
 }
 
 void ListItem::setItemData(ListItemData data)
 {
-    m_itemData = data;
-    //update();  // 数据改变时请求重绘
+	m_itemData = data;
+	//update();  // 数据改变时请求重绘
 }
 
-void ListItem::setItemSize(int width, int heigh)
+void ListItem::setItemSize(int width, int height)
 {
-	m_itemSize = QSize(width, heigh);
+	m_itemSize = QSize(width, height);
+	this->resize(width, height);
 }
 
 void ListItem::setItemPos(int startX, int startY)
 {
-    m_itemPos = QPoint(startX, startY);
+	m_itemPos = QPoint(startX, startY);
+}
+
+void ListItem::setItemPos(QPoint pos)
+{
+	m_itemPos = pos;
+}
+
+void ListItem::updateLocationInfo(QPoint pos)
+{
+	this->setItemPos(pos);
+	m_itemRect = QRect(pos, m_itemSize);
+	int shrinkSize = 15;
+	m_chooseRect = m_itemRect.adjusted(shrinkSize, shrinkSize, -shrinkSize, -shrinkSize);
+}
+
+void ListItem::checkSelf()
+{
+	isSelected = true;
+	update();
+}
+
+void ListItem::unCheckSelf()
+{
+	isSelected = false;
+	update();
 }
 
 ListItemData ListItem::getItemData()
 {
-    return m_itemData;
+	return m_itemData;
 }
 
 void ListItem::contextMenuEvent(QContextMenuEvent* event) {
 	qDebug() << this->objectName();
 
-    //ListView* lin = qobject_cast<ListView*>(this->parent());
-    //if (lin) {
-        //传全局坐标
-        //lin->requestSystemRightMenu(m_itemData.type(), mapToGlobal(event->pos()), this->m_itemData.filePath());
-    //}
-	
+	//ListView* lin = qobject_cast<ListView*>(this->parent());
+	//if (lin) {
+		//传全局坐标
+		//lin->requestSystemRightMenu(m_itemData.type(), mapToGlobal(event->pos()), this->m_itemData.filePath());
+	//}
+
 }
 
 void ListItem::paintEvent(QPaintEvent* event) {
-    //if (!event->region().intersects(rect())) {
-    //    return; // 跳过无关绘制
-    //}
-    qDebug() << "ListItem painted";
-    /*ListView* l = qobject_cast<ListView*>(this->parentWidget());
-    if (this->isReady == false|| l->IsSelecting() == true) {
-        return;
-    }*/
-    /*QPainter q(this);
-    qDebug() << this->pos() << size() << this->baseName();
-    q.fillRect(0, 0, this->width(), this->height(), QColor(228, 171, 171, 255));*/
-    QPainter qPainter_item(this);
-    
-    qPainter_item.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
-    QPoint pos = this->pos();
-    QSize size = this->size();
+	//if (!event->region().intersects(rect())) {
+	//    return; // 跳过无关绘制
+	//}
+	//qDebug() << "ListItem painted";
+	QPainter painter(this);
+	QPainter hoverMaskPainter(this);
+	painter.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
+	QRect rect = this->rect();
+	QPoint pos = this->pos();
+	QSize size = this->size();
+	// 计算文字宽度并居中
 
-    // 计算文字宽度并居中
-    int textWidth = qPainter_item.fontMetrics().horizontalAdvance(this->baseName());
-    int textX = (size.width() - textWidth) / 2; // 文本水平居中
-    int textY = size.height() - 10; // 距离底部10像素
-    // 绘制文字
-    qPainter_item.setPen(Qt::white);
-    qPainter_item.drawText(12,12, this->baseName());
-    
+	QString text = this->baseName();
+	QFontMetrics fm = painter.fontMetrics();
+
+	// 计算文字需要的空间
+	int textWidth = fm.horizontalAdvance(text);
+	int textHeight = fm.height();
+
+	// 计算绘制位置
+	int textX, textY;
+
+	// 水平位置：居中，但如果文字太长则左对齐并添加省略号
+	if (textWidth > rect.width() - 20) {  // 保留20像素边距
+		text = fm.elidedText(text, Qt::ElideRight, rect.width() - 20);
+		textWidth = fm.horizontalAdvance(text);
+		textX = 10;  // 左对齐
+	}
+	else {
+		textX = (rect.width() - textWidth) / 2;  // 居中
+	}
+
+	// 垂直位置：底部向上10像素，但要考虑文字基线
+	textY = rect.height() - 15;  // 距离底部10像素
+
+	// 确保文字不会超出下边界
+	if (textY > rect.height() - 5) {
+		textY = rect.height() - 5;
+	}
+
+	// 确保文字不会与上边界重叠
+	if (textY < textHeight) {
+		textY = textHeight;
+	}
+
+	
+	// 绘制文字
+	textLabel->resize(textWidth, textHeight);
+	textLabel->setText(text);
+	textLabel->move(textX, textY);
+	
+
+
+
+	//给itemRect画个高亮
+	if (isSelected) {
+		// Windows桌面图标选中效果通常包括：
+		// 1. 半透明蓝色背景
+		// 2. 浅蓝色边框
+		// 3. 圆角效果
+		// 4. 周围高亮
+
+		// 方法1：现代Windows效果（半透明蓝色背景 + 边框）
+
+
+		// 设置填充颜色为半透明蓝色
+		int width = m_itemSize.width();
+		int height = m_itemSize.height();
+
+		// 第一层：外发光（最大范围）
+		hoverMaskPainter.setPen(Qt::NoPen);
+		hoverMaskPainter.setBrush(QColor(100, 150, 255, 30));
+		hoverMaskPainter.drawRoundedRect(-3, -3, width + 6, height + 6, 8, 8);
+
+		// 第二层：中发光
+		/*hoverMaskPainter.setBrush(QColor(80, 140, 255, 60));
+		hoverMaskPainter.drawRoundedRect(-1, -1, width + 2, height + 2, 6, 6);*/
+
+		// 第三层：内发光（主背景）
+		hoverMaskPainter.setBrush(QColor(255, 255, 255, 90));
+		hoverMaskPainter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+
+		// 第四层：高亮边框
+		hoverMaskPainter.setPen(QPen(QColor(255, 255, 255, 150), 0.7));
+		hoverMaskPainter.setBrush(Qt::NoBrush);
+		hoverMaskPainter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+	}
+
 
 }

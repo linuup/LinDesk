@@ -25,13 +25,11 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
 
     rightMenu = RightMenu::getInstance();
     rightMenu->setHWND((HWND)this->winId());
-
-    // 按y展开，到底部开始第二列
+    initialize();
+    
     loadIconLayer();
 
     qDebug() << m_items.size();
-    
-    
     this->raise();
     
     QPushButton* b = new QPushButton(this);
@@ -48,60 +46,58 @@ ListView::~ListView() {
     // 清理 ListItem 对象
     //qDeleteAll(m_listItems);
 }
+void ListView::clearCheckedItem()
+{
+    for (auto* item : this->items()) {
+        item->unCheckSelf();
+    }
+    m_selectedItems.clear();
+}
+
+void ListView::refreshCheckedItem(QRect rect)
+{
+    clearCheckedItem();
+    auto items = this->items();
+    // 遍历所有item，检查与选择矩形的相交关系
+    
+    for (auto* item : items) {
+        // 获取item的矩形区域
+        QRect itemRect = item->getChooseItemRect(); // 如果是QRectF需要转换
+        // QRect itemRect = item->geometry(); // 或者使用geometry()
+        
+        // 检查是否相交
+        if (itemRect.intersects(rect)) {
+            m_selectedItems.append(item);
+            item->checkSelf();
+        }
+    }
+    
+}
+
+
 
 
 
 void ListView::paintEvent(QPaintEvent* event)
 {
-    qDebug() << "=====================ListView Painter";
-    //QPainter painter(this);
-    //painter.fillRect(0,600,1920,1080, QColor(60, 200, 171)); // Clear with transparent color
-    //
-    ////qDebug() << "MouseMoveEvent:Drawing";
-    //QPainter q(this);
-    ////q.fillRect(0, 0, 1920, 1080, QColor(228, 171, 171, 255));
-    //QPainter qPainter_item(this);
-    //if (m_items.size() <= 0) {
-    //    return;
-    //}
-    // 绘制父控件的内容
-    /*if (parentWidget()) {
-        QPixmap pixmap(parentWidget()->size());
-        parentWidget()->render(&pixmap);
-        painter.drawPixmap(0, 0, pixmap);
-    }*/
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // 绘制垂直条纹
+    if (0) {
+        int stripeWidth = 50; // 条纹宽度
+        for (int x = 0; x < width(); x += stripeWidth * 2) {
+            // 第一种颜色
+            painter.fillRect(x, 0, stripeWidth, height(), QColor(60, 200, 171));
+            // 第二种颜色（或透明）
+            painter.fillRect(x + stripeWidth, 0, stripeWidth, height(), QColor(255, 255, 255));
+        }
+    }
+    else {
+        //绘制一个背景色
+        painter.fillRect(rect(), QColor(60, 200, 171)); // 浅蓝色背景
+    }
     
-    //qPainter_item.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
-    //for (auto it = m_items.begin(); it != m_items.end(); it++)
-    //{
-    //    ListItem* item = *it;
-    //    QPoint pos = item->pos();
-    //    QSize size = item->size();
-    //    //qPainter_item.fillRect(item->rect(), Qt::yellow);
-
-    //    // 绘制图标
-    //    QPixmap pixmap = item->icon().pixmap(48, 48); // 获取48x48的图标
-    //    int iconX = (size.width() - pixmap.width()) / 2; // 图标水平居中
-    //    int iconY = 10; // 图标距离顶部10像素
-    //    qPainter_item.drawPixmap(pos, pixmap);
-
-
-    //    // 计算文字宽度并居中
-    //    int textWidth = qPainter_item.fontMetrics().horizontalAdvance(item->baseName());
-    //    int textX = (size.width() - textWidth) / 2; // 文本水平居中
-    //    int textY = size.height() - 10; // 距离底部10像素
-    //    // 绘制文字
-    //    qPainter_item.setPen(Qt::white);
-    //    //qPainter_item.drawText(10, size.height() - 10, "test");
-    //    qPainter_item.drawText(pos, item->baseName());
-    //    //qDebug() << "=====================" << item->baseName();
-    //}
-    /*if (selecting) {
-        q.fillRect(drawingMaskRect, Qt::blue);
-        update(drawingMaskRect);
-    }*/
-
-
 
     //qDebug() << "drawingMaskRect:" << this->drawingMaskRect;
 
@@ -110,69 +106,76 @@ void ListView::paintEvent(QPaintEvent* event)
 void ListView::contextMenuEvent(QContextMenuEvent* event)
 {
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
-        auto pointRight = mapToGlobal(event->pos());
+        auto rightClickPoint = mapToGlobal(event->pos());
         auto items = this->items();
         //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
         for (auto it = items.begin(); it != items.end(); it++)
         {
             ListItem* item = *it;
-            QRect itemRect = item->rect();
+            QRect itemRect = item->getItemRect();
             if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
                 return;
             }
-            if (itemRect.contains(pointRight)) {
-                qDebug() << "图标范围：" << itemRect;
-                qDebug() << "右键点击坐标：" << pointRight;
+            if (itemRect.contains(rightClickPoint)) {
+                //qDebug() << "图标范围：" << itemRect;
+                //qDebug() << "右键点击坐标：" << rightClickPoint;
+                if (m_selectedItems.size() == 0) {
+                    m_selectedItems.push_back(item);
+                }
                 // 鼠标右键点击位置在该图标区域内，显示该图标的右键菜单
-                requestSystemRightMenu(item->getItemData().type(), pointRight, item->filePath());
+                requestSystemRightMenu(item->getItemData().type(), rightClickPoint, m_selectedItems);
                 return; // 退出循环，避免重复处理
             }
         }
         // 如果右键点击位置不在任何图标区域内，显示桌面的右键菜单
-        requestSystemRightMenu(ObjectType::BackGround, mapToGlobal(event->pos()));
+        requestSystemRightMenu(ObjectType::BackGround, rightClickPoint, m_selectedItems);
     }
 }
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
-
+        clearCheckedItem();
 		//Dragging Item
-        qDebug() << "ListView LeftClick Pos:" << event->pos();
-        auto m_dragm_startPos = event->pos();
+        //qDebug() << "ListView LeftClick Pos:" << event->pos();
+        auto m_originalPos = event->pos();
         auto items = this->items();
         //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
         for (auto it = items.begin(); it != items.end(); it++)
         {
             ListItem* item = *it;
-            QRect itemRect = item->rect();
+            QRect itemRect = item->getItemRect();
             if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
                 return;
             }
-            if (itemRect.contains(m_dragm_startPos)) {
-                /*qDebug() << "图标范围：" << itemRect;
-                qDebug() << "左键点击坐标：" << m_dragm_startPos;*/
+            if (itemRect.contains(m_originalPos)) {
+                //qDebug() << item->baseName();
                 m_draggedItem = item; // 记录当前被拖动的 ListItem 
+                m_draggedItem->raise();
+                m_dragOffset = event->pos() - item->pos();
+                m_originalPos = event->pos();  // 记录按下时的位置
 
-                m_dragm_startPos = event->pos();  // 记录按下时的位置
                 m_isDragging = true;  // 开始拖动
+                
+                m_selectedItems.append(item);
+                item->checkSelf();
                 return; // 退出循环，避免重复处理
             }
         }
-        m_isSelecting = true; // 开始拖拽选择
-        event->ignore(); // 如果没有点击在任何 ListItem 上，忽略事件
-		
-
     }
+    m_isSelecting = true; // 开始拖拽选择
+    event->ignore(); // 如果没有点击在任何 ListItem 上，忽略事件
 }
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
-	//qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
+	qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
     // handle dragging
     if (m_isDragging) {
+        QPoint newPos = event->pos() - m_dragOffset;
         // 移动 ListItem 控件
-        m_draggedItem->move(event->pos().x(), event->pos().y());
+        m_draggedItem->move(newPos);
+        m_draggedItem->updateLocationInfo(newPos);
         return;
     }
 
@@ -189,30 +192,10 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
         //&& currentHoverItemIndex == previousHoverItemIndex
         //currentHoverItemIndex = -1;
-        update();
-        auto items = this->items();
-        for (auto it = items.begin(); it != items.end(); it++)
-        {
-            ListItem* item = *it;
-            QRect itemRect = item->rect();
-            if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
-                return;
-            }
-            if (itemRect.contains(currentPoint)) {
-
-                // 鼠标右键点击位置在该图标区域内，显示该图标的右键菜单
-                currentHoverItemIndex = std::distance(items.begin(), it);
-                currentHoverItemRect = itemRect;
-
-                qDebug() << "MouseMoveEvent:Hovering on item[Index:" << currentHoverItemIndex << "]" << item->baseName();
-                // 使用 QRegion 来更新特定区域
-                QRegion region(currentHoverItemRect);
-                update(region);  // 仅更新悬浮项区域
-                return; // 退出循环，避免重复处理
-            }
-        }
-        currentHoverItemRect = QRect();
-        currentHoverItemIndex = -1;
+        //update();
+        
+        //currentHoverItemRect = QRect();
+        //currentHoverItemIndex = -1;
     }
 
 
@@ -222,8 +205,12 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (m_isDragging) {
+    if (m_selectedItems.size() != 0) {
         qDebug() << "ListView mouseReleaseEvent  Pos:" << event->pos();
+        qDebug() << "Selected Item" << m_selectedItems.size();
+    }
+    
+    if (m_isDragging) {
         m_isDragging = false;  // 结束拖动
         m_draggedItem = nullptr; // 清除被拖动的 ListItem
         m_startPos = QPoint();
@@ -265,12 +252,31 @@ std::vector<ListItemData> ListView::loadAllItemsData()
     return allItemsData;
 }
 
+void ListView::initialize()
+{
+    QVector<ListItem*> listItems;
+    vector<ListItemData> allDatas = loadAllItemsData();
+    //load System Items & default Items
+    for (auto it = allDatas.begin(); it != allDatas.end(); it++)
+    {
+        ListItem* listItem = new ListItem(this);
+        listItem->setParent(this);
+        listItem->setItemData(std::move(*it));
+        listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+        //listItem->update();
+        if (it->type() != Empty_ObjectType) {
+            listItems.push_back(listItem);
+        }
+        m_sysItems.push_back(listItem);
+    }
+    m_items = listItems;
+}
+
 //计算每个控件的纵向位置（y），并检查是否超出了窗口的高度。
 //一旦超出窗口高度，切换到下一列，并重置纵向位置（y）为新的列开始位置。
 void ListView::loadIconLayer()
 {
-    QVector<ListItem*> listItems;
-    vector<ListItemData> allDatas = loadAllItemsData();
     // 行、列总数量
     int row = 12;
     int col = 24;
@@ -280,28 +286,24 @@ void ListView::loadIconLayer()
     int iconHeight = 88; // 图标高度
 
     // 初始位置
-    int Icon_X = 2;   // 第一列的 X 坐标
-    int Icon_Y = 8;   // 第一行的 Y 坐标
+    int marginTop = 6;
+    int marginLeft = 2;
+    int Icon_X = marginLeft;   // 第一列的 X 坐标
+    int Icon_Y = marginTop;   // 第一行的 Y 坐标
 
     // 定义文件索引
     int index = 0;
+    //load UI Layout
     // 遍历列和行来布局图标
-    //迭代器遍历
-    for (auto it = allDatas.begin(); it != allDatas.end(); it++)
-    {
-        ListItem* listItem = new ListItem(this);
-        listItem->setParent(this);
-        listItem->setItemSize(iconWidth, iconHeight);
-        listItem->setItemPos(Icon_X, Icon_Y);
-        listItem->setItemData(std::move(*it));
-        listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
-        listItem->initData();
+    for (auto it = m_items.begin(); it != m_items.end(); it++) {
+        ListItem* item = *it;
+        //qDebug() << item->baseName();
+        item->setItemSize(iconWidth, iconHeight);
         
-        listItem->move(Icon_X, Icon_Y);
-        listItem->resize(iconWidth, iconHeight);
-		listItem->show();
-        //listItem->update();
-        listItems.push_back(listItem);
+        item->initData();
+        item->updateLocationInfo(QPoint(Icon_X, Icon_Y));
+        item->move(Icon_X, Icon_Y);
+        item->show();
         // 更新 Y 坐标，增加图标高度和列间距
         Icon_Y = Icon_Y + iconHeight + rowSpacing;
 
@@ -309,14 +311,15 @@ void ListView::loadIconLayer()
         if (Icon_Y + iconHeight > height()) {
             // 切换到下一列
             Icon_X = Icon_X + iconWidth + colSpacing;
-            Icon_Y = 8;  // 重置 Y 坐标为顶部
+            Icon_Y = marginTop;  // 重置 Y 坐标为顶部
         }
     }
-    m_items = listItems;
+    
 }
 
 void ListView::addItem(ListItem* item)
 {
+
 }
 
 void ListView::setSelectedItem(ListItem* item)
@@ -339,23 +342,10 @@ bool ListView::isItemSelected(ListItem* item) const
 
 QVector<ListItem*> ListView::selectedItems() const
 {
-    return QVector<ListItem*>();
-}
-
-void ListView::setMultiSelection(bool enabled)
-{
+    return m_selectedItems;
 }
 
 bool ListView::isMultiSelection() const
 {
     return false;
-}
-
-void ListView::setBackgroundImage(const QString& imagePath)
-{
-}
-
-QString ListView::backgroundImage() const
-{
-    return QString();
 }

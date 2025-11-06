@@ -4,9 +4,18 @@
 #include <QWidget>
 #include <QPainter>
 #include <QLabel>
+#include <QPainterpath>
+#include <QGraphicsEffect>
+#include <QGraphicsDropShadowEffect>
+
+
 #include "core/Data/ListItemData.h"
 
 
+enum hoverStyle {
+    default,
+
+};
 class ListItem : public QWidget {
     Q_OBJECT
 
@@ -23,7 +32,7 @@ public:
 	void initData();
     // 获取文件信息
     const QFileInfo& fileInfo() const { return m_fileInfo; };
-    const QRect& rect() const { return m_itemRect; };
+    //const QRect& rect() const { return m_itemRect; };
 
     const QIcon& icon() const { return m_icon; }
     const QString& filePath() const { return m_filePath; }
@@ -31,11 +40,23 @@ public:
     const QSize& size() const { return m_itemSize; }
     const QPoint& pos() const { return m_itemPos; }
     const ObjectType type() const { return m_type; }
+    const QRect& getItemRect() const { return m_itemRect; }
+    const QRect& getChooseItemRect() const { return m_chooseRect; }
     ListItemData getItemData(); // 设置对应的 ListItemData
 
     void setItemData(ListItemData data);
     void setItemSize(int width,int heigh);
     void setItemPos(int startX,int startY);
+    void setItemPos(QPoint pos);
+
+    /// <summary>
+    /// Update Item UI LocationInfo
+    /// </summary>
+    /// <param name="pos"></param>
+    void updateLocationInfo(QPoint pos);
+    void checkSelf();
+    void unCheckSelf();
+    
      //获取对应的 ListItemData
     
     bool isReady = false;
@@ -47,10 +68,13 @@ protected:
     
 
 private:
+     
      ListItemData m_itemData;  // 关联的数据类
 	 QSize m_itemSize;    //图标大小
 	 QPoint m_itemPos;    //图标位置
-	 QRect m_itemRect;   //图标区域
+     QPoint m_iconPos;   //图标起始点
+     QRect m_itemRect;  //元素Rect
+     QRect m_chooseRect;   //拖拽时选择判定区域
      QFileInfo m_fileInfo;
      QString m_baseName;           //基本文件名
      QString m_suffixName;         //文件后缀名
@@ -59,6 +83,7 @@ private:
      ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
 	 QString m_filePath;    //Windows 文件路径
 
+     QLabel* textLabel; //文件名称Label
      
 };
 #endif // LISTITEM_H

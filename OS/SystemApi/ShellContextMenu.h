@@ -104,6 +104,7 @@ public:
         folder,//文件夹
         link,//快捷方式
         specialFolder,//特殊文件夹
+        MultObject,//多个项目，文件和文件号组合
         diskLetter,//盘符
         BackGround//背景
     };
@@ -161,7 +162,7 @@ public:
     void DisplayDriveContextMenu(const wchar_t* driveLetter, HWND hWnd, int xPos, int yPos);
 
     //选择多个文件生成右键上下文菜单
-    //void DisplayMultipleContextMenu();
+    void DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls);
   
 private:
     OperationType operationType = OperationType::BackGround;

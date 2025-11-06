@@ -98,8 +98,21 @@ void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
 
 void ShellContextMenu::DisplayDriveContextMenu(const wchar_t* driveLetter, HWND hWnd, int xPos, int yPos)
 {
-}
 
+}
+void ShellContextMenu::DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls) {
+    if (pidls.size()==0) {
+        return;
+    }
+    operationType = OperationType::MultObject;
+    unique_pidl_absolute pidlsf;
+    // 获取上下文菜单
+    IContextMenu* contextMenu = nullptr;
+    GetDesktop_IshellFolder();
+    m_pDesktopFolder->GetUIObjectOf(nullptr, pidls.size(),
+        (LPCITEMIDLIST*)pidls.data(), IID_IContextMenu, nullptr, (void**)&m_contextMenu);
+
+}
 
 bool ShellContextMenu::GetDesktop_IshellFolder()
 {

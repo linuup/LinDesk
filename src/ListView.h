@@ -32,6 +32,9 @@ public:
 	// 加载所有桌面图标数据
 	std::vector<ListItemData> loadAllItemsData();
 
+	/// <summary>
+	/// Init default Data 
+	/// </summary>
 	void initialize();
 
 	void loadIconLayer();
@@ -60,17 +63,8 @@ public:
 	// 获取所有选中的项（支持多选）
 	QVector<ListItem*> selectedItems() const;
 
-	// 设置多选模式
-	void setMultiSelection(bool enabled);
-
 	// 获取是否启用多选
 	bool isMultiSelection() const;
-
-	// 设置背景壁纸图片
-	void setBackgroundImage(const QString& imagePath);
-
-	// 获取背景壁纸图片路径
-	QString backgroundImage() const;
 	
 	IconPosMode iconPosMode; //将图标与网格对齐
 	
@@ -88,12 +82,30 @@ public:
 	/// </summary>
 	/// <param name="objType"></param>
 	/// <param name="point">相对屏幕的坐标</param>
-	/// <param name="objPath">不传参，默认请求桌面右键菜单</param>
-	void requestSystemRightMenu(ObjectType objType, QPoint point, const QString objPath = nullptr) const {
+	/// <param name="checkedItems">选中项目列表</param>
+	void requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems) const {
 		RightMenu* r = RightMenu::getInstance();
-		r->setShowType(objType);
-		r->showMenu(point, objPath);
+		if (checkedItems.size() == 1) {
+			r->setShowType(objType);
+			r->showMenu(point, checkedItems.at(0)->filePath());
+			return;
+		}else if(objType == ObjectType::BackGround){
+			r->setShowType(objType);
+			r->showMenu(point);
+			return;
+		}else {
+			r->setShowType(ObjectType::MultObject);
+			r->showMultObjectMenu(point, checkedItems.toStdVector());
+		}
 	}
+
+	/// <summary>
+	/// update 
+	/// </summary>
+	/// <param name="rect"></param>
+	void refreshCheckedItem(QRect rect);
+	void drawHoverEffect();
+	void clearCheckedItem();
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
 	void contextMenuEvent(QContextMenuEvent* event) override; //右键菜单事件
@@ -117,16 +129,21 @@ private:
 	RightMenu* rightMenu;
 	
 
+	QVector<ListItem*> m_sysItems;             // 存储所有 ListItem 对象
 	QVector<ListItem*> m_items;             // 存储所有 ListItem 对象
+
 	QVector<ListItem*> m_selectedItems;      // 存储所有选中的项
 
 	bool m_isMultiSelection;               // 是否启用多选
-	QPixmap m_backgroundImage;             // 存储背景壁纸图片
 
 	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
+
+	bool m_isShowShortCutArrow = false;	//控制是否显示快捷方式小箭头
 	bool m_isDragging = false;  // 是否正在拖动
 	bool m_isSelecting = false;  // 是否正在拖拽选择
-	QPoint m_dragm_startPos;     // 拖动开始时的位置
+	QPoint m_dragOffset;	//拖拽偏移量
+	QPoint m_originalPos; // 记录原始位置，用于取消拖动
+
 	QPoint m_startPos;     // 鼠标点击开始时的位置
 
 };
