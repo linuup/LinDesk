@@ -226,6 +226,18 @@ QString SysInfoUtil::GetDesktopWallpaperPath()
 	return QString();*/
 }
 
+QString SysInfoUtil::GetWallpaperUsingAPI()
+{
+	wchar_t wallpaperPath[MAX_PATH];
+
+	// 使用 SystemParametersInfo 获取壁纸路径
+	if (SystemParametersInfo(SPI_GETDESKWALLPAPER, MAX_PATH, wallpaperPath, 0)) {
+		return QString::fromWCharArray(wallpaperPath);
+	}
+
+	return QString();
+}
+
 
 
 bool SysInfoUtil::isUsersRootDirectoryRegex(const QString& path)

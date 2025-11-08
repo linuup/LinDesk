@@ -103,6 +103,7 @@ namespace SysInfoUtil{
 
     //从注册表获取桌面背景路径
     QString GetDesktopWallpaperPath();
+    QString GetWallpaperUsingAPI();
 }
 
 /* General helper functions. */

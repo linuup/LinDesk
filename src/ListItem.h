@@ -40,6 +40,9 @@ public:
     const QSize& size() const { return m_itemSize; }
     const QPoint& pos() const { return m_itemPos; }
     const ObjectType type() const { return m_type; }
+    const QString ListItem::getSortName() const {
+        return m_baseName.toLower();
+    }
     const QRect& getItemRect() const { return m_itemRect; }
     const QRect& getChooseItemRect() const { return m_chooseRect; }
     ListItemData getItemData(); // 设置对应的 ListItemData

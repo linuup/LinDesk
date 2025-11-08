@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QDir>
 #include <QUuid>
+#include <QCollator>
 #include <QSharedPointer>
 #include "ListItem.h"
 #include "RightMenu.h"
@@ -27,6 +28,31 @@ public:
 		AlignIconToGrid,
 		UnAlignIconToGrid
 	};
+	/// <summary>
+	/// Windows 自然排序（Natural Sort）规则
+	/// 数字智能排序：file1, file2, file10, file20（不是 file1, file10, file2, file20）
+	/// 文件夹优先：所有文件夹排在文件前面
+	/// 不区分大小写：File.txt和 file.txt视为相同
+	/// 特殊字符处理：空格、连字符、下划线等有特定排序顺序
+	/// 本地化支持：支持中文拼音排序、数字排序等
+	/// 
+	/// 排序优先级顺序
+	/// 1. 特殊文件夹（桌面、文档、图片等系统文件夹）
+	/// 2. 普通文件夹（按名称排序）
+	/// 3. 普通文件（按名称排序）
+	/// 4. 隐藏文件和系统文件
+	/// </summary>
+	enum class SortOrderType {
+		SortByName_ASC,    // A-Z 升序排列
+		SortByName_DESC,     // Z-A 降序排列
+		SortBySize_ASC,
+		SortBySize_DESC,
+		SortByType_ASC,
+		SortByType_DESC,
+		SortByDateModified_ASC,
+		SortByDateModified_DESC
+	};
+	
 	// 获取单例对象
 	static ListView* instance(QWidget* parent = nullptr);
 
@@ -38,8 +64,24 @@ public:
 	/// </summary>
 	void initialize();
 
+	// load Desktop Item on UI
 	void loadIconLayer();
 
+	SortOrderType getOppositeDirection();
+	/// <summary>
+	/// Using m_sortType to Sort Items
+	/// </summary>
+	/// <param name="order"></param>
+	void sortItems(SortOrderType order);
+
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="ascending">
+	/// True Ascending 
+	/// False Descending
+	/// </param>
+	void sortByName(bool ascending = true);
 	//QVector<ListItem*> getAllItems();
 
 	/// <summary>
@@ -76,7 +118,7 @@ public:
 	bool IsSelecting() {
 		return m_isSelecting;
 	}
-	void DisableSelecting() { m_isSelecting = false; }
+	void DisableSelecting() {}
 
 	int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
 	int previousHoverItemIndex = -1; // 上一个鼠标悬停的图标索引
@@ -133,7 +175,7 @@ private:
 
 	static ListView* m_instance;	//图标视图
 	RightMenu* rightMenu;
-	
+	SortOrderType m_sortType = SortOrderType::SortByName_ASC;
 
 	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
 	QVector<ListItem*> m_items;             // 存储桌面显示可见的ListItem对象

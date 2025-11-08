@@ -34,12 +34,22 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     this->loadIconLayer();
     this->raise();
     
-    QPushButton* b = new QPushButton(this);
-    b->setText("First Floor");
-    b->move(200, 200);
+    QPushButton* goFirtstLayout = new QPushButton(this);
+    goFirtstLayout->setText("First Floor");
+    goFirtstLayout->move(600, 200);
     // 连接按钮的点击信号到槽函数
-    connect(b, &QPushButton::clicked, this, [this](){
+    connect(goFirtstLayout, &QPushButton::clicked, this, [this](){
         hide();
+    });
+
+    QPushButton* refresh = new QPushButton(this);
+    refresh->setText("Refresh Desktop");
+    refresh->move(600, 100);
+    // 连接按钮的点击信号到槽函数
+    connect(refresh, &QPushButton::clicked, this, [this]() {
+        this->sortItems(SortOrderType::SortByName_DESC);
+        loadIconLayer();
+        update();
     });
     
     
@@ -116,7 +126,7 @@ void ListView::paintEvent(QPaintEvent* event)
     }
     else {
         //绘制一个背景色
-        painter.fillRect(rect(), QColor(60, 200, 171)); // 浅蓝色背景
+        //painter.fillRect(rect(), QColor(60, 200, 171)); // 浅蓝色背景
     }
     
 
@@ -293,7 +303,6 @@ void ListView::initialize()
     }
     
     //load System Items
-    auto test = sysIconRegisterInfo;
     for (auto it = sysIconRegisterInfo.begin(); it != sysIconRegisterInfo.end(); it++) {
         if (!it->isHidden) {
             for (auto s_item = m_hiddenIcons.begin(); s_item != m_hiddenIcons.end(); s_item++) {
@@ -319,7 +328,7 @@ void ListView::loadIconLayer()
     int rowSpacing = 8; // 每行之间的间距
     int colSpacing = 8; // 每列之间的间距
     int iconWidth = 76;  // 图标宽度
-    int iconHeight = 88; // 图标高度
+    int iconHeight = 78; // 图标高度
 
     // 初始位置
     int marginTop = 6;
@@ -351,6 +360,77 @@ void ListView::loadIconLayer()
         }
     }
     
+}
+ListView::SortOrderType ListView::getOppositeDirection() {
+
+    switch (m_sortType) {
+    case SortOrderType::SortByName_ASC:
+        return SortOrderType::SortByName_DESC;
+    case SortOrderType::SortByName_DESC:
+        return SortOrderType::SortByName_ASC;
+    case SortOrderType::SortBySize_ASC:
+        return SortOrderType::SortBySize_DESC;
+    case SortOrderType::SortBySize_DESC:
+        return SortOrderType::SortBySize_ASC;
+    case SortOrderType::SortByType_ASC:
+        return SortOrderType::SortByType_DESC;
+    case SortOrderType::SortByType_DESC:
+        return SortOrderType::SortByType_ASC;
+    case SortOrderType::SortByDateModified_ASC:
+        return SortOrderType::SortByDateModified_DESC;
+    case SortOrderType::SortByDateModified_DESC:
+        return SortOrderType::SortByDateModified_ASC;
+    default:
+        return SortOrderType::SortByName_ASC;
+    }
+}
+void ListView::sortItems(SortOrderType order)
+{
+    if (m_sortType == order) {
+        order = getOppositeDirection();
+    }
+    switch (order) {
+    case SortOrderType::SortByName_ASC:
+        sortByName(true);
+        break;
+    case SortOrderType::SortByName_DESC:
+        sortByName(false);
+        break;
+    case SortOrderType::SortBySize_ASC:
+        break;
+    case SortOrderType::SortBySize_DESC:
+        break;
+    case SortOrderType::SortByType_ASC:
+        break;
+    case SortOrderType::SortByType_DESC:
+        break;
+    case SortOrderType::SortByDateModified_ASC:
+        break;
+    case SortOrderType::SortByDateModified_DESC:
+        break;
+    default:
+        sortByName(true);
+    }
+    m_sortType = order;
+}
+
+void ListView::sortByName(bool ascending)
+{
+    QCollator collator;
+    collator.setNumericMode(true);          // 启用数字排序
+    collator.setCaseSensitivity(Qt::CaseInsensitive); // 不区分大小写
+    collator.setIgnorePunctuation(true);    // 忽略标点符号
+    // 对于中文环境，设置本地化
+    collator.setLocale(QLocale::system());
+
+    std::sort(m_items.begin(), m_items.end(), [&collator,ascending](ListItem* a, ListItem* b) {
+        // 文件夹优先
+        /*if (a->isDirectory() != b->isDirectory()) {
+            return a->isDirectory() > b->isDirectory();
+        }*/
+        int result = collator.compare(a->getSortName(), b->getSortName());
+        return ascending ? (result < 0) : (result > 0);
+    });
 }
 
 void ListView::addItem(ListItem* item)

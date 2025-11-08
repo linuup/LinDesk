@@ -30,7 +30,7 @@ public:
 	QPoint m_startPos;    //鼠标点击坐标
 	
 	//QRect drawingMaskRect;    //拖拽选择框矩形
-    void loadBackImagePixmap();
+    void loadBackImage();
 	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
     

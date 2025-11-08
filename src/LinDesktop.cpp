@@ -13,17 +13,12 @@ LinDesktop::LinDesktop(QWidget* parent)
 	//setMouseTracking(true); // 启用鼠标追踪
 	// 设置透明并允许透过窗口看到后面的内容
 	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-	setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
+	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
 	//embedToDesktop();
-	backImageLabel = new QLabel(this);
-	//loadBackImagePixmap();
-	//backImageLabel->setPixmap(m_backImagePixmap);
-	//backImageLabel->hide();
-
+	
+	loadBackImage();
 	selectArea = new SelectArea(this);
 	listView = ListView::instance(this);
-
-	listView->show();
 
 
 	
@@ -42,10 +37,12 @@ LinDesktop::~LinDesktop()
 {
 
 }
-void LinDesktop::loadBackImagePixmap()
+void LinDesktop::loadBackImage()
 {
+	backImageLabel = new QLabel(this);
 	// 加载图片
-	QString path = SysInfoUtil::GetDesktopWallpaperPath();
+	QString path = SysInfoUtil::GetWallpaperUsingAPI();
+
 	// 加载原始图片
 	QImage originalImage(path);
 
@@ -62,7 +59,8 @@ void LinDesktop::loadBackImagePixmap()
 		palette.setBrush(QPalette::Window, background);
 		setPalette(palette);
 	}
-	m_backImagePixmap = pixmap;
+	backImageLabel->setPixmap(pixmap);
+	backImageLabel->hide();
 }
 void LinDesktop::requestHoverEffect()
 {
@@ -142,12 +140,13 @@ void LinDesktop::paintEvent(QPaintEvent* event)
 	if (0) {
 		for (int x = 0; x < width(); x += stripeWidth * 2) {
 			// 第一种颜色
-			painter.fillRect(x, 0, stripeWidth, height(), QColor(171, 100, 192));
+			painter.fillRect(0, 0, stripeWidth, height(), QColor(171, 100, 192));
 			// 第二种颜色（或透明）
 			painter.fillRect(x + stripeWidth, 0, stripeWidth, height(), QColor(255, 255, 255));
 		}
 	}
 	else {
+		//painter.fillRect(0, 0, width(), height(), QColor(100, 120, 192));
 		backImageLabel->show();
 	}
 

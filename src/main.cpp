@@ -14,8 +14,6 @@ int main(int argc, char *argv[])
 {
     SetConsoleOutputCP(CP_UTF8);
     
-    
-    
     // 获取桌面上所有文件的列表
     
     //vector<IconItem> items = c.GetDesktopIconsItems(CSystemApi::FindSysListView32());
