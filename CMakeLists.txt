@@ -29,9 +29,10 @@ add_subdirectory("OS")
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/*.h"
-    "src/core/*.h"
-    "src/core/Data/*.h"
-    "src/core/Data/*.h"
+    "src/*.h"
+    "src/Data/*.h"
+    "src/Monitor/*.h"
+    "src/Monitor/*.cpp"
 )
 
 # 添加可执行文件
@@ -51,5 +52,5 @@ target_include_directories(LinDesk
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Monitor
 )

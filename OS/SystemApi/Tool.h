@@ -5,7 +5,7 @@
 #include <string>
 #include <memory>
 #include <iostream>
-
+#include <lm.h>
 using unique_pidl_absolute = wil::unique_cotaskmem_ptr<std::remove_pointer_t<PIDLIST_ABSOLUTE>>;
 using unique_pidl_relative = wil::unique_cotaskmem_ptr<std::remove_pointer_t<PIDLIST_RELATIVE>>;
 using unique_pidl_child = wil::unique_cotaskmem_ptr<std::remove_pointer_t<PITEMID_CHILD>>;
@@ -46,5 +46,6 @@ public:
 	static std::string WideToUtf8(const wchar_t* wstr);
 	static std::string WstrToStr(const wchar_t* wstr);		//宽字符串转WString
 	static void ConvertToGUID(const std::wstring& clsidStr);
+	static std::string getWindowsUsername();
 };
 

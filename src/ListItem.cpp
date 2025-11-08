@@ -50,34 +50,42 @@ ListItem::~ListItem()
 void ListItem::initData()
 {
 	m_type = m_itemData.type();
+
 	if (m_type != ObjectType::Empty_ObjectType)
 	{
+		
 		m_filePath = m_itemData.filePath();
 		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
-		m_baseName = m_fileInfo.baseName();
+		if (m_type == ObjectType::SpecialFolder) {
+			update();
+		}
+		if (m_itemData.fullName() == "This PC") {
+			update();
+		}
+		m_baseName = (m_type == ObjectType::SpecialFolder) ? m_itemData.fullName() : m_fileInfo.baseName();
+		m_icon = m_itemData.icon();
+		//QFileIconProvider icon_provider;
+		///*qDebug() << m_filePath;
+		//qDebug() << this->baseName() << m_filePath;*/
+		//QString targetPath = m_fileInfo.symLinkTarget();
+		//if (!targetPath.isEmpty() && m_type == ObjectType::SpecialFolder) {
+		//	QFileInfo targetData(targetPath);
+		//	m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
+		//}
+		//if (m_icon.isNull()) {
+		//	if (m_fileInfo.isFile()) {
+		//		m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
+		//	}
+		//	else {
+		//		//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
+		//		m_icon = SysInfoUtil::SysFileIconByDLL(4,"shell32.dll");
+		//	}
+		//}
 
-		QFileIconProvider icon_provider;
-		/*qDebug() << m_filePath;
-		qDebug() << this->baseName() << m_filePath;*/
-		QString targetPath = m_fileInfo.symLinkTarget();
-		if (!targetPath.isEmpty()) {
-			QFileInfo targetData(targetPath);
-			m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
-		}
-		if (m_icon.isNull()) {
-			if (m_fileInfo.isFile()) {
-				m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
-			}
-			else {
-				//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
-				m_icon = SysInfoUtil::SysFileIconByDLL(4,"shell32.dll");
-			}
-		}
-
-		qDebug() << this->baseName() << m_filePath;
-		for (auto a : m_icon.availableSizes()) {
-			qDebug() << "ListItem initData icon size:" << a;
-		}
+		 /*qDebug() << this->baseName() << m_filePath;
+		 for (auto a : m_icon.availableSizes()) {
+		 	qDebug() << "ListItem initData icon size:" << a;
+		 }*/
 
 
 		//根据图标大小设置区域
@@ -151,8 +159,10 @@ ListItemData ListItem::getItemData()
 }
 
 void ListItem::contextMenuEvent(QContextMenuEvent* event) {
-	qDebug() << this->objectName();
-
+	
+	if (event->reason() == QContextMenuEvent::Mouse) {
+		qDebug() << this->objectName();
+	}
 	//ListView* lin = qobject_cast<ListView*>(this->parent());
 	//if (lin) {
 		//传全局坐标

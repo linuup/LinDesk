@@ -10,6 +10,7 @@ enum SpecialFolders {
     ControlPanel2,
     Network,
     UserFolder,
+    OneDrive,
     Libraries,
     Linux
 };

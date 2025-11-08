@@ -5,6 +5,7 @@
 #include <QtWinExtras/qwinfunctions.h>
 #include <qdir.h>
 #include <QDebug>
+#include <QRegularExpression>
 
 
 //定义函数原型
@@ -62,7 +63,7 @@ namespace ShortcutArrowManager {
     }
 }
 namespace SysInfoUtil{
-
+    bool isUsersRootDirectoryRegex(const QString& path);
     /// <summary>
     /// 从注册表获取桌面系统图标状态
     /// </summary>

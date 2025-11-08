@@ -272,7 +272,12 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szPath, MAX_PATH);
-            i.path = Tool::WstrToStr(szPath);
+            if (Tool::WstrToStr(szName) == Tool::getWindowsUsername()) {
+                i.path = "::{59031a47-3f72-44a7-89c5-5595fe6b30ee}";
+            }else {
+                i.path = Tool::WstrToStr(szPath);
+            }
+                
 			//Tool::ConvertToGUID(L"{20D04FE0-3AEA-1069-A2D8-08002B30309D}");
         }
         else {
@@ -319,9 +324,21 @@ SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
     }
     else if (wcsstr(name, L_NETWORK)) {
         return SpecialFolders::Network;
+    }else if (wcsstr(name, L"\\Desktop\\") != nullptr ||
+        wcsstr(name, L"\\桌面\\") != nullptr ||
+        (wcsstr(name, L"\\Users\\") != nullptr && wcsstr(name, L"\\Desktop") != nullptr) ||
+        (wcsstr(name, L"\\用户\\") != nullptr && wcsstr(name, L"\\桌面") != nullptr)) {
+        return SpecialFolders::UnknownFolder;
     }
-    else if (wcsstr(name, L_USER_FOLDER)) {
+    else if (wcsstr(name, L"\\Users\\") != nullptr ||
+        wcsstr(name, L"C:\\Users") != nullptr ||
+        wcsstr(name, L"用户") != nullptr) {
         return SpecialFolders::UserFolder;
+    }
+    else if (wcsstr(name, L"OneDrive") != nullptr ||
+        wcsstr(name, L"Microsoft OneDrive") != nullptr ||
+        wcsstr(name, L"ONEDRIVE") != nullptr) {
+        return SpecialFolders::OneDrive;
     }
     else if (wcsstr(name, L_LIARIES)) {
         return SpecialFolders::Libraries;
@@ -469,7 +486,7 @@ NULL 执行默认”open”动作
 **/
 void CSystemApi::File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_Operations operation)
 {
-    SHELLEXECUTEINFO shell;
+    SHELLEXECUTEINFO shell{};
     shell.hwnd = NULL;
     switch (operation)
     {

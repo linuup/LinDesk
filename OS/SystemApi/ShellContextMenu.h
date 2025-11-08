@@ -111,13 +111,10 @@ public:
     void setOperationType(OperationType type) {
         operationType = type;
     }
-    ShellContextMenu() {
     
-    }
+    ShellContextMenu() {}
 
-    ~ShellContextMenu() {
-        
-    };
+    ~ShellContextMenu() {};
 
 
     
@@ -146,6 +143,7 @@ public:
     //为桌面生成右键上下文菜单
     void DisplayDesktopContextMenu();
 
+    void DisplayItemContextMenu(LPITEMIDLIST pidl);
     //为快捷方式生成右键上下文菜单
     void DisplayLinkContextMenu(const wchar_t* path);
 

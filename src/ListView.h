@@ -15,6 +15,7 @@
 #include <QSharedPointer>
 #include "ListItem.h"
 #include "RightMenu.h"
+#include "DesktopIconsMonitor.h"
 #include <SelectArea.h>
 
 class ListView: public QWidget {
@@ -41,7 +42,11 @@ public:
 
 	//QVector<ListItem*> getAllItems();
 
-	
+	/// <summary>
+	/// 监听桌面系统文件注册表
+	/// </summary>
+	void startListeningSpecialIcon();
+
 	QVector<ListItem*> items() {
 		return m_items;
 	}
@@ -87,16 +92,17 @@ public:
 		RightMenu* r = RightMenu::getInstance();
 		if (checkedItems.size() == 1) {
 			r->setShowType(objType);
-			r->showMenu(point, checkedItems.at(0)->filePath());
+			r->showMenu(point, checkedItems.at(0));
 			return;
-		}else if(objType == ObjectType::BackGround){
-			r->setShowType(objType);
-			r->showMenu(point);
+		}else if (objType == ObjectType::BackGround) {
+			r->setShowType(ObjectType::BackGround);
+			r->showMenu(point, nullptr);
 			return;
 		}else {
 			r->setShowType(ObjectType::MultObject);
 			r->showMultObjectMenu(point, checkedItems.toStdVector());
 		}
+			
 	}
 
 	/// <summary>
@@ -129,8 +135,10 @@ private:
 	RightMenu* rightMenu;
 	
 
-	QVector<ListItem*> m_sysItems;             // 存储所有 ListItem 对象
-	QVector<ListItem*> m_items;             // 存储所有 ListItem 对象
+	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
+	QVector<ListItem*> m_items;             // 存储桌面显示可见的ListItem对象
+	QVector<ListItem*> m_hiddenIcons;             // 存储桌面系统图标状态
+	QList<DesktopIconsMonitor::DesktopIcon> sysIconRegisterInfo;             // 存储桌面系统图标状态
 
 	QVector<ListItem*> m_selectedItems;      // 存储所有选中的项
 
@@ -145,5 +153,7 @@ private:
 	QPoint m_originalPos; // 记录原始位置，用于取消拖动
 
 	QPoint m_startPos;     // 鼠标点击开始时的位置
+
+	DesktopIconsMonitor* monitor;   //Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel
 
 };

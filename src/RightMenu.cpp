@@ -6,36 +6,100 @@
 #include <QProcess>
 #include <qstandardpaths.h>
 #include "../SystemApi/Tool.h"
-
-
-void RightMenu::showMenu(QPoint pos, QString path) const
+  
+QMenu* RightMenu::createSortBySubMenu() const
 {
-	if (path == nullptr) {
-		fileType == ObjectType::BackGround;
-	}
+    QMenu* sortByMenu = new QMenu("Sort by", customMenu);
+    
+    // 2.1-Name
+    QAction* nameAction = new QAction("Name", sortByMenu);
+    connect(nameAction, &QAction::triggered, this, &RightMenu::onSortByName);
+    sortByMenu->addAction(nameAction);
+    
+    // 2.2-Size
+    QAction* sizeAction = new QAction("Size", sortByMenu);
+    connect(sizeAction, &QAction::triggered, this, &RightMenu::onSortBySize);
+    sortByMenu->addAction(sizeAction);
+    
+    // 2.3-Item type
+    QAction* typeAction = new QAction("Item type", sortByMenu);
+    connect(typeAction, &QAction::triggered, this, &RightMenu::onSortByType);
+    sortByMenu->addAction(typeAction);
+    
+    // 2.4-Date modified
+    QAction* dateAction = new QAction("Date modified", sortByMenu);
+    connect(dateAction, &QAction::triggered, this, &RightMenu::onSortByDate);
+    sortByMenu->addAction(dateAction);
+    
+    return sortByMenu;
+}
+
+void RightMenu::initializeCustomMenu()
+{
+	customMenu = new QMenu();
+    
+    // 1-View
+    QAction* viewAction = new QAction("View", customMenu);
+    connect(viewAction, &QAction::triggered, this, &RightMenu::onView);
+    customMenu->addAction(viewAction);
+    
+    // 2-Sort by 子菜单
+    QMenu* sortByMenu = createSortBySubMenu();
+    customMenu->addMenu(sortByMenu);
+    
+    // 3-Refresh
+    QAction* refreshAction = new QAction("Refresh", customMenu);
+    connect(refreshAction, &QAction::triggered, this, &RightMenu::onRefresh);
+    customMenu->addAction(refreshAction);
+    
+    // 4-分割线
+    customMenu->addSeparator();
+    
+    // 5-Paste
+    QAction* pasteAction = new QAction("Paste", customMenu);
+    connect(pasteAction, &QAction::triggered, this, &RightMenu::onPaste);
+    customMenu->addAction(pasteAction);
+    
+    // 6-Paste shortcut
+    QAction* pasteShortcutAction = new QAction("Paste shortcut", customMenu);
+    connect(pasteShortcutAction, &QAction::triggered, this, &RightMenu::onPasteShortcut);
+    customMenu->addAction(pasteShortcutAction);
+	customMenu->setFixedWidth(150);
+	// 显示菜单并等待用户选择
+    if (customMenu) {
+        //customMenu->exec(QCursor::pos());
+    }
+}
+
+// 槽函数实现
+void RightMenu::onSortByName() { emit sortByNameTriggered(); }
+void RightMenu::onSortBySize() { emit sortBySizeTriggered(); }
+void RightMenu::onSortByType() { emit sortByTypeTriggered(); }
+void RightMenu::onSortByDate() { emit sortByDateTriggered(); }
+void RightMenu::onRefresh() { emit refreshTriggered(); }
+void RightMenu::onPaste() { emit pasteTriggered(); }
+void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
+void RightMenu::onView() { emit viewTriggered(); }
+
+void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
+	ShellContextMenu scm;
 	POINT p = { pos.x(),pos.y() };
 	const POINT* position = &p;
-	ShellContextMenu scm;
-	if (fileType == ObjectType::BackGround) {
+	if (this->fileType == ObjectType::BackGround) {
 		scm.DisplayDesktopContextMenu();
-	}else if (fileType == ObjectType::File) {
-		scm.DisplayFileContextMenu(reinterpret_cast<const wchar_t*>(path.utf16()));
+		scm.ShowMenu(this->hwnd, position, nullptr);
+		return;
+	}else if (this->fileType == ObjectType::File) {
+		scm.setOperationType(ShellContextMenu::OperationType::file);
+	}else if (this->fileType == ObjectType::Folder_ObjectType) {
+		scm.setOperationType(ShellContextMenu::OperationType::folder);
+	}else if (this->fileType == ObjectType::SpecialFolder) {
+		scm.setOperationType(ShellContextMenu::OperationType::specialFolder);
 	}
-	else if (fileType == ObjectType::Folder_ObjectType) {
-		scm.DisplayFileContextMenu(reinterpret_cast<const wchar_t*>(path.utf16()));
-	}
-	else if (fileType == ObjectType::Link) {
-		/*QString str = QString(currentObjPath).append(".lnk");
-		scm.DisplayLinkContextMenu(objPath(str));*/
-	}
-	else if (fileType == ObjectType::SpecialFolder) {
-		//scm.DisplaySpecialFolderContextMenu(this->sf);
-	}
-	else if (fileType == ObjectType::DiskLetter) {
-
-	}
+	scm.DisplayItemContextMenu(listitem->getItemData().pidl());
 	scm.ShowMenu(this->hwnd, position, nullptr);
 }
+
 void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const {
 	vector<LPITEMIDLIST> pidls;
 	for (auto it = items.begin(); it != items.end(); it++) {

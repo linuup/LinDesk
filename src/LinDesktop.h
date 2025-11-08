@@ -11,7 +11,9 @@
 #include <QVector>
 #include <QSharedPointer>
 #include <RightMenu.h>
+#include <QtConcurrent/qtconcurrentrun>
 #include "ListView.h"
+#include "Monitor/IRegistryListenerInterface.h"
 #include "SysInfoUtil.h"
 class LinDesktop : public QWidget {
     Q_OBJECT
@@ -39,6 +41,9 @@ private:
     /// Insert to SystemDesktopWindow
     /// </summary>
     void embedToDesktop();
+
+    
+
 protected:
     void mousePressEvent(QMouseEvent* event);
     void mouseMoveEvent(QMouseEvent* event);

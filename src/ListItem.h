@@ -9,7 +9,7 @@
 #include <QGraphicsDropShadowEffect>
 
 
-#include "core/Data/ListItemData.h"
+#include "Data/ListItemData.h"
 
 
 enum hoverStyle {
@@ -68,7 +68,6 @@ protected:
     
 
 private:
-     
      ListItemData m_itemData;  // 关联的数据类
 	 QSize m_itemSize;    //图标大小
 	 QPoint m_itemPos;    //图标位置

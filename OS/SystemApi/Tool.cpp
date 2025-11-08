@@ -146,3 +146,15 @@ void Tool::ConvertToGUID(const std::wstring& clsidStr)
         std::wcout << L"Failed to convert string to GUID" << std::endl;
     }
 }
+
+std::string Tool::getWindowsUsername()
+{
+    wchar_t username[UNLEN + 1];
+    DWORD username_len = UNLEN + 1;
+
+    // 获取当前登录用户名
+    if (GetUserNameW(username, &username_len)) {
+        return WstrToStr(username);
+    }
+    return std::string("Unknown");
+}

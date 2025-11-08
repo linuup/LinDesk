@@ -7,6 +7,22 @@ void ShellContextMenu::DisplayDesktopContextMenu()
     SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent));
 }
 
+void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
+{
+    if (pidl && operationType!=OperationType::BackGround) {
+        GetDesktop_IshellFolder();
+        HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
+        if (FAILED(hr))
+        {
+            OutputDebugString(L"Failed to get the file's IContextMenu interface.");
+            return;
+        }
+        //Get object Menu interface
+        m_contextMenu = IContextMenuFromIShellFolder(&pidl, m_pShellFolder);
+
+    }
+}
+
 void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
     operationType = OperationType::link;
     //获取ShellFolder接口

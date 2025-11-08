@@ -1,4 +1,5 @@
 ﻿#include "LinDesktop.h"
+
 LinDesktop::LinDesktop(QWidget* parent)
 {
 	setWindowTitle("LinDesk");
@@ -25,6 +26,8 @@ LinDesktop::LinDesktop(QWidget* parent)
 	listView->show();
 
 
+	
+	
 	//// Win32 代码中创建一个文本框
 	//// 创建 Win32 编辑控件
 	//HWND hwndEdit = CreateWindowEx(0, L"EDIT", L"",
@@ -72,6 +75,7 @@ void LinDesktop::embedToDesktop()
 		SetParent((HWND)this->winId(), hwnd);
 	}
 }
+
 void LinDesktop::mousePressEvent(QMouseEvent* event)
 {
 	selectArea->show();
@@ -106,9 +110,10 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event) {
 		rect.setRect(start_x - rectWidth, start_y, rectWidth, rectHeight);
 
 	}
-	listView->refreshCheckedItem(rect);
+	
 	selectArea->rect = rect;
-	qDebug() << rect;
+	//qDebug() << rect;
+	listView->refreshCheckedItem(rect);
 	// 只更新新旧选区重叠的区域
 	rect = m_lastSelectRect.united(rect);
 

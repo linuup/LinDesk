@@ -21,15 +21,17 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
 
     setGeometry(QApplication::primaryScreen()->geometry());
     //setAutoFillBackground(true);
-    
+
+    monitor = new DesktopIconsMonitor(this);
+    startListeningSpecialIcon();
 
     rightMenu = RightMenu::getInstance();
+    rightMenu->initializeCustomMenu();
     rightMenu->setHWND((HWND)this->winId());
-    initialize();
     
-    loadIconLayer();
-
-    qDebug() << m_items.size();
+    this->initialize();
+    
+    this->loadIconLayer();
     this->raise();
     
     QPushButton* b = new QPushButton(this);
@@ -39,9 +41,29 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     connect(b, &QPushButton::clicked, this, [this](){
         hide();
     });
+    
+    
 
 }
+void ListView::startListeningSpecialIcon()
+{
+    // 开始监听
+    if (monitor->startListening()) {
+        sysIconRegisterInfo = monitor->getCurrentIcons();
 
+        /*for (const auto& icon : monitor->getCurrentIcons()) {
+            qDebug() << icon.name << ":" << (icon.isHidden ? "hiddening" : "showing");
+        }*/
+
+        // 设置回收站隐藏
+        //monitor->setIconVisibility("{645FF040-5081-101B-9F08-00AA002F954E}", true);
+    }
+    // 连接信号
+    connect(monitor, &DesktopIconsMonitor::iconVisibilityChanged,
+        [](const QString& clsid, bool hidden, const QString& name) {
+            qDebug() << "icon status:" << name << "->" << (hidden ? "hiddening" : "showing");
+        });
+}
 ListView::~ListView() {
     // 清理 ListItem 对象
     //qDeleteAll(m_listItems);
@@ -63,7 +85,6 @@ void ListView::refreshCheckedItem(QRect rect)
     for (auto* item : items) {
         // 获取item的矩形区域
         QRect itemRect = item->getChooseItemRect(); // 如果是QRectF需要转换
-        // QRect itemRect = item->geometry(); // 或者使用geometry()
         
         // 检查是否相交
         if (itemRect.intersects(rect)) {
@@ -113,10 +134,11 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
         {
             ListItem* item = *it;
             QRect itemRect = item->getItemRect();
-            if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
-                return;
+            if (item->type() == ObjectType::Empty_ObjectType) {
+                continue;
             }
             if (itemRect.contains(rightClickPoint)) {
+                
                 //qDebug() << "图标范围：" << itemRect;
                 //qDebug() << "右键点击坐标：" << rightClickPoint;
                 if (m_selectedItems.size() == 0) {
@@ -127,6 +149,7 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
                 return; // 退出循环，避免重复处理
             }
         }
+        event->ignore();
         // 如果右键点击位置不在任何图标区域内，显示桌面的右键菜单
         requestSystemRightMenu(ObjectType::BackGround, rightClickPoint, m_selectedItems);
     }
@@ -145,8 +168,8 @@ void ListView::mousePressEvent(QMouseEvent* event)
         {
             ListItem* item = *it;
             QRect itemRect = item->getItemRect();
-            if (item->type() == ObjectType::SpecialFolder || ObjectType::Empty_ObjectType) {
-                return;
+            if (item->type() == ObjectType::Empty_ObjectType) {
+                continue;
             }
             if (itemRect.contains(m_originalPos)) {
                 //qDebug() << item->baseName();
@@ -154,9 +177,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
                 m_draggedItem->raise();
                 m_dragOffset = event->pos() - item->pos();
                 m_originalPos = event->pos();  // 记录按下时的位置
-
                 m_isDragging = true;  // 开始拖动
-                
                 m_selectedItems.append(item);
                 item->checkSelf();
                 return; // 退出循环，避免重复处理
@@ -169,7 +190,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
-	qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
+	//qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
     // handle dragging
     if (m_isDragging) {
         QPoint newPos = event->pos() - m_dragOffset;
@@ -220,10 +241,6 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     
 }
 
-
-
-
-
 void ListView::enterEvent(QEvent* event)
 {
 
@@ -256,21 +273,40 @@ void ListView::initialize()
 {
     QVector<ListItem*> listItems;
     vector<ListItemData> allDatas = loadAllItemsData();
-    //load System Items & default Items
+    
+    //load default Items
     for (auto it = allDatas.begin(); it != allDatas.end(); it++)
     {
         ListItem* listItem = new ListItem(this);
         listItem->setParent(this);
         listItem->setItemData(std::move(*it));
         listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
-
+        
         //listItem->update();
-        if (it->type() != Empty_ObjectType) {
+        // qDebug() << listItem->baseName();
+        if (it->type() != ObjectType::SpecialFolder && listItem->getItemData().fullName() != "desktop.ini") {
             listItems.push_back(listItem);
+        }else {
+            m_hiddenIcons.push_back(listItem);
         }
-        m_sysItems.push_back(listItem);
+        m_allItems.push_back(listItem);
+    }
+    
+    //load System Items
+    auto test = sysIconRegisterInfo;
+    for (auto it = sysIconRegisterInfo.begin(); it != sysIconRegisterInfo.end(); it++) {
+        if (!it->isHidden) {
+            for (auto s_item = m_hiddenIcons.begin(); s_item != m_hiddenIcons.end(); s_item++) {
+                ListItem* listItem = *s_item;
+                auto clsid = listItem->getItemData().getCLSID();
+                if (clsid.replace("::", "") == it->clsid) {
+                    listItems.push_back(listItem);
+                }
+            }
+        }
     }
     m_items = listItems;
+    
 }
 
 //计算每个控件的纵向位置（y），并检查是否超出了窗口的高度。
@@ -280,8 +316,8 @@ void ListView::loadIconLayer()
     // 行、列总数量
     int row = 12;
     int col = 24;
-    int rowSpacing = 10; // 每行之间的间距
-    int colSpacing = 10; // 每列之间的间距
+    int rowSpacing = 8; // 每行之间的间距
+    int colSpacing = 8; // 每列之间的间距
     int iconWidth = 76;  // 图标宽度
     int iconHeight = 88; // 图标高度
 

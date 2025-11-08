@@ -226,6 +226,17 @@ QString SysInfoUtil::GetDesktopWallpaperPath()
 	return QString();*/
 }
 
+
+
+bool SysInfoUtil::isUsersRootDirectoryRegex(const QString& path)
+{
+	QRegularExpression regex(
+		"^[Cc]:[/\\\\](Users)$",
+		QRegularExpression::CaseInsensitiveOption
+	);
+	return regex.match(QDir::fromNativeSeparators(path)).hasMatch();
+}
+
 //void SysInfoUtil::AddSysFileIcon(QList<FileIcon>* lists)
 //{
 //	auto regeditValues = SysInfoUtil::SysIconRegedit_State();

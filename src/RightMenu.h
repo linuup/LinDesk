@@ -34,31 +34,26 @@ public:
 		static RightMenu instance;
 		return &instance;
 	}
-
+	
 	/// <summary>
-	/// 单个文件配置右键菜单
+	/// 初始化自定义右键菜单项
 	/// </summary>
-	/// <param name="fileWidget"></param>
-	/// <returns></returns>
-	//bool setupMenuForFileType(FileWidget* fileWidget);
-
+	void initializeCustomMenu();
+	
 	/// <summary>
-	/// 多个文件配置右键菜单
-	/// </summary>
-	/// <param name="allChooseFiles"></param>
-	/// <returns></returns>
-	//bool setupMenuForFileType(QMap<QString, FileWidget*>* &allChooseFiles);
-
-	/// <summary>
-	/// Show RightMenu
+	/// Opem Item System RightClick Menu or SpecialFolder Menu
 	/// </summary>
 	/// <param name="pos"></param>
-	/// <param name="path">
-	/// ShellPath : C:\\**\\
-	/// </param>
-	void showMenu(QPoint pos, QString path = nullptr) const;
+	/// <param name="listItem"></param>
+	void showMenu(QPoint pos, ListItem* listItem) const;
 
+	/// <summary>
+	/// Open Items System RightClick Menu
+	/// </summary>
+	/// <param name="pos"></param>
+	/// <param name="items"></param>
 	void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const;
+
 	/// <summary>
 	/// 设置显示的窗口句柄
 	/// </summary>
@@ -80,11 +75,25 @@ public:
 	const wchar_t* objPath(QString str) const;
 
 	ShellContextMenu* sContextMenu;
-signals:
 	
+	// 获取自定义菜单
+	QMenu* getCustomMenu() const { return customMenu; }
+
+signals:
+	// 自定义菜单项的信号
+	void sortByNameTriggered();
+	void sortBySizeTriggered();
+	void sortByTypeTriggered();
+	void sortByDateTriggered();
+	void refreshTriggered();
+	void pasteTriggered();
+	void pasteShortcutTriggered();
+	void viewTriggered();
 
 private:
-	RightMenu() {}; // 私有构造函数
+	RightMenu() {
+		initializeCustomMenu(); // 在构造函数中初始化自定义菜单
+	}; // 私有构造函数
 	ShellContextMenu* shellContextMenu;
 
 	// 删除拷贝构造函数和赋值操作符
@@ -94,8 +103,15 @@ private:
 	HWND hwnd;	//要显示的窗口句柄
 
 	QString currentObjPath;		//右键要显示对象的路径
-	//SpecialFolders sf;		//特殊文件夹类型
+	
 	ObjectType fileType;		//类型
+	
+	QMenu* customMenu;			// 自定义右键菜单
+	
+	/// <summary>
+	/// 创建排序方式子菜单
+	/// </summary>
+	QMenu* createSortBySubMenu() const;
 	
 	/// <summary>
 	/// 
@@ -110,27 +126,18 @@ private:
 		fileContextMenu = pidlDesktop;*/
 	}
 
+private slots:
+	// 菜单项槽函数
+	void onSortByName();
+	void onSortBySize();
+	void onSortByType();
+	void onSortByDate();
+	void onRefresh();
+	void onPaste();
+	void onPasteShortcut();
+	void onView();
+};
 
-
-
-	//    //右键不包含目录
-	//    std::vector<QString> excludeMenus{ "cmd", "Powershell"};
-	//    
-	//    // 键数组：模板名称
-	//    std::vector<QString> templateKeyNames{ "FileName", "NullFile" };
-	//    static std::vector<std::unique_ptr<RightMenu>>  rightMenus;    //第三方菜单对象
-	//    static std::vector<std::unique_ptr<RightMenuCreateFile>>  createFileRegs;   //新建文件注册表对象集合
-	//
-	//    /// <summary>
-	//    /// 返回桌面背景菜单
-	//    /// </summary>
-	//    QMenu* GetDesktopBackMenu();
-	//
-	//public slots:
-	//    void openPersonalize_Slot();    //打开个性化
-	//    void openDisplay_Slot();    //打开显示设置
-	//    void openThirdPartySoftwareMenu_Slot(QString command);    //第三方软件启动命令
-	//
 	//protected:
 	//    QMenu* menu;    
 	//    QString menuName;   //选项名
@@ -156,46 +163,4 @@ private:
 	//    void getChildsItemPath(QSettings& qs, std::vector<QString>& items);
 
 
-};
 
-//class RightMenuCreateFile : public RightMenu {
-//
-//public:
-//    RightMenuCreateFile(const QString& _rearName = "", const QString& _shellPath = "")
-//        : rearName(_rearName), shellPath(_shellPath) 
-//    {
-//
-//    }
-//
-//    //右键新建菜单不包含目录
-//    static std::vector<QString> excludeCreatMenus;
-//
-//    /// <summary>
-//    /// 获取所有新建文件的注册表对象
-//    /// </summary>
-//    static std::vector<std::unique_ptr<RightMenuCreateFile>> allRightNewFile_Regedit();
-//
-//    /// <summary>
-//    /// 从注册表查找是否存在模板文件,存在返回模板文件路径，不存在返回None
-//    /// </summary>
-//    /// <param name="regPath"></param>注册表路径
-//    /// <returns></returns>
-//    QString findTemplatePath(QString regPath);
-//
-//    /// <summary>
-//    /// 置顶文件和快捷方式
-//    /// </summary>
-//    static std::vector<std::unique_ptr<RightMenuCreateFile>> sortRightMenu(std::vector<std::unique_ptr<RightMenuCreateFile>>& menus);
-//private:
-//    //后缀名
-//    QString rearName;
-//    //快捷键
-//    QString shortKey;
-//    //模板文件
-//    QString _hasTemplate;
-//    //注册表路径
-//    QString shellPath;
-//
-//    
-//};
-//
