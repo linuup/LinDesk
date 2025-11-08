@@ -271,7 +271,9 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
         CMF_EXPLORE | CMF_NORMAL);
 
-    if (operationType == OperationType::BackGround) { RemoveTencentDeskGoMenu(hMenu.get()); }
+    if (operationType == OperationType::BackGround) {
+        RemoveTencentDeskGoMenu(hMenu.get()); 
+    }
 
     UINT cmd =
         TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
