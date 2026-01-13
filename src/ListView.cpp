@@ -1,15 +1,15 @@
 ﻿#include "ListView.h"
 #include <QPushButton>
 #include <QtMath>
-
+#include "Monitor/DirectoryMonitor.h"
 // 静态成员初始化
 ListView* ListView::m_instance = nullptr;
 
 ListView::ListView(QWidget* parent) : QWidget(parent) {
     // 设置桌面背景图片
     //SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, (PVOID)imagePath.toStdString().c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-    
-    
+
+
     // 设置无边框窗口
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 
@@ -26,35 +26,28 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     monitor = new DesktopIconsMonitor(this);
     startListeningSpecialIcon();
 
-    DirectoryMonitor *m_monitor = new DirectoryMonitor(this);
-    
-    // 连接信号
-    connect(m_monitor, &DirectoryMonitor::fileChanged,this, &ListView::onFileChanged);
-    connect(m_monitor, &DirectoryMonitor::directoryChanged,this, &ListView::onDirectoryChanged);
-    connect(m_monitor, &DirectoryMonitor::directoryCreated,this, &ListView::onDirectoryCreated);
-    connect(m_monitor, &DirectoryMonitor::directoryRemoved,this, &ListView::onDirectoryRemoved);
-    connect(m_monitor, &DirectoryMonitor::errorOccurred,this, &ListView::onError);
-
-    m_monitor->setDebounceInterval(800);
-    m_monitor->addWatchPath("D:/Desktop/", false);
-    m_monitor->start();
+    DirectoryMonitor* m_monitor = new DirectoryMonitor(HWND(this->winId()), this);
+    //m_monitor->startMonitoring();
+    //m_monitor->setDebounceInterval(800);
+    //m_monitor->addWatchPath("D:/Desktop/", false);
+    //m_monitor->start();
 
     rightMenu = RightMenu::getInstance();
     rightMenu->initializeCustomMenu();
     rightMenu->setHWND((HWND)this->winId());
-    
+
     this->initialize();
-    
+
     this->loadIconLayer();
     this->raise();
-    
+
     QPushButton* goFirtstLayout = new QPushButton(this);
     goFirtstLayout->setText("First Floor");
     goFirtstLayout->move(600, 200);
     // 连接按钮的点击信号到槽函数
-    connect(goFirtstLayout, &QPushButton::clicked, this, [this](){
+    connect(goFirtstLayout, &QPushButton::clicked, this, [this]() {
         hide();
-    });
+        });
 
     QPushButton* refresh = new QPushButton(this);
     refresh->setText("Refresh Desktop");
@@ -64,9 +57,27 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
         this->sortItems(SortOrderType::SortByName_DESC);
         loadIconLayer();
         update();
-    });
-    
-    
+        });
+
+    SHChangeNotifyEntry entry = { nullptr, TRUE };  // 监听整个系统
+
+    HRESULT hr = SHChangeNotifyRegister(
+        reinterpret_cast<HWND>(winId()),  // 使用Qt窗口的句柄
+        SHCNRF_ShellLevel | SHCNRF_NewDelivery,
+        SHCNE_RENAMEITEM | SHCNE_CREATE | SHCNE_DELETE |
+        SHCNE_MKDIR | SHCNE_RMDIR | SHCNE_RENAMEFOLDER |
+        SHCNE_UPDATEITEM | SHCNE_UPDATEDIR | SHCNE_ATTRIBUTES,
+        WM_USER + 52,  // 自定义消息
+        1,
+        &entry
+    );
+
+    if (SUCCEEDED(hr)) {
+        qDebug() << "Shell notifications registered successfully";
+    }
+    else {
+        qDebug() << "Failed to register shell notifications";
+    }
 
 }
 void ListView::startListeningSpecialIcon()
@@ -116,18 +127,18 @@ void ListView::refreshCheckedItem(QRect rect)
     clearCheckedItem();
     auto items = this->items();
     // 遍历所有item，检查与选择矩形的相交关系
-    
+
     for (auto* item : items) {
         // 获取item的矩形区域
         QRect itemRect = item->getChooseItemRect(); // 如果是QRectF需要转换
-        
+
         // 检查是否相交
         if (itemRect.intersects(rect)) {
             m_selectedItems.append(item);
             item->checkSelf();
         }
     }
-    
+
 }
 
 
@@ -153,7 +164,7 @@ void ListView::paintEvent(QPaintEvent* event)
         //绘制一个背景色
         //painter.fillRect(rect(), QColor(60, 200, 171)); // 浅蓝色背景
     }
-    
+
 
     //qDebug() << "drawingMaskRect:" << this->drawingMaskRect;
 
@@ -173,7 +184,7 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
                 continue;
             }
             if (itemRect.contains(rightClickPoint)) {
-                
+
                 //qDebug() << "图标范围：" << itemRect;
                 //qDebug() << "右键点击坐标：" << rightClickPoint;
                 if (m_selectedItems.size() == 0) {
@@ -194,7 +205,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
         clearCheckedItem();
-		//Dragging Item
+        //Dragging Item
         //qDebug() << "ListView LeftClick Pos:" << event->pos();
         auto m_originalPos = event->pos();
         auto items = this->items();
@@ -225,7 +236,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
-	//qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
+    //qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
     // handle dragging
     if (m_isDragging) {
         QPoint newPos = event->pos() - m_dragOffset;
@@ -249,7 +260,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
         //&& currentHoverItemIndex == previousHoverItemIndex
         //currentHoverItemIndex = -1;
         //update();
-        
+
         //currentHoverItemRect = QRect();
         //currentHoverItemIndex = -1;
     }
@@ -265,7 +276,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
         qDebug() << "ListView mouseReleaseEvent  Pos:" << event->pos();
         qDebug() << "Selected Item" << m_selectedItems.size();
     }
-    
+
     if (m_isDragging) {
         m_isDragging = false;  // 结束拖动
         m_draggedItem = nullptr; // 清除被拖动的 ListItem
@@ -273,7 +284,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     event->ignore();
-    
+
 }
 
 void ListView::enterEvent(QEvent* event)
@@ -308,7 +319,7 @@ void ListView::initialize()
 {
     QVector<ListItem*> listItems;
     vector<ListItemData> allDatas = loadAllItemsData();
-    
+
     //load default Items
     for (auto it = allDatas.begin(); it != allDatas.end(); it++)
     {
@@ -316,17 +327,18 @@ void ListView::initialize()
         listItem->setParent(this);
         listItem->setItemData(std::move(*it));
         listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
-        
+
         //listItem->update();
         // qDebug() << listItem->baseName();
         if (it->type() != ObjectType::SpecialFolder && listItem->getItemData().fullName() != "desktop.ini") {
             listItems.push_back(listItem);
-        }else {
+        }
+        else {
             m_hiddenIcons.push_back(listItem);
         }
         m_allItems.push_back(listItem);
     }
-    
+
     //load System Items
     for (auto it = sysIconRegisterInfo.begin(); it != sysIconRegisterInfo.end(); it++) {
         if (!it->isHidden) {
@@ -340,7 +352,7 @@ void ListView::initialize()
         }
     }
     m_items = listItems;
-    
+
 }
 
 //计算每个控件的纵向位置（y），并检查是否超出了窗口的高度。
@@ -369,7 +381,7 @@ void ListView::loadIconLayer()
         ListItem* item = *it;
         //qDebug() << item->baseName();
         item->setItemSize(iconWidth, iconHeight);
-        
+
         item->initData();
         item->updateLocationInfo(QPoint(Icon_X, Icon_Y));
         item->move(Icon_X, Icon_Y);
@@ -384,7 +396,7 @@ void ListView::loadIconLayer()
             Icon_Y = marginTop;  // 重置 Y 坐标为顶部
         }
     }
-    
+
 }
 ListView::SortOrderType ListView::getOppositeDirection() {
 
@@ -448,14 +460,14 @@ void ListView::sortByName(bool ascending)
     // 对于中文环境，设置本地化
     collator.setLocale(QLocale::system());
 
-    std::sort(m_items.begin(), m_items.end(), [&collator,ascending](ListItem* a, ListItem* b) {
+    std::sort(m_items.begin(), m_items.end(), [&collator, ascending](ListItem* a, ListItem* b) {
         // 文件夹优先
         /*if (a->isDirectory() != b->isDirectory()) {
             return a->isDirectory() > b->isDirectory();
         }*/
         int result = collator.compare(a->getSortName(), b->getSortName());
         return ascending ? (result < 0) : (result > 0);
-    });
+        });
 }
 
 void ListView::addItem(ListItem* item)
@@ -484,7 +496,7 @@ ListItem* ListView::selectedItem() const
 /// <returns></returns>
 QPoint ListView::generateItemPosition()
 {
-    
+
     return QPoint();
 }
 
@@ -506,3 +518,39 @@ bool ListView::isMultiSelection() const
 {
     return false;
 }
+QString eventTypeToString(LONG lEvent) {
+    QString eventStr;
+
+    // 检查每个可能的事件标志
+    if (lEvent & SHCNE_RENAMEITEM) eventStr += "RENAMEITEM|";
+    if (lEvent & SHCNE_CREATE) eventStr += "CREATE|";
+    if (lEvent & SHCNE_DELETE) eventStr += "DELETE|";
+    if (lEvent & SHCNE_MKDIR) eventStr += "MKDIR|";
+    if (lEvent & SHCNE_RMDIR) eventStr += "RMDIR|";
+    if (lEvent & SHCNE_MEDIAINSERTED) eventStr += "MEDIAINSERTED|";
+    if (lEvent & SHCNE_MEDIAREMOVED) eventStr += "MEDIAREMOVED|";
+    if (lEvent & SHCNE_DRIVEREMOVED) eventStr += "DRIVEREMOVED|";
+    if (lEvent & SHCNE_DRIVEADD) eventStr += "DRIVEADD|";
+    if (lEvent & SHCNE_NETSHARE) eventStr += "NETSHARE|";
+    if (lEvent & SHCNE_NETUNSHARE) eventStr += "NETUNSHARE|";
+    if (lEvent & SHCNE_ATTRIBUTES) eventStr += "ATTRIBUTES|";
+    if (lEvent & SHCNE_UPDATEDIR) eventStr += "UPDATEDIR|";
+    if (lEvent & SHCNE_UPDATEITEM) eventStr += "UPDATEITEM|";
+    if (lEvent & SHCNE_SERVERDISCONNECT) eventStr += "SERVERDISCONNECT|";
+    if (lEvent & SHCNE_UPDATEIMAGE) eventStr += "UPDATEIMAGE|";
+    if (lEvent & SHCNE_DRIVEADDGUI) eventStr += "DRIVEADDGUI|";
+    if (lEvent & SHCNE_RENAMEFOLDER) eventStr += "RENAMEFOLDER|";
+    if (lEvent & SHCNE_FREESPACE) eventStr += "FREESPACE|";
+
+    // 如果没有匹配的事件类型
+    if (eventStr.isEmpty()) {
+        eventStr = "UNKNOWN_EVENT(0x" + QString::number(lEvent, 16) + ")";
+    }
+    else {
+        // 移除末尾的'|'字符
+        eventStr.chop(1);
+    }
+    return eventStr;
+}
+
+

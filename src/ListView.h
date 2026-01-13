@@ -14,6 +14,8 @@
 #include <QUuid>
 #include <QCollator>
 #include <QSharedPointer>
+#include <windows.h>
+#include <shlobj_core.h>
 #include "ListItem.h"
 #include "RightMenu.h"
 #include "DesktopIconsMonitor.h"
@@ -121,7 +123,7 @@ public:
 	
 	IconPosMode iconPosMode; //将图标与网格对齐
 	
-	bool IsSelecting() {
+	bool IsSelecting() const {
 		return m_isSelecting;
 	}
 	void DisableSelecting() {}
@@ -168,60 +170,11 @@ public:
 	void clearCheckedItem();
 
 private slots:
-	void onFileChanged(const DirectoryMonitor::FileEvent& event, const QString& path) {
-		qDebug() << "[DirectoryMonitor]-File Changed:" << path;
-		QString typeStr;
-		switch (event.type) {
-			case DirectoryMonitor::FileCreated: {
-				typeStr = "Create";
-				ListItem* item = new ListItem(path, this);
-				this->addItem(item);
 
-				break;
-			}
-			case DirectoryMonitor::FileModified: { 
-				typeStr = "Modify"; 
-				break;
-			}
-			case DirectoryMonitor::FileDeleted: {
-				typeStr = "Delete";
-				break;
-			}
-			case DirectoryMonitor::FileRenamed: {
-				typeStr = "ReName";
-				break;
-			}
-
-		}
-		
-		
-
-		qDebug() << QString("[%1] %2: %3 (Size: %4 Byte)")
-			.arg(event.timestamp.toString("hh:mm:ss.zzz"))
-			.arg(typeStr)
-			.arg(event.filePath)
-			.arg(event.fileSize);
-
-		
-		
-	}
-	void onDirectoryCreated(const QString& path) {
-		qDebug() << "[DirectoryMonitor]-Directory Created:" << path;
-		ListItem* item = new ListItem(path, this);
-		this->addItem(item);
-	}
 
 	void onDirectoryChanged(const QString& path) {
 		qDebug() << "[DirectoryMonitor]-Directory Changed:" << path;
 
-	}
-	void onDirectoryRemoved(const QString& path) {
-		ListItem* item = selectItemByPath(path);
-		if (item) {
-			qDebug() << "[DirectoryMonitor]-Directory Removed:" << path;
-			qDebug() << item->objectName();
-			
-		}
 	}
 	
 
@@ -237,6 +190,71 @@ protected:
 
 	
 	void enterEvent(QEvent* event) override;
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override {
+#else
+	bool nativeEvent(const QByteArray & eventType, void* message, long* result) override {
+#endif
+		MSG* msg = static_cast<MSG*>(message);
+
+		// 处理自定义的Shell通知消息s
+		if (msg->message == WM_USER + 52) {
+			handleShellNotification(msg->wParam, msg->lParam);
+			if (result) *result = 0;
+			return true;
+		}
+
+		return QWidget::nativeEvent(eventType, message, result);
+	}
+
+	void handleShellNotification(WPARAM wParam, LPARAM lParam) {
+		LPITEMIDLIST* ppidl = nullptr;
+		LONG lEvent = 0;
+
+		HANDLE hNotifyLock = SHChangeNotification_Lock(
+			reinterpret_cast<HANDLE>(wParam),
+			static_cast<DWORD>(lParam),
+			&ppidl,
+			&lEvent
+		);
+
+		if (hNotifyLock) {
+			processShellEvent(lEvent, ppidl);
+			SHChangeNotification_Unlock(hNotifyLock);
+		}
+	}
+
+	void processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl) {
+		QString eventStr;
+		QString pathInfo;
+
+		if (ppidl && ppidl[0]) {
+			wchar_t path[MAX_PATH] = { 0 };
+			if (SHGetPathFromIDListW(ppidl[0], path)) {
+				pathInfo = QString::fromWCharArray(path);
+			}
+		}
+
+		switch (lEvent) {
+		case SHCNE_CREATE:
+			eventStr = QString("File created: %1").arg(pathInfo);
+			break;
+		case SHCNE_DELETE:
+			eventStr = QString("File deleted: %1").arg(pathInfo);
+			break;
+		case SHCNE_RENAMEITEM:
+			eventStr = QString("File renamed: %1").arg(pathInfo);
+			break;
+			// ... 其他事件处理
+		}
+
+		if (!eventStr.isEmpty()) {
+			qDebug() << QDateTime::currentDateTime().toString("[hh:mm:ss]") << eventStr;
+		}
+	}
+
+
 
 	//signals:
 	//	void itemSelected(ListItem* item);

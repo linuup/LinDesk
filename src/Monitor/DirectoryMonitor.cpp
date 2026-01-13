@@ -1,339 +1,237 @@
-// DirectoryMonitor.cpp
+#include "DirectoryMonitor.h"
 #include "DirectoryMonitor.h"
 #include <QDebug>
-#include <QFileInfo>
-#include <QRegularExpression>
+#include <QDateTime>
+#include <shlobj.h>
 
-DirectoryMonitor::DirectoryMonitor(QObject* parent)
-    : QObject(parent)
-    , m_watcher(new QFileSystemWatcher(this))
-    , m_recursiveWatch(true)
-    , m_checkInterval(1000)
-    , m_isRunning(false)
-    , m_isPaused(false)
-{
-    m_debounceTimer = new QTimer(this);
-    m_debounceTimer->setSingleShot(true);
-    m_debounceTimer->setInterval(500);
-
-    connect(m_watcher, &QFileSystemWatcher::fileChanged,
-        this, &DirectoryMonitor::onFileChanged);
-    connect(m_watcher, &QFileSystemWatcher::directoryChanged,
-        this, &DirectoryMonitor::onDirectoryChanged);
-    connect(m_debounceTimer, &QTimer::timeout,
-        this, &DirectoryMonitor::processDebouncedEvents);
+// Static member initialization
+DirectoryMonitor* instanceFromWindow(HWND hwnd) {
+    return reinterpret_cast<DirectoryMonitor*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 }
 
-DirectoryMonitor::~DirectoryMonitor()
-{
-    stop();
+// Window procedure
+LRESULT CALLBACK DirectoryMonitor::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_CREATE) {
+        CREATESTRUCT* cs = reinterpret_cast<CREATESTRUCT*>(lParam);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+    }
+
+    DirectoryMonitor* self = instanceFromWindow(hwnd);
+
+    if (self && msg == WM_SHELLNOTIFY) {
+        LPITEMIDLIST* ppidl = nullptr;
+        LONG lEvent = 0;
+
+        HANDLE hNotifyLock = SHChangeNotification_Lock(
+            reinterpret_cast<HANDLE>(wParam),
+            static_cast<DWORD>(lParam),
+            &ppidl,
+            &lEvent
+        );
+
+        if (hNotifyLock) {
+            self->handleShellEvent(lEvent, ppidl);
+            SHChangeNotification_Unlock(hNotifyLock);
+        }
+        return 0;
+    }
+
+    return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-bool DirectoryMonitor::addWatchPath(const QString& path, bool recursive)
+// Constructor
+DirectoryMonitor::DirectoryMonitor(HWND hwnd,QObject* parent) : 
+    IDirectoryMonitorListener("Desktop Directory Monitor", parent)
+    ,m_hwnd(hwnd)
 {
-    QFileInfo info(path);
-    if (!info.exists()) {
-        emit errorOccurred(QString("Path does not exist: %1").arg(path));
-        return false;
+    logMessage("DesktopIconsMonitor created");
+    // Register Windows window class
+    WNDCLASSEX wc = {};
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.lpszClassName = L"DirectoryMonitorWindow";
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+
+    if (!RegisterClassEx(&wc)) {
+        qDebug() << "Failed to register window class!";
     }
 
-    if (m_watchedPaths.contains(path)) {
-        emit errorOccurred(QString("Path is already being monitored: %1").arg(path));
-        return false;
+    // Create message-only window
+    m_hwnd = CreateWindowEx(
+        0,
+        L"DirectoryMonitorWindow",
+        L"Directory Monitor",
+        0, 0, 0, 0, 0,
+        HWND_MESSAGE,  // Message-only window
+        nullptr,
+        GetModuleHandle(nullptr),
+        this
+    );
+}
+// Destructor
+DirectoryMonitor::~DirectoryMonitor() {
+    stopMonitoring();
+
+    if (m_hwnd) {
+        DestroyWindow(m_hwnd);
+    }
+    stopListening();
+    logMessage("Directory Monitor destroyed");
+}
+
+// Start monitorings
+void DirectoryMonitor::startMonitoring() {
+    const wchar_t* directoryPath = L"D://Desktop";
+    if (!m_hwnd) {
+        qDebug() << "Cannot start monitoring: Window not created";
+        return;
     }
 
-    if (info.isDir()) {
-        if (!m_watcher->addPath(path)) {
-            emit errorOccurred(QString("Failed to monitor directory: %1").arg(path));
-            return false;
+    // Create PIDL for the directory
+    LPITEMIDLIST pidl = nullptr;
+    if (directoryPath) {
+        pidl = ILCreateFromPath(directoryPath);
+        if (!pidl) {
+            qDebug() << "Failed to create PIDL for:" << QString::fromWCharArray(directoryPath);
+            return;
         }
+    }
 
-        m_watchedPaths.insert(path);
-        m_knownDirectories.insert(path); // 记录已知目录
-        m_recursiveWatch = recursive;
-        scanDirectory(path);
+    // Setup monitoring entry
+    SHChangeNotifyEntry entry = { pidl, TRUE };
 
-        if (recursive) {
-            addRecursiveWatches(path);
+    // Register for shell notifications
+    HRESULT hr = SHChangeNotifyRegister(
+        m_hwnd,
+        SHCNRF_ShellLevel | SHCNRF_NewDelivery | SHCNRF_InterruptLevel,
+        SHCNE_RENAMEITEM | SHCNE_CREATE | SHCNE_DELETE |
+        SHCNE_MKDIR | SHCNE_RMDIR | SHCNE_RENAMEFOLDER |
+        SHCNE_UPDATEITEM | SHCNE_UPDATEDIR | SHCNE_ATTRIBUTES,
+        WM_SHELLNOTIFY,
+        1,
+        &entry
+    );
+
+    // Clean up PIDL
+    if (pidl) {
+        ILFree(pidl);
+    }
+
+    if (SUCCEEDED(hr)) {
+        if (directoryPath) {
+            qDebug() << "✅ Started monitoring directory:" << QString::fromWCharArray(directoryPath);
         }
-
-        emit monitoringStarted(path);
-        qDebug() << "Started monitoring directory:" << path;
-        return true;
+        else {
+            qDebug() << "✅ Started monitoring entire file system";
+        }
+        return;
     }
     else {
-        if (!m_watcher->addPath(path)) {
-            emit errorOccurred(QString("Failed to monitor file: %1").arg(path));
-            return false;
-        }
-
-        m_watchedPaths.insert(path);
-        updateFileInfo(path);
-
-        emit monitoringStarted(path);
-        qDebug() << "Started monitoring file:" << path;
-        return true;
+        qDebug() << "❌ Failed to start monitoring";
+        return;
     }
 }
 
-void DirectoryMonitor::addRecursiveWatches(const QString& directory)
-{
-    QDir dir(directory);
-    dir.setFilter(QDir::AllDirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
-
-    for (const QFileInfo& subDir : dir.entryInfoList()) {
-        QString subDirPath = subDir.absoluteFilePath();
-        if (!m_watchedPaths.contains(subDirPath)) {
-            if (m_watcher->addPath(subDirPath)) {
-                m_watchedPaths.insert(subDirPath);
-                m_knownDirectories.insert(subDirPath); // 记录已知目录
-                addRecursiveWatches(subDirPath);
-            }
-        }
+// Stop monitoring
+void DirectoryMonitor::stopMonitoring() {
+    if (m_regId) {
+        SHChangeNotifyDeregister(m_regId);
+        m_regId = 0;
+        qDebug() << "Monitoring stopped";
     }
 }
 
-void DirectoryMonitor::scanDirectory(const QString& path)
-{
-    QDir dir(path);
+// Handle shell events
+void DirectoryMonitor::handleShellEvent(LONG lEvent, LPITEMIDLIST* ppidl) {
+    QString eventDescription;
+    QString filePath;
 
-    // 扫描文件
-    auto files = dir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
-    for (const QFileInfo& fileInfo : files) {
-        QString filePath = fileInfo.absoluteFilePath();
-        if (shouldFilterFile(filePath)) {
-            continue;
+    // Extract file path from PIDL
+    if (ppidl && ppidl[0]) {
+        wchar_t path[MAX_PATH] = { 0 };
+        if (SHGetPathFromIDListW(ppidl[0], path)) {
+            filePath = QString::fromWCharArray(path);
         }
-        updateFileInfo(filePath);
     }
 
-    // 记录当前目录下的所有子目录
-    auto dirs = dir.entryInfoList(QDir::AllDirs | QDir::NoDotAndDotDot);
-    for (const QFileInfo& dirInfo : dirs) {
-        m_knownDirectories.insert(dirInfo.absoluteFilePath());
+    // Map event codes to descriptions
+    switch (lEvent) {
+    case SHCNE_RENAMEITEM:
+        eventDescription = "File renamed";
+        break;
+    case SHCNE_CREATE:
+        eventDescription = "File created";
+        break;
+    case SHCNE_DELETE:
+        eventDescription = "File deleted";
+        break;
+    case SHCNE_MKDIR:
+        eventDescription = "Directory created";
+        break;
+    case SHCNE_RMDIR:
+        eventDescription = "Directory deleted";
+        break;
+    case SHCNE_RENAMEFOLDER:
+        eventDescription = "Directory renamed";
+        break;
+    case SHCNE_UPDATEITEM:
+        eventDescription = "File updated";
+        break;
+    case SHCNE_UPDATEDIR:
+        eventDescription = "Directory updated";
+        break;
+    case SHCNE_ATTRIBUTES:
+        eventDescription = "File attributes changed";
+        break;
+    case SHCNE_MEDIAREMOVED:
+        eventDescription = "Media removed";
+        break;
+    case SHCNE_DRIVEADD:
+        eventDescription = "Drive added";
+        break;
+    case SHCNE_DRIVEREMOVED:
+        eventDescription = "Drive removed";
+        break;
+    case SHCNE_ASSOCCHANGED:
+        eventDescription = "File association changed";
+        break;
+    case SHCNE_SERVERDISCONNECT:
+        eventDescription = "Server disconnected";
+        break;
+    default:
+        eventDescription = QString("Unknown event: 0x%1").arg(lEvent, 0, 16);
+    }
+
+    // Log the event
+    QString timestamp = QDateTime::currentDateTime().toString("[hh:mm:ss.zzz]");
+    QString logMessage = QString("%1 %2").arg(timestamp).arg(eventDescription);
+
+    if (!filePath.isEmpty()) {
+        logMessage += QString(": %1").arg(filePath);
+    }
+
+    qDebug() << logMessage;
+}
+
+// Run message loop
+void DirectoryMonitor::run() {
+    qDebug() << "Directory Monitor is running. Press Ctrl+C to exit.";
+
+    // Message loop
+    MSG msg;
+    while (GetMessage(&msg, nullptr, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
 }
 
-void DirectoryMonitor::updateFileInfo(const QString& filePath)
+bool DirectoryMonitor::startListening()
 {
-    QFileInfo info(filePath);
-    if (info.exists()) {
-        m_fileTimestamps[filePath] = info.lastModified();
-        m_fileSizes[filePath] = info.size();
-    }
-}
-
-void DirectoryMonitor::onFileChanged(const QString& path)
-{
-    if (m_isPaused || !m_isRunning) return;
-
-    QFileInfo info(path);
-
-    if (!info.exists()) {
-        FileEvent event(FileDeleted, path);
-        m_pendingEvents[path] = event;
-    }
-    else {
-        QDateTime lastModified = info.lastModified();
-        qint64 fileSize = info.size();
-
-        if (!m_fileTimestamps.contains(path)) {
-            FileEvent event(FileCreated, path);
-            event.fileSize = fileSize;
-            m_pendingEvents[path] = event;
-        }
-        else if (m_fileTimestamps[path] != lastModified ||
-            m_fileSizes[path] != fileSize) {
-            FileEvent event(FileModified, path);
-            event.fileSize = fileSize;
-            m_pendingEvents[path] = event;
-        }
-
-        m_fileTimestamps[path] = lastModified;
-        m_fileSizes[path] = fileSize;
-        m_watcher->addPath(path);
-    }
-
-    m_debounceTimer->start();
-}
-
-void DirectoryMonitor::onDirectoryChanged(const QString& path)
-{
-    if (m_isPaused || !m_isRunning) return;
-
-    emit directoryChanged(path);
-    checkDirectoryChanges(path);
-    m_debounceTimer->start();
-}
-
-void DirectoryMonitor::checkDirectoryChanges(const QString& path)
-{
-    QDir dir(path);
-
-    // 检查文件变化
-    auto currentFiles = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
-    for (const QString& fileName : currentFiles) {
-        QString filePath = dir.absoluteFilePath(fileName);
-        if (!m_fileTimestamps.contains(filePath) && !shouldFilterFile(filePath)) {
-            FileEvent event(FileCreated, filePath);
-            m_pendingEvents[filePath] = event;
-            updateFileInfo(filePath);
-        }
-    }
-
-    // 检查文件删除
-    auto oldFiles = m_fileTimestamps.keys();
-    for (const QString& oldFile : oldFiles) {
-        if (QFileInfo(oldFile).absolutePath() == path && !QFile::exists(oldFile)) {
-            FileEvent event(FileDeleted, oldFile);
-            m_pendingEvents[oldFile] = event;
-            m_fileTimestamps.remove(oldFile);
-            m_fileSizes.remove(oldFile);
-        }
-    }
-
-    // 检查目录变化
-    auto currentDirs = dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot);
-    QSet<QString> currentDirPaths;
-
-    for (const QString& dirName : currentDirs) {
-        QString dirPath = dir.absoluteFilePath(dirName);
-        currentDirPaths.insert(dirPath);
-
-        // 检测新增目录
-        if (!m_knownDirectories.contains(dirPath)) {
-            m_knownDirectories.insert(dirPath);
-            emit directoryCreated(dirPath);
-            qDebug() << "Directory created:" << dirPath;
-        }
-    }
-
-    // 检测删除的目录
-    QSet<QString> knownDirsCopy = m_knownDirectories;
-    for (const QString& knownDir : knownDirsCopy) {
-        if (QFileInfo(knownDir).absolutePath() == path && !currentDirPaths.contains(knownDir)) {
-            m_knownDirectories.remove(knownDir);
-            emit directoryRemoved(knownDir);
-            qDebug() << "Directory removed:" << knownDir;
-        }
-    }
-
-    if (m_recursiveWatch) {
-        auto watchedDirs = m_watchedPaths;
-
-        for (const QString& watchedDir : watchedDirs) {
-            if (QFileInfo(watchedDir).absolutePath() == path &&
-                !currentDirs.contains(QFileInfo(watchedDir).fileName())) {
-                removeWatchPath(watchedDir);
-            }
-        }
-
-        for (const QString& subDir : currentDirs) {
-            QString subDirPath = dir.absoluteFilePath(subDir);
-            if (!m_watchedPaths.contains(subDirPath)) {
-                addWatchPath(subDirPath, true);
-            }
-        }
-    }
-}
-
-void DirectoryMonitor::processDebouncedEvents()
-{
-    if (m_pendingEvents.isEmpty()) return;
-
-    for (auto it = m_pendingEvents.begin(); it != m_pendingEvents.end(); ++it) {
-        const QString& filePath = it.key();
-        const FileEvent& event = it.value();
-
-        // 发射信号，第二个参数是被修改文件的路径
-        emit fileChanged(event, filePath);
-    }
-    m_pendingEvents.clear();
-}
-
-bool DirectoryMonitor::shouldFilterFile(const QString& filePath)
-{
-    QFileInfo info(filePath);
-    QString fileName = info.fileName();
-
-    for (const QString& exclude : m_excludeFilters) {
-        QRegularExpression re(exclude, QRegularExpression::CaseInsensitiveOption);
-        if (re.match(fileName).hasMatch()) {
-            return true;
-        }
-    }
-
-    if (!m_includeFilters.isEmpty()) {
-        for (const QString& include : m_includeFilters) {
-            QRegularExpression re(include, QRegularExpression::CaseInsensitiveOption);
-            if (re.match(fileName).hasMatch()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     return false;
 }
 
-void DirectoryMonitor::setFileFilters(const QStringList& includeFilters, const QStringList& excludeFilters)
+void DirectoryMonitor::stopListening()
 {
-    m_includeFilters = includeFilters;
-    m_excludeFilters = excludeFilters;
 }
 
-void DirectoryMonitor::setDebounceInterval(int milliseconds)
-{
-    m_debounceTimer->setInterval(milliseconds);
-}
-
-void DirectoryMonitor::start()
-{
-    m_isRunning = true;
-    m_isPaused = false;
-    qDebug() << "Directory monitoring started";
-}
-
-void DirectoryMonitor::stop()
-{
-    m_isRunning = false;
-    m_isPaused = false;
-    m_watcher->removePaths(m_watcher->files());
-    m_watcher->removePaths(m_watcher->directories());
-    m_watchedPaths.clear();
-    m_knownDirectories.clear(); // 清空已知目录
-    m_fileTimestamps.clear();
-    m_fileSizes.clear();
-    m_pendingEvents.clear();
-    qDebug() << "Directory monitoring stopped";
-}
-
-void DirectoryMonitor::pause()
-{
-    m_isPaused = true;
-    qDebug() << "Directory monitoring paused";
-}
-
-void DirectoryMonitor::resume()
-{
-    m_isPaused = false;
-    qDebug() << "Directory monitoring resumed";
-}
-
-bool DirectoryMonitor::removeWatchPath(const QString& path)
-{
-    if (m_watcher->removePath(path)) {
-        m_watchedPaths.remove(path);
-        m_knownDirectories.remove(path); // 从已知目录中移除
-        m_fileTimestamps.remove(path);
-        m_fileSizes.remove(path);
-        emit monitoringStopped(path);
-        return true;
-    }
-    return false;
-}
-
-QSet<QString> DirectoryMonitor::getWatchedPaths() const
-{
-    return m_watchedPaths;
-}

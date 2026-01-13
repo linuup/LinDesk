@@ -1,6 +1,5 @@
 // IListener.h - 直接在接口中实现公共功能
 #pragma once
-
 #include <QObject>
 #include <QDebug>
 #include <atomic>

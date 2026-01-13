@@ -5,7 +5,7 @@
 #include <QObject>
 #include <QVariant>
 #include <QDateTime>
-#include "ListenerInterface.h"
+#include "IListenerInterface.h"
 class IRegistryListener : public IListenerInterface {
     Q_OBJECT
 
