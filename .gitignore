@@ -3,6 +3,8 @@
 
 .vscode/
 
+Build/
+Build/**/*
 build/
 build/**/*
 out/
