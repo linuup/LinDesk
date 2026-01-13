@@ -1,0 +1,4 @@
+D:/Desktop/LinDesk/build_64/CMakeFiles/LinDesk.dir
+D:/Desktop/LinDesk/build_64/CMakeFiles/ALL_BUILD.dir
+D:/Desktop/LinDesk/build_64/CMakeFiles/ZERO_CHECK.dir
+D:/Desktop/LinDesk/build_64/OS/CMakeFiles/OS.dir

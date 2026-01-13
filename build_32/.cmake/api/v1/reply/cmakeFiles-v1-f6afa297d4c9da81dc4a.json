@@ -1,0 +1,488 @@
+{
+	"globsDependent" : 
+	[
+		{
+			"expression" : "D:/Desktop/LinDesk/OS/*/*.cpp",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/OS/SystemApi/MenuHelper.cpp",
+				"D:/Desktop/LinDesk/OS/SystemApi/ShellContextMenu.cpp",
+				"D:/Desktop/LinDesk/OS/SystemApi/SystemApi.cpp",
+				"D:/Desktop/LinDesk/OS/SystemApi/Tool.cpp",
+				"D:/Desktop/LinDesk/OS/SystemApi/WindowSubclassWrapper.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/OS/*/*.h",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/OS/SystemApi/CommonEnum.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/MenuHelper.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/ResourceHelper.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/ShellContextMenu.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/SystemApi.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/Tool.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/WindowSubclassWrapper.h",
+				"D:/Desktop/LinDesk/OS/SystemApi/resources.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/OS/OS.cpp",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/OS/OS.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/OS/OS.h",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/OS/OS.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/src/*.cpp",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/src/DeskFileModel.cpp",
+				"D:/Desktop/LinDesk/src/LinDesk.cpp",
+				"D:/Desktop/LinDesk/src/LinDesktop.cpp",
+				"D:/Desktop/LinDesk/src/ListItem.cpp",
+				"D:/Desktop/LinDesk/src/ListView.cpp",
+				"D:/Desktop/LinDesk/src/Monitor/DesktopIconsMonitor.cpp",
+				"D:/Desktop/LinDesk/src/Monitor/DirectoryMonitor.cpp",
+				"D:/Desktop/LinDesk/src/RightMenu.cpp",
+				"D:/Desktop/LinDesk/src/SelectArea.cpp",
+				"D:/Desktop/LinDesk/src/SysInfoUtil.cpp",
+				"D:/Desktop/LinDesk/src/main.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/src/*.h",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/src/Data/ListItemData.h",
+				"D:/Desktop/LinDesk/src/DeskFileModel.h",
+				"D:/Desktop/LinDesk/src/LinDesk.h",
+				"D:/Desktop/LinDesk/src/LinDesktop.h",
+				"D:/Desktop/LinDesk/src/ListItem.h",
+				"D:/Desktop/LinDesk/src/ListView.h",
+				"D:/Desktop/LinDesk/src/Monitor/DesktopIconsMonitor.h",
+				"D:/Desktop/LinDesk/src/Monitor/DirectoryMonitor.h",
+				"D:/Desktop/LinDesk/src/Monitor/IRegistryListenerInterface.h",
+				"D:/Desktop/LinDesk/src/Monitor/ListenerInterface.h",
+				"D:/Desktop/LinDesk/src/RightMenu.h",
+				"D:/Desktop/LinDesk/src/SelectArea.h",
+				"D:/Desktop/LinDesk/src/SysInfoUtil.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/src/Data/*.h",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/src/Data/ListItemData.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/src/Monitor/*.cpp",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/src/Monitor/DesktopIconsMonitor.cpp",
+				"D:/Desktop/LinDesk/src/Monitor/DirectoryMonitor.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "D:/Desktop/LinDesk/src/Monitor/*.h",
+			"paths" : 
+			[
+				"D:/Desktop/LinDesk/src/Monitor/DesktopIconsMonitor.h",
+				"D:/Desktop/LinDesk/src/Monitor/DirectoryMonitor.h",
+				"D:/Desktop/LinDesk/src/Monitor/IRegistryListenerInterface.h",
+				"D:/Desktop/LinDesk/src/Monitor/ListenerInterface.h"
+			],
+			"recurse" : true
+		}
+	],
+	"inputs" : 
+	[
+		{
+			"path" : "CMakeLists.txt"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build_32/CMakeFiles/3.31.2/CMakeSystem.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "D:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeDependentOption.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeSystemSpecificInitialize.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Windows-Initialize.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build_32/CMakeFiles/3.31.2/CMakeCCompiler.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build_32/CMakeFiles/3.31.2/CMakeCXXCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeSystemSpecificInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeGenericSystem.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeInitializeConfigs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Windows.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/WindowsPaths.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Compiler/MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Windows-MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "build_32/CMakeFiles/3.31.2/CMakeRCCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeRCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Internal/CMakeCLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeCXXInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Compiler/MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Internal/CMakeCXXLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5/Qt5ConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5/Qt5Config.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5/Qt5ModuleLocation.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Widgets/Qt5WidgetsConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Widgets/Qt5WidgetsConfig.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5GuiConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5GuiConfig.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreConfig.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreConfigExtras.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreConfigExtrasMkspecDir.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeParseArguments.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QGifPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QICNSPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QICOPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QInsightTrackerPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QJpegPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QMinimalIntegrationPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QOffscreenIntegrationPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QSvgIconPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QSvgPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QTgaPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QTiffPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QTuioTouchPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QVirtualKeyboardPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QWbmpPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QWebGLIntegrationPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QWebpPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QWindowsDirect2DIntegrationPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QWindowsIntegrationPlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5Gui_QXdgDesktopPortalThemePlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Gui/Qt5GuiConfigExtras.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Widgets/Qt5Widgets_QWindowsVistaStylePlugin.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Widgets/Qt5WidgetsConfigExtras.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Widgets/Qt5WidgetsMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "D:/cmake-3.31.2-windows-x86_64/share/cmake-3.31/Modules/CMakeParseArguments.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5WinExtras/Qt5WinExtrasConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5WinExtras/Qt5WinExtrasConfig.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "F:/Qt/5.15.2/msvc2019/lib/cmake/Qt5Core/Qt5CoreConfig.cmake"
+		},
+		{
+			"path" : "vcpkg.json"
+		},
+		{
+			"path" : "OS/CMakeLists.txt"
+		}
+	],
+	"kind" : "cmakeFiles",
+	"paths" : 
+	{
+		"build" : "D:/Desktop/LinDesk/build_32",
+		"source" : "D:/Desktop/LinDesk"
+	},
+	"version" : 
+	{
+		"major" : 1,
+		"minor" : 1
+	}
+}

@@ -55,10 +55,6 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 		m_clsid = QString::fromStdString(m_iconItem.path.c_str());
 
 		initIcon();
-		
-		
-
-
 		/*qDebug() << "\nFullName:" << m_fullName;
 		qDebug() << "\nPath:" << QString::fromStdString(item.path.c_str());*/
 	};

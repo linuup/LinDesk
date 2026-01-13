@@ -22,6 +22,8 @@ class ListItem : public QWidget {
 public:
     explicit ListItem(QWidget* parent = nullptr);
 
+    // 有参构造函数 - 通过 ListItemData 初始化
+    explicit ListItem(const QString& path, QWidget* parent = nullptr);
     // 禁止拷贝构造函数
     //ListItem(const ListItem&) = delete;
     // 禁止赋值操作符
@@ -36,6 +38,10 @@ public:
 
     const QIcon& icon() const { return m_icon; }
     const QString& filePath() const { return m_filePath; }
+    QString windowsFilePath() const {
+        QString tmp = m_filePath;
+        return tmp.replace("\\", "/");
+    }
     const QString& baseName() const { return m_baseName; }
     const QSize& size() const { return m_itemSize; }
     const QPoint& pos() const { return m_itemPos; }

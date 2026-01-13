@@ -1,0 +1,155 @@
+{
+	"AUTOGEN_COMMAND_LINE_LENGTH_MAX" : 32000,
+	"BUILD_DIR" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen",
+	"CMAKE_BINARY_DIR" : "D:/Desktop/LinDesk/build_32",
+	"CMAKE_CURRENT_BINARY_DIR" : "D:/Desktop/LinDesk/build_32/OS",
+	"CMAKE_CURRENT_SOURCE_DIR" : "D:/Desktop/LinDesk/OS",
+	"CMAKE_EXECUTABLE" : "D:/cmake-3.31.2-windows-x86_64/bin/cmake.exe",
+	"CMAKE_LIST_FILES" : [ "D:/Desktop/LinDesk/OS/CMakeLists.txt" ],
+	"CMAKE_SOURCE_DIR" : "D:/Desktop/LinDesk",
+	"CROSS_CONFIG" : false,
+	"DEP_FILE" : "",
+	"DEP_FILE_RULE_NAME" : "",
+	"HEADERS" : 
+	[
+		[ "D:/Desktop/LinDesk/OS/OS.h", "MU", "EWIEGA46WW/moc_OS.cpp", null ],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/CommonEnum.h",
+			"MU",
+			"HNKNJEAZOW/moc_CommonEnum.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/MenuHelper.h",
+			"MU",
+			"HNKNJEAZOW/moc_MenuHelper.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/ResourceHelper.h",
+			"MU",
+			"HNKNJEAZOW/moc_ResourceHelper.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/ShellContextMenu.h",
+			"MU",
+			"HNKNJEAZOW/moc_ShellContextMenu.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/SystemApi.h",
+			"MU",
+			"HNKNJEAZOW/moc_SystemApi.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/Tool.h",
+			"MU",
+			"HNKNJEAZOW/moc_Tool.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/WindowSubclassWrapper.h",
+			"MU",
+			"HNKNJEAZOW/moc_WindowSubclassWrapper.cpp",
+			null
+		],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/resources.h",
+			"MU",
+			"HNKNJEAZOW/moc_resources.cpp",
+			null
+		]
+	],
+	"HEADER_EXTENSIONS" : [ "h", "hh", "h++", "hm", "hpp", "hxx", "in", "txx" ],
+	"INCLUDE_DIR" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/include",
+	"INCLUDE_DIR_Debug" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/include_Debug",
+	"INCLUDE_DIR_MinSizeRel" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/include_MinSizeRel",
+	"INCLUDE_DIR_RelWithDebInfo" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/include_RelWithDebInfo",
+	"INCLUDE_DIR_Release" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/include_Release",
+	"MOC_COMPILATION_FILE" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/mocs_compilation.cpp",
+	"MOC_COMPILATION_FILE_Debug" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/mocs_compilation_Debug.cpp",
+	"MOC_COMPILATION_FILE_MinSizeRel" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/mocs_compilation_MinSizeRel.cpp",
+	"MOC_COMPILATION_FILE_RelWithDebInfo" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/mocs_compilation_RelWithDebInfo.cpp",
+	"MOC_COMPILATION_FILE_Release" : "D:/Desktop/LinDesk/build_32/OS/OS_autogen/mocs_compilation_Release.cpp",
+	"MOC_DEFINITIONS" : [],
+	"MOC_DEFINITIONS_Debug" : [ "UNICODE", "WIN32", "_UNICODE" ],
+	"MOC_DEFINITIONS_MinSizeRel" : [ "UNICODE", "WIN32", "_UNICODE" ],
+	"MOC_DEFINITIONS_RelWithDebInfo" : [ "UNICODE", "WIN32", "_UNICODE" ],
+	"MOC_DEFINITIONS_Release" : [ "UNICODE", "WIN32", "_UNICODE" ],
+	"MOC_DEPEND_FILTERS" : 
+	[
+		[
+			"Q_PLUGIN_METADATA",
+			"[\n][ \t]*Q_PLUGIN_METADATA[ \t]*\\([^\\)]*FILE[ \t]*\"([^\"]+)\""
+		]
+	],
+	"MOC_INCLUDES" : [],
+	"MOC_INCLUDES_Debug" : 
+	[
+		"D:/Desktop/LinDesk/vcpkg_installed/x64-windows/include",
+		"D:/Desktop/LinDesk/OS",
+		"D:/Desktop/LinDesk/OS/SystemApi"
+	],
+	"MOC_INCLUDES_MinSizeRel" : 
+	[
+		"D:/Desktop/LinDesk/vcpkg_installed/x64-windows/include",
+		"D:/Desktop/LinDesk/OS",
+		"D:/Desktop/LinDesk/OS/SystemApi"
+	],
+	"MOC_INCLUDES_RelWithDebInfo" : 
+	[
+		"D:/Desktop/LinDesk/vcpkg_installed/x64-windows/include",
+		"D:/Desktop/LinDesk/OS",
+		"D:/Desktop/LinDesk/OS/SystemApi"
+	],
+	"MOC_INCLUDES_Release" : 
+	[
+		"D:/Desktop/LinDesk/vcpkg_installed/x64-windows/include",
+		"D:/Desktop/LinDesk/OS",
+		"D:/Desktop/LinDesk/OS/SystemApi"
+	],
+	"MOC_MACRO_NAMES" : [ "Q_OBJECT", "Q_GADGET", "Q_NAMESPACE", "Q_NAMESPACE_EXPORT" ],
+	"MOC_OPTIONS" : [],
+	"MOC_PATH_PREFIX" : false,
+	"MOC_PREDEFS_CMD" : [],
+	"MOC_PREDEFS_FILE" : "",
+	"MOC_RELAXED_MODE" : false,
+	"MOC_SKIP" : [],
+	"MULTI_CONFIG" : true,
+	"PARALLEL" : 6,
+	"PARSE_CACHE_FILE" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/ParseCache.txt",
+	"PARSE_CACHE_FILE_Debug" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/ParseCache_Debug.txt",
+	"PARSE_CACHE_FILE_MinSizeRel" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/ParseCache_MinSizeRel.txt",
+	"PARSE_CACHE_FILE_RelWithDebInfo" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/ParseCache_RelWithDebInfo.txt",
+	"PARSE_CACHE_FILE_Release" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/ParseCache_Release.txt",
+	"QT_MOC_EXECUTABLE" : "F:/Qt/5.15.2/msvc2019/bin/moc.exe",
+	"QT_UIC_EXECUTABLE" : "F:/Qt/5.15.2/msvc2019/bin/uic.exe",
+	"QT_VERSION_MAJOR" : 5,
+	"QT_VERSION_MINOR" : 15,
+	"SETTINGS_FILE" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/AutogenUsed.txt",
+	"SETTINGS_FILE_Debug" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/AutogenUsed_Debug.txt",
+	"SETTINGS_FILE_MinSizeRel" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/AutogenUsed_MinSizeRel.txt",
+	"SETTINGS_FILE_RelWithDebInfo" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/AutogenUsed_RelWithDebInfo.txt",
+	"SETTINGS_FILE_Release" : "D:/Desktop/LinDesk/build_32/OS/CMakeFiles/OS_autogen.dir/AutogenUsed_Release.txt",
+	"SOURCES" : 
+	[
+		[ "D:/Desktop/LinDesk/OS/OS.cpp", "MU", null ],
+		[ "D:/Desktop/LinDesk/OS/SystemApi/MenuHelper.cpp", "MU", null ],
+		[ "D:/Desktop/LinDesk/OS/SystemApi/ShellContextMenu.cpp", "MU", null ],
+		[ "D:/Desktop/LinDesk/OS/SystemApi/SystemApi.cpp", "MU", null ],
+		[ "D:/Desktop/LinDesk/OS/SystemApi/Tool.cpp", "MU", null ],
+		[
+			"D:/Desktop/LinDesk/OS/SystemApi/WindowSubclassWrapper.cpp",
+			"MU",
+			null
+		]
+	],
+	"UIC_OPTIONS" : [],
+	"UIC_SEARCH_PATHS" : [],
+	"UIC_SKIP" : [],
+	"UIC_UI_FILES" : [],
+	"USE_BETTER_GRAPH" : false,
+	"VERBOSITY" : 0
+}

@@ -19,9 +19,9 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # 使用预设中的 CMAKE_TOOLCHAIN_FILE（如果没有预设，则回退到默认值）
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-  message(WARNING "未指定 vcpkg 工具链文件，请通过预设配置！")
-endif()
+# if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+#   message(WARNING "未指定 vcpkg 工具链文件，请通过预设配置！")
+# endif()
 
 add_subdirectory("OS")
 
@@ -37,6 +37,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 
 # 添加可执行文件
 add_executable(LinDesk ${SOURCES})
+
 
 target_link_libraries(LinDesk 
     PRIVATE

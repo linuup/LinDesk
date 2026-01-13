@@ -69,6 +69,92 @@ CSystemApi::CSystemApi()
 CSystemApi::~CSystemApi()
 {
 }
+
+const wchar_t* L_MY_COMPUTER(TEXT(MY_COMPUTER_CLS));
+const wchar_t* L_RECYCLE_BIN(TEXT(RECYCLE_BIN_CLS));
+const wchar_t* L_CONTROL_PANEL(TEXT(CONTROL_PANEL_CLS));
+const wchar_t* L_CONTROL_PANEL2(TEXT(CONTROL_PANEL_CLS2));
+const wchar_t* L_NETWORK(TEXT(NETWORK_CLS));
+const wchar_t* L_USER_FOLDER(TEXT(USER_FOLDER_CLS));
+const wchar_t* L_LIARIES(TEXT(LIBRARIES_CLS));
+const wchar_t* L_LINUX(TEXT(LINUX_CLS));
+SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
+{
+    if (!name) return SpecialFolders::Empty;
+
+    if (wcsstr(name, L_MY_COMPUTER)) {
+        return SpecialFolders::ThisPc;
+    }
+    else if (wcsstr(name, L_RECYCLE_BIN)) {
+        return SpecialFolders::RecycleBin;
+    }
+    else if (wcsstr(name, L_CONTROL_PANEL)) {
+        return SpecialFolders::ControlPanel;
+    }
+    else if (wcsstr(name, L_CONTROL_PANEL2)) {
+        return SpecialFolders::ControlPanel2;
+    }
+    else if (wcsstr(name, L_NETWORK)) {
+        return SpecialFolders::Network;
+    }
+    else if (wcsstr(name, L"\\Desktop\\") != nullptr ||
+        wcsstr(name, L"\\桌面\\") != nullptr ||
+        (wcsstr(name, L"\\Users\\") != nullptr && wcsstr(name, L"\\Desktop") != nullptr) ||
+        (wcsstr(name, L"\\用户\\") != nullptr && wcsstr(name, L"\\桌面") != nullptr)) {
+        return SpecialFolders::UnknownFolder;
+    }
+    else if (wcsstr(name, L"\\Users\\") != nullptr ||
+        wcsstr(name, L"C:\\Users") != nullptr ||
+        wcsstr(name, L"用户") != nullptr) {
+        return SpecialFolders::UserFolder;
+    }
+    else if (wcsstr(name, L"OneDrive") != nullptr ||
+        wcsstr(name, L"Microsoft OneDrive") != nullptr ||
+        wcsstr(name, L"ONEDRIVE") != nullptr) {
+        return SpecialFolders::OneDrive;
+    }
+    else if (wcsstr(name, L_LIARIES)) {
+        return SpecialFolders::Libraries;
+    }
+    else if (wcsstr(name, L_LINUX)) {
+        return SpecialFolders::Linux;
+    }
+
+    return SpecialFolders::UnknownFolder;  // 如果没有匹配到任何特殊文件夹，返回未知
+}
+
+IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
+{
+    IconItem item;
+    if (!filePath || wcslen(filePath) == 0) {
+        return item;
+    }
+    PathType pathType = CSystemApi::GetPathType(filePath);
+    if (pathType == PathType::InvalidPath) {
+        return item;
+    }
+
+    LPITEMIDLIST pidl = nullptr;
+    HRESULT hr;
+    // 直接解析路径为PIDL
+    hr = SHParseDisplayName((PCWSTR)filePath, nullptr, &pidl, 0, nullptr);
+    
+    // 处理文件路径逻辑...
+    std::wstring widePath(filePath);
+    std::string narrowPath(widePath.begin(), widePath.end());
+    item.path = narrowPath;
+
+    
+    
+    item.pidl_p = pidl;
+
+    // 提取文件名
+    size_t lastSlash = narrowPath.find_last_of("\\/");
+    item.name = (lastSlash != std::string::npos) ? narrowPath.substr(lastSlash + 1) : narrowPath;
+    item.specialFolder = getFolderTypeFromName(filePath);
+
+    return item;
+}
 //寻找桌面图标窗口
 BOOL CALLBACK CSystemApi::FindSysListView32Internal(HWND hwnd, LPARAM lparam)
 {
@@ -297,58 +383,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
     return iconItems;
 }
 
-const wchar_t* L_MY_COMPUTER(TEXT(MY_COMPUTER_CLS));
 
-const wchar_t* L_RECYCLE_BIN(TEXT(RECYCLE_BIN_CLS));
-const wchar_t* L_CONTROL_PANEL(TEXT(CONTROL_PANEL_CLS));
-const wchar_t* L_CONTROL_PANEL2(TEXT(CONTROL_PANEL_CLS2));
-const wchar_t* L_NETWORK(TEXT(NETWORK_CLS));
-const wchar_t* L_USER_FOLDER(TEXT(USER_FOLDER_CLS));
-const wchar_t* L_LIARIES(TEXT(LIBRARIES_CLS));
-const wchar_t* L_LINUX(TEXT(LINUX_CLS));
-SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
-{
-    if (!name) return SpecialFolders::Empty;
-
-    if (wcsstr(name, L_MY_COMPUTER)) {
-        return SpecialFolders::ThisPc;
-    }
-    else if (wcsstr(name, L_RECYCLE_BIN)) {
-        return SpecialFolders::RecycleBin;
-    }
-    else if (wcsstr(name, L_CONTROL_PANEL)) {
-        return SpecialFolders::ControlPanel;
-    }
-    else if (wcsstr(name, L_CONTROL_PANEL2)) {
-        return SpecialFolders::ControlPanel2;
-    }
-    else if (wcsstr(name, L_NETWORK)) {
-        return SpecialFolders::Network;
-    }else if (wcsstr(name, L"\\Desktop\\") != nullptr ||
-        wcsstr(name, L"\\桌面\\") != nullptr ||
-        (wcsstr(name, L"\\Users\\") != nullptr && wcsstr(name, L"\\Desktop") != nullptr) ||
-        (wcsstr(name, L"\\用户\\") != nullptr && wcsstr(name, L"\\桌面") != nullptr)) {
-        return SpecialFolders::UnknownFolder;
-    }
-    else if (wcsstr(name, L"\\Users\\") != nullptr ||
-        wcsstr(name, L"C:\\Users") != nullptr ||
-        wcsstr(name, L"用户") != nullptr) {
-        return SpecialFolders::UserFolder;
-    }
-    else if (wcsstr(name, L"OneDrive") != nullptr ||
-        wcsstr(name, L"Microsoft OneDrive") != nullptr ||
-        wcsstr(name, L"ONEDRIVE") != nullptr) {
-        return SpecialFolders::OneDrive;
-    }
-    else if (wcsstr(name, L_LIARIES)) {
-        return SpecialFolders::Libraries;
-    }
-    else if (wcsstr(name, L_LINUX)) {
-        return SpecialFolders::Linux;
-    }
-
-    return SpecialFolders::UnknownFolder;  // 如果没有匹配到任何特殊文件夹，返回未知
-}
 const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
 {
     // 加载 DLL 文件

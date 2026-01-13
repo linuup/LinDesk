@@ -17,6 +17,7 @@
 #include "ListItem.h"
 #include "RightMenu.h"
 #include "DesktopIconsMonitor.h"
+#include "DirectoryMonitor.h"
 #include <SelectArea.h>
 
 class ListView: public QWidget {
@@ -88,7 +89,7 @@ public:
 	/// 监听桌面系统文件注册表
 	/// </summary>
 	void startListeningSpecialIcon();
-
+	
 	QVector<ListItem*> items() {
 		return m_items;
 	}
@@ -101,6 +102,11 @@ public:
 	// 获取当前选中的项
 	ListItem* selectedItem() const;
 
+	/// <summary>
+	/// 生成Item的坐标
+	/// </summary>
+	/// <returns></returns>
+	QPoint generateItemPosition();
 	// 清除所有选中的项
 	void clearSelection();
 
@@ -152,8 +158,76 @@ public:
 	/// </summary>
 	/// <param name="rect"></param>
 	void refreshCheckedItem(QRect rect);
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="path"></param>
+	/// <returns></returns>
+	ListItem* selectItemByPath(const QString path);
 	void drawHoverEffect();
 	void clearCheckedItem();
+
+private slots:
+	void onFileChanged(const DirectoryMonitor::FileEvent& event, const QString& path) {
+		qDebug() << "[DirectoryMonitor]-File Changed:" << path;
+		QString typeStr;
+		switch (event.type) {
+			case DirectoryMonitor::FileCreated: {
+				typeStr = "Create";
+				ListItem* item = new ListItem(path, this);
+				this->addItem(item);
+
+				break;
+			}
+			case DirectoryMonitor::FileModified: { 
+				typeStr = "Modify"; 
+				break;
+			}
+			case DirectoryMonitor::FileDeleted: {
+				typeStr = "Delete";
+				break;
+			}
+			case DirectoryMonitor::FileRenamed: {
+				typeStr = "ReName";
+				break;
+			}
+
+		}
+		
+		
+
+		qDebug() << QString("[%1] %2: %3 (Size: %4 Byte)")
+			.arg(event.timestamp.toString("hh:mm:ss.zzz"))
+			.arg(typeStr)
+			.arg(event.filePath)
+			.arg(event.fileSize);
+
+		
+		
+	}
+	void onDirectoryCreated(const QString& path) {
+		qDebug() << "[DirectoryMonitor]-Directory Created:" << path;
+		ListItem* item = new ListItem(path, this);
+		this->addItem(item);
+	}
+
+	void onDirectoryChanged(const QString& path) {
+		qDebug() << "[DirectoryMonitor]-Directory Changed:" << path;
+
+	}
+	void onDirectoryRemoved(const QString& path) {
+		ListItem* item = selectItemByPath(path);
+		if (item) {
+			qDebug() << "[DirectoryMonitor]-Directory Removed:" << path;
+			qDebug() << item->objectName();
+			
+		}
+	}
+	
+
+	void onError(const QString& error) {
+		qDebug() << "Error DirectoryMonitor:" << error;
+	}
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
 	void contextMenuEvent(QContextMenuEvent* event) override; //右键菜单事件

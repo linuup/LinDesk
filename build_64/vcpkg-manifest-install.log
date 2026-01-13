@@ -1,0 +1,37 @@
+Detecting compiler hash for triplet x64-windows...
+Compiler found: C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.39.33519/bin/Hostx64/x64/cl.exe
+The following packages will be built and installed:
+    gtest:x64-windows@1.15.2
+  * vcpkg-cmake:x64-windows@2024-04-23
+  * vcpkg-cmake-config:x64-windows@2024-05-23
+    wil:x64-windows@2024-01-22
+Additional packages (*) will be modified to complete this operation.
+Restored 4 package(s) from C:\Users\zijix\AppData\Local\vcpkg\archives in 295 ms. Use --debug to see more details.
+Installing 1/4 vcpkg-cmake-config:x64-windows@2024-05-23...
+Elapsed time to handle vcpkg-cmake-config:x64-windows: 4.57 ms
+vcpkg-cmake-config:x64-windows package ABI: 8aa742c4cfc6b1c406761301ac1c5bdc96998f393c5f56a8db9857a1c3bd2ca7
+Installing 2/4 vcpkg-cmake:x64-windows@2024-04-23...
+Elapsed time to handle vcpkg-cmake:x64-windows: 4.01 ms
+vcpkg-cmake:x64-windows package ABI: e82657d98787ed285eb425b9b12e8b67370fb26e5522755b12f7f023b49b941e
+Installing 3/4 gtest:x64-windows@1.15.2...
+Elapsed time to handle gtest:x64-windows: 23.6 ms
+gtest:x64-windows package ABI: 5efa622c40facfb64783e7e3c02fc32187d8cd8985f4b56cb998cfd22af9a660
+Installing 4/4 wil:x64-windows@2024-01-22...
+Elapsed time to handle wil:x64-windows: 9.27 ms
+wil:x64-windows package ABI: f31dcf23de4aaea2f7b903a57b7398a109be914c0d955016a647acfcf8d1be0b
+Total install time: 41.5 ms
+The package gtest is compatible with built-in CMake targets:
+
+    enable_testing()
+    
+    find_package(GTest CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+    
+    add_test(AllTestsInMain main)
+
+wil provides CMake targets:
+
+  # this is heuristically generated, and may not be correct
+  find_package(wil CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE WIL::WIL)
+

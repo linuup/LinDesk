@@ -19,7 +19,6 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
         }
         //Get object Menu interface
         m_contextMenu = IContextMenuFromIShellFolder(&pidl, m_pShellFolder);
-
     }
 }
 
@@ -269,14 +268,42 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_EXPLORE | CMF_NORMAL);
+        CMF_NORMAL | CMF_EXPLORE);
 
     if (operationType == OperationType::BackGround) {
         RemoveTencentDeskGoMenu(hMenu.get()); 
     }
+    
 
-    UINT cmd =
-        TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
+
+    //int itemCount = GetMenuItemCount(hMenu.get());
+    //for (int i = 0; i < itemCount; i++) {
+    //    wchar_t buffer[256];
+    //    MENUITEMINFO mii = { sizeof(MENUITEMINFO) };
+    //    mii.fMask = MIIM_STRING | MIIM_ID;
+    //    mii.dwTypeData = buffer;
+    //    mii.cch = 256;
+
+    //    if (GetMenuItemInfo(hMenu.get(), i, TRUE, &mii)) {
+    //        if (wcsstr(buffer, L"重命名") != nullptr ||
+    //            wcsstr(buffer, L"rename") != nullptr) {
+    //            // 找到重命名项，使用其命令ID
+    //            UINT cmdID = mii.wID;
+
+    //            CMINVOKECOMMANDINFOEX invokeInfo = { 0 };
+    //            invokeInfo.cbSize = sizeof(CMINVOKECOMMANDINFOEX);
+    //            invokeInfo.fMask = CMIC_MASK_ASYNCOK | CMIC_MASK_PTINVOKE;
+    //            invokeInfo.hwnd = hwnd;
+    //            invokeInfo.lpVerb = MAKEINTRESOURCEA(cmdID - 1);  // 减去基础偏移
+    //            invokeInfo.nShow = SW_SHOWNORMAL;
+    //            invokeInfo.ptInvoke = *pt;
+
+    //            m_contextMenu->InvokeCommand((LPCMINVOKECOMMANDINFO)&invokeInfo);
+    //        }
+    //    }
+    //}
+
+    UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
     if (cmd == 0)
     {
         return;

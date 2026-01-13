@@ -46,9 +46,15 @@ struct IconItem
 {
     std::string name;
     std::string path;
-    POINT position = {};
-    LPITEMIDLIST pidl_p;
-	SpecialFolders specialFolder = SpecialFolders::Empty;
+    POINT position = { 0, 0 };
+    LPITEMIDLIST pidl_p = nullptr;  // 在定义处直接初始化为nullptr
+    SpecialFolders specialFolder = SpecialFolders::Empty;
+
+    // 可以添加构造函数确保正确初始化
+    IconItem() : pidl_p(nullptr), specialFolder(SpecialFolders::Empty) {
+        position.x = 0;
+        position.y = 0;
+    }
 };
 //  右键基本操作
 enum File_RightMenu_Operations {
@@ -72,6 +78,7 @@ public:
 	CSystemApi(void);
     ~CSystemApi();
 
+    static IconItem CreateIconItem(const wchar_t* filePath);
     /*
     * 是不是快捷方式
     *
@@ -144,7 +151,7 @@ private:
     //读取桌面图标名称和坐标
     void GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize);
 	//获取pidl类型
-    SpecialFolders getFolderTypeFromName(const wchar_t* name);
+    static SpecialFolders getFolderTypeFromName(const wchar_t* name);
 };
 
 /**

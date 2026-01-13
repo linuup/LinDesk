@@ -42,6 +42,62 @@ ListItem::ListItem(QWidget* parent)
 	textLabel->setStyleSheet("color: white; background: transparent;");
 }
 
+ListItem::ListItem(const QString& path, QWidget* parent)
+	: QWidget(parent)
+	, m_itemSize(76, 78)
+	, m_itemPos(0, 0)
+	, m_iconWidget(nullptr)
+	, textLabel(nullptr)
+{
+	this->setItemSize(76, 78);
+	
+	setParent(parent);
+	this->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
+	
+
+	// 设置无边框窗口
+	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
+
+	// 设置透明背景
+	setAttribute(Qt::WA_TranslucentBackground);
+
+	// 设置透明并允许透过窗口看到后面的内容
+	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
+	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
+	//setStyleSheet("background-color:rgb(25,255,255);");
+	setAttribute(Qt::WA_TransparentForMouseEvents);
+
+	// 创建阴影滤镜实现描边效果
+	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
+
+	shadowEffect->setBlurRadius(5);           // 增加模糊半径，让效果更柔和
+	shadowEffect->setColor(QColor(0, 0, 0, 200)); // 使用更深的黑色，增加不透明度
+	shadowEffect->setOffset(-1, 1);              // 增加偏移量，让描边更明显
+
+
+
+	textLabel = new QLabel(this);
+	textLabel->setGraphicsEffect(shadowEffect);
+
+
+	// 设置微软雅黑字体
+	QFont yaheiFont;
+	yaheiFont.setFamily("Microsoft YaHei");
+	yaheiFont.setPointSize(10);
+	yaheiFont.setWeight(QFont::ExtraLight);
+	//textLabel->setFont(yaheiFont);
+
+	textLabel->setStyleSheet("color: white; background: transparent;");
+	QString tmp = path;
+	tmp = tmp.replace('/', '\\');
+	ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(tmp.toStdWString().c_str()));
+	setItemData(*data);
+	initData();
+	updateLocationInfo(QPoint(0, 0));
+	show();
+
+}
+
 ListItem::~ListItem()
 {
 }

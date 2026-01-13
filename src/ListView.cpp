@@ -1,6 +1,7 @@
 ﻿#include "ListView.h"
 #include <QPushButton>
 #include <QtMath>
+
 // 静态成员初始化
 ListView* ListView::m_instance = nullptr;
 
@@ -24,6 +25,19 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
 
     monitor = new DesktopIconsMonitor(this);
     startListeningSpecialIcon();
+
+    DirectoryMonitor *m_monitor = new DirectoryMonitor(this);
+    
+    // 连接信号
+    connect(m_monitor, &DirectoryMonitor::fileChanged,this, &ListView::onFileChanged);
+    connect(m_monitor, &DirectoryMonitor::directoryChanged,this, &ListView::onDirectoryChanged);
+    connect(m_monitor, &DirectoryMonitor::directoryCreated,this, &ListView::onDirectoryCreated);
+    connect(m_monitor, &DirectoryMonitor::directoryRemoved,this, &ListView::onDirectoryRemoved);
+    connect(m_monitor, &DirectoryMonitor::errorOccurred,this, &ListView::onError);
+
+    m_monitor->setDebounceInterval(800);
+    m_monitor->addWatchPath("D:/Desktop/", false);
+    m_monitor->start();
 
     rightMenu = RightMenu::getInstance();
     rightMenu->initializeCustomMenu();
@@ -77,6 +91,17 @@ void ListView::startListeningSpecialIcon()
 ListView::~ListView() {
     // 清理 ListItem 对象
     //qDeleteAll(m_listItems);
+}
+ListItem* ListView::selectItemByPath(const QString path)
+{
+    for (auto it = m_allItems.begin(); it != m_allItems.end(); it++) {
+        ListItem* item = *it;
+        auto a = item->windowsFilePath();
+        if (path == a) {
+            return item;
+        }
+    }
+    return nullptr;
 }
 void ListView::clearCheckedItem()
 {
@@ -435,7 +460,8 @@ void ListView::sortByName(bool ascending)
 
 void ListView::addItem(ListItem* item)
 {
-
+    m_items.push_back(item);
+    m_allItems.push_back(item);
 }
 
 void ListView::setSelectedItem(ListItem* item)
@@ -445,6 +471,21 @@ void ListView::setSelectedItem(ListItem* item)
 ListItem* ListView::selectedItem() const
 {
     return nullptr;
+}
+
+/// <summary>
+/// 生成规则
+/// 1.unGrid模式
+/// UI创建Item,直接提供鼠标右键坐标
+/// 非UI创建，使用Grid创建规则
+/// 2.Grid模式
+/// 查询格子布局每个区域是否有文件存在，如果不存在检索空格子，使用第一个格子坐标
+/// </summary>
+/// <returns></returns>
+QPoint ListView::generateItemPosition()
+{
+    
+    return QPoint();
 }
 
 void ListView::clearSelection()
