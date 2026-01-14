@@ -98,6 +98,8 @@ public:
 	// 添加一个 ListItem
 	void addItem(ListItem* item);
 
+	void removeItem(ListItem* item);
+
 	// 设置选中的项
 	void setSelectedItem(ListItem* item);
 
@@ -187,18 +189,12 @@ protected:
 	void mousePressEvent(QMouseEvent* event) override;
 	void mouseMoveEvent(QMouseEvent* event) override;
 	void mouseReleaseEvent(QMouseEvent* event) override;
-
-	
 	void enterEvent(QEvent* event) override;
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-	bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override {
-#else
 	bool nativeEvent(const QByteArray & eventType, void* message, long* result) override {
-#endif
 		MSG* msg = static_cast<MSG*>(message);
 
-		// 处理自定义的Shell通知消息s
+		// 处理自定义的Shell通知消息
 		if (msg->message == WM_USER + 52) {
 			handleShellNotification(msg->wParam, msg->lParam);
 			if (result) *result = 0;
@@ -224,37 +220,85 @@ protected:
 			SHChangeNotification_Unlock(hNotifyLock);
 		}
 	}
-
+	// Handle shell events
 	void processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl) {
-		QString eventStr;
-		QString pathInfo;
-
+		FileSystemEvent eventDescription;
+		QString filePath;
+		ListItem* item;
+		wchar_t path[MAX_PATH] = { 0 };
+		// Extract file path from PIDL
 		if (ppidl && ppidl[0]) {
-			wchar_t path[MAX_PATH] = { 0 };
 			if (SHGetPathFromIDListW(ppidl[0], path)) {
-				pathInfo = QString::fromWCharArray(path);
+				filePath = QString::fromWCharArray(path);
 			}
 		}
-
+		qDebug() << filePath;
+		// Map event codes to descriptions
 		switch (lEvent) {
+		case SHCNE_RENAMEITEM:
+			eventDescription = FileSystemEvent::FileRenamed;
+			break;
 		case SHCNE_CREATE:
-			eventStr = QString("File created: %1").arg(pathInfo);
+			eventDescription = FileSystemEvent::FileCreated;
+			item = new ListItem(filePath, this);
+			this->addItem(item);
 			break;
 		case SHCNE_DELETE:
-			eventStr = QString("File deleted: %1").arg(pathInfo);
+			eventDescription = FileSystemEvent::FileDeleted;
+			item = selectItemByPath(filePath);
+			this->removeItem(item);
 			break;
-		case SHCNE_RENAMEITEM:
-			eventStr = QString("File renamed: %1").arg(pathInfo);
+		case SHCNE_MKDIR:
+			eventDescription = FileSystemEvent::DirectoryCreated;
+			item = new ListItem(filePath, this);
+			this->addItem(item);
 			break;
-			// ... 其他事件处理
+		case SHCNE_RMDIR:
+			eventDescription = FileSystemEvent::DirectoryDeleted;
+			item = selectItemByPath(filePath);
+			this->removeItem(item);
+			break;
+		case SHCNE_RENAMEFOLDER:
+			eventDescription = FileSystemEvent::DirectoryRenamed;
+			break;
+		case SHCNE_UPDATEITEM:
+			eventDescription = FileSystemEvent::FileUpdated;
+			break;
+		case SHCNE_UPDATEDIR:
+			eventDescription = FileSystemEvent::DirectoryUpdated;
+			break;
+		case SHCNE_ATTRIBUTES:
+			eventDescription = FileSystemEvent::FileAttributesChanged;
+			break;
+		case SHCNE_MEDIAREMOVED:
+			eventDescription = FileSystemEvent::MediaRemoved;
+			break;
+		case SHCNE_DRIVEADD:
+			eventDescription = FileSystemEvent::DriveAdded;
+			break;
+		case SHCNE_DRIVEREMOVED:
+			eventDescription = FileSystemEvent::DriveRemoved;
+			break;
+		case SHCNE_ASSOCCHANGED:
+			eventDescription = FileSystemEvent::FileAssociationChanged;
+			break;
+		case SHCNE_SERVERDISCONNECT:
+			eventDescription = FileSystemEvent::ServerDisconnected;
+			break;
+		default:
+			eventDescription = FileSystemEvent(0);
 		}
 
-		if (!eventStr.isEmpty()) {
-			qDebug() << QDateTime::currentDateTime().toString("[hh:mm:ss]") << eventStr;
+		// Log the event
+		QString timestamp = QDateTime::currentDateTime().toString("[hh:mm:ss.zzz]");
+		QString logMessage = QString("%1 %2").arg(timestamp).arg(m_deskMonitor->eventToString(eventDescription));
+
+		if (!filePath.isEmpty()) {
+			logMessage += QString(": %1").arg(filePath);
 		}
+
+		qDebug() << "[Desktop Folder Monitor]" << logMessage << QDateTime::currentDateTime();
 	}
-
-
 
 	//signals:
 	//	void itemSelected(ListItem* item);
@@ -284,10 +328,10 @@ private:
 	bool m_isDragging = false;  // 是否正在拖动
 	bool m_isSelecting = false;  // 是否正在拖拽选择
 	QPoint m_dragOffset;	//拖拽偏移量
-	QPoint m_originalPos; // 记录原始位置，用于取消拖动
+	QPoint m_originalPos; // 记录原始位置，用于取消拖动s
 
 	QPoint m_startPos;     // 鼠标点击开始时的位置
 
 	DesktopIconsMonitor* monitor;   //Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel
-
+	DirectoryMonitor* m_deskMonitor;
 };

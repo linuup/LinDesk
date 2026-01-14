@@ -100,6 +100,19 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 
 ListItem::~ListItem()
 {
+	// 2. 删除所有子控件
+	if (m_iconWidget) {
+		delete m_iconWidget;
+		m_iconWidget = nullptr;
+	}
+
+	if (textLabel) {
+		delete textLabel;
+		textLabel = nullptr;
+	}
+
+	// 4. 立即删除自己
+	QWidget::close();  // 关闭窗口
 }
 
 

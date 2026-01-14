@@ -317,12 +317,36 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         HRESULT hr = m_contextMenu->GetCommandString(cmd - MIN_SHELL_MENU_ID, GCS_VERB, nullptr,
             reinterpret_cast<LPSTR>(verb), static_cast<UINT>(std::size(verb)));
         bool handled = false;
-        wprintf_s(&verb[0]);
         // Pass the menu back to the caller to give it the chance to handle it.
-        //if (SUCCEEDED(hr))
-        //{
-        //    handled = m_handler->HandleShellMenuItem(m_pidlParent.Raw(), m_pidlItems, verb);
-        //}
+        if (SUCCEEDED(hr))
+        {
+            // 使用安全的比较函数
+            auto compareVerb = [](const TCHAR* verb, const TCHAR* target) -> bool {
+                return _wcsicmp(verb, target) == 0;  // 不区分大小写的宽字符比较
+            };
+
+            if (verb == L"open")
+            {
+                handled = true;
+            }
+            else if (verb == L"rename")
+            {
+                handled = true;
+            }
+            else if (compareVerb(verb,L"copy"))
+            {
+                handled = true;
+            }
+            else if (verb == L"cut")
+            {
+
+                handled = true;
+            }else if (verb == L"delete")
+            {
+                handled = true;
+            }
+
+        }
 
         //auto viewMenus = BuildViewsMenu();
 

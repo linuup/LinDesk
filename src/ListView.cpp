@@ -26,8 +26,8 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     monitor = new DesktopIconsMonitor(this);
     startListeningSpecialIcon();
 
-    DirectoryMonitor* m_monitor = new DirectoryMonitor(HWND(this->winId()), this);
-    //m_monitor->startMonitoring();
+    m_deskMonitor = new DirectoryMonitor(reinterpret_cast<HWND>(winId()),false, this);
+    m_deskMonitor->startListening();
     //m_monitor->setDebounceInterval(800);
     //m_monitor->addWatchPath("D:/Desktop/", false);
     //m_monitor->start();
@@ -58,26 +58,8 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
         loadIconLayer();
         update();
         });
-
-    SHChangeNotifyEntry entry = { nullptr, TRUE };  // 监听整个系统
-
-    HRESULT hr = SHChangeNotifyRegister(
-        reinterpret_cast<HWND>(winId()),  // 使用Qt窗口的句柄
-        SHCNRF_ShellLevel | SHCNRF_NewDelivery,
-        SHCNE_RENAMEITEM | SHCNE_CREATE | SHCNE_DELETE |
-        SHCNE_MKDIR | SHCNE_RMDIR | SHCNE_RENAMEFOLDER |
-        SHCNE_UPDATEITEM | SHCNE_UPDATEDIR | SHCNE_ATTRIBUTES,
-        WM_USER + 52,  // 自定义消息
-        1,
-        &entry
-    );
-
-    if (SUCCEEDED(hr)) {
-        qDebug() << "Shell notifications registered successfully";
-    }
-    else {
-        qDebug() << "Failed to register shell notifications";
-    }
+    
+    
 
 }
 void ListView::startListeningSpecialIcon()
@@ -107,7 +89,7 @@ ListItem* ListView::selectItemByPath(const QString path)
 {
     for (auto it = m_allItems.begin(); it != m_allItems.end(); it++) {
         ListItem* item = *it;
-        auto a = item->windowsFilePath();
+        auto a = item->filePath();
         if (path == a) {
             return item;
         }
@@ -117,7 +99,10 @@ ListItem* ListView::selectItemByPath(const QString path)
 void ListView::clearCheckedItem()
 {
     for (auto* item : this->items()) {
-        item->unCheckSelf();
+        if (item) {
+            item->unCheckSelf();
+        }
+        
     }
     m_selectedItems.clear();
 }
@@ -129,6 +114,9 @@ void ListView::refreshCheckedItem(QRect rect)
     // 遍历所有item，检查与选择矩形的相交关系
 
     for (auto* item : items) {
+        if (!item) {
+            continue;
+        }
         // 获取item的矩形区域
         QRect itemRect = item->getChooseItemRect(); // 如果是QRectF需要转换
 
@@ -178,6 +166,9 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
         //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
         for (auto it = items.begin(); it != items.end(); it++)
         {
+            if (!it) {
+                continue;
+            }
             ListItem* item = *it;
             QRect itemRect = item->getItemRect();
             if (item->type() == ObjectType::Empty_ObjectType) {
@@ -212,6 +203,9 @@ void ListView::mousePressEvent(QMouseEvent* event)
         //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
         for (auto it = items.begin(); it != items.end(); it++)
         {
+            if (!it) {
+                continue;
+            }
             ListItem* item = *it;
             QRect itemRect = item->getItemRect();
             if (item->type() == ObjectType::Empty_ObjectType) {
@@ -308,6 +302,7 @@ std::vector<ListItemData> ListView::loadAllItemsData()
     CSystemApi c;
     std::vector<IconItem> items = c.GetDesktopPIDLItems();
     for (const IconItem item : items) {
+        
         ListItemData* data = new ListItemData(item);
         ////data.setIconItem(item);
         allItemsData.push_back(*data);
@@ -476,6 +471,16 @@ void ListView::addItem(ListItem* item)
     m_allItems.push_back(item);
 }
 
+void ListView::removeItem(ListItem* item)
+{
+    if (item) {
+        item->hide();
+        item->deleteLater();
+        item = nullptr;
+    }
+    
+}
+
 void ListView::setSelectedItem(ListItem* item)
 {
 }
@@ -518,39 +523,4 @@ bool ListView::isMultiSelection() const
 {
     return false;
 }
-QString eventTypeToString(LONG lEvent) {
-    QString eventStr;
-
-    // 检查每个可能的事件标志
-    if (lEvent & SHCNE_RENAMEITEM) eventStr += "RENAMEITEM|";
-    if (lEvent & SHCNE_CREATE) eventStr += "CREATE|";
-    if (lEvent & SHCNE_DELETE) eventStr += "DELETE|";
-    if (lEvent & SHCNE_MKDIR) eventStr += "MKDIR|";
-    if (lEvent & SHCNE_RMDIR) eventStr += "RMDIR|";
-    if (lEvent & SHCNE_MEDIAINSERTED) eventStr += "MEDIAINSERTED|";
-    if (lEvent & SHCNE_MEDIAREMOVED) eventStr += "MEDIAREMOVED|";
-    if (lEvent & SHCNE_DRIVEREMOVED) eventStr += "DRIVEREMOVED|";
-    if (lEvent & SHCNE_DRIVEADD) eventStr += "DRIVEADD|";
-    if (lEvent & SHCNE_NETSHARE) eventStr += "NETSHARE|";
-    if (lEvent & SHCNE_NETUNSHARE) eventStr += "NETUNSHARE|";
-    if (lEvent & SHCNE_ATTRIBUTES) eventStr += "ATTRIBUTES|";
-    if (lEvent & SHCNE_UPDATEDIR) eventStr += "UPDATEDIR|";
-    if (lEvent & SHCNE_UPDATEITEM) eventStr += "UPDATEITEM|";
-    if (lEvent & SHCNE_SERVERDISCONNECT) eventStr += "SERVERDISCONNECT|";
-    if (lEvent & SHCNE_UPDATEIMAGE) eventStr += "UPDATEIMAGE|";
-    if (lEvent & SHCNE_DRIVEADDGUI) eventStr += "DRIVEADDGUI|";
-    if (lEvent & SHCNE_RENAMEFOLDER) eventStr += "RENAMEFOLDER|";
-    if (lEvent & SHCNE_FREESPACE) eventStr += "FREESPACE|";
-
-    // 如果没有匹配的事件类型
-    if (eventStr.isEmpty()) {
-        eventStr = "UNKNOWN_EVENT(0x" + QString::number(lEvent, 16) + ")";
-    }
-    else {
-        // 移除末尾的'|'字符
-        eventStr.chop(1);
-    }
-    return eventStr;
-}
-
 
