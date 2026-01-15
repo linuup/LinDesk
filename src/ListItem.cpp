@@ -110,7 +110,7 @@ ListItem::~ListItem()
 		delete textLabel;
 		textLabel = nullptr;
 	}
-
+	this->isReady = false;
 	// 4. 立即删除自己
 	QWidget::close();  // 关闭窗口
 }
@@ -219,7 +219,9 @@ void ListItem::checkSelf()
 void ListItem::unCheckSelf()
 {
 	isSelected = false;
-	update();
+	if (this->isReady == true) {
+		update();
+	}
 }
 
 ListItemData ListItem::getItemData()

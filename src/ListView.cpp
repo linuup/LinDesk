@@ -89,22 +89,33 @@ ListItem* ListView::selectItemByPath(const QString path)
 {
     for (auto it = m_allItems.begin(); it != m_allItems.end(); it++) {
         ListItem* item = *it;
-        auto a = item->filePath();
-        if (path == a) {
-            return item;
+        if (item->isReady) {
+            if (path == item->filePath()) {
+                return item;
+            }
         }
     }
     return nullptr;
 }
 void ListView::clearCheckedItem()
 {
-    for (auto* item : this->items()) {
-        if (item) {
-            item->unCheckSelf();
+    auto& itemList = this->items();
+
+    // 使用迭代器遍历，允许在遍历时删除
+    for (auto it = itemList.begin(); it != itemList.end(); ) {
+        if (*it == nullptr) {
+            // 删除空指针，erase返回下一个有效迭代器
+            it = itemList.erase(it);
+            ++it;
+            continue;
+        }else if (*it) {
+            (*it)->unCheckSelf();
+            ++it;
         }
-        
     }
+
     m_selectedItems.clear();
+
 }
 
 void ListView::refreshCheckedItem(QRect rect)
@@ -473,11 +484,12 @@ void ListView::addItem(ListItem* item)
 
 void ListView::removeItem(ListItem* item)
 {
-    if (item) {
+    if (item->isReady) {
         item->hide();
         item->deleteLater();
         item = nullptr;
     }
+    update();
     
 }
 
