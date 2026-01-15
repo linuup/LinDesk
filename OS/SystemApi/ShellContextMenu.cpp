@@ -14,7 +14,7 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
         HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
         if (FAILED(hr))
         {
-            OutputDebugString(L"Failed to get the file's IContextMenu3 interface.");
+            OutputDebugString(L"Failed to get the file's IContextMenu interface.");
             return;
         }
         //Get object Menu interface
@@ -32,7 +32,7 @@ void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
     HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
     if (FAILED(hr))
     {
-        OutputDebugString(L"Failed to get the file's IContextMenu3 interface.");
+        OutputDebugString(L"Failed to get the file's IContextMenu interface.");
         return;
     }
     //Get object Menu interface
@@ -51,7 +51,7 @@ void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
     HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
     if (FAILED(hr))
     {
-        OutputDebugString(L"Failed to get the file's IContextMenu3 interface.");
+        OutputDebugString(L"Failed to get the file's IContextMenu interface.");
         return;
     }
     //Get object Menu interface
@@ -70,7 +70,7 @@ void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
     HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
     if (FAILED(hr))
     {
-        OutputDebugString(L"Failed to get the file's IContextMenu3 interface.");
+        OutputDebugString(L"Failed to get the file's IContextMenu interface.");
         return;
     }
     //Get object Menu interface
@@ -122,7 +122,7 @@ void ShellContextMenu::DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls) {
     operationType = OperationType::MultObject;
     unique_pidl_absolute pidlsf;
     // 获取上下文菜单
-    IContextMenu3* contextMenu = nullptr;
+    IContextMenu* contextMenu = nullptr;
     GetDesktop_IshellFolder();
     m_pDesktopFolder->GetUIObjectOf(nullptr, pidls.size(),
         (LPCITEMIDLIST*)pidls.data(), IID_IContextMenu, nullptr, (void**)&m_contextMenu);
@@ -138,11 +138,11 @@ bool ShellContextMenu::GetDesktop_IshellFolder()
 // It's possible for a folder to not provide any IContextMenu instance (for example, the Home folder
 // in Windows 11 doesn't provide any IContextMenu instance for the background menu). So, this method
 // may return null.
-wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::MaybeGetShellContextMenu(HWND hwnd) const
+wil::com_ptr_nothrow<IContextMenu> ShellContextMenu::MaybeGetShellContextMenu(HWND hwnd) const
 {
     //1.获取桌面的PIDL
     //2.获取绑定桌面的IShellFolder 接口
-    //3.获取IContextMenu3接口
+    //3.获取IContextMenu接口
     unique_pidl_absolute pidlDesktop;
     HRESULT hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));
     if (SUCCEEDED(hr))
@@ -153,11 +153,7 @@ wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::MaybeGetShellContextMenu(H
 
         if (SUCCEEDED(hr))
         {
-            // 1. 先获取基础的 IContextMenu
-
-            
-
-            wil::com_ptr_nothrow<IContextMenu3> contextMenu;
+            wil::com_ptr_nothrow<IContextMenu> contextMenu;
 
             hr = shellFolder->CreateViewObject(hwnd, IID_PPV_ARGS(&contextMenu));
 
@@ -241,7 +237,6 @@ void ShellContextMenu::RemoveTencentDeskGoMenu(HMENU hmenu)
 }
 
 void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flags flags) {
-    
     if(operationType == ShellContextMenu::OperationType::BackGround){
         m_contextMenu = MaybeGetShellContextMenu(hwnd);
     }
@@ -272,10 +267,8 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     // 创建 WindowSubclassWrapper 实例
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
-    /*m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE);*/
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+        CMF_NORMAL | CMF_EXPLORE);
 
     if (operationType == OperationType::BackGround) {
         RemoveTencentDeskGoMenu(hMenu.get()); 
@@ -336,7 +329,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             {
                 handled = true;
             }
-            else if (compareVerb(verb, L"rename"))
+            else if (verb == L"rename")
             {
                 handled = true;
             }
@@ -426,10 +419,10 @@ IShellFolder* ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
 }
 
 
-IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(LPITEMIDLIST* pidl, IShellFolder* pShellFolder)
+IContextMenu* ShellContextMenu::IContextMenuFromIShellFolder(LPITEMIDLIST* pidl, IShellFolder* pShellFolder)
 {
     LPCITEMIDLIST relativePIDL = nullptr;
-    IContextMenu3* pContextMenu = nullptr;
+    IContextMenu* pContextMenu = nullptr;
     if (pidl) {
         HRESULT hr = SHBindToParent(*pidl, IID_IShellFolder, (void**)&pShellFolder, &relativePIDL);
         if (FAILED(hr)) {
@@ -440,7 +433,7 @@ IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(LPITEMIDLIST* pidl
         if (FAILED(hr)) {
             WCHAR szErrMsg[512];
             FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, hr, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), szErrMsg, _countof(szErrMsg), NULL);
-            OutputDebugString(L"Get IContextMenu3* Fail");
+            OutputDebugString(L"Get IContextMenu* Fail");
             OutputDebugStringW(szErrMsg);
             return nullptr; // 或者 throw exception...
         }
@@ -448,10 +441,10 @@ IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(LPITEMIDLIST* pidl
     return pContextMenu;
 }
 
-IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(ITEMIDLIST *pidl, IShellFolder* pShellFolder)
+IContextMenu* ShellContextMenu::IContextMenuFromIShellFolder(ITEMIDLIST *pidl, IShellFolder* pShellFolder)
 {
     LPCITEMIDLIST relativePIDL = nullptr;
-    IContextMenu3* pContextMenu = nullptr;
+    IContextMenu* pContextMenu = nullptr;
     HRESULT hr = SHBindToParent(pidl, IID_IShellFolder, (void**)&pShellFolder, &relativePIDL);
     hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, reinterpret_cast<void**>(&pContextMenu));
     return pContextMenu;
@@ -486,7 +479,7 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
                 return result;
             }
         }
-        else if (auto contextMenu2 = m_contextMenu.try_query<IContextMenu3>())
+        else if (auto contextMenu2 = m_contextMenu.try_query<IContextMenu2>())
         {
             contextMenu2->HandleMenuMsg(msg, wParam, lParam);
         }

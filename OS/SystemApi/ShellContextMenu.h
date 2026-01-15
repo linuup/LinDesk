@@ -77,7 +77,7 @@ static const int MAX_SHELL_MENU_ID = 1000;
 /// 1.初始化 COM
 /// 2.获取对象的IShellFolder接口
 /// 2.获取对象的PIDL
-/// 4.通过PIDL获取IContextMenu3接口
+/// 4.通过PIDL获取IContextMenu接口
 /// 5.创建空的弹出式菜单：CreatePopupMenu
 /// 6.调用 QueryContextMenu 将上下文菜单项添加到弹出式菜单中
 /// 7.显示上下文菜单：TrackPopupMenuEx
@@ -165,7 +165,7 @@ public:
 private:
     OperationType operationType = OperationType::BackGround;
 
-    wil::com_ptr_nothrow<IContextMenu3> MaybeGetShellContextMenu(HWND hwnd) const;	//获取文件Shell上下文接口
+    wil::com_ptr_nothrow<IContextMenu> MaybeGetShellContextMenu(HWND hwnd) const;	//获取文件Shell上下文接口
 
     std::optional<std::string> MaybeGetFilesystemDirectory() const;		//获取执行菜单Shell时，结构体需要的路径
 
@@ -178,12 +178,12 @@ private:
     unique_pidl_absolute m_pidlParent;
     const std::vector<unique_pidl_child> m_pidlItems;
     //ShellContextMenuHandler* const m_handler;
-    wil::com_ptr_nothrow<IContextMenu3> m_contextMenu;
+    wil::com_ptr_nothrow<IContextMenu> m_contextMenu;
 
-    IContextMenu3* m_pContextMenu;
-    IContextMenu3* m_pFolderContextMenu;
-    IContextMenu3* m_pSpecialFolderContextMenu;
-    IContextMenu3* m_pDriveContextMenu;
+    IContextMenu* m_pContextMenu;
+    IContextMenu* m_pFolderContextMenu;
+    IContextMenu* m_pSpecialFolderContextMenu;
+    IContextMenu* m_pDriveContextMenu;
 
 
     // 获取桌面IShellFolder文件夹接口...
@@ -202,22 +202,22 @@ private:
     bool GetDesktop_IshellFolder();
 
     /// <summary>
-    /// 从IShellFolder获取IContextMenu3接口
+    /// 从IShellFolder获取IContextMenu接口
     /// PIDL转长指针,此函数需要PIDL对应的IShellFolder接口绑定转换
     /// </summary>
     /// <param name="pidl"></param>
     /// <param name="pShellFolder"></param>
     /// <returns></returns>
-    IContextMenu3* IContextMenuFromIShellFolder(LPITEMIDLIST* pidl, IShellFolder* pShellFolder);
+    IContextMenu* IContextMenuFromIShellFolder(LPITEMIDLIST* pidl, IShellFolder* pShellFolder);
     
     /// <summary>
-    /// 从IShellFolder获取IContextMenu3接口
+    /// 从IShellFolder获取IContextMenu接口
     /// PIDL转长指针,此函数需要PIDL对应的IShellFolder接口绑定转换
     /// </summary>
     /// <param name="pidl"></param>
     /// <param name="pShellFolder"></param>
     /// <returns></returns>
-    IContextMenu3* IContextMenuFromIShellFolder(ITEMIDLIST* pidl, IShellFolder* pShellFolder);
+    IContextMenu* IContextMenuFromIShellFolder(ITEMIDLIST* pidl, IShellFolder* pShellFolder);
     
 };
 DEFINE_ENUM_FLAG_OPERATORS(ShellContextMenu::Flags);
