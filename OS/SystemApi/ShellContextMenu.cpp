@@ -140,68 +140,36 @@ bool ShellContextMenu::GetDesktop_IshellFolder()
 // may return null.
 wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::MaybeGetShellContextMenu(HWND hwnd) const
 {
-    wil::com_ptr_nothrow<IContextMenu> contextMenu;
-    wil::com_ptr_nothrow<IShellFolder> shellFolder;
-    HRESULT hr = BindToIdl(m_pidlParent.get(), IID_PPV_ARGS(&shellFolder));
-    // 1. 先获取基础的 IContextMenu
-    hr = shellFolder->CreateViewObject(hwnd, IID_PPV_ARGS(&contextMenu));
-    if (FAILED(hr)) {
-        return nullptr;
-    }
-
-    // 2. 尝试升级到 IContextMenu3
-    wil::com_ptr_nothrow<IContextMenu3> contextMenu3;
-    hr = contextMenu->QueryInterface(IID_PPV_ARGS(&contextMenu3));
-
-    if (SUCCEEDED(hr)) {
-        return contextMenu3;
-    }
-    else {
-        // 可以尝试降级到 IContextMenu2
-        return nullptr;  // 或返回转换后的接口
-    }
-
     //1.获取桌面的PIDL
     //2.获取绑定桌面的IShellFolder 接口
-    //3.获取IContextMenu接口
-    //unique_pidl_absolute pidlDesktop;
-    //hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));
-    //if (SUCCEEDED(hr))
-    //{
-    //    // 获取 IShellFolder 接口
-    //    wil::com_ptr_nothrow<IShellFolder> shellFolder;
-    //    hr = BindToIdl(m_pidlParent.get(), IID_PPV_ARGS(&shellFolder));
+    //3.获取IContextMenu接口*/
+    unique_pidl_absolute pidlDesktop;
+    HRESULT hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));
+    if (SUCCEEDED(hr))
+    {
+        // 获取 IShellFolder 接口
+        wil::com_ptr_nothrow<IShellFolder> shellFolder;
+        wil::com_ptr_nothrow<IContextMenu> contextMenu;
+        hr = BindToIdl(m_pidlParent.get(), IID_PPV_ARGS(&shellFolder));
+        if (FAILED(hr))
+        {
+            return nullptr;
+        }
+        hr = shellFolder->CreateViewObject(hwnd, IID_PPV_ARGS(&contextMenu));
 
-    //    wil::com_ptr_nothrow<IContextMenu> contextMenu;
-
-    //    hr = shellFolder->CreateViewObject(hwnd, IID_PPV_ARGS(&contextMenu));
-
-    //    if (FAILED(hr))
-    //    {
-    //        return nullptr;
-    //    }
-    //    wil::com_ptr_nothrow<IContextMenu2> contextMenu2;
-    //    hr = contextMenu->QueryInterface(IID_PPV_ARGS(&contextMenu2));
-
-    //    if (SUCCEEDED(hr)) {
-    //        return contextMenu2;
-    //    }
-
-
-    //    if (SUCCEEDED(hr))
-    //    {
-    //        wil::com_ptr_nothrow<IContextMenu> contextMenu;
-
-    //        hr = shellFolder->CreateViewObject(hwnd, IID_PPV_ARGS(&contextMenu));
-
-    //        if (FAILED(hr))
-    //        {
-    //            return nullptr;
-    //        }
-    //        return contextMenu;
-    //    }
-    //}
-    //return nullptr;
+        if (FAILED(hr))
+        {
+            return nullptr;
+        }
+        wil::com_ptr_nothrow<IContextMenu3> contextMenu3;
+        hr = contextMenu->QueryInterface(IID_PPV_ARGS(&contextMenu3));
+        if (FAILED(hr))
+        {
+            return nullptr;
+        }
+        return contextMenu3;
+    }
+    return nullptr;
 }
 
 // Returns the parsing path for the current directory, but only if it's a filesystem path.
@@ -305,7 +273,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE);
+        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
 
     if (operationType == OperationType::BackGround) {
         RemoveTencentDeskGoMenu(hMenu.get()); 
