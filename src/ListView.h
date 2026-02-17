@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <QList>
 #include <QObject>
 #include <QPainter>
@@ -246,7 +246,9 @@ protected:
 		case SHCNE_DELETE:
 			eventDescription = FileSystemEvent::FileDeleted;
 			item = selectItemByPath(filePath);
-			this->removeItem(item);
+			if (item) {
+				this->removeItem(item);
+			}
 			break;
 		case SHCNE_MKDIR:
 			eventDescription = FileSystemEvent::DirectoryCreated;
@@ -256,7 +258,9 @@ protected:
 		case SHCNE_RMDIR:
 			eventDescription = FileSystemEvent::DirectoryDeleted;
 			item = selectItemByPath(filePath);
-			this->removeItem(item);
+			if (item) {
+				this->removeItem(item);
+			}
 			break;
 		case SHCNE_RENAMEFOLDER:
 			eventDescription = FileSystemEvent::DirectoryRenamed;

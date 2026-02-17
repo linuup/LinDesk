@@ -1,4 +1,4 @@
-﻿#include "ListItem.h"
+#include "ListItem.h"
 #include "ListView.h"
 #include <SysInfoUtil.h>
 class ListView;
@@ -243,6 +243,10 @@ void ListItem::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void ListItem::paintEvent(QPaintEvent* event) {
+    // 如果item不可见或未准备好，直接返回，不进行绘制
+    if (!this->isVisible() || !this->isReady) {
+        return;
+    }
 	//if (!event->region().intersects(rect())) {
 	//    return; // 跳过无关绘制
 	//}

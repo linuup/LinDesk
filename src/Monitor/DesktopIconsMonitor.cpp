@@ -14,6 +14,7 @@ static const QMap<QString, QString> KNOWN_DESKTOP_ICONS = {
     {"{59031a47-3f72-44a7-89c5-5595fe6b30ee}", "USER_FOLDER"},
     {"{018D5C66-4533-4307-9B53-224DE2ED1FE6}", "OneDrive"}
 };
+//Computer\HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel
 DesktopIconsMonitor::DesktopIconsMonitor(QObject* parent)
     : IRegistryListener("DesktopIconsMonitor", parent)
     , m_currentHive(HKEY_CURRENT_USER)

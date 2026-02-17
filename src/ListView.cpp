@@ -278,8 +278,8 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
     if (m_selectedItems.size() != 0) {
-        qDebug() << "ListView mouseReleaseEvent  Pos:" << event->pos();
-        qDebug() << "Selected Item" << m_selectedItems.size();
+        /*qDebug() << "ListView mouseReleaseEvent  Pos:" << event->pos();
+        qDebug() << "Selected Item" << m_selectedItems.size();*/
     }
 
     if (m_isDragging) {
@@ -484,12 +484,27 @@ void ListView::addItem(ListItem* item)
 
 void ListView::removeItem(ListItem* item)
 {
-    if (item->isReady) {
+    if (item && item->isReady) {
+        qDebug() << item->filePath();
+        // 从所有相关数组中移除item
+        m_items.removeOne(item);
+        m_allItems.removeOne(item);
+        m_selectedItems.removeOne(item);
+        
+        // 确保item被完全隐藏
+        item->setVisible(false);
         item->hide();
+        
+        // 设置父控件为nullptr，确保item不再受父控件管理
+        item->setParent(nullptr);
+        
+        item->isReady = false;
         item->deleteLater();
-        item = nullptr;
     }
+    
+    // 强制更新界面
     update();
+    repaint();
     
 }
 

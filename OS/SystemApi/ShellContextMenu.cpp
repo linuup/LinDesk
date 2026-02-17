@@ -1,4 +1,4 @@
-﻿
+
 #include "ShellContextMenu.h"
 
 void ShellContextMenu::DisplayDesktopContextMenu()
@@ -278,43 +278,12 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     if (operationType == OperationType::BackGround) {
         RemoveTencentDeskGoMenu(hMenu.get()); 
     }
-    
-
-
-    //int itemCount = GetMenuItemCount(hMenu.get());
-    //for (int i = 0; i < itemCount; i++) {
-    //    wchar_t buffer[256];
-    //    MENUITEMINFO mii = { sizeof(MENUITEMINFO) };
-    //    mii.fMask = MIIM_STRING | MIIM_ID;
-    //    mii.dwTypeData = buffer;
-    //    mii.cch = 256;
-
-    //    if (GetMenuItemInfo(hMenu.get(), i, TRUE, &mii)) {
-    //        if (wcsstr(buffer, L"重命名") != nullptr ||
-    //            wcsstr(buffer, L"rename") != nullptr) {
-    //            // 找到重命名项，使用其命令ID
-    //            UINT cmdID = mii.wID;
-
-    //            CMINVOKECOMMANDINFOEX invokeInfo = { 0 };
-    //            invokeInfo.cbSize = sizeof(CMINVOKECOMMANDINFOEX);
-    //            invokeInfo.fMask = CMIC_MASK_ASYNCOK | CMIC_MASK_PTINVOKE;
-    //            invokeInfo.hwnd = hwnd;
-    //            invokeInfo.lpVerb = MAKEINTRESOURCEA(cmdID - 1);  // 减去基础偏移
-    //            invokeInfo.nShow = SW_SHOWNORMAL;
-    //            invokeInfo.ptInvoke = *pt;
-
-    //            m_contextMenu->InvokeCommand((LPCMINVOKECOMMANDINFO)&invokeInfo);
-    //        }
-    //    }
-    //}
 
     UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
     if (cmd == 0)
     {
         return;
     }
-
-
 
     if (cmd >= MIN_SHELL_MENU_ID && cmd <= MAX_SHELL_MENU_ID)
     {
@@ -330,25 +299,26 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                 return _wcsicmp(verb, target) == 0;  // 不区分大小写的宽字符比较
             };
 
-            if (verb == L"open")
+            /*if (compareVerb(verb, L"open"))
             {
                 handled = true;
             }
-            else if (verb == L"rename")
+            else if (compareVerb(verb,L"rename"))
             {
                 handled = true;
             }
-            else if (compareVerb(verb,L"copy"))
+            else if (compareVerb(verb, L"copy"))
             {
                 handled = true;
             }
-            else if (verb == L"cut")
+            else if (compareVerb(verb, L"cut"))
             {
+            }else */
+            if (compareVerb(verb, L"delete"))
+            {
+                handled = false;
 
-                handled = true;
-            }else if (verb == L"delete")
-            {
-                handled = true;
+                //SendMessage(hwnd, WM_USER + 52, 0, 0);
             }
 
         }
