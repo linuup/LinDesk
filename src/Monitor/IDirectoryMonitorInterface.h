@@ -71,6 +71,9 @@ struct FileSystemEventInfo
     }
 };
 
+// 注册到 Qt 元对象系统，允许跨线程队列信号传递
+Q_DECLARE_METATYPE(FileSystemEventInfo)
+
 class IDirectoryMonitorListener: public IListenerInterface
 {
     Q_OBJECT

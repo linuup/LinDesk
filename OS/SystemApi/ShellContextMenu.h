@@ -164,7 +164,6 @@ public:
   
 private:
     OperationType operationType = OperationType::BackGround;
-    bool isDeleteOperation = false; // 删除操作标识
 
     wil::com_ptr_nothrow<IContextMenu3> MaybeGetShellContextMenu(HWND hwnd) const;	//获取文件Shell上下文接口
 

@@ -130,7 +130,7 @@ private:
 				m_icon = SysInfoUtil::SysFileIconByDLL(118, 256, "imageres.dll");
 			}
 			else {
-
+				//m_icon = SysInfoUtil::SysFileIconByDLL(0, 256, "shell32.dll");
 			}
 			return;
 		}
@@ -148,6 +148,10 @@ private:
 				//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
 				m_icon = SysInfoUtil::SysFileIconByDLL(4, "shell32.dll");
 			}
+		}
+		// 如果图标仍然为空（空白快捷方式等），使用默认空文件图标
+		if (m_icon.isNull()) {
+			m_icon = SysInfoUtil::SysFileIconByDLL(0, 256, "shell32.dll");
 		}
 	}
 	bool updatePropertiesFromPIDL() {

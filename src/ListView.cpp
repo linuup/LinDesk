@@ -1,6 +1,10 @@
 ﻿#include "ListView.h"
 #include <QPushButton>
 #include <QtMath>
+#include <QProcess>
+#include <QProcess>
+#include <QStandardPaths>
+#include "SystemApi/SystemApi.h"
 #include "Monitor/DirectoryMonitor.h"
 // 静态成员初始化
 ListView* ListView::m_instance = nullptr;
@@ -26,8 +30,30 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     monitor = new DesktopIconsMonitor(this);
     startListeningSpecialIcon();
 
-    m_deskMonitor = new DirectoryMonitor(reinterpret_cast<HWND>(winId()),false, this);
-    m_deskMonitor->startListening();
+    //m_deskMonitor = new DirectoryMonitor(reinterpret_cast<HWND>(winId()),false, this);
+    //m_deskMonitor->startListening();
+    
+    // 获取真实的桌面路径
+    QString desktopPath;
+    PWSTR path = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) {
+        desktopPath = QString::fromWCharArray(path);
+        CoTaskMemFree(path);
+    } else {
+        // 降级方案：使用QStandardPaths
+        desktopPath = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+    }
+    
+    qDebug() << "监控桌面路径:" << desktopPath;
+    
+    // 注册自定义类型，允许跨线程队列信号传递
+    qRegisterMetaType<FileSystemEventInfo>("FileSystemEventInfo");
+    
+    // 使用Lin目录监控器
+    m_linMonitor = new LinDirectoryMonitor(desktopPath, false, this);
+    connect(m_linMonitor, &LinDirectoryMonitor::fileSystemChanged, this, &ListView::onFileSystemChanged);
+    m_linMonitor->startListening();
+    
     //m_monitor->setDebounceInterval(800);
     //m_monitor->addWatchPath("D:/Desktop/", false);
     //m_monitor->start();
@@ -37,6 +63,9 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     rightMenu->setHWND((HWND)this->winId());
 
     this->initialize();
+
+    this->iconPosMode = IconPosMode::AlignIconToGrid;
+    this->m_lastRightClickPos = QPoint(-1, -1);
 
     this->loadIconLayer();
     this->raise();
@@ -58,9 +87,103 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
         loadIconLayer();
         update();
         });
-    
-    
 
+    QPushButton* openDesktopIconSettings = new QPushButton(this);
+    openDesktopIconSettings->setText("Desktop Icon Settings");
+    openDesktopIconSettings->move(600, 300);
+
+    // 连接按钮的点击信号到槽函数
+    connect(openDesktopIconSettings, &QPushButton::clicked, this, []() {
+        QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,5");
+        });
+
+
+}
+
+void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
+{
+    qDebug() << "updateSystemIconVisibility:" << clsid << "->" << (hidden ? "hiding" : "showing");
+    
+    // 规范化CLSID格式（移除可能存在的::前缀）
+    QString normalizedClsid = clsid;
+    normalizedClsid.replace("::", "");
+    
+    if (hidden) {
+        // 需要隐藏图标：从显示列表m_items中移除
+        for (auto it = m_items.begin(); it != m_items.end(); ) {
+            ListItem* item = *it;
+            if (item) {
+                QString itemClsid = item->getItemData().getCLSID();
+                if (itemClsid.replace("::", "") == normalizedClsid) {
+                    qDebug() << "Hiding item:" << item->baseName();
+                    item->hide(); // 隐藏控件
+                    it = m_items.erase(it); // 从显示列表中移除
+                    // 注意：不从m_allItems中移除，因为它是总列表
+                    continue; // 继续下一个循环或者直接返回，这里用continue
+                }
+            }
+            ++it;
+        }
+    }
+    else {
+        // 需要显示图标：检查是否已在显示列表中
+        bool alreadyVisible = false;
+        for (const auto& item : m_items) {
+             if (item) {
+                QString itemClsid = item->getItemData().getCLSID();
+                if (itemClsid.replace("::", "") == normalizedClsid) {
+                    alreadyVisible = true;
+                    break;
+                }
+             }
+        }
+        
+        if (!alreadyVisible) {
+            // 从隐藏列表或总列表中查找并添加到显示列表
+            // 首先检查m_hiddenIcons（专门存放系统图标的备用列表）
+            bool found = false;
+            for (auto* item : m_hiddenIcons) {
+                if (item) {
+                     QString itemClsid = item->getItemData().getCLSID();
+                     if (itemClsid.replace("::", "") == normalizedClsid) {
+                        qDebug() << "Restoring item from hidden icons:" << item->baseName();
+                        m_items.push_back(item);
+                        item->show();
+                        found = true;
+                        break;
+                     }
+                }
+            }
+            
+            // 如果在hiddenIcons没找到，尝试在allItems中找（作为兜底）
+            if (!found) {
+                for (auto* item : m_allItems) {
+                    if (item) {
+                         QString itemClsid = item->getItemData().getCLSID();
+                         if (itemClsid.replace("::", "") == normalizedClsid) {
+                            // 确保不重复添加
+                            if (!m_items.contains(item)) {
+                                qDebug() << "Restoring item from all items:" << item->baseName();
+                                m_items.push_back(item);
+                                item->show();
+                                found = true;
+                            }
+                            break;
+                         }
+                    }
+                }
+            }
+        }
+    }
+    
+    // 重新通过排序强制刷新顺序（系统图标通常有固定顺序，这里简单按当前规则重排）
+    // 如果需要保持特定顺序，可能需要更复杂的插入逻辑
+    //sortItems(m_sortType);
+    
+    // 重新布局和绘制
+    //loadIconLayer();
+    update();
+    repaint();
 }
 void ListView::startListeningSpecialIcon()
 {
@@ -77,9 +200,7 @@ void ListView::startListeningSpecialIcon()
     }
     // 连接信号
     connect(monitor, &DesktopIconsMonitor::iconVisibilityChanged,
-        [](const QString& clsid, bool hidden, const QString& name) {
-            qDebug() << "icon status:" << name << "->" << (hidden ? "hiddening" : "showing");
-        });
+        this, &ListView::updateSystemIconVisibility);
 }
 ListView::~ListView() {
     // 清理 ListItem 对象
@@ -140,10 +261,6 @@ void ListView::refreshCheckedItem(QRect rect)
 
 }
 
-
-
-
-
 void ListView::paintEvent(QPaintEvent* event)
 {
     QPainter painter(this);
@@ -173,6 +290,7 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 {
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
         auto rightClickPoint = mapToGlobal(event->pos());
+        this->m_lastRightClickPos = event->pos();
         auto items = this->items();
         //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
         for (auto it = items.begin(); it != items.end(); it++)
@@ -365,41 +483,36 @@ void ListView::initialize()
 //一旦超出窗口高度，切换到下一列，并重置纵向位置（y）为新的列开始位置。
 void ListView::loadIconLayer()
 {
-    // 行、列总数量
-    int row = 12;
-    int col = 24;
-    int rowSpacing = 8; // 每行之间的间距
-    int colSpacing = 8; // 每列之间的间距
-    int iconWidth = 76;  // 图标宽度
-    int iconHeight = 78; // 图标高度
-
     // 初始位置
-    int marginTop = 6;
-    int marginLeft = 2;
-    int Icon_X = marginLeft;   // 第一列的 X 坐标
-    int Icon_Y = marginTop;   // 第一行的 Y 坐标
+    int Icon_X = m_marginLeft;   // 第一列的 X 坐标
+    int Icon_Y = m_marginTop;   // 第一行的 Y 坐标
 
-    // 定义文件索引
-    int index = 0;
     //load UI Layout
     // 遍历列和行来布局图标
     for (auto it = m_items.begin(); it != m_items.end(); it++) {
         ListItem* item = *it;
         //qDebug() << item->baseName();
-        item->setItemSize(iconWidth, iconHeight);
+        item->setItemSize(m_iconWidth, m_iconHeight);
 
         item->initData();
-        item->updateLocationInfo(QPoint(Icon_X, Icon_Y));
-        item->move(Icon_X, Icon_Y);
-        item->show();
+        
+        // Only move if position changed
+        if (item->pos() != QPoint(Icon_X, Icon_Y)) {
+             item->updateLocationInfo(QPoint(Icon_X, Icon_Y));
+             item->move(Icon_X, Icon_Y);
+        }
+        
+        if (!item->isVisible()) {
+            item->show();
+        }
         // 更新 Y 坐标，增加图标高度和列间距
-        Icon_Y = Icon_Y + iconHeight + rowSpacing;
+        Icon_Y = Icon_Y + m_iconHeight + m_rowSpacing;
 
         // 如果超出窗口高度，切换到下一列，Y 坐标重置为顶部
-        if (Icon_Y + iconHeight > height()) {
+        if (Icon_Y + m_iconHeight > height()) {
             // 切换到下一列
-            Icon_X = Icon_X + iconWidth + colSpacing;
-            Icon_Y = marginTop;  // 重置 Y 坐标为顶部
+            Icon_X = Icon_X + m_iconWidth + m_colSpacing;
+            Icon_Y = m_marginTop;  // 重置 Y 坐标为顶部
         }
     }
 
@@ -478,8 +591,16 @@ void ListView::sortByName(bool ascending)
 
 void ListView::addItem(ListItem* item)
 {
+    if (!item) return;
+    
+    QPoint pos = generateItemPosition();
+    item->setItemSize(m_iconWidth, m_iconHeight);
+    item->updateLocationInfo(pos);
+    
     m_items.push_back(item);
     m_allItems.push_back(item);
+    
+    item->show();
 }
 
 void ListView::removeItem(ListItem* item)
@@ -528,8 +649,51 @@ ListItem* ListView::selectedItem() const
 /// <returns></returns>
 QPoint ListView::generateItemPosition()
 {
+    // 如果是由UI操作触发的（右键菜单新建），直接使用鼠标右键位置
+    if (m_lastRightClickPos != QPoint(-1, -1)) {
+        QPoint pos = m_lastRightClickPos;
+        // 重置 m_lastRightClickPos，防止非UI创建的文件也使用该坐标
+        m_lastRightClickPos = QPoint(-1, -1);
+        return pos;
+    }
 
-    return QPoint();
+    // Grid模式或非UI触发的UnGrid模式：寻找第一个可用的网格位置
+    int x = m_marginLeft;
+    int y = m_marginTop;
+
+    while (true) {
+        bool occupied = false;
+        QRect currentRect(x, y, m_iconWidth, m_iconHeight);
+
+        for (auto* item : m_items) {
+            if (item && item->isVisible()) {
+                // 检查网格区域是否被占用
+                // 这里使用简单的包含中心点的检查，或者矩形相交
+                if (currentRect.intersects(item->getItemRect())) {
+                    occupied = true;
+                    break;
+                }
+            }
+        }
+
+        if (!occupied) {
+            return QPoint(x, y);
+        }
+
+        // 移动到下一个网格
+        y += m_iconHeight + m_rowSpacing;
+        if (y + m_iconHeight > height()) {
+            y = m_marginTop;
+            x += m_iconWidth + m_colSpacing;
+        }
+
+        // 安全检查，防止无限循环（超出屏幕宽度）
+        if (x > width()) {
+            break;
+        }
+    }
+
+    return QPoint(0, 0); // 兜底返回
 }
 
 void ListView::clearSelection()
@@ -546,8 +710,401 @@ QVector<ListItem*> ListView::selectedItems() const
     return m_selectedItems;
 }
 
+
 bool ListView::isMultiSelection() const
 {
     return false;
 }
 
+bool ListView::nativeEvent(const QByteArray & eventType, void* message, long* result) {
+    MSG* msg = static_cast<MSG*>(message);
+
+    // 处理自定义的Shell通知消息
+    if (msg->message == WM_USER + 52) {
+        qDebug() << "Received received WM_SHELLNOTIFY (WM_USER + 52)";
+        handleShellNotification(msg->wParam, msg->lParam);
+        if (result) *result = 0;
+        return true;
+    }
+
+    return QWidget::nativeEvent(eventType, message, result);
+}
+
+void ListView::handleShellNotification(WPARAM wParam, LPARAM lParam) {
+    LPITEMIDLIST* ppidl = nullptr;
+    LONG lEvent = 0;
+
+    HANDLE hNotifyLock = SHChangeNotification_Lock(
+        reinterpret_cast<HANDLE>(wParam),
+        static_cast<DWORD>(lParam),
+        &ppidl,
+        &lEvent
+    );
+
+    if (hNotifyLock) {
+        //qDebug() << "SHChangeNotification_Lock success. Event ID:" << lEvent;
+        processShellEvent(lEvent, ppidl);
+        SHChangeNotification_Unlock(hNotifyLock);
+    } else {
+        qDebug() << "SHChangeNotification_Lock failed.";
+    }
+}
+
+void ListView::processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl) {
+    FileSystemEvent eventDescription;
+    QString filePath;
+    ListItem* item;
+    wchar_t path[MAX_PATH] = { 0 };
+    // Extract file path from PIDL
+    if (ppidl && ppidl[0]) {
+        if (SHGetPathFromIDListW(ppidl[0], path)) {
+            filePath = QString::fromWCharArray(path);
+            //qDebug() << "Event Path:" << filePath;
+        } else {
+            qDebug() << "SHGetPathFromIDListW failed for event:" << lEvent;
+        }
+    } else {
+        qDebug() << "PIDL is null for event:" << lEvent;
+    }
+    
+    //qDebug() << "Processing Event:" << lEvent << "Path:" << filePath;
+
+    // Map event codes to descriptions
+    switch (lEvent) {
+    case SHCNE_RENAMEITEM:
+        eventDescription = FileSystemEvent::FileRenamed;
+        {
+             wchar_t newPath[MAX_PATH] = { 0 };
+             QString newFilePath;
+             if (ppidl && ppidl[1] && SHGetPathFromIDListW(ppidl[1], newPath)) {
+                 newFilePath = QString::fromWCharArray(newPath);
+                 qDebug() << "Rename Event OldPath:" << filePath << " NewPath:" << newFilePath;
+             }
+             
+             item = selectItemByPath(filePath);
+             if (item) {
+                 // Check if new path is still on desktop
+                 // We can simply check if the parent directory is the same
+                 QFileInfo fileInfo(newFilePath);
+                 QFileInfo oldFileInfo(filePath);
+                 
+                 // If the new file path is valid and sits in the same directory (or we monitor recursive?)
+                 // DirectoryMonitor is recursive=false by default in ListView.cpp: new DirectoryMonitor(..., false, ...)
+                 // So we assume if it stays in the monitored directory, it's a rename.
+                 // If it moved out (e.g. to Recycle Bin), it might have a different path.
+                 // Actually, Recycle Bin path is complex.
+                 // A simple check: does the new file exist? 
+                 // And is it in the desktop folder?
+                 // Since we don't have the desktop path handy in a variable, we can compare parent paths.
+                 // If moved to Recycle Bin, the path usually changes to something like C:\$Recycle.Bin\...
+                 
+                 if (!newFilePath.isEmpty() && fileInfo.absolutePath() == oldFileInfo.absolutePath()) {
+                     // Rename within desktop
+                     qDebug() << "Item renamed on desktop.";
+                     // Update item data
+                     // Create new data
+                     ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(newFilePath.replace("/", "\\").toStdWString().c_str()));
+                     item->setItemData(*data);
+                     item->initData(); // Re-init with new data
+                     item->update();
+                     // Maybe need to resort?
+                     // sortItems(m_sortType); // This might be heavy? But valid.
+                 } else {
+                     // Moved away (deleted)
+                     qDebug() << "Item moved away (deleted):" << filePath;
+                     this->removeItem(item);
+                 }
+             }
+        }
+        break;
+    case SHCNE_CREATE:
+        eventDescription = FileSystemEvent::FileCreated;
+        item = new ListItem(filePath, this);
+        this->addItem(item);
+        break;
+    case SHCNE_DELETE:
+        eventDescription = FileSystemEvent::FileDeleted;
+        item = selectItemByPath(filePath);
+        if (item) {
+            this->removeItem(item);
+        }
+        break;
+    case SHCNE_MKDIR:
+        eventDescription = FileSystemEvent::DirectoryCreated;
+        item = new ListItem(filePath, this);
+        this->addItem(item);
+        break;
+    case SHCNE_RMDIR:
+        eventDescription = FileSystemEvent::DirectoryDeleted;
+        item = selectItemByPath(filePath);
+        if (item) {
+            this->removeItem(item);
+        }
+        break;
+    case SHCNE_RENAMEFOLDER:
+        eventDescription = FileSystemEvent::DirectoryRenamed;
+        // Handle directory rename similar to file rename
+         {
+             wchar_t newPath[MAX_PATH] = { 0 };
+             QString newFilePath;
+             if (ppidl && ppidl[1] && SHGetPathFromIDListW(ppidl[1], newPath)) {
+                 newFilePath = QString::fromWCharArray(newPath);
+             }
+             item = selectItemByPath(filePath);
+             if (item) {
+                 QFileInfo fileInfo(newFilePath);
+                 QFileInfo oldFileInfo(filePath);
+                 if (!newFilePath.isEmpty() && fileInfo.absolutePath() == oldFileInfo.absolutePath()) {
+                     ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(newFilePath.replace("/", "\\").toStdWString().c_str()));
+                     item->setItemData(*data);
+                     item->initData();
+                     item->update();
+                 } else {
+                     this->removeItem(item);
+                 }
+             }
+         }
+        break;
+    case SHCNE_UPDATEITEM:
+        eventDescription = FileSystemEvent::FileUpdated;
+        item = selectItemByPath(filePath);
+        if (item) {
+             // Reload data
+             ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(filePath.replace("/", "\\").toStdWString().c_str()));
+             item->setItemData(*data);
+             item->initData();
+             item->update();
+        }
+        break;
+    case SHCNE_UPDATEDIR:
+        eventDescription = FileSystemEvent::DirectoryUpdated;
+        // Refresh list because directory content changed
+        refreshView();
+        break;
+    case SHCNE_ATTRIBUTES:
+        eventDescription = FileSystemEvent::FileAttributesChanged;
+        break;
+    case SHCNE_MEDIAREMOVED:
+        eventDescription = FileSystemEvent::MediaRemoved;
+        break;
+    case SHCNE_DRIVEADD:
+        eventDescription = FileSystemEvent::DriveAdded;
+        break;
+    case SHCNE_DRIVEREMOVED:
+        eventDescription = FileSystemEvent::DriveRemoved;
+        break;
+    case SHCNE_ASSOCCHANGED:
+        eventDescription = FileSystemEvent::FileAssociationChanged;
+        break;
+    case SHCNE_SERVERDISCONNECT:
+        eventDescription = FileSystemEvent::ServerDisconnected;
+        break;
+    default:
+        eventDescription = FileSystemEvent(0);
+    }
+
+    // Log the event
+    QString timestamp = QDateTime::currentDateTime().toString("[hh:mm:ss.zzz]");
+    QString logMessage = QString("%1 %2").arg(timestamp).arg(m_deskMonitor->eventToString(eventDescription));
+
+    if (!filePath.isEmpty()) {
+        logMessage += QString(": %1").arg(filePath);
+    }
+
+    qDebug() << "[Desktop Folder Monitor]" << logMessage << QDateTime::currentDateTime();
+}
+
+void ListView::refreshView() {
+    qDebug() << "Refreshing View...";
+    // Clear current items?
+    // initialize() reloads from scratch.
+    // Need to clear existing items first to avoid duplicates or leaks if initialize doesn't clear.
+    
+    // Check initialize implementation.
+    // It creates new ListItems and adds them.
+    // So we must clear old items first.
+    
+    // removeItem deletes item.
+    // We can iterate and remove all.
+    // Or just clear m_items and m_allItems and delete widgets.
+    
+    // Better: use qDeleteAll(m_allItems); m_allItems.clear(); m_items.clear();
+    // But m_items is subset.
+    // m_allItems owns the pointers (created in initialize).
+    
+    // Let's look at ListView::~ListView()
+    // //qDeleteAll(m_listItems); is commented out.
+    // But we should clean up.
+    
+    for(auto item : m_allItems) {
+        if(item) {
+            item->deleteLater();
+        }
+    }
+    m_allItems.clear();
+    m_items.clear();
+    m_selectedItems.clear();
+    m_hiddenIcons.clear(); // Clear hidden icons too
+    
+    this->initialize();
+    this->loadIconLayer();
+}
+
+// 文件系统变化事件处理
+void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
+{
+    // 规范化路径（统一用反斜杠，去掉末尾斜杠）
+    auto normalizePath = [](const QString& p) -> QString {
+        QString s = QDir::toNativeSeparators(p);
+        while (s.endsWith('\\') || s.endsWith('/'))
+            s.chop(1);
+        return s;
+    };
+
+    const QString newPath = normalizePath(eventInfo.newPath);
+    const QString oldPath = normalizePath(eventInfo.oldPath);
+
+    qDebug() << "[onFileSystemChanged]"
+             << "type:" << (int)eventInfo.eventType
+             << "isDir:" << eventInfo.isDirectory
+             << "old:" << oldPath
+             << "new:" << newPath;
+
+    // 重新布局并刷新（不调用 sortItems 避免方向反转 bug）
+    auto relayout = [this]() {
+        loadIconLayer();
+        update();
+        repaint();
+    };
+
+    // 按当前排序规则重排（直接调用 sortByName 避免 sortItems 的方向反转 bug）
+    auto resort = [this]() {
+        bool ascending = (m_sortType == SortOrderType::SortByName_ASC ||
+                          m_sortType == SortOrderType::SortBySize_ASC ||
+                          m_sortType == SortOrderType::SortByType_ASC ||
+                          m_sortType == SortOrderType::SortByDateModified_ASC);
+        sortByName(ascending);
+    };
+
+    switch (eventInfo.eventType) {
+
+    // ── 创建（文件 / 文件夹） ──────────────────────────────────────────
+    case FileSystemEvent::FileCreated:
+    case FileSystemEvent::DirectoryCreated:
+    {
+        if (newPath.isEmpty()) {
+            qDebug() << "[onFileSystemChanged] FileCreated: empty path, skip";
+            break;
+        }
+        // 防止重复添加
+        if (selectItemByPath(newPath)) {
+            qDebug() << "[onFileSystemChanged] already exists, skip:" << newPath;
+            break;
+        }
+        qDebug() << "[onFileSystemChanged] Creating item:" << newPath;
+        ListItem* item = new ListItem(newPath, this);
+        addItem(item);
+        break;
+    }
+
+    // ── 删除（文件 / 文件夹） ──────────────────────────────────────────
+    case FileSystemEvent::FileDeleted:
+    case FileSystemEvent::DirectoryDeleted:
+    {
+        // 删除事件：oldPath 优先，其次 newPath
+        const QString& deletePath = !oldPath.isEmpty() ? oldPath : newPath;
+        if (deletePath.isEmpty()) {
+            qDebug() << "[onFileSystemChanged] FileDeleted: empty path, skip";
+            break;
+        }
+        ListItem* item = selectItemByPath(deletePath);
+        if (item) {
+            qDebug() << "[onFileSystemChanged] Removing item:" << deletePath;
+            removeItem(item);   // removeItem 内部已调用 update()/repaint()
+        } else {
+            qDebug() << "[onFileSystemChanged] Item not found for deletion:" << deletePath;
+        }
+        break;
+    }
+
+    // ── 重命名（文件 / 文件夹） ───────────────────────────────────────
+    case FileSystemEvent::FileRenamed:
+    case FileSystemEvent::DirectoryRenamed:
+    {
+        if (oldPath.isEmpty() || newPath.isEmpty()) {
+            qDebug() << "[onFileSystemChanged] Rename: empty path, skip";
+            break;
+        }
+
+        ListItem* item = selectItemByPath(oldPath);
+
+        if (item) {
+            // 判断是否仍在同一父目录（同目录重命名）
+            const QString oldDir = QFileInfo(oldPath).absolutePath();
+            const QString newDir = QFileInfo(newPath).absolutePath();
+
+            if (oldDir == newDir) {
+                // ── 同目录重命名：更新 item 数据 ──
+                qDebug() << "[onFileSystemChanged] Rename in-place:" << oldPath << "->" << newPath;
+                ListItemData* data = new ListItemData(
+                    CSystemApi::CreateIconItem(newPath.toStdWString().c_str())
+                );
+                item->setItemData(*data);
+                delete data;
+                item->initData();
+                item->update();
+                resort();
+                relayout();
+            } else {
+                // ── 移出桌面目录：视为删除 ──
+                qDebug() << "[onFileSystemChanged] Item moved out, removing:" << oldPath;
+                removeItem(item);
+            }
+        } else {
+            // 找不到旧项 → 可能是从外部移入桌面，视为新建
+            if (!selectItemByPath(newPath)) {
+                qDebug() << "[onFileSystemChanged] Item moved in, creating:" << newPath;
+                ListItem* newItem = new ListItem(newPath, this);
+                addItem(newItem);
+            }
+        }
+        break;
+    }
+
+    // ── 内容修改（文件） ──────────────────────────────────────────────
+    case FileSystemEvent::FileUpdated:
+    case FileSystemEvent::FileAttributesChanged:
+    {
+        const QString& updatePath = !newPath.isEmpty() ? newPath : oldPath;
+        if (updatePath.isEmpty()) break;
+
+        ListItem* item = selectItemByPath(updatePath);
+        if (item) {
+            qDebug() << "[onFileSystemChanged] Updating item:" << updatePath;
+            ListItemData* data = new ListItemData(
+                CSystemApi::CreateIconItem(updatePath.toStdWString().c_str())
+            );
+            item->setItemData(*data);
+            delete data;
+            // 只刷新该 item 自身，不重新布局其他图标
+            item->initData();
+            item->update();
+            // 注意：不调用 relayout()，避免其他图标位置改变
+        }
+        break;
+    }
+
+    // ── 文件夹内容变化（子项增删） ────────────────────────────────────
+    case FileSystemEvent::DirectoryUpdated:
+    {
+        // 桌面文件夹本身内容变化时，不需要额外处理
+        // 因为子项的增删会触发独立的 FileCreated/FileDeleted 事件
+        qDebug() << "[onFileSystemChanged] DirectoryUpdated (no-op):" << newPath;
+        break;
+    }
+
+    default:
+        qDebug() << "[onFileSystemChanged] Unhandled event type:" << (int)eventInfo.eventType;
+        break;
+    }
+}

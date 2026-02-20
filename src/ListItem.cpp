@@ -133,49 +133,31 @@ void ListItem::initData()
 		}
 		m_baseName = (m_type == ObjectType::SpecialFolder) ? m_itemData.fullName() : m_fileInfo.baseName();
 		m_icon = m_itemData.icon();
-		//QFileIconProvider icon_provider;
-		///*qDebug() << m_filePath;
-		//qDebug() << this->baseName() << m_filePath;*/
-		//QString targetPath = m_fileInfo.symLinkTarget();
-		//if (!targetPath.isEmpty() && m_type == ObjectType::SpecialFolder) {
-		//	QFileInfo targetData(targetPath);
-		//	m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
-		//}
-		//if (m_icon.isNull()) {
-		//	if (m_fileInfo.isFile()) {
-		//		m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
-		//	}
-		//	else {
-		//		//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
-		//		m_icon = SysInfoUtil::SysFileIconByDLL(4,"shell32.dll");
-		//	}
-		//}
 
-		 /*qDebug() << this->baseName() << m_filePath;
-		 for (auto a : m_icon.availableSizes()) {
-		 	qDebug() << "ListItem initData icon size:" << a;
-		 }*/
+		// 先删除旧的图标 widget，防止重复调用时堆叠
+		if (m_iconWidget) {
+			//m_iconWidget->deleteLater();
+			m_iconWidget = nullptr;
+		}
 
-
-		//根据图标大小设置区域
-		//m_itemRect = QRect(m_itemPos, m_itemSize);
-
-
-		//显示图标
-		m_iconWidget = new QLabel(this);
-		m_iconWidget->setPixmap(m_icon.pixmap(m_icon.availableSizes().at(2))); // 设置QIcon中的第N个尺寸的图标
-		// 设置透明背景
-		m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
-		// 计算居中位置
-		int topMargin = 5; // 距离顶部高度，可自定义
-		int centerX = (m_itemSize.width() - m_iconWidget->pixmap()->width()) / 2; // 水平居中
-		m_iconWidget->move(centerX, topMargin);  // 居中显示，顶部自定义高度
-		// 设置透明并允许透过窗口看到后面的内容
-		m_iconWidget->setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-
+		// 显示图标
+		if (!m_icon.isNull() && !m_icon.availableSizes().isEmpty()) {
+			m_iconWidget = new QLabel(this);
+			// 优先取第3个尺寸，不够则取最后一个
+			int sizeIdx = qMin(2, m_icon.availableSizes().size() - 1);
+			m_iconWidget->setPixmap(m_icon.pixmap(m_icon.availableSizes().at(sizeIdx)));
+			// 设置透明背景
+			m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
+			// 计算居中位置
+			int topMargin = 5;
+			int centerX = (m_itemSize.width() - m_iconWidget->pixmap()->width()) / 2;
+			m_iconWidget->move(centerX, topMargin);
+			// 允许点击穿透
+			m_iconWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
+			m_iconWidget->show();
+		}
 
 		isReady = true;
-
 	}
 
 }
@@ -205,6 +187,7 @@ void ListItem::setItemPos(QPoint pos)
 void ListItem::updateLocationInfo(QPoint pos)
 {
 	this->setItemPos(pos);
+	this->move(pos);
 	m_itemRect = QRect(pos, m_itemSize);
 	int shrinkSize = 15;
 	m_chooseRect = m_itemRect.adjusted(shrinkSize, shrinkSize, -shrinkSize, -shrinkSize);

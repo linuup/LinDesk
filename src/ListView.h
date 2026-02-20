@@ -20,6 +20,7 @@
 #include "RightMenu.h"
 #include "DesktopIconsMonitor.h"
 #include "DirectoryMonitor.h"
+#include "Monitor/LinDirectoryMonitor.h"
 #include <SelectArea.h>
 
 class ListView: public QWidget {
@@ -154,9 +155,8 @@ public:
 			r->setShowType(ObjectType::MultObject);
 			r->showMultObjectMenu(point, checkedItems.toStdVector());
 		}
-			
+				
 	}
-
 	/// <summary>
 	/// update 
 	/// </summary>
@@ -178,11 +178,14 @@ private slots:
 		qDebug() << "[DirectoryMonitor]-Directory Changed:" << path;
 
 	}
+	void updateSystemIconVisibility(const QString& clsid, bool hidden);
 	
 
 	void onError(const QString& error) {
 		qDebug() << "Error DirectoryMonitor:" << error;
 	}
+	
+	void onFileSystemChanged(const FileSystemEventInfo& eventInfo);
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
 	void contextMenuEvent(QContextMenuEvent* event) override; //右键菜单事件
@@ -191,118 +194,12 @@ protected:
 	void mouseReleaseEvent(QMouseEvent* event) override;
 	void enterEvent(QEvent* event) override;
 
-	bool nativeEvent(const QByteArray & eventType, void* message, long* result) override {
-		MSG* msg = static_cast<MSG*>(message);
-
-		// 处理自定义的Shell通知消息
-		if (msg->message == WM_USER + 52) {
-			handleShellNotification(msg->wParam, msg->lParam);
-			if (result) *result = 0;
-			return true;
-		}
-
-		return QWidget::nativeEvent(eventType, message, result);
-	}
-
-	void handleShellNotification(WPARAM wParam, LPARAM lParam) {
-		LPITEMIDLIST* ppidl = nullptr;
-		LONG lEvent = 0;
-
-		HANDLE hNotifyLock = SHChangeNotification_Lock(
-			reinterpret_cast<HANDLE>(wParam),
-			static_cast<DWORD>(lParam),
-			&ppidl,
-			&lEvent
-		);
-
-		if (hNotifyLock) {
-			processShellEvent(lEvent, ppidl);
-			SHChangeNotification_Unlock(hNotifyLock);
-		}
-	}
+	bool nativeEvent(const QByteArray & eventType, void* message, long* result) override;
+	void handleShellNotification(WPARAM wParam, LPARAM lParam);
 	// Handle shell events
-	void processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl) {
-		FileSystemEvent eventDescription;
-		QString filePath;
-		ListItem* item;
-		wchar_t path[MAX_PATH] = { 0 };
-		// Extract file path from PIDL
-		if (ppidl && ppidl[0]) {
-			if (SHGetPathFromIDListW(ppidl[0], path)) {
-				filePath = QString::fromWCharArray(path);
-			}
-		}
-		qDebug() << filePath;
-		// Map event codes to descriptions
-		switch (lEvent) {
-		case SHCNE_RENAMEITEM:
-			eventDescription = FileSystemEvent::FileRenamed;
-			break;
-		case SHCNE_CREATE:
-			eventDescription = FileSystemEvent::FileCreated;
-			item = new ListItem(filePath, this);
-			this->addItem(item);
-			break;
-		case SHCNE_DELETE:
-			eventDescription = FileSystemEvent::FileDeleted;
-			item = selectItemByPath(filePath);
-			if (item) {
-				this->removeItem(item);
-			}
-			break;
-		case SHCNE_MKDIR:
-			eventDescription = FileSystemEvent::DirectoryCreated;
-			item = new ListItem(filePath, this);
-			this->addItem(item);
-			break;
-		case SHCNE_RMDIR:
-			eventDescription = FileSystemEvent::DirectoryDeleted;
-			item = selectItemByPath(filePath);
-			if (item) {
-				this->removeItem(item);
-			}
-			break;
-		case SHCNE_RENAMEFOLDER:
-			eventDescription = FileSystemEvent::DirectoryRenamed;
-			break;
-		case SHCNE_UPDATEITEM:
-			eventDescription = FileSystemEvent::FileUpdated;
-			break;
-		case SHCNE_UPDATEDIR:
-			eventDescription = FileSystemEvent::DirectoryUpdated;
-			break;
-		case SHCNE_ATTRIBUTES:
-			eventDescription = FileSystemEvent::FileAttributesChanged;
-			break;
-		case SHCNE_MEDIAREMOVED:
-			eventDescription = FileSystemEvent::MediaRemoved;
-			break;
-		case SHCNE_DRIVEADD:
-			eventDescription = FileSystemEvent::DriveAdded;
-			break;
-		case SHCNE_DRIVEREMOVED:
-			eventDescription = FileSystemEvent::DriveRemoved;
-			break;
-		case SHCNE_ASSOCCHANGED:
-			eventDescription = FileSystemEvent::FileAssociationChanged;
-			break;
-		case SHCNE_SERVERDISCONNECT:
-			eventDescription = FileSystemEvent::ServerDisconnected;
-			break;
-		default:
-			eventDescription = FileSystemEvent(0);
-		}
+	void processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl);
 
-		// Log the event
-		QString timestamp = QDateTime::currentDateTime().toString("[hh:mm:ss.zzz]");
-		QString logMessage = QString("%1 %2").arg(timestamp).arg(m_deskMonitor->eventToString(eventDescription));
-
-		if (!filePath.isEmpty()) {
-			logMessage += QString(": %1").arg(filePath);
-		}
-
-		qDebug() << "[Desktop Folder Monitor]" << logMessage << QDateTime::currentDateTime();
-	}
+	void refreshView();
 
 	//signals:
 	//	void itemSelected(ListItem* item);
@@ -316,6 +213,14 @@ private:
 	static ListView* m_instance;	//图标视图
 	RightMenu* rightMenu;
 	SortOrderType m_sortType = SortOrderType::SortByName_ASC;
+
+	// 网格布局常量
+	const int m_iconWidth = 76;
+	const int m_iconHeight = 78;
+	const int m_rowSpacing = 8;
+	const int m_colSpacing = 8;
+	const int m_marginTop = 6;
+	const int m_marginLeft = 2;
 
 	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
 	QVector<ListItem*> m_items;             // 存储桌面显示可见的ListItem对象
@@ -333,9 +238,11 @@ private:
 	bool m_isSelecting = false;  // 是否正在拖拽选择
 	QPoint m_dragOffset;	//拖拽偏移量
 	QPoint m_originalPos; // 记录原始位置，用于取消拖动s
+	QPoint m_lastRightClickPos; // 记录最后一次右键点击的位置
 
 	QPoint m_startPos;     // 鼠标点击开始时的位置
 
 	DesktopIconsMonitor* monitor;   //Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel
 	DirectoryMonitor* m_deskMonitor;
+	LinDirectoryMonitor* m_linMonitor;  // Lin目录监控器
 };
