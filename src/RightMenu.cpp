@@ -71,8 +71,6 @@ QMenu* RightMenu::createViewSubMenu()
     connect(m_smallIconsAction, &QAction::triggered, this, &RightMenu::onSmallIcons);
     viewMenu->addAction(m_smallIconsAction);
 
-    m_mediumIconsAction->setChecked(true); // 默认选中中等图标
-
     //1.4 Separator
     viewMenu->addSeparator();
 
@@ -95,7 +93,6 @@ QMenu* RightMenu::createViewSubMenu()
     //1.7 Show desktop icons
     this->m_showDesktopIconsAction = new QAction("Show desktop icons", viewMenu);
     m_showDesktopIconsAction->setCheckable(true);
-    m_showDesktopIconsAction->setChecked(true);
     connect(m_showDesktopIconsAction, &QAction::triggered, this, &RightMenu::onShowDesktopIcons);
     viewMenu->addAction(m_showDesktopIconsAction);
 
@@ -239,4 +236,58 @@ const wchar_t* RightMenu::objPath() const
 const wchar_t* RightMenu::objPath(QString str) const
 {
 	return reinterpret_cast<const wchar_t*>(str.utf16());
+}
+
+void RightMenu::setLargeIconsChecked(bool checked)
+{
+    if (checked) {
+        m_largeIconsAction->setChecked(true);
+        m_mediumIconsAction->setChecked(false);
+        m_smallIconsAction->setChecked(false);
+    }
+}
+
+void RightMenu::setMediumIconsChecked(bool checked)
+{
+    if (checked) {
+        m_largeIconsAction->setChecked(false);
+        m_mediumIconsAction->setChecked(true);
+        m_smallIconsAction->setChecked(false);
+    }
+}
+
+void RightMenu::setSmallIconsChecked(bool checked)
+{
+    if (checked) {
+        m_smallIconsAction->setChecked(true);
+    } else {
+        m_smallIconsAction->setChecked(false);
+    }
+}
+
+void RightMenu::setShowDesktopIconsChecked(bool checked)
+{
+    if (checked) {
+        m_showDesktopIconsAction->setChecked(true);
+    } else {
+        m_showDesktopIconsAction->setChecked(false);
+    }
+}
+
+void RightMenu::setAutoArrangeIconsChecked(bool checked)
+{
+    if (checked) {
+        m_autoArrangeIconsAction->setChecked(true);
+    } else {
+        m_autoArrangeIconsAction->setChecked(false);
+    }
+}
+
+void RightMenu::setAlignIconsToGridChecked(bool checked)
+{
+    if (checked) {
+        m_alignIconsToGridAction->setChecked(true);
+    } else {
+        m_alignIconsToGridAction->setChecked(false);
+    }
 }

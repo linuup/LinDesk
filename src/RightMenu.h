@@ -79,12 +79,15 @@ public:
 	// 获取自定义菜单
 	QMenu* getCustomMenu() const { return m_customMenu; }
 
+
+	//set icons view action check state
+	void setLargeIconsChecked(bool checked);
+	void setMediumIconsChecked(bool checked);
+	void setSmallIconsChecked(bool checked);
 	//set showDesktopIcons action check state
-	void setShowDesktopIconsChecked(bool checked) {
-		if (m_showDesktopIconsAction) {
-			m_showDesktopIconsAction->setChecked(checked);
-		}
-	}
+	void setShowDesktopIconsChecked(bool checked);
+	void setAutoArrangeIconsChecked(bool checked);
+	void setAlignIconsToGridChecked(bool checked);
 signals:
 	// 自定义菜单项的信号
 	// 1-View

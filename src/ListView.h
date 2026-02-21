@@ -68,7 +68,7 @@ public:
 		IconPosMode iconPosMode = IconPosMode::AlignIconToGrid; //图标位置模式，默认与网格对齐
 		ViewMode viewMode = ViewMode::MediumIcon;	//图标显示模式，默认中等图标
 		SortOrderType sortType = SortOrderType::SortByName_ASC;	//图标排序方式，默认按名称升序排列
-		bool autoArrange = true;        // 是否自动排列
+		bool autoArrange = false;        // 是否自动排列
 		bool gridAlignment = true;      // 是否网格对齐
 		bool showDesktopIcons = true;	//是否显示桌面图标
 		bool showShortCutArrow = false;	//是否显示快捷方式小箭头

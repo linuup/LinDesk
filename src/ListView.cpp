@@ -458,6 +458,20 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
         for (auto& ghost : m_ghosts) {
             if (ghost.widget && ghost.item) {
                 QPoint finalPos = ghost.widget->pos();
+                
+                // 如果开启了网格对齐，则计算最近的网格点
+                if (m_iconShowRule.gridAlignment) {
+                    int gridX = qRound((double)(finalPos.x() - m_marginLeft) / (m_iconWidth + m_colSpacing));
+                    int gridY = qRound((double)(finalPos.y() - m_marginTop) / (m_iconHeight + m_rowSpacing));
+                    
+                    finalPos.setX(m_marginLeft + gridX * (m_iconWidth + m_colSpacing));
+                    finalPos.setY(m_marginTop + gridY * (m_iconHeight + m_rowSpacing));
+                    
+                    // 边界检查，防止图标超出屏幕
+                    finalPos.setX(qMax(m_marginLeft, qMin(finalPos.x(), width() - m_iconWidth)));
+                    finalPos.setY(qMax(m_marginTop, qMin(finalPos.y(), height() - m_iconHeight)));
+                }
+
                 ghost.item->move(finalPos);
                 ghost.item->updateLocationInfo(finalPos);
                 ghost.widget->hide();
@@ -914,6 +928,37 @@ void ListView::initRightMenuConnections() {
     connect(menu, &RightMenu::pasteTriggered, this, &ListView::onMenuPaste);
     connect(menu, &RightMenu::pasteShortcutTriggered, this, &ListView::onMenuPasteShortcut);
     connect(menu, &RightMenu::undoDeleteTriggered, this, &ListView::onMenuUndoDelete);
+
+    //init view sub-menu check states
+    switch (m_iconShowRule.viewMode) {
+    case ViewMode::LargeIcon:
+        menu->setLargeIconsChecked(true);
+        break;
+    case ViewMode::MediumIcon:
+        menu->setMediumIconsChecked(true);
+        break;
+    case ViewMode::SmallIcon:
+        menu->setSmallIconsChecked(true);
+        break;
+    default:
+        menu->setMediumIconsChecked(true);
+    }
+    
+    if(m_iconShowRule.autoArrange) {
+        menu->setAutoArrangeIconsChecked(true);
+    } else {
+        menu->setAutoArrangeIconsChecked(false);
+    }
+    if(m_iconShowRule.gridAlignment) {
+        menu->setAlignIconsToGridChecked(true);
+    } else {
+        menu->setAlignIconsToGridChecked(false);
+    }
+    if(m_iconShowRule.showDesktopIcons) {
+        menu->setShowDesktopIconsChecked(true);
+    } else {
+        menu->setShowDesktopIconsChecked(false);
+    }
 }
 
 void ListView::onMenuLargeIcons() {
