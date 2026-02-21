@@ -490,6 +490,8 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
         if (hitItem) {
             qDebug() << "Double-clicking to open:" << hitItem->filePath();
             hitItem->openItem();
+
+            
         } else {
             // 双击空白处：现有逻辑是切换桌面图标显示
             onMenuShowDesktopIcons();
@@ -700,11 +702,11 @@ void ListView::sortByName(bool ascending)
         auto getPriority = [](ListItem* item) {
             if (item->type() == ObjectType::SpecialFolder) {
                 QString clsid = item->getItemData().getCLSID();
-                if (clsid == USER_FOLDER_CLS) return 1;
-                if (clsid == MY_COMPUTER_CLS) return 2;
-                if (clsid == NETWORK_CLS) return 3;
-                if (clsid == RECYCLE_BIN_CLS) return 4;
-                if (clsid == CONTROL_PANEL_CLS) return 5;
+                if (clsid == APP_USER_FOLDER_CLS) return 1;
+                if (clsid == APP_MY_COMPUTER_CLS) return 2;
+                if (clsid == APP_NETWORK_CLS) return 3;
+                if (clsid == APP_RECYCLE_BIN_CLS) return 4;
+                if (clsid == APP_CONTROL_PANEL_CLS) return 5;
                 return 6;
             }
             return 100;

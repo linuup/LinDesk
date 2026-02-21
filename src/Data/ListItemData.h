@@ -17,11 +17,11 @@
 #include <QStandardPaths>
 #include "SysInfoUtil.h"
 // //1 隐藏 0 显示
-#define MY_COMPUTER_CLS   "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"//计算机/此电脑
-#define NETWORK_CLS 	  "::{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"//网络
-#define RECYCLE_BIN_CLS   "::{645FF040-5081-101B-9F08-00AA002F954E}"//回收站
-#define CONTROL_PANEL_CLS "::{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}"//控制面板
-#define USER_FOLDER_CLS   "::{59031a47-3f72-44a7-89c5-5595fe6b30ee}"//用户文件夹
+#define APP_MY_COMPUTER_CLS   "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"//计算机/此电脑
+#define APP_NETWORK_CLS 	  "::{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"//网络
+#define APP_RECYCLE_BIN_CLS   "::{645FF040-5081-101B-9F08-00AA002F954E}"//回收站
+#define APP_CONTROL_PANEL_CLS "::{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}"//控制面板
+#define APP_USER_FOLDER_CLS   "::{59031a47-3f72-44a7-89c5-5595fe6b30ee}"//用户文件夹
 
 
 
@@ -114,25 +114,37 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 private:
 	void initIcon() {
 		if (m_type == ObjectType::SpecialFolder) {
-			if (this->getCLSID() == MY_COMPUTER_CLS) {
+			if (this->getCLSID() == APP_MY_COMPUTER_CLS) {
 				m_icon = SysInfoUtil::SysFileIconByDLL(16, 256, "shell32.dll");
 			}
-			else if (this->getCLSID() == NETWORK_CLS) {
+			else if (this->getCLSID() == APP_NETWORK_CLS) {
 				m_icon = SysInfoUtil::SysFileIconByDLL(18, 256, "shell32.dll");
 			}
-			else if (this->getCLSID() == RECYCLE_BIN_CLS) {
+			else if (this->getCLSID() == APP_RECYCLE_BIN_CLS) {
 				m_icon = SysInfoUtil::SysFileIconByDLL(32, 256, "shell32.dll");
 			}
-			else if (this->getCLSID() == CONTROL_PANEL_CLS) {
+			else if (this->getCLSID() == APP_CONTROL_PANEL_CLS) {
 				m_icon = SysInfoUtil::SysFileIconByDLL(58, 256, "shell32.dll");
 			}
-			else if (this->getCLSID() == USER_FOLDER_CLS) {
+			else if (this->getCLSID() == APP_USER_FOLDER_CLS) {
 				m_icon = SysInfoUtil::SysFileIconByDLL(118, 256, "imageres.dll");
 			}
 			else {
 				//m_icon = SysInfoUtil::SysFileIconByDLL(0, 256, "shell32.dll");
 			}
 			return;
+		}
+
+		// 特殊处理 .appref-ms 文件获取图标
+		if (m_fileInfo.suffix().toLower() == "appref-ms") {
+			SHFILEINFO sfi = { 0 };
+			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
+			if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
+				if (sfi.hIcon) {
+					m_icon = QtWin::fromHICON(sfi.hIcon);
+					DestroyIcon(sfi.hIcon);
+				}
+			}
 		}
 
 		if (m_icon.isNull()) {

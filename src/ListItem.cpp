@@ -102,19 +102,8 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 
 ListItem::~ListItem()
 {
-	// 2. 删除所有子控件
-	if (m_iconWidget) {
-		delete m_iconWidget;
-		m_iconWidget = nullptr;
-	}
-
-	if (textLabel) {
-		delete textLabel;
-		textLabel = nullptr;
-	}
 	this->isReady = false;
-	// 4. 立即删除自己
-	QWidget::close();  // 关闭窗口
+    // 子控件 (m_iconWidget, textLabel) 会被 Qt 自动删除，无需手动 delete
 }
 
 
@@ -138,7 +127,7 @@ void ListItem::initData()
 
 		// 先删除旧的图标 widget，防止重复调用时堆叠
 		if (m_iconWidget) {
-			//m_iconWidget->deleteLater();
+			m_iconWidget->deleteLater();
 			m_iconWidget = nullptr;
 		}
 
