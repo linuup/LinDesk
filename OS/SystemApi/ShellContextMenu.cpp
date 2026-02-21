@@ -276,12 +276,63 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
 
     if (operationType == OperationType::BackGround) {
-        RemoveTencentDeskGoMenu(hMenu.get()); 
+        RemoveTencentDeskGoMenu(hMenu.get());
+
+        // 将自定义菜单项插入到背景菜单顶部
+        if (!m_customItems.empty()) {
+            m_customCallbackMap.clear();
+            UINT nextId = CUSTOM_MENU_ID_BASE;
+
+            // 递归构建菜单的辅助函数
+            std::function<void(HMENU, const std::vector<CustomMenuItem>&)> addItems = 
+                [&](HMENU hMenuTarget, const std::vector<CustomMenuItem>& items) {
+                // 先插入分隔线（如果是顶层，则在最后插入以分隔Shell菜单）
+                if (hMenuTarget == hMenu.get()) {
+                     InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                }
+
+                // 从后往前插入到位置0，以保持 items 中的顺序
+                for (int i = static_cast<int>(items.size()) - 1; i >= 0; --i) {
+                    const auto& item = items[i];
+                    if (item.isSeparator) {
+                        InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                    } else if (!item.children.empty()) {
+                        HMENU hSubMenu = CreatePopupMenu();
+                        addItems(hSubMenu, item.children);
+                        InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
+                    } else {
+                        UINT id = nextId++;
+                        UINT flags = MF_BYPOSITION | MF_STRING;
+                        if (item.checked) {
+                            flags |= MF_CHECKED;
+                        }
+                        if (!item.enabled) {
+                            flags |= MF_GRAYED;
+                        }
+                        InsertMenuW(hMenuTarget, 0, flags, id, item.text.c_str());
+                        if (item.callback) {
+                            m_customCallbackMap[id] = item.callback;
+                        }
+                    }
+                }
+            };
+
+            addItems(hMenu.get(), m_customItems);
+        }
     }
 
     UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
     if (cmd == 0)
     {
+        return;
+    }
+
+    // 处理自定义菜单项（包括深层子菜单项）
+    auto it = m_customCallbackMap.find(cmd);
+    if (it != m_customCallbackMap.end()) {
+        if (it->second) {
+            it->second();
+        }
         return;
     }
 

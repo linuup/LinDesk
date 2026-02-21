@@ -4,6 +4,7 @@
 #include <QProcess>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QGraphicsOpacityEffect>
 #include "SystemApi/SystemApi.h"
 #include "Monitor/DirectoryMonitor.h"
 // 静态成员初始化
@@ -63,8 +64,10 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     rightMenu->setHWND((HWND)this->winId());
 
     this->initialize();
+    this->initRightMenuConnections();
 
-    this->iconPosMode = IconPosMode::AlignIconToGrid;
+    m_iconShowRule.autoArrange = true;
+    m_iconShowRule.gridAlignment = true;
     this->m_lastRightClickPos = QPoint(-1, -1);
 
     this->loadIconLayer();
@@ -181,7 +184,7 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
     //sortItems(m_sortType);
     
     // 重新布局和绘制
-    //loadIconLayer();
+    loadIconLayer();
     update();
     repaint();
 }
@@ -220,23 +223,31 @@ ListItem* ListView::selectItemByPath(const QString path)
 }
 void ListView::clearCheckedItem()
 {
-    auto& itemList = this->items();
-
-    // 使用迭代器遍历，允许在遍历时删除
-    for (auto it = itemList.begin(); it != itemList.end(); ) {
-        if (*it == nullptr) {
-            // 删除空指针，erase返回下一个有效迭代器
-            it = itemList.erase(it);
-            ++it;
-            continue;
-        }else if (*it) {
-            (*it)->unCheckSelf();
-            ++it;
+    for (auto* item : m_selectedItems) {
+        if (item) {
+            item->unCheckSelf();
         }
     }
-
     m_selectedItems.clear();
+}
 
+void ListView::requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems)
+{
+    RightMenu* r = RightMenu::getInstance();
+    if (checkedItems.size() == 1) {
+        r->setShowType(objType);
+        r->showMenu(point, checkedItems.at(0));
+        return;
+    }
+    else if (objType == ObjectType::BackGround) {
+        r->setShowType(ObjectType::BackGround);
+        r->showMenu(point, nullptr);
+        return;
+    }
+    else {
+        r->setShowType(ObjectType::MultObject);
+        r->showMultObjectMenu(point, checkedItems.toStdVector());
+    }
 }
 
 void ListView::refreshCheckedItem(QRect rect)
@@ -316,56 +327,98 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
             }
         }
         event->ignore();
-        // 如果右键点击位置不在任何图标区域内，显示桌面的右键菜单
+        // 如果右键点击位置不在任何图标区域内，清除已有选中
+        clearCheckedItem();
+        // 显示桌面的右键菜单
         requestSystemRightMenu(ObjectType::BackGround, rightClickPoint, m_selectedItems);
     }
 }
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton) {
-        clearCheckedItem();
-        //Dragging Item
-        //qDebug() << "ListView LeftClick Pos:" << event->pos();
-        auto m_originalPos = event->pos();
-        auto items = this->items();
-        //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
-        for (auto it = items.begin(); it != items.end(); it++)
-        {
-            if (!it) {
-                continue;
-            }
-            ListItem* item = *it;
-            QRect itemRect = item->getItemRect();
-            if (item->type() == ObjectType::Empty_ObjectType) {
-                continue;
-            }
-            if (itemRect.contains(m_originalPos)) {
-                //qDebug() << item->baseName();
-                m_draggedItem = item; // 记录当前被拖动的 ListItem 
-                m_draggedItem->raise();
-                m_dragOffset = event->pos() - item->pos();
-                m_originalPos = event->pos();  // 记录按下时的位置
-                m_isDragging = true;  // 开始拖动
-                m_selectedItems.append(item);
-                item->checkSelf();
-                return; // 退出循环，避免重复处理
+    auto clickPos = event->pos();
+    auto items = this->items();
+    ListItem* clickedItem = nullptr;
+
+    // 查找击中的 item
+    for (auto* item : items) {
+            if (item && item->getItemRect().contains(mapToGlobal(clickPos))) {
+                clickedItem = item;
+                break;
             }
         }
+
+    if (clickedItem && clickedItem->type() != ObjectType::Empty_ObjectType) {
+            // 如果点击的项不在当前选中列表中，则清除之前选中并仅选中当前
+            if (!m_selectedItems.contains(clickedItem)) {
+                clearCheckedItem();
+                m_selectedItems.append(clickedItem);
+                clickedItem->checkSelf();
+            }
+
+            m_draggedItem = clickedItem;
+            m_dragOffset = clickPos - clickedItem->pos();
+            m_isDragging = true;
+
+            // 清理旧的 ghost
+            for (auto& ghost : m_ghosts) {
+                if (ghost.widget) ghost.widget->deleteLater();
+            }
+            m_ghosts.clear();
+
+            // 为所有选中的项创建 ghost 预览
+            for (auto* item : m_selectedItems) {
+                if (!item) continue;
+
+                QLabel* ghostWidget = new QLabel(this);
+                ghostWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
+                ghostWidget->setAttribute(Qt::WA_TranslucentBackground);
+                ghostWidget->setWindowFlags(Qt::FramelessWindowHint);
+
+                auto* opacityEffect = new QGraphicsOpacityEffect(ghostWidget);
+                opacityEffect->setOpacity(0.7);
+                ghostWidget->setGraphicsEffect(opacityEffect);
+
+                // 抓取快照（临时取消选中以获得干净图标）
+                bool wasSelected = item->isSelected;
+                item->isSelected = false;
+                item->update();
+                QPixmap pixmap = item->grab();
+                item->isSelected = wasSelected;
+                item->update();
+
+                ghostWidget->setPixmap(pixmap);
+                ghostWidget->setFixedSize(item->size());
+                
+                // 记录相对于鼠标点击位置的偏移量
+                QPoint offset = item->pos() - clickPos;
+                ghostWidget->move(item->pos());
+                ghostWidget->raise();
+                ghostWidget->show();
+
+                m_ghosts.append({ ghostWidget, item, offset });
+            }
+
+            return;
     }
-    m_isSelecting = true; // 开始拖拽选择
-    event->ignore(); // 如果没有点击在任何 ListItem 上，忽略事件
+    
+    // 如果没有点击到任何 item，取消已选中的 item 选中效果
+    clearCheckedItem();
+
+    m_isSelecting = true;
+    event->ignore();
 }
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
-    //qDebug() << "ListView MouseMoveEvent Pos:" << event->pos();
-    // handle dragging
-    if (m_isDragging) {
-        QPoint newPos = event->pos() - m_dragOffset;
-        // 移动 ListItem 控件
-        m_draggedItem->move(newPos);
-        m_draggedItem->updateLocationInfo(newPos);
+    // handle multi-dragging
+    if (m_isDragging && !m_ghosts.isEmpty()) {
+        QPoint mousePos = event->pos();
+        for (auto& ghost : m_ghosts) {
+            if (ghost.widget) {
+                ghost.widget->move(mousePos + ghost.offset);
+            }
+        }
         return;
     }
 
@@ -401,6 +454,18 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     }
 
     if (m_isDragging) {
+        // 完成多项拖拽
+        for (auto& ghost : m_ghosts) {
+            if (ghost.widget && ghost.item) {
+                QPoint finalPos = ghost.widget->pos();
+                ghost.item->move(finalPos);
+                ghost.item->updateLocationInfo(finalPos);
+                ghost.widget->hide();
+                ghost.widget->deleteLater();
+            }
+        }
+        m_ghosts.clear();
+        
         m_isDragging = false;  // 结束拖动
         m_draggedItem = nullptr; // 清除被拖动的 ListItem
         m_startPos = QPoint();
@@ -408,6 +473,29 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     }
     event->ignore();
 
+}
+
+void ListView::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        ListItem* hitItem = nullptr;
+        auto items = this->items();
+        for (auto* item : items) {
+            if (item && item->isVisible() && item->getItemRect().contains(mapToGlobal(event->pos()))) {
+                hitItem = item;
+                break;
+            }
+        }
+        
+        if (hitItem) {
+            qDebug() << "Double-clicking to open:" << hitItem->filePath();
+            hitItem->openItem();
+        } else {
+            // 双击空白处：现有逻辑是切换桌面图标显示
+            onMenuShowDesktopIcons();
+        }
+    }
+    QWidget::mouseDoubleClickEvent(event);
 }
 
 void ListView::enterEvent(QEvent* event)
@@ -483,43 +571,72 @@ void ListView::initialize()
 //一旦超出窗口高度，切换到下一列，并重置纵向位置（y）为新的列开始位置。
 void ListView::loadIconLayer()
 {
-    // 初始位置
-    int Icon_X = m_marginLeft;   // 第一列的 X 坐标
-    int Icon_Y = m_marginTop;   // 第一行的 Y 坐标
+    if (m_iconShowRule.autoArrange) {
+        loadAutoLayout();
+    } else if (m_iconShowRule.gridAlignment) {
+        loadGridLayout();
+    }
+    
+    
+    // Ensure visibility
+    for (auto* item : m_items) {
+        if (!item->isVisible() && m_iconShowRule.showDesktopIcons) {
+            item->show();
+        }
+    }
+}
 
-    //load UI Layout
-    // 遍历列和行来布局图标
+void ListView::loadAutoLayout()
+{
+    int Icon_X = m_marginLeft;
+    int Icon_Y = m_marginTop;
+    
     for (auto it = m_items.begin(); it != m_items.end(); it++) {
         ListItem* item = *it;
-        //qDebug() << item->baseName();
         item->setItemSize(m_iconWidth, m_iconHeight);
-
         item->initData();
         
-        // Only move if position changed
         if (item->pos() != QPoint(Icon_X, Icon_Y)) {
              item->updateLocationInfo(QPoint(Icon_X, Icon_Y));
              item->move(Icon_X, Icon_Y);
         }
         
-        if (!item->isVisible()) {
-            item->show();
-        }
-        // 更新 Y 坐标，增加图标高度和列间距
         Icon_Y = Icon_Y + m_iconHeight + m_rowSpacing;
-
-        // 如果超出窗口高度，切换到下一列，Y 坐标重置为顶部
         if (Icon_Y + m_iconHeight > height()) {
-            // 切换到下一列
             Icon_X = Icon_X + m_iconWidth + m_colSpacing;
-            Icon_Y = m_marginTop;  // 重置 Y 坐标为顶部
+            Icon_Y = m_marginTop;
         }
     }
+    
+}
 
+void ListView::loadGridLayout()
+{
+    for (auto* item : m_items) {
+        item->setItemSize(m_iconWidth, m_iconHeight);
+        item->initData();
+
+        QPoint p = item->pos();
+        // 对齐到最近的网格点
+        int gridX = qRound((double)(p.x() - m_marginLeft) / (m_iconWidth + m_colSpacing));
+        int gridY = qRound((double)(p.y() - m_marginTop) / (m_iconHeight + m_rowSpacing));
+        
+        int snappedX = m_marginLeft + gridX * (m_iconWidth + m_colSpacing);
+        int snappedY = m_marginTop + gridY * (m_iconHeight + m_rowSpacing);
+        
+        // 边界检查
+        snappedX = qMax(m_marginLeft, qMin(snappedX, width() - m_iconWidth));
+        snappedY = qMax(m_marginTop, qMin(snappedY, height() - m_iconHeight));
+
+        if (item->pos() != QPoint(snappedX, snappedY)) {
+            item->updateLocationInfo(QPoint(snappedX, snappedY));
+            item->move(snappedX, snappedY);
+        }
+    }
 }
 ListView::SortOrderType ListView::getOppositeDirection() {
 
-    switch (m_sortType) {
+    switch (m_iconShowRule.sortType) {
     case SortOrderType::SortByName_ASC:
         return SortOrderType::SortByName_DESC;
     case SortOrderType::SortByName_DESC:
@@ -542,7 +659,7 @@ ListView::SortOrderType ListView::getOppositeDirection() {
 }
 void ListView::sortItems(SortOrderType order)
 {
-    if (m_sortType == order) {
+    if (m_iconShowRule.sortType == order) {
         order = getOppositeDirection();
     }
     switch (order) {
@@ -567,7 +684,7 @@ void ListView::sortItems(SortOrderType order)
     default:
         sortByName(true);
     }
-    m_sortType = order;
+    m_iconShowRule.sortType = order;
 }
 
 void ListView::sortByName(bool ascending)
@@ -579,14 +696,32 @@ void ListView::sortByName(bool ascending)
     // 对于中文环境，设置本地化
     collator.setLocale(QLocale::system());
 
-    std::sort(m_items.begin(), m_items.end(), [&collator, ascending](ListItem* a, ListItem* b) {
-        // 文件夹优先
-        /*if (a->isDirectory() != b->isDirectory()) {
-            return a->isDirectory() > b->isDirectory();
-        }*/
+    std::sort(m_items.begin(), m_items.end(), [&](ListItem* a, ListItem* b) {
+        auto getPriority = [](ListItem* item) {
+            if (item->type() == ObjectType::SpecialFolder) {
+                QString clsid = item->getItemData().getCLSID();
+                if (clsid == USER_FOLDER_CLS) return 1;
+                if (clsid == MY_COMPUTER_CLS) return 2;
+                if (clsid == NETWORK_CLS) return 3;
+                if (clsid == RECYCLE_BIN_CLS) return 4;
+                if (clsid == CONTROL_PANEL_CLS) return 5;
+                return 6;
+            }
+            return 100;
+        };
+
+        int prioA = getPriority(a);
+        int prioB = getPriority(b);
+
+        if (prioA != prioB) {
+            // 升序时，优先级小的排在前面（1, 2, 3, 100）
+            // 降序时，优先级大的排在前面（100, 3, 2, 1）
+            return ascending ? (prioA < prioB) : (prioA > prioB);
+        }
+
         int result = collator.compare(a->getSortName(), b->getSortName());
         return ascending ? (result < 0) : (result > 0);
-        });
+    });
 }
 
 void ListView::addItem(ListItem* item)
@@ -600,7 +735,11 @@ void ListView::addItem(ListItem* item)
     m_items.push_back(item);
     m_allItems.push_back(item);
     
-    item->show();
+    if (m_iconShowRule.showDesktopIcons) {
+        item->show();
+    } else {
+        item->hide();
+    }
 }
 
 void ListView::removeItem(ListItem* item)
@@ -717,225 +856,24 @@ bool ListView::isMultiSelection() const
 }
 
 bool ListView::nativeEvent(const QByteArray & eventType, void* message, long* result) {
-    MSG* msg = static_cast<MSG*>(message);
+    //MSG* msg = static_cast<MSG*>(message);
 
-    // 处理自定义的Shell通知消息
-    if (msg->message == WM_USER + 52) {
-        qDebug() << "Received received WM_SHELLNOTIFY (WM_USER + 52)";
-        handleShellNotification(msg->wParam, msg->lParam);
-        if (result) *result = 0;
-        return true;
-    }
+    //// 处理自定义的Shell通知消息
+    //if (msg->message == WM_USER + 52) {
+    //    qDebug() << "Received received WM_SHELLNOTIFY (WM_USER + 52)";
+    //    handleShellNotification(msg->wParam, msg->lParam);
+    //    if (result) *result = 0;
+    //    return true;
+    //}
 
     return QWidget::nativeEvent(eventType, message, result);
 }
 
-void ListView::handleShellNotification(WPARAM wParam, LPARAM lParam) {
-    LPITEMIDLIST* ppidl = nullptr;
-    LONG lEvent = 0;
-
-    HANDLE hNotifyLock = SHChangeNotification_Lock(
-        reinterpret_cast<HANDLE>(wParam),
-        static_cast<DWORD>(lParam),
-        &ppidl,
-        &lEvent
-    );
-
-    if (hNotifyLock) {
-        //qDebug() << "SHChangeNotification_Lock success. Event ID:" << lEvent;
-        processShellEvent(lEvent, ppidl);
-        SHChangeNotification_Unlock(hNotifyLock);
-    } else {
-        qDebug() << "SHChangeNotification_Lock failed.";
-    }
-}
-
-void ListView::processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl) {
-    FileSystemEvent eventDescription;
-    QString filePath;
-    ListItem* item;
-    wchar_t path[MAX_PATH] = { 0 };
-    // Extract file path from PIDL
-    if (ppidl && ppidl[0]) {
-        if (SHGetPathFromIDListW(ppidl[0], path)) {
-            filePath = QString::fromWCharArray(path);
-            //qDebug() << "Event Path:" << filePath;
-        } else {
-            qDebug() << "SHGetPathFromIDListW failed for event:" << lEvent;
-        }
-    } else {
-        qDebug() << "PIDL is null for event:" << lEvent;
-    }
-    
-    //qDebug() << "Processing Event:" << lEvent << "Path:" << filePath;
-
-    // Map event codes to descriptions
-    switch (lEvent) {
-    case SHCNE_RENAMEITEM:
-        eventDescription = FileSystemEvent::FileRenamed;
-        {
-             wchar_t newPath[MAX_PATH] = { 0 };
-             QString newFilePath;
-             if (ppidl && ppidl[1] && SHGetPathFromIDListW(ppidl[1], newPath)) {
-                 newFilePath = QString::fromWCharArray(newPath);
-                 qDebug() << "Rename Event OldPath:" << filePath << " NewPath:" << newFilePath;
-             }
-             
-             item = selectItemByPath(filePath);
-             if (item) {
-                 // Check if new path is still on desktop
-                 // We can simply check if the parent directory is the same
-                 QFileInfo fileInfo(newFilePath);
-                 QFileInfo oldFileInfo(filePath);
-                 
-                 // If the new file path is valid and sits in the same directory (or we monitor recursive?)
-                 // DirectoryMonitor is recursive=false by default in ListView.cpp: new DirectoryMonitor(..., false, ...)
-                 // So we assume if it stays in the monitored directory, it's a rename.
-                 // If it moved out (e.g. to Recycle Bin), it might have a different path.
-                 // Actually, Recycle Bin path is complex.
-                 // A simple check: does the new file exist? 
-                 // And is it in the desktop folder?
-                 // Since we don't have the desktop path handy in a variable, we can compare parent paths.
-                 // If moved to Recycle Bin, the path usually changes to something like C:\$Recycle.Bin\...
-                 
-                 if (!newFilePath.isEmpty() && fileInfo.absolutePath() == oldFileInfo.absolutePath()) {
-                     // Rename within desktop
-                     qDebug() << "Item renamed on desktop.";
-                     // Update item data
-                     // Create new data
-                     ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(newFilePath.replace("/", "\\").toStdWString().c_str()));
-                     item->setItemData(*data);
-                     item->initData(); // Re-init with new data
-                     item->update();
-                     // Maybe need to resort?
-                     // sortItems(m_sortType); // This might be heavy? But valid.
-                 } else {
-                     // Moved away (deleted)
-                     qDebug() << "Item moved away (deleted):" << filePath;
-                     this->removeItem(item);
-                 }
-             }
-        }
-        break;
-    case SHCNE_CREATE:
-        eventDescription = FileSystemEvent::FileCreated;
-        item = new ListItem(filePath, this);
-        this->addItem(item);
-        break;
-    case SHCNE_DELETE:
-        eventDescription = FileSystemEvent::FileDeleted;
-        item = selectItemByPath(filePath);
-        if (item) {
-            this->removeItem(item);
-        }
-        break;
-    case SHCNE_MKDIR:
-        eventDescription = FileSystemEvent::DirectoryCreated;
-        item = new ListItem(filePath, this);
-        this->addItem(item);
-        break;
-    case SHCNE_RMDIR:
-        eventDescription = FileSystemEvent::DirectoryDeleted;
-        item = selectItemByPath(filePath);
-        if (item) {
-            this->removeItem(item);
-        }
-        break;
-    case SHCNE_RENAMEFOLDER:
-        eventDescription = FileSystemEvent::DirectoryRenamed;
-        // Handle directory rename similar to file rename
-         {
-             wchar_t newPath[MAX_PATH] = { 0 };
-             QString newFilePath;
-             if (ppidl && ppidl[1] && SHGetPathFromIDListW(ppidl[1], newPath)) {
-                 newFilePath = QString::fromWCharArray(newPath);
-             }
-             item = selectItemByPath(filePath);
-             if (item) {
-                 QFileInfo fileInfo(newFilePath);
-                 QFileInfo oldFileInfo(filePath);
-                 if (!newFilePath.isEmpty() && fileInfo.absolutePath() == oldFileInfo.absolutePath()) {
-                     ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(newFilePath.replace("/", "\\").toStdWString().c_str()));
-                     item->setItemData(*data);
-                     item->initData();
-                     item->update();
-                 } else {
-                     this->removeItem(item);
-                 }
-             }
-         }
-        break;
-    case SHCNE_UPDATEITEM:
-        eventDescription = FileSystemEvent::FileUpdated;
-        item = selectItemByPath(filePath);
-        if (item) {
-             // Reload data
-             ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(filePath.replace("/", "\\").toStdWString().c_str()));
-             item->setItemData(*data);
-             item->initData();
-             item->update();
-        }
-        break;
-    case SHCNE_UPDATEDIR:
-        eventDescription = FileSystemEvent::DirectoryUpdated;
-        // Refresh list because directory content changed
-        refreshView();
-        break;
-    case SHCNE_ATTRIBUTES:
-        eventDescription = FileSystemEvent::FileAttributesChanged;
-        break;
-    case SHCNE_MEDIAREMOVED:
-        eventDescription = FileSystemEvent::MediaRemoved;
-        break;
-    case SHCNE_DRIVEADD:
-        eventDescription = FileSystemEvent::DriveAdded;
-        break;
-    case SHCNE_DRIVEREMOVED:
-        eventDescription = FileSystemEvent::DriveRemoved;
-        break;
-    case SHCNE_ASSOCCHANGED:
-        eventDescription = FileSystemEvent::FileAssociationChanged;
-        break;
-    case SHCNE_SERVERDISCONNECT:
-        eventDescription = FileSystemEvent::ServerDisconnected;
-        break;
-    default:
-        eventDescription = FileSystemEvent(0);
-    }
-
-    // Log the event
-    QString timestamp = QDateTime::currentDateTime().toString("[hh:mm:ss.zzz]");
-    QString logMessage = QString("%1 %2").arg(timestamp).arg(m_deskMonitor->eventToString(eventDescription));
-
-    if (!filePath.isEmpty()) {
-        logMessage += QString(": %1").arg(filePath);
-    }
-
-    qDebug() << "[Desktop Folder Monitor]" << logMessage << QDateTime::currentDateTime();
-}
 
 void ListView::refreshView() {
     qDebug() << "Refreshing View...";
-    // Clear current items?
-    // initialize() reloads from scratch.
-    // Need to clear existing items first to avoid duplicates or leaks if initialize doesn't clear.
-    
-    // Check initialize implementation.
-    // It creates new ListItems and adds them.
-    // So we must clear old items first.
-    
-    // removeItem deletes item.
-    // We can iterate and remove all.
-    // Or just clear m_items and m_allItems and delete widgets.
-    
-    // Better: use qDeleteAll(m_allItems); m_allItems.clear(); m_items.clear();
-    // But m_items is subset.
-    // m_allItems owns the pointers (created in initialize).
-    
-    // Let's look at ListView::~ListView()
-    // //qDeleteAll(m_listItems); is commented out.
-    // But we should clean up.
-    
+
+    // 2. 清理旧项目
     for(auto item : m_allItems) {
         if(item) {
             item->deleteLater();
@@ -944,13 +882,125 @@ void ListView::refreshView() {
     m_allItems.clear();
     m_items.clear();
     m_selectedItems.clear();
-    m_hiddenIcons.clear(); // Clear hidden icons too
+    m_hiddenIcons.clear(); 
     
+    // 3. 重新加载数据
     this->initialize();
+    // 5. 执行布局分发
     this->loadIconLayer();
 }
 
-// 文件系统变化事件处理
+void ListView::initRightMenuConnections() {
+    RightMenu* menu = RightMenu::getInstance();
+
+    // View sub-menu connections
+    connect(menu, &RightMenu::LargeIconsTriggered, this, &ListView::onMenuLargeIcons);
+    connect(menu, &RightMenu::MediumIconsTriggered, this, &ListView::onMenuMediumIcons);
+    connect(menu, &RightMenu::SmallIconsTriggered, this, &ListView::onMenuSmallIcons);
+    connect(menu, &RightMenu::AutoArrangeIconsTriggered, this, &ListView::onMenuAutoArrangeIcons);
+    connect(menu, &RightMenu::AlignIconsToGridTriggered, this, &ListView::onMenuAlignIconsToGrid);
+    connect(menu, &RightMenu::ShowDesktopIconsTriggered, this, &ListView::onMenuShowDesktopIcons);
+
+    // Sort sub-menu connections
+    connect(menu, &RightMenu::sortByNameTriggered, this, &ListView::onMenuSortByName);
+    connect(menu, &RightMenu::sortBySizeTriggered, this, &ListView::onMenuSortBySize);
+    connect(menu, &RightMenu::sortByTypeTriggered, this, &ListView::onMenuSortByType);
+    connect(menu, &RightMenu::sortByDateTriggered, this, &ListView::onMenuSortByDate);
+
+    // Other actions
+    connect(menu, &RightMenu::refreshTriggered, this, &ListView::onMenuRefresh);
+    connect(menu, &RightMenu::pasteTriggered, this, &ListView::onMenuPaste);
+    connect(menu, &RightMenu::pasteShortcutTriggered, this, &ListView::onMenuPasteShortcut);
+    connect(menu, &RightMenu::undoDeleteTriggered, this, &ListView::onMenuUndoDelete);
+}
+
+void ListView::onMenuLargeIcons() {
+    qDebug() << "ListView: Large Icons triggered";
+}
+
+void ListView::onMenuMediumIcons() {
+    qDebug() << "ListView: Medium Icons triggered";
+}
+
+void ListView::onMenuSmallIcons() {
+    qDebug() << "ListView: Small Icons triggered";
+}
+
+void ListView::onMenuAutoArrangeIcons() {
+    qDebug() << "ListView: Auto Arrange Icons triggered";
+    m_iconShowRule.autoArrange = !m_iconShowRule.autoArrange;
+    loadIconLayer();
+    update();
+}
+
+void ListView::onMenuAlignIconsToGrid() {
+    qDebug() << "ListView: Align Icons to Grid triggered";
+    m_iconShowRule.gridAlignment = !m_iconShowRule.gridAlignment;
+    loadIconLayer();
+    update();
+}
+
+void ListView::onMenuShowDesktopIcons() {
+    qDebug() << "ListView: Show Desktop Icons triggered";
+    if(m_iconShowRule.showDesktopIcons) {
+        m_iconShowRule.showDesktopIcons = false;
+        this->rightMenu->setShowDesktopIconsChecked(false);
+        for (auto item : m_items) {
+            item->hide();
+        }
+    } else {
+        m_iconShowRule.showDesktopIcons = true;
+        this->rightMenu->setShowDesktopIconsChecked(true);
+        for (auto item : m_items) {
+            item->show();
+        }
+    }
+}
+
+void ListView::onMenuSortByName() {
+    qDebug() << "ListView: Sort By Name triggered";
+    this->sortItems(SortOrderType::SortByName_ASC);
+    loadIconLayer();
+    update();
+}
+
+void ListView::onMenuSortBySize() {
+    qDebug() << "ListView: Sort By Size triggered";
+    this->sortItems(SortOrderType::SortBySize_ASC);
+    loadIconLayer();
+    update();
+}
+
+void ListView::onMenuSortByType() {
+    qDebug() << "ListView: Sort By Type triggered";
+    this->sortItems(SortOrderType::SortByType_ASC);
+    loadIconLayer();
+    update();
+}
+
+void ListView::onMenuSortByDate() {
+    qDebug() << "ListView: Sort By Date triggered";
+    this->sortItems(SortOrderType::SortByDateModified_ASC);
+    loadIconLayer();
+    update();
+}
+
+void ListView::onMenuRefresh() {
+    qDebug() << "ListView: Refresh triggered";
+    refreshView(); // 使用已有的刷新函数
+}
+
+void ListView::onMenuPaste() {
+    qDebug() << "ListView: Paste triggered";
+}
+
+void ListView::onMenuPasteShortcut() {
+    qDebug() << "ListView: Paste Shortcut triggered";
+}
+
+void ListView::onMenuUndoDelete() {
+    qDebug() << "ListView: Undo Delete triggered";
+}
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 {
     // 规范化路径（统一用反斜杠，去掉末尾斜杠）
@@ -970,85 +1020,60 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
              << "old:" << oldPath
              << "new:" << newPath;
 
-    // 重新布局并刷新（不调用 sortItems 避免方向反转 bug）
+    // 重新布局并刷新
     auto relayout = [this]() {
         loadIconLayer();
         update();
         repaint();
     };
 
-    // 按当前排序规则重排（直接调用 sortByName 避免 sortItems 的方向反转 bug）
+    // 按当前排序规则重排
     auto resort = [this]() {
-        bool ascending = (m_sortType == SortOrderType::SortByName_ASC ||
-                          m_sortType == SortOrderType::SortBySize_ASC ||
-                          m_sortType == SortOrderType::SortByType_ASC ||
-                          m_sortType == SortOrderType::SortByDateModified_ASC);
+        bool ascending = (
+            m_iconShowRule.sortType == SortOrderType::SortByName_ASC ||
+            m_iconShowRule.sortType == SortOrderType::SortBySize_ASC ||
+            m_iconShowRule.sortType == SortOrderType::SortByType_ASC ||
+            m_iconShowRule.sortType == SortOrderType::SortByDateModified_ASC
+            );
         sortByName(ascending);
     };
 
     switch (eventInfo.eventType) {
-
-    // ── 创建（文件 / 文件夹） ──────────────────────────────────────────
     case FileSystemEvent::FileCreated:
     case FileSystemEvent::DirectoryCreated:
     {
-        if (newPath.isEmpty()) {
-            qDebug() << "[onFileSystemChanged] FileCreated: empty path, skip";
-            break;
-        }
-        // 防止重复添加
-        if (selectItemByPath(newPath)) {
-            qDebug() << "[onFileSystemChanged] already exists, skip:" << newPath;
-            break;
-        }
+        if (newPath.isEmpty()) break;
+        if (selectItemByPath(newPath)) break;
+        
         qDebug() << "[onFileSystemChanged] Creating item:" << newPath;
         ListItem* item = new ListItem(newPath, this);
         addItem(item);
         break;
     }
-
-    // ── 删除（文件 / 文件夹） ──────────────────────────────────────────
     case FileSystemEvent::FileDeleted:
     case FileSystemEvent::DirectoryDeleted:
     {
-        // 删除事件：oldPath 优先，其次 newPath
         const QString& deletePath = !oldPath.isEmpty() ? oldPath : newPath;
-        if (deletePath.isEmpty()) {
-            qDebug() << "[onFileSystemChanged] FileDeleted: empty path, skip";
-            break;
-        }
+        if (deletePath.isEmpty()) break;
+        
         ListItem* item = selectItemByPath(deletePath);
         if (item) {
-            qDebug() << "[onFileSystemChanged] Removing item:" << deletePath;
-            removeItem(item);   // removeItem 内部已调用 update()/repaint()
-        } else {
-            qDebug() << "[onFileSystemChanged] Item not found for deletion:" << deletePath;
+            removeItem(item);
         }
         break;
     }
-
-    // ── 重命名（文件 / 文件夹） ───────────────────────────────────────
     case FileSystemEvent::FileRenamed:
     case FileSystemEvent::DirectoryRenamed:
     {
-        if (oldPath.isEmpty() || newPath.isEmpty()) {
-            qDebug() << "[onFileSystemChanged] Rename: empty path, skip";
-            break;
-        }
+        if (oldPath.isEmpty() || newPath.isEmpty()) break;
 
         ListItem* item = selectItemByPath(oldPath);
-
         if (item) {
-            // 判断是否仍在同一父目录（同目录重命名）
             const QString oldDir = QFileInfo(oldPath).absolutePath();
             const QString newDir = QFileInfo(newPath).absolutePath();
 
             if (oldDir == newDir) {
-                // ── 同目录重命名：更新 item 数据 ──
-                qDebug() << "[onFileSystemChanged] Rename in-place:" << oldPath << "->" << newPath;
-                ListItemData* data = new ListItemData(
-                    CSystemApi::CreateIconItem(newPath.toStdWString().c_str())
-                );
+                ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(newPath.toStdWString().c_str()));
                 item->setItemData(*data);
                 delete data;
                 item->initData();
@@ -1056,22 +1081,14 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 resort();
                 relayout();
             } else {
-                // ── 移出桌面目录：视为删除 ──
-                qDebug() << "[onFileSystemChanged] Item moved out, removing:" << oldPath;
                 removeItem(item);
             }
-        } else {
-            // 找不到旧项 → 可能是从外部移入桌面，视为新建
-            if (!selectItemByPath(newPath)) {
-                qDebug() << "[onFileSystemChanged] Item moved in, creating:" << newPath;
-                ListItem* newItem = new ListItem(newPath, this);
-                addItem(newItem);
-            }
+        } else if (!selectItemByPath(newPath)) {
+            ListItem* newItem = new ListItem(newPath, this);
+            addItem(newItem);
         }
         break;
     }
-
-    // ── 内容修改（文件） ──────────────────────────────────────────────
     case FileSystemEvent::FileUpdated:
     case FileSystemEvent::FileAttributesChanged:
     {
@@ -1080,31 +1097,15 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 
         ListItem* item = selectItemByPath(updatePath);
         if (item) {
-            qDebug() << "[onFileSystemChanged] Updating item:" << updatePath;
-            ListItemData* data = new ListItemData(
-                CSystemApi::CreateIconItem(updatePath.toStdWString().c_str())
-            );
+            ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(updatePath.toStdWString().c_str()));
             item->setItemData(*data);
             delete data;
-            // 只刷新该 item 自身，不重新布局其他图标
             item->initData();
             item->update();
-            // 注意：不调用 relayout()，避免其他图标位置改变
         }
         break;
     }
-
-    // ── 文件夹内容变化（子项增删） ────────────────────────────────────
-    case FileSystemEvent::DirectoryUpdated:
-    {
-        // 桌面文件夹本身内容变化时，不需要额外处理
-        // 因为子项的增删会触发独立的 FileCreated/FileDeleted 事件
-        qDebug() << "[onFileSystemChanged] DirectoryUpdated (no-op):" << newPath;
-        break;
-    }
-
     default:
-        qDebug() << "[onFileSystemChanged] Unhandled event type:" << (int)eventInfo.eventType;
         break;
     }
 }

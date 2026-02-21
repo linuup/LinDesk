@@ -134,46 +134,31 @@ private:
 			}
 			return;
 		}
-		QFileIconProvider icon_provider;
-		QString targetPath = m_fileInfo.symLinkTarget();
-		if (!targetPath.isEmpty()) {
-			QFileInfo targetData(targetPath);
-			m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
-		}
+
 		if (m_icon.isNull()) {
-			if (m_fileInfo.isFile()) {
-				m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
+			QFileIconProvider icon_provider;
+			QString targetPath = m_fileInfo.symLinkTarget();
+			if (!targetPath.isEmpty()) {
+				QFileInfo targetData(targetPath);
+				m_icon = icon_provider.icon(targetData); // 获取特定文件的图标
 			}
-			else {
-				//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
-				m_icon = SysInfoUtil::SysFileIconByDLL(4, "shell32.dll");
+			if (m_icon.isNull()) {
+				if (m_fileInfo.isFile()) {
+					m_icon = icon_provider.icon(m_fileInfo); // 获取特定文件的图标
+				}
+				else {
+					//m_icon = icon_provider.icon(QFileIconProvider::Folder); // 获取文件夹的图标
+					m_icon = SysInfoUtil::SysFileIconByDLL(4, "shell32.dll");
+				}
 			}
-		}
-		// 如果图标仍然为空（空白快捷方式等），使用默认空文件图标
-		if (m_icon.isNull()) {
-			m_icon = SysInfoUtil::SysFileIconByDLL(0, 256, "shell32.dll");
+			// 如果图标仍然为空（空白快捷方式等），使用默认空文件图标
+			if (m_icon.isNull()) {
+				m_icon = SysInfoUtil::SysFileIconByDLL(0, 256, "shell32.dll");
+			}
 		}
 	}
 	bool updatePropertiesFromPIDL() {
 		if (!m_pidl) return false;
-		// 获取路径
-		//wchar_t path[MAX_PATH];
-		//if (SHGetPathFromIDList(m_pidl.get(), path)) {
-		//    m_filePath = QString::fromWCharArray(path);
-		//}
-
-		//// 获取文件信息，包括显示名称、类型和图标
-		//SHFILEINFO sfi = {};
-		//if (SHGetFileInfo(reinterpret_cast<LPCTSTR>(m_pidl.get()), 0, &sfi, sizeof(sfi),
-		//    SHGFI_PIDL | SHGFI_DISPLAYNAME | SHGFI_TYPENAME | SHGFI_ICON)) {
-		//    m_text = QString::fromWCharArray(sfi.szDisplayName);
-		//    m_fileType = QString::fromWCharArray(sfi.szTypeName);
-		//    if (sfi.hIcon) {
-		//        // m_icon = QIcon(QPixmap::fromImage(QtWin::fromHICON(sfi.hIcon)));
-		//        // m_icon = nullptr;
-		//        DestroyIcon(sfi.hIcon);
-		//    }
-		//}
 		//// 获取文件大小和最后修改时间
 		//if (!m_filePath.isEmpty()) {
 		//    QFileInfo fileInfo(m_filePath);

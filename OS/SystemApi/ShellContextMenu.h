@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <optional>
 #include <functional>
+#include <map>
 #include "CommonEnum.h"
 #include <wil/com.h>
 #include <ShlObj.h>
@@ -39,35 +40,9 @@ public:
 
 };
 
-// 视图菜单构建器
-class ViewsMenuBuilder {
-public:
-    HMENU BuildViewsMenu() {
-        HMENU hViewsMenu = CreatePopupMenu();
-
-        // 添加不同的视图选项
-        SysMenuHelper::AddStringItem(hViewsMenu, IDS_BACKGROUND_CONTEXT_MENU_VIEW, L"Large Icons", 0, true);
-
-
-        return hViewsMenu;
-    }
-};
-
-// 视图菜单构建器
-class SortMenuBuilder {
-public:
-    HMENU BuildViewsMenu() {
-        HMENU hSortMenu = CreatePopupMenu();
-
-        // 添加不同的视图选项
-        SysMenuHelper::AddStringItem(hSortMenu, IDS_SORTBY_NAME, L"Name", 0, true);
-
-        return hSortMenu;
-    }
-};
-
 static const int MIN_SHELL_MENU_ID = 1;
 static const int MAX_SHELL_MENU_ID = 1000;
+static const int CUSTOM_MENU_ID_BASE = 10001;
 
 
 
@@ -125,6 +100,26 @@ private:
     //ShellContextMenu& operator=(ShellContextMenu const&) = delete;
 public:
 
+    /// <summary>
+    /// 自定义菜单项（追加到背景菜单末尾）
+    /// </summary>
+    struct CustomMenuItem {
+        std::wstring text;       // 显示文本
+        std::function<void()> callback; // 选中时的回调
+        std::vector<CustomMenuItem> children; // 子菜单项
+        bool isSeparator = false; // 是否为分隔线
+        bool checkable = false;   // 是否可选
+        bool checked = false;     // 是否已选中
+        bool enabled = true;      // 是否可用
+    };
+
+    /// <summary>
+    /// 设置要追加到背景右键菜单的自定义菜单项
+    /// </summary>
+    void setCustomMenuItems(const std::vector<CustomMenuItem>& items) {
+        m_customItems = items;
+    }
+
     void ShowMenu(HWND hwnd, const POINT *pt, IUnknown* site, Flags flags = Flags::Standard);
 
 
@@ -177,6 +172,8 @@ private:
 
     unique_pidl_absolute m_pidlParent;
     const std::vector<unique_pidl_child> m_pidlItems;
+    std::vector<CustomMenuItem> m_customItems; // 自定义追加菜单项
+    std::map<UINT, std::function<void()>> m_customCallbackMap; // 映射命令ID到回调
     //ShellContextMenuHandler* const m_handler;
     wil::com_ptr_nothrow<IContextMenu3> m_contextMenu;
 

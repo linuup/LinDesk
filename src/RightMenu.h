@@ -77,18 +77,59 @@ public:
 	ShellContextMenu* sContextMenu;
 	
 	// 获取自定义菜单
-	QMenu* getCustomMenu() const { return customMenu; }
+	QMenu* getCustomMenu() const { return m_customMenu; }
 
+	//set showDesktopIcons action check state
+	void setShowDesktopIconsChecked(bool checked) {
+		if (m_showDesktopIconsAction) {
+			m_showDesktopIconsAction->setChecked(checked);
+		}
+	}
 signals:
 	// 自定义菜单项的信号
+	// 1-View
+	void LargeIconsTriggered();
+	void MediumIconsTriggered();
+	void SmallIconsTriggered();
+	void AutoArrangeIconsTriggered();
+	void AlignIconsToGridTriggered();
+	void ShowDesktopIconsTriggered();
+	// 2-Sort by
 	void sortByNameTriggered();
 	void sortBySizeTriggered();
 	void sortByTypeTriggered();
 	void sortByDateTriggered();
+	// 3-Refresh
 	void refreshTriggered();
+	// 4-Paste
 	void pasteTriggered();
+	// 5-Paste shortcut
 	void pasteShortcutTriggered();
-	void viewTriggered();
+
+	// 6-Undo delete
+	void undoDeleteTriggered();
+
+
+public slots:
+	// 菜单项槽函数
+	// View
+	void onLargeIcons();
+	void onMediumIcons();
+	void onSmallIcons();
+	void onAutoArrangeIcons();
+	void onAlignIconsToGrid();
+	void onShowDesktopIcons();
+	// Sort by
+	void onSortByName();
+	void onSortBySize();
+	void onSortByType();
+	void onSortByDate();
+	// Refresh
+	void onRefresh();
+	void onPaste();
+	void onPasteShortcut();
+	// Undo delete
+	void onUndoDelete();
 
 private:
 	RightMenu() {
@@ -106,12 +147,34 @@ private:
 	
 	ObjectType fileType;		//类型
 	
-	QMenu* customMenu;			// 自定义右键菜单
+	QMenu* m_customMenu;			// 自定义右键菜单
 	
+
+	// 菜单项 Action 指针，用于管理选中状态
+	QAction* m_largeIconsAction = nullptr;
+	QAction* m_mediumIconsAction = nullptr;
+	QAction* m_smallIconsAction = nullptr;
+	QAction* m_autoArrangeIconsAction = nullptr;
+	QAction* m_alignIconsToGridAction = nullptr;
+	QAction* m_showDesktopIconsAction = nullptr;
+
+	QAction* m_sortByNameAction = nullptr;
+	QAction* m_sortBySizeAction = nullptr;
+	QAction* m_sortByTypeAction = nullptr;
+	QAction* m_sortByDateAction = nullptr;
+
 	/// <summary>
 	/// 创建排序方式子菜单
 	/// </summary>
-	QMenu* createSortBySubMenu() const;
+	QMenu* createSortBySubMenu();
+
+	/// <summary>
+	/// 创建View子菜单
+	/// </summary>
+	QMenu* createViewSubMenu();
+
+	/// create undo delete menu
+	QMenu* createUndoDeleteMenu() const;
 	
 	/// <summary>
 	/// 
@@ -119,48 +182,9 @@ private:
 	/// <param name="hwnd"></param>
 	/// <param name="pidlParent"></param>
 	/// <param name=""></param>
-	RightMenu(HWND hwnd, PCIDLIST_ABSOLUTE pidlParent)
-	{
 		/*unique_pidl_absolute pidlDesktop;
 		HRESULT hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));
 		fileContextMenu = pidlDesktop;*/
-	}
 
-private slots:
-	// 菜单项槽函数
-	void onSortByName();
-	void onSortBySize();
-	void onSortByType();
-	void onSortByDate();
-	void onRefresh();
-	void onPaste();
-	void onPasteShortcut();
-	void onView();
 };
-
-	//protected:
-	//    QMenu* menu;    
-	//    QString menuName;   //选项名
-	//    QString command;    //选项命令
-	//    QString iconPath; //图标
-	//    int iconIndex = 0; //图标索引
-	//    //QString regPath;    //注册表位置
-	//private:
-	//    int rightMenuWidth = 1920 / 8;  //菜单最小宽度
-	//
-	//    ShellContextMenu *fileContextMenu;      //文件右键菜单对象
-	//
-	//    /// <summary>
-	//    /// 获取右键菜单项
-	//    /// </summary>
-	//    std::vector<std::unique_ptr<RightMenu>> rightMenu_Program();
-	//        
-	//    /// <summary>
-	//    /// 把所有子项填充到items里
-	//    /// </summary>
-	//    /// <param name="qs"></param>注册表路径
-	//    /// <param name="items"></param>空数组
-	//    void getChildsItemPath(QSettings& qs, std::vector<QString>& items);
-
-
 

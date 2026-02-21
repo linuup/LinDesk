@@ -27,10 +27,11 @@ class ListView: public QWidget {
 	Q_OBJECT
 
 public:
-	//桌面图标是否与网格对齐
+
+	//桌面图标布局模式
 	enum class IconPosMode {
-		AlignIconToGrid,
-		UnAlignIconToGrid
+		AlignIconToGrid,  // 对齐网格
+		UnAlignIconToGrid // 自由位置
 	};
 	/// <summary>
 	/// Windows 自然排序（Natural Sort）规则
@@ -56,7 +57,23 @@ public:
 		SortByDateModified_ASC,
 		SortByDateModified_DESC
 	};
-	
+	// icon size show mode
+	enum class ViewMode {
+		LargeIcon,
+		MediumIcon,
+		SmallIcon
+	};
+	// icon show rule
+	struct IconShowRule {
+		IconPosMode iconPosMode = IconPosMode::AlignIconToGrid; //图标位置模式，默认与网格对齐
+		ViewMode viewMode = ViewMode::MediumIcon;	//图标显示模式，默认中等图标
+		SortOrderType sortType = SortOrderType::SortByName_ASC;	//图标排序方式，默认按名称升序排列
+		bool autoArrange = true;        // 是否自动排列
+		bool gridAlignment = true;      // 是否网格对齐
+		bool showDesktopIcons = true;	//是否显示桌面图标
+		bool showShortCutArrow = false;	//是否显示快捷方式小箭头
+	};
+
 	// 获取单例对象
 	static ListView* instance(QWidget* parent = nullptr);
 
@@ -68,6 +85,10 @@ public:
 	/// </summary>
 	void initialize();
 
+	// 
+	void loadAutoLayout();
+	//
+	void loadGridLayout();
 	// load Desktop Item on UI
 	void loadIconLayer();
 
@@ -141,22 +162,7 @@ public:
 	/// <param name="objType"></param>
 	/// <param name="point">相对屏幕的坐标</param>
 	/// <param name="checkedItems">选中项目列表</param>
-	void requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems) const {
-		RightMenu* r = RightMenu::getInstance();
-		if (checkedItems.size() == 1) {
-			r->setShowType(objType);
-			r->showMenu(point, checkedItems.at(0));
-			return;
-		}else if (objType == ObjectType::BackGround) {
-			r->setShowType(ObjectType::BackGround);
-			r->showMenu(point, nullptr);
-			return;
-		}else {
-			r->setShowType(ObjectType::MultObject);
-			r->showMultObjectMenu(point, checkedItems.toStdVector());
-		}
-				
-	}
+	void requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems);
 	/// <summary>
 	/// update 
 	/// </summary>
@@ -186,19 +192,35 @@ private slots:
 	}
 	
 	void onFileSystemChanged(const FileSystemEventInfo& eventInfo);
+	
+	// RightMenu Slot handles
+	void onMenuLargeIcons();
+	void onMenuMediumIcons();
+	void onMenuSmallIcons();
+	void onMenuAutoArrangeIcons();
+	void onMenuAlignIconsToGrid();
+	void onMenuShowDesktopIcons();
+	
+	void onMenuSortByName();
+	void onMenuSortBySize();
+	void onMenuSortByType();
+	void onMenuSortByDate();
+	
+	void onMenuRefresh();
+	void onMenuPaste();
+	void onMenuPasteShortcut();
+	void onMenuUndoDelete();
+
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
 	void contextMenuEvent(QContextMenuEvent* event) override; //右键菜单事件
 	void mousePressEvent(QMouseEvent* event) override;
 	void mouseMoveEvent(QMouseEvent* event) override;
 	void mouseReleaseEvent(QMouseEvent* event) override;
+	void mouseDoubleClickEvent(QMouseEvent* event) override;
 	void enterEvent(QEvent* event) override;
 
 	bool nativeEvent(const QByteArray & eventType, void* message, long* result) override;
-	void handleShellNotification(WPARAM wParam, LPARAM lParam);
-	// Handle shell events
-	void processShellEvent(LONG lEvent, LPITEMIDLIST * ppidl);
-
 	void refreshView();
 
 	//signals:
@@ -209,10 +231,14 @@ protected:
 private:
 	explicit ListView(QWidget* parent = nullptr);
 	~ListView();
+	
+	// 初始化右键菜单信号连接
+	void initRightMenuConnections();
 
 	static ListView* m_instance;	//图标视图
 	RightMenu* rightMenu;
-	SortOrderType m_sortType = SortOrderType::SortByName_ASC;
+	IconShowRule m_iconShowRule;	// icon show rule
+	
 
 	// 网格布局常量
 	const int m_iconWidth = 76;
@@ -227,22 +253,30 @@ private:
 	QVector<ListItem*> m_hiddenIcons;             // 存储桌面系统图标状态
 	QList<DesktopIconsMonitor::DesktopIcon> sysIconRegisterInfo;             // 存储桌面系统图标状态
 
-	QVector<ListItem*> m_selectedItems;      // 存储所有选中的项
 
-	bool m_isMultiSelection;               // 是否启用多选
-
-	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
-
-	bool m_isShowShortCutArrow = false;	//控制是否显示快捷方式小箭头
+	//store selected items
+	QVector<ListItem*> m_selectedItems;
+	// is enable multi selection
+	bool m_isMultiSelection;            
+	
 	bool m_isDragging = false;  // 是否正在拖动
 	bool m_isSelecting = false;  // 是否正在拖拽选择
 	QPoint m_dragOffset;	//拖拽偏移量
 	QPoint m_originalPos; // 记录原始位置，用于取消拖动s
 	QPoint m_lastRightClickPos; // 记录最后一次右键点击的位置
-
 	QPoint m_startPos;     // 鼠标点击开始时的位置
-
-	DesktopIconsMonitor* monitor;   //Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel
-	DirectoryMonitor* m_deskMonitor;
+	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
+	//Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel,Recycle Bin
+	DesktopIconsMonitor* monitor;
+	//use SHChangeNotifyRegister to monitor desktop directory changes
+	//DirectoryMonitor* m_deskMonitor;
+	//use readirectorychangesw to monitor directory changes
 	LinDirectoryMonitor* m_linMonitor;  // Lin目录监控器
+	
+	struct GhostInfo {
+		QLabel* widget;
+		ListItem* item;
+		QPoint offset; // 距离鼠标点击位置的偏移量
+	};
+	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
 };

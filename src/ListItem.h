@@ -65,6 +65,7 @@ public:
     void updateLocationInfo(QPoint pos);
     void checkSelf();
     void unCheckSelf();
+    void openItem();
     
      //获取对应的 ListItemData
     
@@ -86,12 +87,12 @@ private:
      QFileInfo m_fileInfo;
      QString m_baseName;           //基本文件名
      QString m_suffixName;         //文件后缀名
-     QLabel* m_iconWidget;       //图标控件
+     QLabel* m_iconWidget = nullptr;       //图标控件
      QIcon m_icon;
      ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
 	 QString m_filePath;    //Windows 文件路径
 
-     QLabel* textLabel; //文件名称Label
+     QLabel* textLabel = nullptr; //文件名称Label
      
 };
 #endif // LISTITEM_H

@@ -1,9 +1,11 @@
 #include "ListItem.h"
 #include "ListView.h"
 #include <SysInfoUtil.h>
+#include <shellapi.h>
 class ListView;
 
 ListItem::ListItem(QWidget* parent)
+	: QWidget(parent)
 {
 	// 设置无边框窗口
 	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
@@ -205,6 +207,16 @@ void ListItem::unCheckSelf()
 	if (this->isReady == true) {
 		update();
 	}
+}
+
+void ListItem::openItem()
+{
+	if (!isReady || m_filePath.isEmpty()) return;
+
+	// 使用 Windows ShellExecuteW 打开文件或文件夹
+	// 转换路径为本地分隔符（虽然 ShellExecute 通常处理两者，但本地化更稳妥）
+	std::wstring wPath = QDir::toNativeSeparators(m_filePath).toStdWString();
+	ShellExecuteW(NULL, L"open", wPath.c_str(), NULL, NULL, SW_SHOWNORMAL);
 }
 
 ListItemData ListItem::getItemData()
