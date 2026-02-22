@@ -14,9 +14,14 @@
 #include <QtConcurrent/qtconcurrentrun>
 #include "ListView.h"
 #include "Monitor/IRegistryListenerInterface.h"
-#include "SysInfoUtil.h"
+#include "Monitor/DesktopInfoMonitor.h"
+#include <QScreen>
+#include <QVariantAnimation>
+#include <QPainter>
+#include <QTimer>
 class LinDesktop : public QWidget {
     Q_OBJECT
+    Q_PROPERTY(float transitionOpacity READ transitionOpacity WRITE setTransitionOpacity)
 
 public:
     explicit LinDesktop(QWidget* parent = nullptr);
@@ -24,19 +29,34 @@ public:
 
     //First Floor
     ListView* listView;
+    DesktopInfoMonitor* m_monitor = nullptr;
     ~LinDesktop();
 
     QRect m_lastSelectRect;
 	QPoint m_startPos;    //鼠标点击坐标
 	
+    float transitionOpacity() const { return m_transitionOpacity; }
+    void setTransitionOpacity(float opacity);
+
+    int transitionDuration() const { return m_transitionDuration; }
+    void setTransitionDuration(int ms);
+
+    void onWallpaperChanged();
+
 	//QRect drawingMaskRect;    //拖拽选择框矩形
     void loadBackImage();
 	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
     
 private:
-    QLabel* backImageLabel;  //background image
     QPixmap m_backImagePixmap;
+    QPixmap m_prevBackImagePixmap;
+    float m_transitionOpacity = 1.0f;
+    int m_transitionDuration = 1300; // Default 500ms
+    QVariantAnimation* m_transitionAnimation = nullptr;
+    QTimer* m_wallpaperLoadTimer = nullptr;
+    QString m_currentWallpaperPath;
+
     /// <summary>
     /// Insert to SystemDesktopWindow
     /// </summary>
@@ -49,8 +69,10 @@ protected:
     void mouseMoveEvent(QMouseEvent* event);
     void mouseReleaseEvent(QMouseEvent* event);
     void paintEvent(QPaintEvent* event);
+    void resizeEvent(QResizeEvent* event) override;
 
     void contextMenuEvent(QContextMenuEvent* event) override;
+    bool nativeEvent(const QByteArray & eventType, void* message, long* result) override;
     
 };
 

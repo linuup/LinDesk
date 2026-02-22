@@ -96,6 +96,12 @@ QMenu* RightMenu::createViewSubMenu()
     connect(m_showDesktopIconsAction, &QAction::triggered, this, &RightMenu::onShowDesktopIcons);
     viewMenu->addAction(m_showDesktopIconsAction);
 
+    //1.8 Double-click to hide desktop icons
+    this->m_doubleClickedHideIconsAction = new QAction("Double-click to hide icons", viewMenu);
+    m_doubleClickedHideIconsAction->setCheckable(true);
+    connect(m_doubleClickedHideIconsAction, &QAction::triggered, this, &RightMenu::onDoubleClickedHideIcons);
+    viewMenu->addAction(m_doubleClickedHideIconsAction);
+
     return viewMenu;
 }
 
@@ -149,6 +155,9 @@ void RightMenu::onAlignIconsToGrid() {
 }
 void RightMenu::onShowDesktopIcons() { 
     emit ShowDesktopIconsTriggered(); 
+}
+void RightMenu::onDoubleClickedHideIcons() {
+    emit DoubleClickedHideIconsTriggered();
 }
 
 void RightMenu::onSortByName() { m_sortByNameAction->setChecked(true); emit sortByNameTriggered(); }
@@ -284,6 +293,15 @@ void RightMenu::setAutoArrangeIconsChecked(bool checked)
 }
 
 void RightMenu::setAlignIconsToGridChecked(bool checked)
+{
+    if (checked) {
+        m_alignIconsToGridAction->setChecked(true);
+    } else {
+        m_alignIconsToGridAction->setChecked(false);
+    }
+}
+
+void RightMenu::setDoubleClickedHideIconsChecked(bool checked)
 {
     if (checked) {
         m_alignIconsToGridAction->setChecked(true);

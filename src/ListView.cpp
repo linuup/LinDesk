@@ -28,7 +28,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     setGeometry(QApplication::primaryScreen()->geometry());
     //setAutoFillBackground(true);
 
-    monitor = new DesktopIconsMonitor(this);
+    monitor = new DesktopInfoMonitor(this);
     startListeningSpecialIcon();
 
     //m_deskMonitor = new DirectoryMonitor(reinterpret_cast<HWND>(winId()),false, this);
@@ -202,7 +202,7 @@ void ListView::startListeningSpecialIcon()
         //monitor->setIconVisibility("{645FF040-5081-101B-9F08-00AA002F954E}", true);
     }
     // 连接信号
-    connect(monitor, &DesktopIconsMonitor::iconVisibilityChanged,
+    connect(monitor, &DesktopInfoMonitor::iconVisibilityChanged,
         this, &ListView::updateSystemIconVisibility);
 }
 ListView::~ListView() {
@@ -540,8 +540,10 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
             
         } else {
-            // 双击空白处：现有逻辑是切换桌面图标显示
-            onMenuShowDesktopIcons();
+            // 双击空白处：如果开启了该功能，则切换桌面图标显示
+            if (m_iconShowRule.doubleClickHideIcons) {
+                onMenuShowDesktopIcons();
+            }
         }
     }
     QWidget::mouseDoubleClickEvent(event);
@@ -601,6 +603,9 @@ void ListView::initialize()
     }
 
     //load System Items
+    if (monitor) {
+        sysIconRegisterInfo = monitor->getCurrentIcons();
+    }
     for (auto it = sysIconRegisterInfo.begin(); it != sysIconRegisterInfo.end(); it++) {
         if (!it->isHidden) {
             for (auto s_item = m_hiddenIcons.begin(); s_item != m_hiddenIcons.end(); s_item++) {
@@ -903,22 +908,6 @@ bool ListView::isMultiSelection() const
 {
     return false;
 }
-
-bool ListView::nativeEvent(const QByteArray & eventType, void* message, long* result) {
-    //MSG* msg = static_cast<MSG*>(message);
-
-    //// 处理自定义的Shell通知消息
-    //if (msg->message == WM_USER + 52) {
-    //    qDebug() << "Received received WM_SHELLNOTIFY (WM_USER + 52)";
-    //    handleShellNotification(msg->wParam, msg->lParam);
-    //    if (result) *result = 0;
-    //    return true;
-    //}
-
-    return QWidget::nativeEvent(eventType, message, result);
-}
-
-
 void ListView::refreshView() {
     qDebug() << "Refreshing View...";
 
@@ -949,6 +938,7 @@ void ListView::initRightMenuConnections() {
     connect(menu, &RightMenu::AutoArrangeIconsTriggered, this, &ListView::onMenuAutoArrangeIcons);
     connect(menu, &RightMenu::AlignIconsToGridTriggered, this, &ListView::onMenuAlignIconsToGrid);
     connect(menu, &RightMenu::ShowDesktopIconsTriggered, this, &ListView::onMenuShowDesktopIcons);
+    connect(menu, &RightMenu::DoubleClickedHideIconsTriggered, this, &ListView::onMenuDoubleClickHideIcons);
 
     // Sort sub-menu connections
     connect(menu, &RightMenu::sortByNameTriggered, this, &ListView::onMenuSortByName);
@@ -991,6 +981,11 @@ void ListView::initRightMenuConnections() {
         menu->setShowDesktopIconsChecked(true);
     } else {
         menu->setShowDesktopIconsChecked(false);
+    }
+    if(m_iconShowRule.doubleClickHideIcons) {
+        menu->setDoubleClickedHideIconsChecked(true);
+    } else {
+        menu->setDoubleClickedHideIconsChecked(false);
     }
 }
 
@@ -1035,6 +1030,12 @@ void ListView::onMenuShowDesktopIcons() {
             item->show();
         }
     }
+}
+
+void ListView::onMenuDoubleClickHideIcons() {
+    qDebug() << "ListView: Double Click To Hide Icons triggered";
+    m_iconShowRule.doubleClickHideIcons = !m_iconShowRule.doubleClickHideIcons;
+    this->rightMenu->setDoubleClickedHideIconsChecked(m_iconShowRule.doubleClickHideIcons);
 }
 
 void ListView::onMenuSortByName() {

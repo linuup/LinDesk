@@ -18,7 +18,7 @@
 #include <shlobj_core.h>
 #include "ListItem.h"
 #include "RightMenu.h"
-#include "DesktopIconsMonitor.h"
+#include "Monitor/DesktopInfoMonitor.h"
 #include "DirectoryMonitor.h"
 #include "Monitor/LinDirectoryMonitor.h"
 #include <SelectArea.h>
@@ -71,6 +71,7 @@ public:
 		bool autoArrange = false;        // 是否自动排列
 		bool gridAlignment = true;      // 是否网格对齐
 		bool showDesktopIcons = true;	//是否显示桌面图标
+		bool doubleClickHideIcons = true; // 双击隐藏桌面图标
 		bool showShortCutArrow = false;	//是否显示快捷方式小箭头
 	};
 
@@ -145,8 +146,6 @@ public:
 	// 获取是否启用多选
 	bool isMultiSelection() const;
 	
-	IconPosMode iconPosMode; //将图标与网格对齐
-	
 	bool IsSelecting() const {
 		return m_isSelecting;
 	}
@@ -202,6 +201,7 @@ private slots:
 	void onMenuAutoArrangeIcons();
 	void onMenuAlignIconsToGrid();
 	void onMenuShowDesktopIcons();
+	void onMenuDoubleClickHideIcons();
 	
 	void onMenuSortByName();
 	void onMenuSortBySize();
@@ -222,13 +222,7 @@ protected:
 	void mouseDoubleClickEvent(QMouseEvent* event) override;
 	void enterEvent(QEvent* event) override;
 
-	bool nativeEvent(const QByteArray & eventType, void* message, long* result) override;
 	void refreshView();
-
-	//signals:
-	//	void itemSelected(ListItem* item);
-	//	void selectionCleared();
-	//	void selectionChanged();
 
 private:
 	explicit ListView(QWidget* parent = nullptr);
@@ -253,7 +247,7 @@ private:
 	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
 	QVector<ListItem*> m_items;             // 存储桌面显示可见的ListItem对象
 	QVector<ListItem*> m_hiddenIcons;             // 存储桌面系统图标状态
-	QList<DesktopIconsMonitor::DesktopIcon> sysIconRegisterInfo;             // 存储桌面系统图标状态
+	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;             // 存储桌面系统图标状态
 
 
 	//store selected items
@@ -269,7 +263,7 @@ private:
 	QPoint m_startPos;     // 鼠标点击开始时的位置
 	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
 	//Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel,Recycle Bin
-	DesktopIconsMonitor* monitor;
+	DesktopInfoMonitor* monitor;
 	//use SHChangeNotifyRegister to monitor desktop directory changes
 	//DirectoryMonitor* m_deskMonitor;
 	//use readirectorychangesw to monitor directory changes

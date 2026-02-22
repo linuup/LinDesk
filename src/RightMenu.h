@@ -88,6 +88,7 @@ public:
 	void setShowDesktopIconsChecked(bool checked);
 	void setAutoArrangeIconsChecked(bool checked);
 	void setAlignIconsToGridChecked(bool checked);
+	void setDoubleClickedHideIconsChecked(bool checked);
 signals:
 	// 自定义菜单项的信号
 	// 1-View
@@ -97,6 +98,7 @@ signals:
 	void AutoArrangeIconsTriggered();
 	void AlignIconsToGridTriggered();
 	void ShowDesktopIconsTriggered();
+	void DoubleClickedHideIconsTriggered();
 	// 2-Sort by
 	void sortByNameTriggered();
 	void sortBySizeTriggered();
@@ -122,6 +124,7 @@ public slots:
 	void onAutoArrangeIcons();
 	void onAlignIconsToGrid();
 	void onShowDesktopIcons();
+	void onDoubleClickedHideIcons();
 	// Sort by
 	void onSortByName();
 	void onSortBySize();
@@ -160,6 +163,7 @@ private:
 	QAction* m_autoArrangeIconsAction = nullptr;
 	QAction* m_alignIconsToGridAction = nullptr;
 	QAction* m_showDesktopIconsAction = nullptr;
+	QAction* m_doubleClickedHideIconsAction = nullptr;
 
 	QAction* m_sortByNameAction = nullptr;
 	QAction* m_sortBySizeAction = nullptr;

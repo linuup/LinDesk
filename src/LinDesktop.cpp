@@ -1,66 +1,99 @@
 ﻿#include "LinDesktop.h"
 
 LinDesktop::LinDesktop(QWidget* parent)
+	: QWidget(parent)
 {
 	setWindowTitle("LinDesk");
 	setObjectName("LinDesk");
 	setGeometry(QApplication::primaryScreen()->geometry());
-	// 设置无边框窗口
-	//setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
-
+	
 	// 设置透明背景
 	setAttribute(Qt::WA_TranslucentBackground);
-	//setMouseTracking(true); // 启用鼠标追踪
-	// 设置透明并允许透过窗口看到后面的内容
-	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
-	//embedToDesktop();
 	
+	m_transitionAnimation = new QVariantAnimation(this);
+	m_transitionAnimation->setDuration(m_transitionDuration);
+	m_transitionAnimation->setStartValue(0.0f);
+	m_transitionAnimation->setEndValue(1.0f);
+	connect(m_transitionAnimation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+		setTransitionOpacity(value.toFloat());
+	});
+
 	loadBackImage();
 	selectArea = new SelectArea(this);
 	listView = ListView::instance(this);
 
+    m_monitor = new DesktopInfoMonitor(this);
+    m_monitor->startListening();
+    connect(m_monitor, &DesktopInfoMonitor::wallpaperChanged, this, &LinDesktop::onWallpaperChanged);
 
-	
-	
-	//// Win32 代码中创建一个文本框
-	//// 创建 Win32 编辑控件
-	//HWND hwndEdit = CreateWindowEx(0, L"EDIT", L"",
-	//    WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-	//    10, 10, 200, 30, (HWND)winId(), NULL, GetModuleHandle(NULL), NULL);
-	//Qwindows a= QWindow::fromWinId(reinterpret_cast<WId>(hwndEdit));
-	//// 创建 Qt 窗口容器，将 Win32 控件嵌入
-	//QWidget* win32Widget = QWidget::createWindowContainer(createWin32Window(), this);
+    m_wallpaperLoadTimer = new QTimer(this);
+    m_wallpaperLoadTimer->setSingleShot(true);
+    m_wallpaperLoadTimer->setInterval(500); // 500ms debounce
+    connect(m_wallpaperLoadTimer, &QTimer::timeout, this, &LinDesktop::loadBackImage);
 }
 
 LinDesktop::~LinDesktop()
 {
 
 }
+void LinDesktop::setTransitionOpacity(float opacity)
+{
+    m_transitionOpacity = opacity;
+    update();
+}
+
+void LinDesktop::setTransitionDuration(int ms)
+{
+    m_transitionDuration = ms;
+    if (m_transitionAnimation) {
+        m_transitionAnimation->setDuration(ms);
+    }
+}
+
+void LinDesktop::onWallpaperChanged()
+{
+    qDebug() << "[LinDesktop] Wallpaper registry change detected, debouncing...";
+    m_wallpaperLoadTimer->start();
+}
+
 void LinDesktop::loadBackImage()
 {
-	backImageLabel = new QLabel(this);
-	// 加载图片
-	QString path = SysInfoUtil::GetWallpaperUsingAPI();
+    // Store current as previous for transition
+    if (!m_backImagePixmap.isNull()) {
+        m_prevBackImagePixmap = m_backImagePixmap;
+    }
 
-	// 加载原始图片
-	QImage originalImage(path);
+    // Get path from API
+    QString path = SysInfoUtil::GetWallpaperUsingAPI();
+    qDebug() << "[LinDesktop] Loading wallpaper from:" << path;
 
-	QRect applicationRect = this->geometry();
-	// 缩放到目标尺寸
-	QImage scaledImage = originalImage.scaled(applicationRect.width(), applicationRect.height(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-	QPixmap pixmap = QPixmap::fromImage(scaledImage);
-	if (!pixmap.isNull()) {
-		// 将图片转换为QBrush用于背景填充
-		QBrush background(pixmap);
-		setAutoFillBackground(false); // 允许自动填充背景
-		setBackgroundRole(QPalette::Window); // 设置背景角色
-		QPalette palette;
-		palette.setBrush(QPalette::Window, background);
-		setPalette(palette);
-	}
-	backImageLabel->setPixmap(pixmap);
-	backImageLabel->hide();
+    QImage newImage;
+    if (path.isEmpty() || !newImage.load(path)) {
+        // Fallback or retry? Registry might be ahead of the file system
+        qDebug() << "[LinDesktop] Failed to load wallpaper. Retrying in 1s...";
+        QTimer::singleShot(1000, this, &LinDesktop::loadBackImage);
+        return;
+    }
+
+    // Success! Update current path
+    m_currentWallpaperPath = path;
+
+    // Store current as previous for transition
+    if (!m_backImagePixmap.isNull()) {
+        m_prevBackImagePixmap = m_backImagePixmap;
+    }
+
+    m_backImagePixmap = QPixmap::fromImage(newImage);
+
+    // Trigger transition if we have a previous image
+    if (!m_prevBackImagePixmap.isNull()) {
+        m_transitionAnimation->stop();
+        m_transitionAnimation->start();
+    }
+    else {
+        m_transitionOpacity = 1.0f;
+        update();
+    }
 }
 void LinDesktop::requestHoverEffect()
 {
@@ -140,28 +173,35 @@ void LinDesktop::mouseReleaseEvent(QMouseEvent* event)
 }
 void LinDesktop::paintEvent(QPaintEvent* event)
 {
-
-	//qDebug() << "=====================LinDesktop Painter";
 	QPainter painter(this);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-	// 绘制垂直条纹
-	int stripeWidth = 50; // 条纹宽度
-	if (0) {
-		for (int x = 0; x < width(); x += stripeWidth * 2) {
-			// 第一种颜色
-			painter.fillRect(0, 0, stripeWidth, height(), QColor(171, 100, 192));
-			// 第二种颜色（或透明）
-			painter.fillRect(x + stripeWidth, 0, stripeWidth, height(), QColor(255, 255, 255));
-		}
-	}
-	else {
-		//painter.fillRect(0, 0, width(), height(), QColor(100, 120, 192));
-		backImageLabel->show();
-	}
+    QRect targetRect = rect();
 
-};
+    // Draw previous wallpaper during transition (fading out)
+    if (m_transitionOpacity < 1.0f && !m_prevBackImagePixmap.isNull()) {
+        painter.setOpacity(1.0f - m_transitionOpacity);
+        painter.drawPixmap(targetRect, m_prevBackImagePixmap.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
+    }
+
+    // Draw current wallpaper with transition opacity
+    if (!m_backImagePixmap.isNull()) {
+        painter.setOpacity(m_transitionOpacity);
+        painter.drawPixmap(targetRect, m_backImagePixmap.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
+    }
+}
+
+void LinDesktop::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    update();
+}
 
 void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 {
+}
 
+bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
+{
+	return QWidget::nativeEvent(eventType, message, result);
 }
