@@ -18,7 +18,7 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
             return;
         }
         //Get object Menu interface
-        m_contextMenu = IContextMenuFromIShellFolder(&pidl, m_pShellFolder);
+        m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pShellFolder);
     }
 }
 
@@ -36,7 +36,7 @@ void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
         return;
     }
     //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(&m_pPIDL, m_pShellFolder);
+    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL,m_pShellFolder);
     
 }
 
@@ -55,7 +55,7 @@ void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
         return;
     }
     //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(&m_pPIDL, m_pShellFolder);
+    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL, m_pShellFolder);
     
 }
 
@@ -74,7 +74,7 @@ void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
         return;
     }
     //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(&m_pPIDL, m_pShellFolder);
+    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL, m_pShellFolder);
 }
 
 void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
@@ -445,34 +445,16 @@ IShellFolder* ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
 }
 
 
-IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(LPITEMIDLIST* pidl, IShellFolder* pShellFolder)
+IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder)
 {
     LPCITEMIDLIST relativePIDL = nullptr;
     IContextMenu3* pContextMenu = nullptr;
     if (pidl) {
-        HRESULT hr = SHBindToParent(*pidl, IID_IShellFolder, (void**)&pShellFolder, &relativePIDL);
-        if (FAILED(hr)) {
-            OutputDebugString(L"Transfer PIDL Type Fail");
-            return nullptr;
-        }
-        hr = pShellFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, reinterpret_cast<void**>(&pContextMenu));
-        if (FAILED(hr)) {
-            WCHAR szErrMsg[512];
-            FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, hr, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), szErrMsg, _countof(szErrMsg), NULL);
-            OutputDebugString(L"Get IContextMenu* Fail");
-            OutputDebugStringW(szErrMsg);
-            return nullptr; // 或者 throw exception...
+        HRESULT hr = SHBindToParent(pidl, IID_IShellFolder, (void**)&pShellFolder, &relativePIDL);
+        if (SUCCEEDED(hr)) {
+            pShellFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, reinterpret_cast<void**>(&pContextMenu));
         }
     }
-    return pContextMenu;
-}
-
-IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(ITEMIDLIST *pidl, IShellFolder* pShellFolder)
-{
-    LPCITEMIDLIST relativePIDL = nullptr;
-    IContextMenu3* pContextMenu = nullptr;
-    HRESULT hr = SHBindToParent(pidl, IID_IShellFolder, (void**)&pShellFolder, &relativePIDL);
-    hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, reinterpret_cast<void**>(&pContextMenu));
     return pContextMenu;
 }
 

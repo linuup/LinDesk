@@ -140,17 +140,15 @@ IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
     hr = SHParseDisplayName((PCWSTR)filePath, nullptr, &pidl, 0, nullptr);
     
     // 处理文件路径逻辑...
-    std::wstring widePath(filePath);
-    std::string narrowPath(widePath.begin(), widePath.end());
-    item.path = narrowPath;
+    item.path = Tool::WstrToStr(filePath);
 
     
     
     item.pidl_p = pidl;
 
     // 提取文件名
-    size_t lastSlash = narrowPath.find_last_of("\\/");
-    item.name = (lastSlash != std::string::npos) ? narrowPath.substr(lastSlash + 1) : narrowPath;
+    size_t lastSlash = item.path.find_last_of("\\/");
+    item.name = (lastSlash != std::string::npos) ? item.path.substr(lastSlash + 1) : item.path;
     item.specialFolder = getFolderTypeFromName(filePath);
 
     return item;
@@ -330,7 +328,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 
     if (FAILED(hr)) {
         DWORD error = GetLastError();
-        _tprintf(_T("Failed to get enumeration of desktop items:",error));
+        _tprintf(_T("Failed to get enumeration of desktop items: %d\n"), error);
         return iconItems;
     }
 
@@ -351,7 +349,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         }
         else {
             DWORD error = GetLastError();
-            _tprintf(_T("Failed to get name:\n", error));
+            _tprintf(_T("Failed to get name: %d\n"), error);
         }
 
         // 获取路径（SHGDN_FORPARSING）

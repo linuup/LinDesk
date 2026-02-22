@@ -202,16 +202,7 @@ private:
     /// <param name="pidl"></param>
     /// <param name="pShellFolder"></param>
     /// <returns></returns>
-    IContextMenu3* IContextMenuFromIShellFolder(LPITEMIDLIST* pidl, IShellFolder* pShellFolder);
-    
-    /// <summary>
-    /// 从IShellFolder获取IContextMenu接口
-    /// PIDL转长指针,此函数需要PIDL对应的IShellFolder接口绑定转换
-    /// </summary>
-    /// <param name="pidl"></param>
-    /// <param name="pShellFolder"></param>
-    /// <returns></returns>
-    IContextMenu3* IContextMenuFromIShellFolder(ITEMIDLIST* pidl, IShellFolder* pShellFolder);
+    IContextMenu3* IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder);
     
 };
 DEFINE_ENUM_FLAG_OPERATORS(ShellContextMenu::Flags);

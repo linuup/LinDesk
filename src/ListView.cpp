@@ -454,29 +454,62 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     }
 
     if (m_isDragging) {
-        // 完成多项拖拽
-        for (auto& ghost : m_ghosts) {
-            if (ghost.widget && ghost.item) {
-                QPoint finalPos = ghost.widget->pos();
-                
-                // 如果开启了网格对齐，则计算最近的网格点
-                if (m_iconShowRule.gridAlignment) {
-                    int gridX = qRound((double)(finalPos.x() - m_marginLeft) / (m_iconWidth + m_colSpacing));
-                    int gridY = qRound((double)(finalPos.y() - m_marginTop) / (m_iconHeight + m_rowSpacing));
+        bool hasCollision = false;
+        QVector<QPoint> targetPositions;
+
+        // 1. 预计算所有目标网格位置并检查是否已被占用
+        if (m_iconShowRule.gridAlignment) {
+            for (const auto& ghost : m_ghosts) {
+                if (ghost.widget && ghost.item) {
+                    QPoint pos = ghost.widget->pos();
                     
-                    finalPos.setX(m_marginLeft + gridX * (m_iconWidth + m_colSpacing));
-                    finalPos.setY(m_marginTop + gridY * (m_iconHeight + m_rowSpacing));
+                    // 计算最近的网格点
+                    int gridX = qRound((double)(pos.x() - m_marginLeft) / (m_iconWidth + m_colSpacing));
+                    int gridY = qRound((double)(pos.y() - m_marginTop) / (m_iconHeight + m_rowSpacing));
+                    
+                    QPoint snappedPos;
+                    snappedPos.setX(m_marginLeft + gridX * (m_iconWidth + m_colSpacing));
+                    snappedPos.setY(m_marginTop + gridY * (m_iconHeight + m_rowSpacing));
                     
                     // 边界检查，防止图标超出屏幕
-                    finalPos.setX(qMax(m_marginLeft, qMin(finalPos.x(), width() - m_iconWidth)));
-                    finalPos.setY(qMax(m_marginTop, qMin(finalPos.y(), height() - m_iconHeight)));
-                }
+                    snappedPos.setX(qMax(m_marginLeft, qMin(snappedPos.x(), width() - m_iconWidth)));
+                    snappedPos.setY(qMax(m_marginTop, qMin(snappedPos.y(), height() - m_iconHeight)));
+                    
+                    targetPositions.append(snappedPos);
 
-                ghost.item->move(finalPos);
-                ghost.item->updateLocationInfo(finalPos);
+                    // 检查此位置是否已被非选中项占用
+                    for (auto* otherItem : m_items) {
+                        if (otherItem && otherItem->isVisible() && !m_selectedItems.contains(otherItem)) {
+                            // 使用位置比较判断是否在同一个网格内
+                            if (otherItem->pos() == snappedPos) {
+                                hasCollision = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    targetPositions.append(QPoint(-1, -1));
+                }
+                if (hasCollision) break;
+            }
+        }
+
+        // 2. 如果没有碰撞，则应用移动；否则清除 ghost 但保持原位
+        int idx = 0;
+        for (auto& ghost : m_ghosts) {
+            if (ghost.widget && ghost.item) {
+                if (!hasCollision) {
+                    QPoint finalPos = ghost.widget->pos();
+                    if (m_iconShowRule.gridAlignment) {
+                        finalPos = targetPositions[idx];
+                    }
+                    ghost.item->move(finalPos);
+                    ghost.item->updateLocationInfo(finalPos);
+                }
                 ghost.widget->hide();
                 ghost.widget->deleteLater();
             }
+            idx++;
         }
         m_ghosts.clear();
         
