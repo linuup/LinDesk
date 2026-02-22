@@ -7,6 +7,45 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 使用 Unicode
 add_definitions(-DUNICODE -D_UNICODE)
 
+
+# --- vcpkg 自动搜索逻辑 ---
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    # 1. 尝试从环境变量 VCPKG_ROOT 查找
+    if(DEFINED ENV{VCPKG_ROOT})
+        set(_VCPKG_ROOT "$ENV{VCPKG_ROOT}")
+    # 2. 尝试从 PATH 中寻找 vcpkg 所在目录
+    else()
+        find_program(_VCPKG_EXE vcpkg)
+        if(_VCPKG_EXE)
+            get_filename_component(_VCPKG_ROOT "${_VCPKG_EXE}" DIRECTORY)
+        endif()
+    endif()
+
+    # 3. 如果找到了 ROOT，推导工具链路径
+    if(_VCPKG_ROOT AND EXISTS "${_VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE "${_VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain")
+    endif()
+endif()
+
+# 如果 CMAKE_TOOLCHAIN_FILE 被设为了目录（例如之前的错误配置），自动修正它
+if(IS_DIRECTORY "${CMAKE_TOOLCHAIN_FILE}")
+    if(EXISTS "${CMAKE_TOOLCHAIN_FILE}/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_TOOLCHAIN_FILE}/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain" FORCE)
+    elseif(EXISTS "${CMAKE_TOOLCHAIN_FILE}/scripts/buildsystems/vcpkg.cmake")
+        set(CMAKE_TOOLCHAIN_FILE "${CMAKE_TOOLCHAIN_FILE}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain" FORCE)
+    endif()
+endif()
+
+# 验证最终结果
+if(NOT CMAKE_TOOLCHAIN_FILE OR NOT EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+    message(FATAL_ERROR "
+    [ERROR] 无法自动找到 vcpkg 工具链！
+    请设置环境变量 VCPKG_ROOT 指向 vcpkg 安装目录，
+    或运行: cmake -DCMAKE_TOOLCHAIN_FILE=[path/to/vcpkg.cmake] ..
+    ")
+endif()
+# -------------------------
+
 project("LinDesk")
 
 add_compile_options("/utf-8")
@@ -17,11 +56,6 @@ find_package(Qt5 COMPONENTS Widgets WinExtras Core REQUIRED)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
-
-# 使用预设中的 CMAKE_TOOLCHAIN_FILE（如果没有预设，则回退到默认值）
-# if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-#   message(WARNING "未指定 vcpkg 工具链文件，请通过预设配置！")
-# endif()
 
 add_subdirectory("OS")
 

@@ -76,7 +76,6 @@ void LinDesktop::embedToDesktop()
 
 void LinDesktop::mousePressEvent(QMouseEvent* event)
 {
-	selectArea->show();
 	m_startPos = event->pos();
 	update();
 }
@@ -93,9 +92,19 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event) {
 
 	int rectWidth = abs(rect.width());
 	int rectHeight = abs(rect.height());
-	if (rect.width() == 0 || rect.height() == 0) {
+	if (rectWidth == 0 && rectHeight == 0) {
 		return;
 	}
+
+	// 只有当移动距离超过阈值（如3像素）时才显示选择框，防止单击时闪烁
+	if (!selectArea->isVisible() && (rectWidth > 3 || rectHeight > 3)) {
+		selectArea->show();
+	}
+	
+	if (!selectArea->isVisible()) {
+		return;
+	}
+
 	//矩形在左上角
 	if (rect.width() < 0 && rect.height() < 0) {
 		rect.setRect(start_x + rect.width(), start_y + rect.height(), rectWidth, rectHeight);

@@ -1,0 +1,35 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "64",
+      "displayName": "64位开发环境",
+      "description": "开发调试环境，启用调试信息",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/Build/build_64/",
+      "architecture": "x64",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/5.15.2/msvc2019_64/lib/cmake",
+        "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      },
+      "environment": {
+        "VCPKG_DEFAULT_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "32",
+      "displayName": "32位开发环境",
+      "description": "开发调试环境，启用调试信息",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/Build/build_32/",
+      "architecture": "Win32",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "C:/Qt/5.15.2/msvc2019/lib/cmake",
+        "CMAKE_TOOLCHAIN_FILE": "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      },
+      "environment": {
+        "VCPKG_DEFAULT_TRIPLET": "Win32"
+      }
+    }
+  ]
+}

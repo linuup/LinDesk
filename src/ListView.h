@@ -150,7 +150,9 @@ public:
 	bool IsSelecting() const {
 		return m_isSelecting;
 	}
-	void DisableSelecting() {}
+	void DisableSelecting() {
+		m_isSelecting = false;
+	}
 
 	int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
 	int previousHoverItemIndex = -1; // 上一个鼠标悬停的图标索引
