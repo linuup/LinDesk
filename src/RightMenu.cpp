@@ -303,9 +303,9 @@ void RightMenu::setAlignIconsToGridChecked(bool checked)
 
 void RightMenu::setDoubleClickedHideIconsChecked(bool checked)
 {
-    if (checked) {
-        m_alignIconsToGridAction->setChecked(true);
-    } else {
-        m_alignIconsToGridAction->setChecked(false);
+    if(checked) {
+        m_doubleClickedHideIconsAction->setChecked(true);
+    }else {
+        m_doubleClickedHideIconsAction->setChecked(false);
     }
 }

@@ -52,7 +52,7 @@ private:
     QPixmap m_backImagePixmap;
     QPixmap m_prevBackImagePixmap;
     float m_transitionOpacity = 1.0f;
-    int m_transitionDuration = 1300; // Default 500ms
+    int m_transitionDuration = 1100; // Default 500ms
     QVariantAnimation* m_transitionAnimation = nullptr;
     QTimer* m_wallpaperLoadTimer = nullptr;
     QString m_currentWallpaperPath;
