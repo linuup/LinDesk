@@ -1,4 +1,13 @@
 ﻿
+# Installation
+
+1. setup vcpkg.json
+2. vcpkg install --triplet x64-windows
+3. use cmake to build project
+```
+cmake -B build
+```
+4. open build folder with vs2022 and run project
 
 结果导向：先解决问题，再追求完美
 

@@ -1,0 +1,181 @@
+/* Microsoft Fluent Light UI Theme */
+
+* {
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    color: #1b1b1b;
+}
+
+QMainWindow {
+    background-color: transparent;
+}
+
+#CentralWidget {
+    background-color: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+}
+
+QLabel#PlaceholderLabel {
+    color: rgba(0, 0, 0, 0.4);
+    font-size: 18px;
+    font-weight: 400;
+}
+
+/* Title Bar Styles */
+#TitleBar {
+    background-color: rgba(0, 0, 0, 0.015);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+
+#TitleLabel {
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.85);
+    font-weight: 700;
+    font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+}
+
+QPushButton#CloseButton {
+    background-color: transparent;
+    border-radius: 6px;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.5);
+    border: none;
+}
+
+QPushButton#CloseButton:hover {
+    background-color: #e81123;
+    color: #ffffff;
+}
+
+QPushButton#PinButton {
+    background-color: transparent;
+    border-radius: 6px;
+    font-size: 16px;
+    color: rgba(0, 0, 0, 0.5);
+    border: none;
+    margin-right: 4px;
+}
+
+QPushButton#PinButton:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+QPushButton#PinButton[pinned="true"] {
+    color: #0078d4;
+    background-color: rgba(0, 120, 212, 0.1);
+}
+
+QTextEdit,
+QTextBrowser {
+    background-color: #ffffff;
+    border: none;
+    color: #1b1b1b;
+    padding: 10px;
+}
+
+QTextEdit::selection,
+QTextBrowser::selection {
+    background-color: #0078d4;
+    color: #ffffff;
+}
+
+/* Folder Viewer Styles */
+QLineEdit#FolderSearch {
+    background-color: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #000000;
+}
+
+QLineEdit#FolderSearch:focus {
+    border-bottom: 2px solid #0078d4;
+    background-color: #ffffff;
+}
+
+QTreeView#FolderTree {
+    background-color: transparent;
+    border: none;
+    outline: none;
+    color: rgba(0, 0, 0, 0.85);
+}
+
+QTreeView#FolderTree::item {
+    height: 32px;
+    padding-left: 5px;
+    border-radius: 4px;
+}
+
+QTreeView#FolderTree::item:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+QTreeView#FolderTree::item:selected {
+    background-color: rgba(0, 120, 212, 0.1);
+    color: #0078d4;
+    font-weight: 600;
+}
+
+QHeaderView::section {
+    background-color: transparent;
+    color: rgba(0, 0, 0, 0.5);
+    padding: 4px;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+    font-size: 11px;
+}
+
+/* Context Menu Styling */
+QMenu {
+    background-color: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 2px;
+    color: #000000;
+}
+
+QMenu::item {
+    background-color: transparent;
+    padding: 6px 30px 6px 20px;
+    border-radius: 4px;
+    margin: 2px 4px;
+}
+
+QMenu::item:selected {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: rgba(0, 0, 0, 0.06);
+    margin: 4px 10px;
+}
+
+/* ScrollBar Styling */
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: rgba(0, 0, 0, 0.1);
+    min-height: 20px;
+    border-radius: 5px;
+    margin: 1px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}

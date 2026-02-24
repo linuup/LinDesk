@@ -1,0 +1,22 @@
+# FastLook 依赖清单
+# 安装命令: pip install -r requirements.txt
+
+# ── GUI 框架 ──────────────────────────────────────────────
+PySide6                  # Qt GUI + QWebEngineView（内置 PDF/HTML 渲染）
+
+# ── Windows 系统集成 ──────────────────────────────────────
+pywin32                  # win32com.client / win32gui / win32con（COM、窗口置顶等）
+uiautomation             # 鼠标下 UI 控件检测（Explorer / Desktop 文件识别）
+
+# ── 全局热键 ───────────────────────────────────────────────
+keyboard                 # 注册全局空格键热键
+
+# ── 代码高亮 ───────────────────────────────────────────────
+Pygments                 # 文本/代码文件语法高亮（TextViewer）
+
+# ── Markdown 渲染 ──────────────────────────────────────────
+Markdown                 # .md 文件渲染（MarkdownViewer）
+
+# ── 压缩包支持（可选）─────────────────────────────────────
+py7zr                    # .7z 格式支持（ArchiveViewer）
+rarfile                  # .rar 格式支持（ArchiveViewer，需系统安装 unrar.exe）
