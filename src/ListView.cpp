@@ -1,4 +1,6 @@
-﻿#include "ListView.h"
+﻿#include <QDir>
+#include <QStandardPaths>
+#include "ListView.h"
 #include <QPushButton>
 #include <QtMath>
 #include <QProcess>
@@ -302,31 +304,10 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
         auto rightClickPoint = mapToGlobal(event->pos());
         this->m_lastRightClickPos = event->pos();
-        auto items = this->items();
-        //循环遍历所有图标，检查鼠标右键点击位置是否在某个图标的区域内
-        for (auto it = items.begin(); it != items.end(); it++)
-        {
-            if (!it) {
-                continue;
-            }
-            ListItem* item = *it;
-            QRect itemRect = item->getItemRect();
-            if (item->type() == ObjectType::Empty_ObjectType) {
-                continue;
-            }
-            if (itemRect.contains(rightClickPoint)) {
 
-                //qDebug() << "图标范围：" << itemRect;
-                //qDebug() << "右键点击坐标：" << rightClickPoint;
-                if (m_selectedItems.size() == 0) {
-                    m_selectedItems.push_back(item);
-                }
-                // 鼠标右键点击位置在该图标区域内，显示该图标的右键菜单
-                requestSystemRightMenu(item->getItemData().type(), rightClickPoint, m_selectedItems);
-                return; // 退出循环，避免重复处理
-            }
-        }
-        event->ignore();
+        // Since ListItems now intercept their own contextMenuEvent and emit signals,
+        // this handler is only reached if the background (desktop) is clicked.
+        
         // 如果右键点击位置不在任何图标区域内，清除已有选中
         clearCheckedItem();
         // 显示桌面的右键菜单
@@ -337,75 +318,18 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 void ListView::mousePressEvent(QMouseEvent* event)
 {
     auto clickPos = event->pos();
-    auto items = this->items();
-    ListItem* clickedItem = nullptr;
 
-    // 查找击中的 item
-    for (auto* item : items) {
-            if (item && item->getItemRect().contains(mapToGlobal(clickPos))) {
-                clickedItem = item;
-                break;
-            }
-        }
-
-    if (clickedItem && clickedItem->type() != ObjectType::Empty_ObjectType) {
-            // 如果点击的项不在当前选中列表中，则清除之前选中并仅选中当前
-            if (!m_selectedItems.contains(clickedItem)) {
-                clearCheckedItem();
-                m_selectedItems.append(clickedItem);
-                clickedItem->checkSelf();
-            }
-
-            m_draggedItem = clickedItem;
-            m_dragOffset = clickPos - clickedItem->pos();
-            m_isDragging = true;
-
-            // 清理旧的 ghost
-            for (auto& ghost : m_ghosts) {
-                if (ghost.widget) ghost.widget->deleteLater();
-            }
-            m_ghosts.clear();
-
-            // 为所有选中的项创建 ghost 预览
-            for (auto* item : m_selectedItems) {
-                if (!item) continue;
-
-                QLabel* ghostWidget = new QLabel(this);
-                ghostWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
-                ghostWidget->setAttribute(Qt::WA_TranslucentBackground);
-                ghostWidget->setWindowFlags(Qt::FramelessWindowHint);
-
-                auto* opacityEffect = new QGraphicsOpacityEffect(ghostWidget);
-                opacityEffect->setOpacity(0.7);
-                ghostWidget->setGraphicsEffect(opacityEffect);
-
-                // 抓取快照（临时取消选中以获得干净图标）
-                bool wasSelected = item->isSelected;
-                item->isSelected = false;
-                item->update();
-                QPixmap pixmap = item->grab();
-                item->isSelected = wasSelected;
-                item->update();
-
-                ghostWidget->setPixmap(pixmap);
-                ghostWidget->setFixedSize(item->size());
-                
-                // 记录相对于鼠标点击位置的偏移量
-                QPoint offset = item->pos() - clickPos;
-                ghostWidget->move(item->pos());
-                ghostWidget->raise();
-                ghostWidget->show();
-
-                m_ghosts.append({ ghostWidget, item, offset });
-            }
-
-            return;
-    }
+    // Since ListItems now intercept their own mousePressEvent and emit signals,
+    // this handler is only reached if the background (desktop) is clicked.
     
-    // 如果没有点击到任何 item，取消已选中的 item 选中效果
+    // If no item was clicked, clear selected items
     clearCheckedItem();
 
     m_isSelecting = true;
+    m_selectionStart = clickPos;
+    m_selectionRect = QRect(m_selectionStart, QSize(0, 0));
+    
+    update();
     event->ignore();
 }
 
@@ -590,7 +514,8 @@ void ListView::initialize()
         listItem->setParent(this);
         listItem->setItemData(std::move(*it));
         listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
-
+        setupItemConnections(listItem);
+ 
         //listItem->update();
         // qDebug() << listItem->baseName();
         if (it->type() != ObjectType::SpecialFolder && listItem->getItemData().fullName() != "desktop.ini") {
@@ -785,6 +710,7 @@ void ListView::addItem(ListItem* item)
     QPoint pos = generateItemPosition();
     item->setItemSize(m_iconWidth, m_iconHeight);
     item->updateLocationInfo(pos);
+    setupItemConnections(item);
     
     m_items.push_back(item);
     m_allItems.push_back(item);
@@ -951,6 +877,7 @@ void ListView::initRightMenuConnections() {
     connect(menu, &RightMenu::pasteTriggered, this, &ListView::onMenuPaste);
     connect(menu, &RightMenu::pasteShortcutTriggered, this, &ListView::onMenuPasteShortcut);
     connect(menu, &RightMenu::undoDeleteTriggered, this, &ListView::onMenuUndoDelete);
+    connect(menu, &RightMenu::createBoxTriggered, this, &ListView::onMenuCreateBox);
 
     //init view sub-menu check states
     switch (m_iconShowRule.viewMode) {
@@ -1166,6 +1093,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             }
         } else if (!selectItemByPath(newPath)) {
             ListItem* newItem = new ListItem(newPath, this);
+            setupItemConnections(newItem); // Connect newly created files to the signaling system. Riverside.
             addItem(newItem);
         }
         break;
@@ -1189,4 +1117,245 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     default:
         break;
     }
+}
+
+void ListView::onMenuCreateBox()
+{
+	LinBox* box = new LinBox(this);
+	box->move(m_lastRightClickPos);
+	
+	// Connect relay signals
+	connect(box, &LinBox::itemRelayClicked, this, &ListView::onItemRelayClicked);
+	connect(box, &LinBox::itemRelayMoved, this, &ListView::onItemRelayMoved);
+	connect(box, &LinBox::itemRelayReleased, this, &ListView::onItemRelayReleased);
+	connect(box, &LinBox::itemRelayDoubleClicked, this, &ListView::onItemRelayDoubleClicked);
+	connect(box, &LinBox::itemRelayContextMenuRequested, this, &ListView::onItemRelayContextMenuRequested);
+
+	// Add sample items from desktop
+	QString desktopPath = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
+	QDir dir(desktopPath);
+	QStringList filters;
+	filters << "*.lnk" << "*.exe" << "*.txt";
+	QFileInfoList list = dir.entryInfoList(filters, QDir::Files, QDir::Name);
+	
+	int count = 0;
+	for (const QFileInfo& fileInfo : list) {
+		if (count >= 5) break;
+		ListItem* item = new ListItem(fileInfo.absoluteFilePath(), box);
+		setupItemConnections(item, box);
+		box->addListItem(item);
+		count++;
+	}
+ 
+	box->show();
+	m_boxes.append(box);
+}
+
+void ListView::setupItemConnections(ListItem* item, LinBox* box)
+{
+	if (!item) return;
+	
+	connect(item, &ListItem::itemClicked, this, [this, box](ListItem* i, QMouseEvent* e) {
+		onItemRelayClicked(box, i, e);
+	});
+	connect(item, &ListItem::itemMoved, this, [this, box](ListItem* i, QMouseEvent* e) {
+		onItemRelayMoved(box, i, e);
+	});
+	connect(item, &ListItem::itemReleased, this, [this, box](ListItem* i, QMouseEvent* e) {
+		onItemRelayReleased(box, i, e);
+	});
+	connect(item, &ListItem::itemDoubleClicked, this, [this, box](ListItem* i, QMouseEvent* e) {
+		onItemRelayDoubleClicked(box, i, e);
+	});
+	connect(item, &ListItem::itemContextMenuRequested, this, [this, box](ListItem* i, const QPoint& p) {
+		onItemRelayContextMenuRequested(box, i, p);
+	});
+}
+
+void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* event)
+{
+	if (!item) return;
+
+	if (event->button() == Qt::LeftButton) {
+		Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
+		
+		if (modifiers & Qt::ControlModifier) {
+			if (m_selectedItems.contains(item)) {
+				m_selectedItems.removeOne(item);
+				item->unCheckSelf();
+			} else {
+				m_selectedItems.append(item);
+				item->checkSelf();
+			}
+		} else if (modifiers & Qt::ShiftModifier) {
+			if (!m_selectedItems.contains(item)) {
+				m_selectedItems.append(item);
+				item->checkSelf();
+			}
+		} else {
+			clearCheckedItem();
+			m_selectedItems.append(item);
+			item->checkSelf();
+		}
+
+		// Start Dragging
+		m_draggedItem = item;
+		QPoint globalPos = item->mapToGlobal(event->pos());
+		QPoint clickPosInListView = this->mapFromGlobal(globalPos);
+		
+		QPoint itemPosOnListView = item->mapTo(this, QPoint(0,0));
+		m_dragOffset = clickPosInListView - itemPosOnListView;
+		m_isDragging = true;
+
+		createDragGhosts(clickPosInListView);
+	}
+}
+
+void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
+{
+	if (m_isDragging && !m_ghosts.isEmpty()) {
+		QPoint globalPos = item->mapToGlobal(event->pos());
+		QPoint mousePos = this->mapFromGlobal(globalPos);
+		for (auto& ghost : m_ghosts) {
+			if (ghost.widget) {
+				ghost.widget->move(mousePos + ghost.offset);
+			}
+		}
+	}
+}
+
+void ListView::onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event)
+{
+	if (m_isDragging) {
+		bool hasCollision = false;
+		QVector<QPoint> targetPositions;
+
+		// 1. Calculate target positions and check collisions for desktop icons
+		if (!box) {
+			if (m_iconShowRule.gridAlignment) {
+				for (const auto& ghost : m_ghosts) {
+					if (ghost.widget && ghost.item) {
+						QPoint pos = ghost.widget->pos();
+						int gridX = qRound((double)(pos.x() - m_marginLeft) / (m_iconWidth + m_colSpacing));
+						int gridY = qRound((double)(pos.y() - m_marginTop) / (m_iconHeight + m_rowSpacing));
+						
+						QPoint snappedPos;
+						snappedPos.setX(m_marginLeft + gridX * (m_iconWidth + m_colSpacing));
+						snappedPos.setY(m_marginTop + gridY * (m_iconHeight + m_rowSpacing));
+						snappedPos.setX(qMax(m_marginLeft, qMin(snappedPos.x(), width() - m_iconWidth)));
+						snappedPos.setY(qMax(m_marginTop, qMin(snappedPos.y(), height() - m_iconHeight)));
+						
+						targetPositions.append(snappedPos);
+
+						for (auto* otherItem : m_items) {
+							if (otherItem && otherItem->isVisible() && !m_selectedItems.contains(otherItem)) {
+								if (otherItem->pos() == snappedPos) {
+									hasCollision = true;
+									break;
+								}
+							}
+						}
+					} else {
+						targetPositions.append(QPoint(-1, -1));
+					}
+					if (hasCollision) break;
+				}
+			}
+		}
+
+		// 2. Apply movement
+		int idx = 0;
+		for (auto& ghost : m_ghosts) {
+			if (ghost.widget && ghost.item) {
+				if (!hasCollision) {
+					QPoint finalPos = ghost.widget->pos();
+					if (!box && m_iconShowRule.gridAlignment) {
+						finalPos = targetPositions[idx];
+					}
+					
+					// Only move if it's a desktop icon (parent is ListView)
+					// Items in box stay where they are (refreshLayout handles them)
+					if (!box) {
+						ghost.item->move(finalPos);
+						ghost.item->updateLocationInfo(finalPos);
+					}
+				}
+				ghost.widget->hide();
+				ghost.widget->deleteLater();
+			}
+			idx++;
+		}
+
+		m_ghosts.clear();
+		m_isDragging = false;
+		m_draggedItem = nullptr;
+		
+		// Snap back to grid in LinBox if applicable
+		if (box) {
+			box->refreshLayout();
+		}
+	}
+}
+
+void ListView::createDragGhosts(const QPoint& clickPos)
+{
+	// 清理旧的 ghost
+	for (auto& ghost : m_ghosts) {
+		if (ghost.widget) ghost.widget->deleteLater();
+	}
+	m_ghosts.clear();
+
+	for (auto* item : m_selectedItems) {
+		if (!item) continue;
+
+		QLabel* ghostWidget = new QLabel(this);
+		ghostWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
+		ghostWidget->setAttribute(Qt::WA_TranslucentBackground);
+		ghostWidget->setWindowFlags(Qt::FramelessWindowHint);
+
+		auto* opacityEffect = new QGraphicsOpacityEffect(ghostWidget);
+		opacityEffect->setOpacity(0.7);
+		ghostWidget->setGraphicsEffect(opacityEffect);
+
+		// 抓取快照（临时取消选中以获得干净图标）
+		bool wasSelected = item->isSelected;
+		item->isSelected = false;
+		item->update();
+		QPixmap pixmap = item->grab();
+		item->isSelected = wasSelected;
+		item->update();
+
+		ghostWidget->setPixmap(pixmap);
+		ghostWidget->setFixedSize(item->size());
+		
+		// Click location relative to item
+		QPoint itemPosOnListView = item->mapTo(this, QPoint(0,0));
+		QPoint offset = itemPosOnListView - clickPos;
+		ghostWidget->move(itemPosOnListView);
+		ghostWidget->raise();
+		ghostWidget->show();
+
+		m_ghosts.append({ ghostWidget, item, offset });
+	}
+}
+
+void ListView::onItemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent* event)
+{
+	if (item) {
+		item->openItem();
+	}
+}
+
+void ListView::onItemRelayContextMenuRequested(LinBox* box, ListItem* item, const QPoint& globalPos)
+{
+	if (!item) return;
+
+	// Ensure item is selected for context menu
+	if (!m_selectedItems.contains(item)) {
+		clearCheckedItem();
+		m_selectedItems.append(item);
+		item->checkSelf();
+	}
+
+	requestSystemRightMenu(item->type(), globalPos, m_selectedItems);
 }

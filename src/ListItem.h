@@ -7,15 +7,8 @@
 #include <QPainterpath>
 #include <QGraphicsEffect>
 #include <QGraphicsDropShadowEffect>
-
-
 #include "Data/ListItemData.h"
 
-
-enum hoverStyle {
-    default,
-
-};
 class ListItem : public QWidget {
     Q_OBJECT
 
@@ -66,18 +59,30 @@ public:
     void checkSelf();
     void unCheckSelf();
     void openItem();
-    
-     //获取对应的 ListItemData
-    
+
     bool isReady = false;
-	bool isSelected = false; // 是否被选中
+    bool isSelected = false; // 是否被选中
+
+signals:
+    void itemClicked(ListItem* item, QMouseEvent* event);
+    void itemMoved(ListItem* item, QMouseEvent* event);
+    void itemReleased(ListItem* item, QMouseEvent* event);
+    void itemDoubleClicked(ListItem* item, QMouseEvent* event);
+    void itemContextMenuRequested(ListItem* item, const QPoint& globalPos);
+
 protected:
-    void ListItem::contextMenuEvent(QContextMenuEvent* event);
-    void ListItem::paintEvent(QPaintEvent* event);
+    void ListItem::mousePressEvent(QMouseEvent* event) override;
+    void ListItem::mouseMoveEvent(QMouseEvent* event) override;
+    void ListItem::mouseReleaseEvent(QMouseEvent* event) override;
+    void ListItem::mouseDoubleClickEvent(QMouseEvent* event) override;
+    void ListItem::contextMenuEvent(QContextMenuEvent* event) override;
+    void ListItem::paintEvent(QPaintEvent* event) override;
+    
     
     
 
 private:
+    
      ListItemData m_itemData;  // 关联的数据类
 	 QSize m_itemSize;    //图标大小
 	 QPoint m_itemPos;    //图标位置
@@ -91,7 +96,6 @@ private:
      QIcon m_icon;
      ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
 	 QString m_filePath;    //Windows 文件路径
-
      QLabel* textLabel = nullptr; //文件名称Label
      
 };

@@ -22,6 +22,7 @@
 #include "DirectoryMonitor.h"
 #include "Monitor/LinDirectoryMonitor.h"
 #include <SelectArea.h>
+#include "LinBox.h"
 
 class ListView: public QWidget {
 	Q_OBJECT
@@ -212,6 +213,14 @@ private slots:
 	void onMenuPaste();
 	void onMenuPasteShortcut();
 	void onMenuUndoDelete();
+	void onMenuCreateBox();
+	
+	// Item relay handlers
+	void onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* event);
+	void onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event);
+	void onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event);
+	void onItemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent* event);
+	void onItemRelayContextMenuRequested(LinBox* box, ListItem* item, const QPoint& globalPos);
 
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
@@ -223,7 +232,8 @@ protected:
 	void enterEvent(QEvent* event) override;
 
 	void refreshView();
-
+	void createDragGhosts(const QPoint& clickPos);
+	void setupItemConnections(ListItem* item, LinBox* box = nullptr);
 private:
 	explicit ListView(QWidget* parent = nullptr);
 	~ListView();
@@ -261,6 +271,8 @@ private:
 	QPoint m_originalPos; // 记录原始位置，用于取消拖动s
 	QPoint m_lastRightClickPos; // 记录最后一次右键点击的位置
 	QPoint m_startPos;     // 鼠标点击开始时的位置
+	QPoint m_selectionStart;     // 鼠标点击开始时的位置
+	QRect m_selectionRect;
 	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
 	//Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel,Recycle Bin
 	DesktopInfoMonitor* monitor;
@@ -275,4 +287,5 @@ private:
 		QPoint offset; // 距离鼠标点击位置的偏移量
 	};
 	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
+	QVector<LinBox*> m_boxes;   // 存储桌面格子
 };

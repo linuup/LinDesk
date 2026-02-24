@@ -141,6 +141,12 @@ void RightMenu::initializeCustomMenu()
     pasteShortcutAction->setEnabled(false);
     connect(pasteShortcutAction, &QAction::triggered, this, &RightMenu::onPasteShortcut);
     m_customMenu->addAction(pasteShortcutAction);
+
+    // 7-Create Box
+    m_createBoxAction = new QAction("New Grid", m_customMenu);
+    connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
+    m_customMenu->addAction(m_createBoxAction);
+
     m_customMenu->setFixedWidth(150);
 }
 
@@ -169,6 +175,7 @@ void RightMenu::onRefresh() { emit refreshTriggered(); }
 void RightMenu::onPaste() { emit pasteTriggered(); }
 void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
 void RightMenu::onUndoDelete() { emit undoDeleteTriggered(); }
+void RightMenu::onCreateBox() { emit createBoxTriggered(); }
 
 
 void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{

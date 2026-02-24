@@ -114,6 +114,9 @@ signals:
 	// 6-Undo delete
 	void undoDeleteTriggered();
 
+	// 7-Create Box
+	void createBoxTriggered();
+
 
 public slots:
 	// 菜单项槽函数
@@ -136,6 +139,7 @@ public slots:
 	void onPasteShortcut();
 	// Undo delete
 	void onUndoDelete();
+	void onCreateBox();
 
 private:
 	RightMenu() {
@@ -169,6 +173,7 @@ private:
 	QAction* m_sortBySizeAction = nullptr;
 	QAction* m_sortByTypeAction = nullptr;
 	QAction* m_sortByDateAction = nullptr;
+	QAction* m_createBoxAction = nullptr;
 
 	/// <summary>
 	/// 创建排序方式子菜单

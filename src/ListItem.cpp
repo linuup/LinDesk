@@ -17,7 +17,7 @@ ListItem::ListItem(QWidget* parent)
 	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
 	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
 	//setStyleSheet("background-color:rgb(25,255,255);");
-	setAttribute(Qt::WA_TransparentForMouseEvents);
+	//setAttribute(Qt::WA_TransparentForMouseEvents);
 
 
 	// 创建阴影滤镜实现描边效果
@@ -67,7 +67,7 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
 	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
 	//setStyleSheet("background-color:rgb(25,255,255);");
-	setAttribute(Qt::WA_TransparentForMouseEvents);
+	//setAttribute(Qt::WA_TransparentForMouseEvents);
 
 	// 创建阴影滤镜实现描边效果
 	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
@@ -213,17 +213,32 @@ ListItemData ListItem::getItemData()
 	return m_itemData;
 }
 
-void ListItem::contextMenuEvent(QContextMenuEvent* event) {
-	
-	if (event->reason() == QContextMenuEvent::Mouse) {
-		qDebug() << this->objectName();
-	}
-	//ListView* lin = qobject_cast<ListView*>(this->parent());
-	//if (lin) {
-		//传全局坐标
-		//lin->requestSystemRightMenu(m_itemData.type(), mapToGlobal(event->pos()), this->m_itemData.filePath());
-	//}
+void ListItem::mousePressEvent(QMouseEvent* event)
+{
+    event->accept();
+    emit itemClicked(this, event);
+}
 
+void ListItem::mouseMoveEvent(QMouseEvent* event)
+{
+    event->accept();
+    emit itemMoved(this, event);
+}
+
+void ListItem::mouseReleaseEvent(QMouseEvent* event)
+{
+    event->accept();
+    emit itemReleased(this, event);
+}
+
+void ListItem::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    event->accept();
+    emit itemDoubleClicked(this, event);
+}
+
+void ListItem::contextMenuEvent(QContextMenuEvent* event) {
+    emit itemContextMenuRequested(this, event->globalPos());
 }
 
 void ListItem::paintEvent(QPaintEvent* event) {
@@ -236,7 +251,6 @@ void ListItem::paintEvent(QPaintEvent* event) {
 	//}
 	//qDebug() << "ListItem painted";
 	QPainter painter(this);
-	QPainter hoverMaskPainter(this);
 	painter.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
 	QRect rect = this->rect();
 	QPoint pos = this->pos();
@@ -283,8 +297,6 @@ void ListItem::paintEvent(QPaintEvent* event) {
 	textLabel->move(textX, textY);
 	
 
-
-
 	//给itemRect画个高亮
 	if (isSelected) {
 		// Windows桌面图标选中效果通常包括：
@@ -301,22 +313,22 @@ void ListItem::paintEvent(QPaintEvent* event) {
 		int height = m_itemSize.height();
 
 		// 第一层：外发光（最大范围）
-		hoverMaskPainter.setPen(Qt::NoPen);
-		hoverMaskPainter.setBrush(QColor(100, 150, 255, 30));
-		hoverMaskPainter.drawRoundedRect(-3, -3, width + 6, height + 6, 8, 8);
+		painter.setPen(Qt::NoPen);
+		painter.setBrush(QColor(100, 150, 255, 30));
+		painter.drawRoundedRect(-3, -3, width + 6, height + 6, 8, 8);
 
 		// 第二层：中发光
-		/*hoverMaskPainter.setBrush(QColor(80, 140, 255, 60));
-		hoverMaskPainter.drawRoundedRect(-1, -1, width + 2, height + 2, 6, 6);*/
+		/*painter.setBrush(QColor(80, 140, 255, 60));
+		painter.drawRoundedRect(-1, -1, width + 2, height + 2, 6, 6);*/
 
 		// 第三层：内发光（主背景）
-		hoverMaskPainter.setBrush(QColor(255, 255, 255, 90));
-		hoverMaskPainter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+		painter.setBrush(QColor(255, 255, 255, 90));
+		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
 
 		// 第四层：高亮边框
-		hoverMaskPainter.setPen(QPen(QColor(255, 255, 255, 150), 0.7));
-		hoverMaskPainter.setBrush(Qt::NoBrush);
-		hoverMaskPainter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+		painter.setPen(QPen(QColor(255, 255, 255, 150), 0.7));
+		painter.setBrush(Qt::NoBrush);
+		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
 	}
 
 
