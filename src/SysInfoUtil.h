@@ -42,9 +42,26 @@ namespace ShortcutArrowManager {
     static bool isShortcutArrowEnabled()
     {
 #ifdef Q_OS_WIN
-        QSettings registry("HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer",
-            QSettings::NativeFormat);
-        return registry.value("ShowShortcutArrow", true).toBool();
+        auto checkPath = [](const QString& root) -> bool {
+            QSettings reg(root + "\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Icons", QSettings::NativeFormat);
+            QString val = reg.value("29").toString();
+            if (val.isEmpty()) return true;
+            // 常见的隐藏箭头的字符串，包含空图标引用或 shell32,50 等
+            if (val.contains("shell32.dll", Qt::CaseInsensitive) && 
+               (val.contains("50") || val.contains("-50"))) return false;
+            if (val.startsWith(",") || val.contains("null", Qt::CaseInsensitive)) return false;
+            return true;
+        };
+
+        // 只要任一位置设置了隐藏，就视为关闭（通常 HKLM 优先级更高，但 HKCU 覆盖更广）
+        if (!checkPath("HKEY_LOCAL_MACHINE")) return false;
+        if (!checkPath("HKEY_CURRENT_USER")) return false;
+
+        // 次要检查：lnkfile 核心设置 (高级用户可能直接删除了 IsShortcut)
+        QSettings lnkReg("HKEY_CLASSES_ROOT\\lnkfile", QSettings::NativeFormat);
+        if (!lnkReg.contains("IsShortcut")) return false;
+
+        return true;
 #else
         return false;
 #endif
@@ -104,6 +121,9 @@ namespace SysInfoUtil{
     //从注册表获取桌面背景路径
     QString GetDesktopWallpaperPath();
     QString GetWallpaperUsingAPI();
+
+    // 视觉自动裁剪 (Visual Auto-Crop)
+    QImage autoCropImage(const QImage& image, bool* wasCropped = nullptr);
 }
 
 /* General helper functions. */

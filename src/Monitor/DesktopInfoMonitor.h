@@ -41,6 +41,7 @@ public:
     QString getIconName(const QString& clsid) const;
 
     static QMap<QString, QString> getKnownDesktopIcons();
+    void refreshIconsState(); // Force fresh registry read
 
 signals:
     void iconVisibilityChanged(const QString& clsid, bool hidden, const QString& iconName);
@@ -65,7 +66,7 @@ private:
     bool writeRegistryValue(HKEY key, const QString& valueName, const QVariant& value);
     bool deleteRegistryValue(HKEY key, const QString& valueName);
 
-    void refreshIconsState();
+    // void refreshIconsState(); // Already moved to public
 
     // Desktop Icons (Thread-based)
     std::thread m_monitorThread;

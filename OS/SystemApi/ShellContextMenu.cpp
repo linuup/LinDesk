@@ -303,13 +303,18 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                     } else {
                         UINT id = nextId++;
                         UINT flags = MF_BYPOSITION | MF_STRING;
-                        if (item.checked) {
-                            flags |= MF_CHECKED;
-                        }
-                        if (!item.enabled) {
-                            flags |= MF_GRAYED;
-                        }
+                        if (item.checked) flags |= MF_CHECKED;
+                        if (!item.enabled) flags |= MF_GRAYED;
+                        
                         InsertMenuW(hMenuTarget, 0, flags, id, item.text.c_str());
+                        
+                        if (item.hBitmap) {
+                            MENUITEMINFOW mii = { sizeof(mii) };
+                            mii.fMask = MIIM_BITMAP;
+                            mii.hbmpItem = item.hBitmap;
+                            SetMenuItemInfoW(hMenuTarget, 0, TRUE, &mii);
+                        }
+                        
                         if (item.callback) {
                             m_customCallbackMap[id] = item.callback;
                         }

@@ -1,4 +1,4 @@
-﻿#ifndef LISTITEM_H
+#ifndef LISTITEM_H
 #define LISTITEM_H
 
 #include <QWidget>
@@ -13,6 +13,11 @@ class ListItem : public QWidget {
     Q_OBJECT
 
 public:
+    enum class LayoutMode {
+        IconMode,
+        ListMode
+    };
+
     explicit ListItem(QWidget* parent = nullptr);
 
     // 有参构造函数 - 通过 ListItemData 初始化
@@ -50,6 +55,10 @@ public:
     void setItemSize(int width,int heigh);
     void setItemPos(int startX,int startY);
     void setItemPos(QPoint pos);
+    void setLayoutMode(LayoutMode mode);
+    LayoutMode layoutMode() const { return m_layoutMode; }
+
+    QPoint getLocationInfo() const { return m_itemPos; }
 
     /// <summary>
     /// Update Item UI LocationInfo
@@ -60,8 +69,14 @@ public:
     void unCheckSelf();
     void openItem();
 
+    QString boxId() const { return m_boxId; }
+    void setBoxId(const QString& id) { m_boxId = id; }
+    const QString& normalizedPath() const { return m_normalizedPath; }
+
     bool isReady = false;
     bool isSelected = false; // 是否被选中
+    bool isHovered = false;  // 是否被鼠标悬浮
+
 
 signals:
     void itemClicked(ListItem* item, QMouseEvent* event);
@@ -77,6 +92,9 @@ protected:
     void ListItem::mouseDoubleClickEvent(QMouseEvent* event) override;
     void ListItem::contextMenuEvent(QContextMenuEvent* event) override;
     void ListItem::paintEvent(QPaintEvent* event) override;
+    void ListItem::enterEvent(QEvent* event) override;
+    void ListItem::leaveEvent(QEvent* event) override;
+
     
     
     
@@ -93,10 +111,13 @@ private:
      QString m_baseName;           //基本文件名
      QString m_suffixName;         //文件后缀名
      QLabel* m_iconWidget = nullptr;       //图标控件
+     QLabel* m_shortcutArrowOverlay = nullptr; //快捷方式小箭头
      QIcon m_icon;
      ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
 	 QString m_filePath;    //Windows 文件路径
      QLabel* textLabel = nullptr; //文件名称Label
-     
+     LayoutMode m_layoutMode = LayoutMode::IconMode;
+	 QString m_boxId; // ID of the box this item belongs to (empty for desktop)
+     QString m_normalizedPath; // Normalized path for fast lookup
 };
 #endif // LISTITEM_H

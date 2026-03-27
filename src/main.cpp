@@ -1,9 +1,11 @@
-﻿#include <Windows.h>
+#include <Windows.h>
 #include <shlobj.h>
 #include <shellapi.h>
 #include <QDebug>
 #include <iostream>
 #include <QApplication>
+#include <QFont>
+#include <QIcon>
 #include <QVector>
 #include "LinDesk.h"
 #include "SystemApi/SystemApi.h"
@@ -20,11 +22,18 @@ int main(int argc, char *argv[])
     //qSetMessagePattern("%{time yyyy-MM-dd hh:mm:ss}--[%{type}]--%{file}--%{function}--%{line}:%{message}");
     qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(":/Assets/app_icon.png"));
+    app.setQuitOnLastWindowClosed(false);
+    
+    // Set Windows 1:1 Desktop Standard font
+    QFont defaultFont("Microsoft YaHei UI", 9);
+    defaultFont.setStyleStrategy(QFont::PreferAntialias);
+    app.setFont(defaultFont);
 	//qDebug() << "Application Dir:" << app.applicationDirPath();
     //LinDesk *lindesk = LinDesk::instance();
     //lindesk->show();
-    LinDesktop* linDesktop = new LinDesktop();
-    linDesktop->show();
+    LinDesktop linDesktop;
+    linDesktop.show();
     qDebug() << isShortcutArrowEnabled();
     qDebug() << isUACShieldEnabled();
     return app.exec();

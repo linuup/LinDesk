@@ -33,12 +33,9 @@ void SelectArea::paintEvent(QPaintEvent* event)
     painter.fillRect(rect, QColor(100, 160, 240, 70));
 
      
-}
-
+} 
 void SelectArea::showEvent(QShowEvent* event)
 {
-    raise();
 }
-
 SelectArea::~SelectArea()
 {}

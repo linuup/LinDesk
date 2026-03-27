@@ -1,4 +1,4 @@
-﻿// SystemApi.cpp : Defines the exported functions for the DLL.
+// SystemApi.cpp : Defines the exported functions for the DLL.
 #include "SystemApi.h"
 #include "Tool.h"
 #include <Shlwapi.h>
@@ -78,6 +78,7 @@ const wchar_t* L_NETWORK(TEXT(NETWORK_CLS));
 const wchar_t* L_USER_FOLDER(TEXT(USER_FOLDER_CLS));
 const wchar_t* L_LIARIES(TEXT(LIBRARIES_CLS));
 const wchar_t* L_LINUX(TEXT(LINUX_CLS));
+const wchar_t* L_ONE_DRIVE(TEXT(ONE_DRIVE_CLS));
 SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
 {
     if (!name) return SpecialFolders::Empty;
@@ -97,6 +98,13 @@ SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
     else if (wcsstr(name, L_NETWORK)) {
         return SpecialFolders::Network;
     }
+
+    else if (wcsstr(name, L"OneDrive") != nullptr ||
+        wcsstr(name, L"Microsoft OneDrive") != nullptr ||
+        wcsstr(name, L"ONEDRIVE") != nullptr ||
+        wcsstr(name, L_ONE_DRIVE)) {
+        return SpecialFolders::OneDrive;
+    }
     else if (wcsstr(name, L"\\Desktop\\") != nullptr ||
         wcsstr(name, L"\\桌面\\") != nullptr ||
         (wcsstr(name, L"\\Users\\") != nullptr && wcsstr(name, L"\\Desktop") != nullptr) ||
@@ -107,11 +115,6 @@ SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
         wcsstr(name, L"C:\\Users") != nullptr ||
         wcsstr(name, L"用户") != nullptr) {
         return SpecialFolders::UserFolder;
-    }
-    else if (wcsstr(name, L"OneDrive") != nullptr ||
-        wcsstr(name, L"Microsoft OneDrive") != nullptr ||
-        wcsstr(name, L"ONEDRIVE") != nullptr) {
-        return SpecialFolders::OneDrive;
     }
     else if (wcsstr(name, L_LIARIES)) {
         return SpecialFolders::Libraries;
@@ -141,14 +144,23 @@ IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
     
     // 处理文件路径逻辑...
     item.path = Tool::WstrToStr(filePath);
-
-    
-    
     item.pidl_p = pidl;
 
-    // 提取文件名
-    size_t lastSlash = item.path.find_last_of("\\/");
-    item.name = (lastSlash != std::string::npos) ? item.path.substr(lastSlash + 1) : item.path;
+    // 尝试获取 Shell 友好的显示名称（例如 “此电脑”、“回收站”）
+    if (pidl) {
+        PWSTR pszName = nullptr;
+        if (SUCCEEDED(SHGetNameFromIDList(pidl, SIGDN_NORMALDISPLAY, &pszName))) {
+            item.name = Tool::WstrToStr(pszName);
+            CoTaskMemFree(pszName);
+        }
+    }
+
+    // 如果 Shell 名称获取失败，回退到从路径中提取
+    if (item.name.empty()) {
+        size_t lastSlash = item.path.find_last_of("\\/");
+        item.name = (lastSlash != std::string::npos) ? item.path.substr(lastSlash + 1) : item.path;
+    }
+
     item.specialFolder = getFolderTypeFromName(filePath);
 
     return item;
@@ -291,6 +303,23 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 {
 	//vector<IconItem>* iconItems = new vector<IconItem>();
 	vector <IconItem> iconItems;
+    
+    // 提前抓取可视坐标 (通过远线程注入提取 SysListView32)
+    HWND sysListView32 = FindSysListView32();
+    std::unordered_map<std::string, POINT> posMap;
+    if (sysListView32) {
+        vector<IconItem> visualItems = GetDesktopIconsItems(sysListView32);
+        for (const auto& vi : visualItems) {
+            // 存储为小写且去空格的名字，用于模糊匹配
+            std::string normalizedName = vi.name;
+            while(!normalizedName.empty() && (normalizedName.back() == ' ' || normalizedName.back() == '\0')) normalizedName.pop_back();
+            while(!normalizedName.empty() && (normalizedName.front() == ' ')) normalizedName.erase(0, 1);
+            for(auto &c : normalizedName) c = tolower(c);
+            
+            posMap[normalizedName] = vi.position;
+        }
+    }
+
     // 获取桌面文件夹的 PIDL
     unique_pidl_absolute pidl = Tool::GetRootPidl();
 
@@ -318,6 +347,9 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         SHCONTF_FLATLIST |
         SHCONTF_ENABLE_ASYNC |
         SHCONTF_INCLUDESUPERHIDDEN*/
+    // Get desktop root PIDL for absolute combination
+    unique_pidl_absolute rootPidl = Tool::GetRootPidl();
+    
     hr = deskISF->EnumObjects(NULL,
         SHCONTF_FOLDERS |
         SHCONTF_NONFOLDERS |
@@ -361,15 +393,31 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             }else {
                 i.path = Tool::WstrToStr(szPath);
             }
-                
-			//Tool::ConvertToGUID(L"{20D04FE0-3AEA-1069-A2D8-08002B30309D}");
         }
         else {
             DWORD error = GetLastError();
-            //_tprintf(_T("Failed to get path:\n",error));
         }
-        i.pidl_p = std::move(pidlItem);
+
+		// 创建绝对 PIDL 以支持高质量图标提取和其他 Shell 操作
+        if (rootPidl) {
+            i.pidl_p = ILCombine(rootPidl.get(), pidlItem);
+        } else {
+            i.pidl_p = ILClone(pidlItem);
+        }
+        ILFree(pidlItem); // 释放 EnumIDList 返回的相对 PIDL
+
 		i.specialFolder = getFolderTypeFromName(szPath);
+        
+        // 尝试从可视抓取数组中匹配坐标 (同样进行归一化处理)
+        std::string searchName = i.name;
+        while(!searchName.empty() && (searchName.back() == ' ' || searchName.back() == '\0')) searchName.pop_back();
+        while(!searchName.empty() && (searchName.front() == ' ')) searchName.erase(0, 1);
+        for(auto &c : searchName) c = tolower(c);
+
+        if (posMap.count(searchName)) {
+            i.position = posMap[searchName];
+        }
+
         iconItems.push_back(i);
 #ifndef NDEBUG
 		//std::wcout << L"\nName: " << szName << L", Path: " << szPath << std::endl;
@@ -379,6 +427,55 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
     // 释放枚举器
     pEnumIDList->Release();
     return iconItems;
+}
+
+void CSystemApi::GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid)
+{
+    // Default fallback values (Switch to false if detection fails to avoid intrusive snapping)
+    outAutoArrange = false;
+    outSnapToGrid = false;
+    
+    // 1. First choice: Check the actual active Desktop window style (Most high-fidelity)
+    HWND sysListView = FindSysListView32();
+    if (sysListView) {
+        DWORD style = GetWindowLong(sysListView, GWL_STYLE);
+        outAutoArrange = (style & LVS_AUTOARRANGE) != 0;
+
+        // LVM_GETEXTENDEDLISTVIEWSTYLE is the direct property for "Snap to grid"
+        DWORD exStyle = (DWORD)SendMessage(sysListView, LVM_GETEXTENDEDLISTVIEWSTYLE, 0, 0);
+        outSnapToGrid = (exStyle & LVS_EX_SNAPTOGRID) != 0;
+
+#ifndef NDEBUG
+        printf("[SystemApi] Found Desktop Window. AutoArrange=%d, SnapToGrid=%d\n", outAutoArrange, outSnapToGrid);
+#endif
+        return; // Found live state, no need for registry backup
+    }
+
+    // 2. Second choice: Registry (Fall back here if Desktop window is not found / startup)
+    const wchar_t* regPaths[] = {
+        L"Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop",
+        L"Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell\\Desktop",
+        L"Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell\\Desktop"
+    };
+
+    for (auto path : regPaths) {
+        HKEY hKey;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, path, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            DWORD fFlags = 0;
+            DWORD size = sizeof(fFlags);
+            if (RegQueryValueExW(hKey, L"FFlags", nullptr, nullptr, (LPBYTE)&fFlags, &size) == ERROR_SUCCESS) {
+                // FFlags mask: 0x01 = Auto Arrange, 0x04 = Snap to Grid
+                outAutoArrange = (fFlags & 0x01) != 0;
+                outSnapToGrid = (fFlags & 0x04) != 0;
+                RegCloseKey(hKey);
+#ifndef NDEBUG
+                printf("[SystemApi] Registry Path Success (%ls): AutoArrange=%d, SnapToGrid=%d\n", path, outAutoArrange, outSnapToGrid);
+#endif
+                return;
+            }
+            RegCloseKey(hKey);
+        }
+    }
 }
 
 
@@ -456,6 +553,81 @@ bool CSystemApi::DeleteFileNative(const wchar_t* filePath)
     }
 }
 
+bool CSystemApi::DeleteFiles(const std::vector<std::wstring>& filePaths, bool toRecycleBin, bool confirm)
+{
+    if (filePaths.empty()) return true;
+
+    // SHFileOperation 的 pFrom 要求以双 null 结尾，内部各路径以单 null 分隔
+    std::vector<wchar_t> pathsBuffer;
+    for (const auto& path : filePaths) {
+        for (wchar_t c : path) pathsBuffer.push_back(c);
+        pathsBuffer.push_back(0); // 单 null 分隔
+    }
+    pathsBuffer.push_back(0); // 双 null 结尾
+
+    SHFILEOPSTRUCTW fileOp = { 0 };
+    fileOp.hwnd = NULL; 
+    fileOp.wFunc = FO_DELETE;
+    fileOp.pFrom = pathsBuffer.data();
+    
+    fileOp.fFlags = 0;
+    if (toRecycleBin) fileOp.fFlags |= FOF_ALLOWUNDO;
+    if (!confirm) fileOp.fFlags |= FOF_NOCONFIRMATION;
+
+    int result = SHFileOperationW(&fileOp);
+    return (result == 0);
+}
+
+bool CSystemApi::CopyFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir)
+{
+    if (filePaths.empty()) return true;
+
+    std::vector<wchar_t> srcBuffer;
+    for (const auto& path : filePaths) {
+        for (wchar_t c : path) srcBuffer.push_back(c);
+        srcBuffer.push_back(0);
+    }
+    srcBuffer.push_back(0);
+
+    std::vector<wchar_t> destBuffer;
+    for (wchar_t c : destDir) destBuffer.push_back(c);
+    destBuffer.push_back(0);
+    destBuffer.push_back(0);
+
+    SHFILEOPSTRUCTW fileOp = { 0 };
+    fileOp.wFunc = FO_COPY;
+    fileOp.pFrom = srcBuffer.data();
+    fileOp.pTo = destBuffer.data();
+    fileOp.fFlags = FOF_ALLOWUNDO;
+
+    return (SHFileOperationW(&fileOp) == 0);
+}
+
+bool CSystemApi::MoveFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir)
+{
+    if (filePaths.empty()) return true;
+
+    std::vector<wchar_t> srcBuffer;
+    for (const auto& path : filePaths) {
+        for (wchar_t c : path) srcBuffer.push_back(c);
+        srcBuffer.push_back(0);
+    }
+    srcBuffer.push_back(0);
+
+    std::vector<wchar_t> destBuffer;
+    for (wchar_t c : destDir) destBuffer.push_back(c);
+    destBuffer.push_back(0);
+    destBuffer.push_back(0);
+
+    SHFILEOPSTRUCTW fileOp = { 0 };
+    fileOp.wFunc = FO_MOVE;
+    fileOp.pFrom = srcBuffer.data();
+    fileOp.pTo = destBuffer.data();
+    fileOp.fFlags = FOF_ALLOWUNDO;
+
+    return (SHFileOperationW(&fileOp) == 0);
+}
+
 bool CSystemApi::DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm)
 {
     SHFILEOPSTRUCTW fileOp = { 0 };
@@ -490,6 +662,11 @@ bool CSystemApi::DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm)
 
 PathType CSystemApi::GetPathType(const wchar_t* filePath)
 {
+    // Check for virtual Shell CLSID paths (e.g., ::{20D04FE0-3AEA-1069-A2D8-08002B30309D})
+    if (filePath && wcsncmp(filePath, L"::", 2) == 0) {
+        return DirectoryPath; // Virtual folders behave like directories for most Shell operations
+    }
+
     DWORD attributes = GetFileAttributesW(filePath);
     if (attributes == INVALID_FILE_ATTRIBUTES) {
         // 无效路径
@@ -553,6 +730,38 @@ void CSystemApi::File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_
     shell.lpIDList = NULL;
     shell.cbSize = sizeof(SHELLEXECUTEINFO);
     ShellExecuteEx(&shell);
+}
+
+HBITMAP CSystemApi::GetShellThumbnail(const wchar_t* path, int width, int height)
+{
+    if (!path || wcslen(path) == 0) return NULL;
+
+    IShellItem* pShellItem = nullptr;
+    // Create a shell item for the given path (works for files and folders)
+    HRESULT hr = SHCreateItemFromParsingName(path, nullptr, IID_PPV_ARGS(&pShellItem));
+    if (FAILED(hr)) return NULL;
+
+    IShellItemImageFactory* pImageFactory = nullptr;
+    hr = pShellItem->QueryInterface(IID_PPV_ARGS(&pImageFactory));
+    if (FAILED(hr)) {
+        pShellItem->Release();
+        return NULL;
+    }
+
+    SIZE size = { width, height };
+    HBITMAP hBitmap = NULL;
+    // GetImage parameters:
+    // SIIGBF_RESIZETOFIT: Aspect ratio is maintained while fitting into the box.
+    // This flag is crucial for folders as it triggers the composite content preview render.
+    hr = pImageFactory->GetImage(size, SIIGBF_RESIZETOFIT, &hBitmap);
+
+    pImageFactory->Release();
+    pShellItem->Release();
+
+    if (SUCCEEDED(hr) && hBitmap) {
+        return hBitmap;
+    }
+    return NULL;
 }
 int OpenCLSID(const wchar_t* clsidStr)
 {

@@ -1,4 +1,4 @@
-﻿// The following ifdef block is the standard way of creating macros which make exporting
+// The following ifdef block is the standard way of creating macros which make exporting
 // from a DLL simpler. All files within this DLL are compiled with the SYSTEMAPI_EXPORTS
 // symbol defined on the command line. This symbol should not be defined on any project
 // that uses this DLL. This way any other project whose source files include this file see
@@ -19,6 +19,7 @@
 #include "Tool.h"
 #include "CommonEnum.h"
 #include <codecvt>
+#include <unordered_map>
 using namespace std;
 // //1 隐藏 0 显示
 #define MY_COMPUTER_CLS   "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"//计算机/此电脑
@@ -29,6 +30,7 @@ using namespace std;
 #define USER_FOLDER_CLS   "{59031a47-3f72-44a7-89c5-5595fe6b30ee}"//用户文件夹
 #define LIBRARIES_CLS     "{031E4825-7B94-4DC3-B131-E946B44C8DD5}"//库
 #define LINUX_CLS         "{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}"//WSL
+#define ONE_DRIVE_CLS      "{018D5C66-4533-4307-9B53-224DE2ED1FE6}"//One Drive
 
 
 
@@ -94,6 +96,21 @@ public:
     */
     static bool DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm = false);
     /**
+     * 批量删除文件
+     * @param filePaths 文件路径列表
+     * @param toRecycleBin 是否通过回收站
+     * @param confirm 是否弹出确认对话框
+     */
+    static bool DeleteFiles(const std::vector<std::wstring>& filePaths, bool toRecycleBin = true, bool confirm = true);
+    /**
+     * 批量拷贝文件
+     */
+    static bool CopyFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir);
+    /**
+     * 批量移动文件
+     */
+    static bool MoveFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir);
+    /**
      * 判断路径是文件还是目录，无效返回0，文件返回1，文件夹返回2
      * @param 路径
     */
@@ -118,6 +135,7 @@ public:
     /// </summary>
     /// <returns></returns>
     HWND FindDesktop();
+    static HBITMAP GetShellThumbnail(const wchar_t* path, int width, int height);
     /**
     * @brief 获取桌面所有图标位置及名称
     *
@@ -130,6 +148,12 @@ public:
 	/// </summary>
 	/// <returns></returns>
 	vector<IconItem> GetDesktopPIDLItems();
+    
+    /// <summary>
+    /// 获取 Windows 桌面原生布局设置（自动排列、网格对齐）
+    /// </summary>
+    static void GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid);
+
     /// <summary>
     /// 从dll中获取字符
     /// </summary>

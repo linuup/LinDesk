@@ -1,0 +1,7 @@
+{
+    "Keys": [
+        "Desk_OCR_Mock"
+    ],
+    "Version": "1.0.0",
+    "Description": "Simple mock plugin for testing LinDesk plugin architecture."
+}

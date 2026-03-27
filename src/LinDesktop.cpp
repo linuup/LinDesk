@@ -1,4 +1,4 @@
-﻿#include "LinDesktop.h"
+#include "LinDesktop.h"
 
 LinDesktop::LinDesktop(QWidget* parent)
 	: QWidget(parent)
@@ -21,6 +21,8 @@ LinDesktop::LinDesktop(QWidget* parent)
 	loadBackImage();
 	selectArea = new SelectArea(this);
 	listView = ListView::instance(this);
+	
+	embedToDesktop();
 
     m_monitor = new DesktopInfoMonitor(this);
     m_monitor->startListening();
@@ -30,6 +32,7 @@ LinDesktop::LinDesktop(QWidget* parent)
     m_wallpaperLoadTimer->setSingleShot(true);
     m_wallpaperLoadTimer->setInterval(500); // 500ms debounce
     connect(m_wallpaperLoadTimer, &QTimer::timeout, this, &LinDesktop::loadBackImage);
+	
 }
 
 LinDesktop::~LinDesktop()
@@ -103,9 +106,33 @@ void LinDesktop::embedToDesktop()
 	HWND hwnd = CSystemApi::FindRealDesktop();
 	if (hwnd) {
 		setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+		
+		// Ensure 1:1 with desktop size
+		setGeometry(QApplication::primaryScreen()->geometry());
+		
 		SetParent((HWND)this->winId(), hwnd);
+		m_isEmbedded = true;
+		show();
 	}
 }
+
+void LinDesktop::unembedFromDesktop()
+{
+	SetParent((HWND)this->winId(), NULL);
+	
+	// Restore standard window flags: Title bar + Taskbar icon
+	setWindowFlags(Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
+	
+	m_isEmbedded = false;
+	
+	// If it was full screen, shrink it a bit so the title bar is easier to see/move
+    QRect screenGeom = QApplication::primaryScreen()->availableGeometry();
+    resize(screenGeom.width() * 0.8, screenGeom.height() * 0.8);
+    move(screenGeom.center() - rect().center());
+    
+	show();
+}
+
 
 void LinDesktop::mousePressEvent(QMouseEvent* event)
 {

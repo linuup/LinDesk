@@ -1,11 +1,13 @@
-﻿#pragma once
+#pragma once
 #include "RightMenu.h"
-#include <qmenu.h>
-#include <qdebug.h>
+#include "Fluent/FluentDialog.h"
+#include <QMenu>
+#include <QDebug>
 #include "../SystemApi/SystemApi.h"
 #include <QProcess>
 #include <qstandardpaths.h>
 #include "../SystemApi/Tool.h"
+#include <QtWinExtras/QtWin>
   
 QMenu* RightMenu::createSortBySubMenu()
 {
@@ -39,8 +41,8 @@ QMenu* RightMenu::createSortBySubMenu()
     m_sortByDateAction->setActionGroup(sortGroup);
     connect(m_sortByDateAction, &QAction::triggered, this, &RightMenu::onSortByDate);
     sortByMenu->addAction(m_sortByDateAction);
-
-    m_sortByNameAction->setChecked(true); // 默认选中名称
+    
+    // 不默认选中任何选项（Default 状态下均不勾选）
     
     return sortByMenu;
 }
@@ -136,35 +138,51 @@ void RightMenu::initializeCustomMenu()
     connect(pasteAction, &QAction::triggered, this, &RightMenu::onPaste);
     m_customMenu->addAction(pasteAction);
     
-    // 6-Paste shortcut
-    QAction* pasteShortcutAction = new QAction("Paste shortcut", m_customMenu);
-    pasteShortcutAction->setEnabled(false);
-    connect(pasteShortcutAction, &QAction::triggered, this, &RightMenu::onPasteShortcut);
-    m_customMenu->addAction(pasteShortcutAction);
+    m_customMenu->addSeparator();
 
     // 7-Create Box
-    m_createBoxAction = new QAction("New Grid", m_customMenu);
+    m_createBoxAction = new QAction("New Box", m_customMenu);
+    
+    // Create a grid icon for shell menu integration
+    QPixmap gridPix(16, 16);
+    gridPix.fill(Qt::transparent);
+    {
+        QPainter p(&gridPix);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor(0, 120, 212), 1.5));
+        p.drawRect(2, 2, 5, 5);
+        p.drawRect(9, 2, 5, 5);
+        p.drawRect(2, 9, 5, 5);
+        p.drawRect(9, 9, 5, 5);
+    }
+    m_createBoxAction->setIcon(QIcon(gridPix));
+
     connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
     m_customMenu->addAction(m_createBoxAction);
 
+    // 9-LinDesk
+    m_linDeskAction = new QAction("LinDesk", m_customMenu);
+    m_linDeskAction->setIcon(QIcon(":/Assets/app_icon.png"));
+    connect(m_linDeskAction, &QAction::triggered, this, &RightMenu::onLinDesk);
+    m_customMenu->addAction(m_linDeskAction);
+    
+    // 8-Exit
+    QAction* exitAction = new QAction("Exit LinDesk", m_customMenu);
+    exitAction->setIcon(QIcon(":/Assets/app_icon.png"));
+    connect(exitAction, &QAction::triggered, this, &RightMenu::onQuitApp);
+    m_customMenu->addAction(exitAction);
+
     m_customMenu->setFixedWidth(150);
+    m_customMenu->setStyleSheet("QMenu { font-weight: bold; font-family: 'Segoe UI', sans-serif; }");
 }
 
 void RightMenu::onLargeIcons() { m_largeIconsAction->setChecked(true); emit LargeIconsTriggered(); }
 void RightMenu::onMediumIcons() { m_mediumIconsAction->setChecked(true); emit MediumIconsTriggered(); }
 void RightMenu::onSmallIcons() { m_smallIconsAction->setChecked(true); emit SmallIconsTriggered(); }
-void RightMenu::onAutoArrangeIcons() { 
-    emit AutoArrangeIconsTriggered(); 
-}
-void RightMenu::onAlignIconsToGrid() { 
-    emit AlignIconsToGridTriggered(); 
-}
-void RightMenu::onShowDesktopIcons() { 
-    emit ShowDesktopIconsTriggered(); 
-}
-void RightMenu::onDoubleClickedHideIcons() {
-    emit DoubleClickedHideIconsTriggered();
-}
+void RightMenu::onAutoArrangeIcons() { emit AutoArrangeIconsTriggered(); }
+void RightMenu::onAlignIconsToGrid() { emit AlignIconsToGridTriggered(); }
+void RightMenu::onShowDesktopIcons() { emit ShowDesktopIconsTriggered(); }
+void RightMenu::onDoubleClickedHideIcons() {emit DoubleClickedHideIconsTriggered();}
 
 void RightMenu::onSortByName() { m_sortByNameAction->setChecked(true); emit sortByNameTriggered(); }
 void RightMenu::onSortBySize() { m_sortBySizeAction->setChecked(true); emit sortBySizeTriggered(); }
@@ -176,6 +194,8 @@ void RightMenu::onPaste() { emit pasteTriggered(); }
 void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
 void RightMenu::onUndoDelete() { emit undoDeleteTriggered(); }
 void RightMenu::onCreateBox() { emit createBoxTriggered(); }
+void RightMenu::onQuitApp() { emit quitAppTriggered(); }
+void RightMenu::onLinDesk() { emit linDeskTriggered(); }
 
 
 void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
@@ -187,6 +207,7 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {
+			std::vector<HBITMAP> tempBitmaps; // To be cleaned up after ShowMenu
 			std::function<std::vector<ShellContextMenu::CustomMenuItem>(const QList<QAction*>&)> convertActions = 
 				[&](const QList<QAction*>& actions) {
 				std::vector<ShellContextMenu::CustomMenuItem> items;
@@ -196,6 +217,14 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 						item.isSeparator = true;
 					} else {
 						item.text = action->text().toStdWString();
+						// Convert icon to HBITMAP with alpha
+						if (!action->icon().isNull()) {
+							QPixmap pix = action->icon().pixmap(16, 16);
+							HBITMAP hBmp = QtWin::toHBITMAP(pix, QtWin::HBitmapAlpha);
+							item.hBitmap = hBmp;
+							tempBitmaps.push_back(hBmp);
+						}
+
 						if (action->menu()) {
 							// 递归转换子菜单
 							item.children = convertActions(action->menu()->actions());
@@ -216,10 +245,14 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 			};
 
 			scm.setCustomMenuItems(convertActions(m_customMenu->actions()));
+			scm.ShowMenu(this->hwnd, position, nullptr);
+			
+			// Clean up bitmpas
+			for (HBITMAP h : tempBitmaps) {
+				DeleteObject(h);
+			}
+			return;
 		}
-
-		scm.ShowMenu(this->hwnd, position, nullptr);
-		return;
 	}else if (this->fileType == ObjectType::File) {
 		scm.setOperationType(ShellContextMenu::OperationType::file);
 	}else if (this->fileType == ObjectType::Folder_ObjectType) {
@@ -275,9 +308,9 @@ void RightMenu::setMediumIconsChecked(bool checked)
 void RightMenu::setSmallIconsChecked(bool checked)
 {
     if (checked) {
+        m_largeIconsAction->setChecked(false);
+        m_mediumIconsAction->setChecked(false);
         m_smallIconsAction->setChecked(true);
-    } else {
-        m_smallIconsAction->setChecked(false);
     }
 }
 
@@ -308,6 +341,16 @@ void RightMenu::setAlignIconsToGridChecked(bool checked)
     }
 }
 
+bool RightMenu::isAutoArrangeIconsChecked() const
+{
+    return m_autoArrangeIconsAction ? m_autoArrangeIconsAction->isChecked() : false;
+}
+
+bool RightMenu::isAlignIconsToGridChecked() const
+{
+    return m_alignIconsToGridAction ? m_alignIconsToGridAction->isChecked() : false;
+}
+
 void RightMenu::setDoubleClickedHideIconsChecked(bool checked)
 {
     if(checked) {
@@ -316,3 +359,25 @@ void RightMenu::setDoubleClickedHideIconsChecked(bool checked)
         m_doubleClickedHideIconsAction->setChecked(false);
     }
 }
+
+// Sort-by setters — QActionGroup 已保证互斥，只需 setChecked(true)
+void RightMenu::setSortByNameChecked(bool checked)
+{
+    if (m_sortByNameAction) m_sortByNameAction->setChecked(checked);
+}
+
+void RightMenu::setSortBySizeChecked(bool checked)
+{
+    if (m_sortBySizeAction) m_sortBySizeAction->setChecked(checked);
+}
+
+void RightMenu::setSortByTypeChecked(bool checked)
+{
+    if (m_sortByTypeAction) m_sortByTypeAction->setChecked(checked);
+}
+
+void RightMenu::setSortByDateChecked(bool checked)
+{
+    if (m_sortByDateAction) m_sortByDateAction->setChecked(checked);
+}
+

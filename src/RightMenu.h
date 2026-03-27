@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <qlist.h>
 #include <qicon.h>
 #include <vector>
@@ -89,6 +89,14 @@ public:
 	void setAutoArrangeIconsChecked(bool checked);
 	void setAlignIconsToGridChecked(bool checked);
 	void setDoubleClickedHideIconsChecked(bool checked);
+	// set sort-by action check state
+	void setSortByNameChecked(bool checked);
+	void setSortBySizeChecked(bool checked);
+	void setSortByTypeChecked(bool checked);
+	void setSortByDateChecked(bool checked);
+
+	bool isAutoArrangeIconsChecked() const;
+	bool isAlignIconsToGridChecked() const;
 signals:
 	// 自定义菜单项的信号
 	// 1-View
@@ -116,7 +124,14 @@ signals:
 
 	// 7-Create Box
 	void createBoxTriggered();
+	
+	// 8-Exit
+	void quitAppTriggered();
 
+	// 9-LinDesk Settings
+	void linDeskTriggered();
+
+	void onEmbedToDesktop();
 
 public slots:
 	// 菜单项槽函数
@@ -140,6 +155,10 @@ public slots:
 	// Undo delete
 	void onUndoDelete();
 	void onCreateBox();
+	void onQuitApp();
+	void onLinDesk();
+
+	
 
 private:
 	RightMenu() {
@@ -169,11 +188,14 @@ private:
 	QAction* m_showDesktopIconsAction = nullptr;
 	QAction* m_doubleClickedHideIconsAction = nullptr;
 
+	QAction* m_sortByDateAction = nullptr;
 	QAction* m_sortByNameAction = nullptr;
 	QAction* m_sortBySizeAction = nullptr;
 	QAction* m_sortByTypeAction = nullptr;
-	QAction* m_sortByDateAction = nullptr;
 	QAction* m_createBoxAction = nullptr;
+	QAction* m_linDeskAction = nullptr;
+	QAction* pasteShortcutAction = nullptr;
+	QAction* m_embedToDesktopAction = nullptr;
 
 	/// <summary>
 	/// 创建排序方式子菜单

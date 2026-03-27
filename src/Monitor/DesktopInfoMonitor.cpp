@@ -10,7 +10,9 @@ static const QMap<QString, QString> KNOWN_DESKTOP_ICONS = {
     {"{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}", "CONTROL_PANEL"},
     {"{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}", "NETWORK"},
     {"{59031a47-3f72-44a7-89c5-5595fe6b30ee}", "USER_FOLDER"},
-    {"{018D5C66-4533-4307-9B53-224DE2ED1FE6}", "OneDrive"}
+    {"{018D5C66-4533-4307-9B53-224DE2ED1FE6}", "OneDrive"},
+    {"{031E4825-7B94-4DC3-B131-E946B44C8DD5}", "Libraries"},
+    {"{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}", "Linux_WSL"}
 };
 
 DesktopInfoMonitor::DesktopInfoMonitor(QObject* parent)
@@ -175,8 +177,9 @@ bool DesktopInfoMonitor::setIconVisibility(const QString& clsid, bool hidden) {
 
 bool DesktopInfoMonitor::isIconHidden(const QString& clsid) const {
     QMutexLocker locker(&m_mutex);
-    if (m_currentIcons.contains(clsid)) {
-        QVariant value = m_currentIcons[clsid].value;
+    QString upperClsid = clsid;
+    if (m_currentIcons.contains(upperClsid)) {
+        QVariant value = m_currentIcons[upperClsid].value;
         return value.isValid() ? value.toUInt() == 1 : false;
     }
     return false;
@@ -278,11 +281,25 @@ void DesktopInfoMonitor::refreshIconsState() {
     if (!hKey) return;
     m_currentIcons.clear();
     for (auto it = m_knownIcons.constBegin(); it != m_knownIcons.constEnd(); ++it) {
-        QVariant value = readRegistryValue(hKey, it.key());
-        DesktopIcon icon(it.key(), it.value());
-        icon.isHidden = value.isValid() ? value.toUInt() == 1 : false;
+        QString clsid = it.key();
+        QVariant value = readRegistryValue(hKey, clsid);
+        DesktopIcon icon(clsid, it.value());
+        
+        if (value.isValid()) {
+            icon.isHidden = (value.toUInt() == 1);
+        } else {
+            // Default visibility if registry key is missing:
+            // Libraries and WSL are HIDDEN by default on most Windows installs
+            if (clsid == "{031E4825-7B94-4DC3-B131-E946B44C8DD5}" || 
+                clsid == "{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}") {
+                icon.isHidden = true;
+            } else {
+                icon.isHidden = false;
+            }
+        }
+        
         icon.value = value;
-        m_currentIcons[it.key()] = icon;
+        m_currentIcons[clsid] = icon;
     }
     closeRegistryKey(hKey);
     emit desktopIconsRefreshed(m_currentIcons.values());

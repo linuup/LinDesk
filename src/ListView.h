@@ -12,8 +12,14 @@
 #include <QLabel>
 #include <QDir>
 #include <QUuid>
+#include <QElapsedTimer>
 #include <QCollator>
+#include <QTimer>
 #include <QSharedPointer>
+#include <QPointer>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include <windows.h>
 #include <shlobj_core.h>
 #include "ListItem.h"
@@ -22,7 +28,10 @@
 #include "DirectoryMonitor.h"
 #include "Monitor/LinDirectoryMonitor.h"
 #include <SelectArea.h>
-#include "LinBox.h"
+#include "SettingUI.h"
+class SettingUI_GL;
+ 
+class LinBox; 
 
 class ListView: public QWidget {
 	Q_OBJECT
@@ -49,14 +58,16 @@ public:
 	/// 4. 隐藏文件和系统文件
 	/// </summary>
 	enum class SortOrderType {
-		SortByName_ASC,    // A-Z 升序排列
-		SortByName_DESC,     // Z-A 降序排列
+		Default,					// 默认排序（无特殊排序）
+		SortByName_ASC,				// A-Z 升序排列
+		SortByName_DESC,			// Z-A 降序排列
 		SortBySize_ASC,
 		SortBySize_DESC,
 		SortByType_ASC,
 		SortByType_DESC,
 		SortByDateModified_ASC,
-		SortByDateModified_DESC
+		SortByDateModified_DESC,
+		SortByCategorized			// 自动分类排序（系统、文件夹、应用、文档）
 	};
 	// icon size show mode
 	enum class ViewMode {
@@ -64,20 +75,33 @@ public:
 		MediumIcon,
 		SmallIcon
 	};
+
+	// ViewMode 预设尺寸
+	static constexpr int kLargeIconW  = 100, kLargeIconH  = 104;
+	static constexpr int kMediumIconW = 76,  kMediumIconH = 78;
+	static constexpr int kSmallIconW  = 62,  kSmallIconH  = 64;
+	static constexpr int kLargeSpacing  = 12;
+	static constexpr int kMediumSpacing = 10;
+	static constexpr int kSmallSpacing  = 8;
+
+	// 快捷方式小图标预设尺寸 (与 ViewMode 一一对应)
+	static constexpr int kLargeArrowSize  = 42;
+	static constexpr int kMediumArrowSize = 32;
+	static constexpr int kSmallArrowSize  = 24;
+	static constexpr int kListArrowSize   = 20;
 	// icon show rule
 	struct IconShowRule {
 		IconPosMode iconPosMode = IconPosMode::AlignIconToGrid; //图标位置模式，默认与网格对齐
 		ViewMode viewMode = ViewMode::MediumIcon;	//图标显示模式，默认中等图标
-		SortOrderType sortType = SortOrderType::SortByName_ASC;	//图标排序方式，默认按名称升序排列
+		SortOrderType sortType = SortOrderType::Default;	// 默认使用“默认排序”
 		bool autoArrange = false;        // 是否自动排列
-		bool gridAlignment = true;      // 是否网格对齐
+		bool gridAlignment = false;      // 是否网格对齐
 		bool showDesktopIcons = true;	//是否显示桌面图标
 		bool doubleClickHideIcons = true; // 双击隐藏桌面图标
-		bool showShortCutArrow = false;	//是否显示快捷方式小箭头
+		bool showShortCutArrow = true;	//是否显示快捷方式小箭头
 	};
 
-	// 获取单例对象
-	static ListView* instance(QWidget* parent = nullptr);
+	// 加载所有桌面图标数据
 
 	// 加载所有桌面图标数据
 	std::vector<ListItemData> loadAllItemsData();
@@ -87,7 +111,6 @@ public:
 	/// </summary>
 	void initialize();
 
-	// 
 	void loadAutoLayout();
 	//
 	void loadGridLayout();
@@ -109,7 +132,10 @@ public:
 	/// False Descending
 	/// </param>
 	void sortByName(bool ascending = true);
-	//QVector<ListItem*> getAllItems();
+	void sortBySize(bool ascending = true);
+	void sortByType(bool ascending = true);
+	void sortByDate(bool ascending = true);
+	void sortByCategorized();
 
 	/// <summary>
 	/// 监听桌面系统文件注册表
@@ -120,7 +146,7 @@ public:
 		return m_items;
 	}
 	// 添加一个 ListItem
-	void addItem(ListItem* item);
+	void addItem(ListItem* item, bool refresh = true);
 
 	void removeItem(ListItem* item);
 
@@ -129,6 +155,18 @@ public:
 
 	// 获取当前选中的项
 	ListItem* selectedItem() const;
+	bool persistenceEnabled() const { return m_enablePersistence; }
+	void setPersistenceEnabled(bool enabled);
+	void setShortcutArrowVisible(bool visible);
+	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
+    void setDoubleClickHideIconsEnabled(bool enabled);
+    	bool isDoubleClickHideIconsEnabled() const;
+    bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
+	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
+	void loadPersistentLayout();
+	void loadPersistenceMetadata();
+	void forceUpdatePersistentPositions();
+	void updateRightMenuState();
 
 	/// <summary>
 	/// 生成Item的坐标
@@ -144,12 +182,22 @@ public:
 	// 获取所有选中的项（支持多选）
 	QVector<ListItem*> selectedItems() const;
 
+	QVector<LinBox*> boxes() const { return m_boxes; }
+    
 	// 获取是否启用多选
 	bool isMultiSelection() const;
 	
 	bool IsSelecting() const {
 		return m_isSelecting;
 	}
+
+	void showSettings(LinBox* target = nullptr);
+	void showSettingsGL(LinBox* target = nullptr);
+	static ListView* instance(QWidget* parent = nullptr);
+	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true);
+	bool isItemInAnyBox(const QString& filePath) const;
+	QString getBoxIdForItem(const QString& filePath) const;
+	void requestSaveBoxes(); // Move to public
 	void DisableSelecting() {
 		m_isSelecting = false;
 	}
@@ -209,13 +257,18 @@ private slots:
 	void onMenuSortByType();
 	void onMenuSortByDate();
 	
+public slots:
+    void onMenuDelete(bool permanently = false);
 	void onMenuRefresh();
-	void onMenuPaste();
-	void onMenuPasteShortcut();
 	void onMenuUndoDelete();
 	void onMenuCreateBox();
-	
-	// Item relay handlers
+	void onMenuQuitApp();
+	void onMenuLinDesk();
+
+private slots:
+	void performSort(SortOrderType order);
+	void onMenuPaste();
+	void onMenuPasteShortcut();
 	void onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event);
@@ -229,29 +282,54 @@ protected:
 	void mouseMoveEvent(QMouseEvent* event) override;
 	void mouseReleaseEvent(QMouseEvent* event) override;
 	void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dragLeaveEvent(QDragLeaveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 	void enterEvent(QEvent* event) override;
 
+    // Platform-specific event handling (for Global Hotkeys)
+    bool nativeEvent(const QByteArray &eventType, void *message, long *result) override;
+    void handleHotkey(int id);
+	
 	void refreshView();
 	void createDragGhosts(const QPoint& clickPos);
 	void setupItemConnections(ListItem* item, LinBox* box = nullptr);
+	
+	void saveBoxes();
+	void loadBoxes(bool autoUpdateState = true);
+	void setupBoxConnections(LinBox* box);
+	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", bool refresh = true);
+	
+	void onMenuDestroyBox(LinBox* box);
+	void onMenuCustomBox(LinBox* box);
 private:
 	explicit ListView(QWidget* parent = nullptr);
 	~ListView();
 	
 	// 初始化右键菜单信号连接
 	void initRightMenuConnections();
+	void syncViewModeSizes();
 
 	static ListView* m_instance;	//图标视图
 	RightMenu* rightMenu;
 	IconShowRule m_iconShowRule;	// icon show rule
-	
+	QString m_persistencePath;
+	QPointer<SettingUI> m_settingsWindow;
+	QPointer<SettingUI_GL> m_settingsWindowGL;
+	bool m_enablePersistence = true;
+	struct DesktopIconInfo { int x, y; QString boxId; };
+	QMap<QString, DesktopIconInfo> m_savedIconPositions;
 
-	// 网格布局常量
-	const int m_iconWidth = 76;
-	const int m_iconHeight = 78;
-	const int m_rowSpacing = 8;
-	const int m_colSpacing = 8;
-	const int m_marginTop = 6;
+	// 网格布局变量（可随 ViewMode 动态改变）
+    QString m_desktopDir; // 存储桌面物理路径
+	int m_iconWidth   = kMediumIconW;
+	int m_iconHeight  = kMediumIconH;
+	int m_rowSpacing  = kMediumSpacing;
+	int m_colSpacing  = kMediumSpacing;
+	int m_bottomPadding = 32; // 自定义底部缓冲高度
+	const int m_marginTop  = 6;
 	const int m_marginLeft = 2;
 
 	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
@@ -288,4 +366,6 @@ private:
 	};
 	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
 	QVector<LinBox*> m_boxes;   // 存储桌面格子
+	QLabel* m_dragTip = nullptr; // 用于显示“使用某程序打开”的提示
+    QTimer* m_saveTimer = nullptr;
 };

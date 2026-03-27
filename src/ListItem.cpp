@@ -7,11 +7,10 @@ class ListView;
 ListItem::ListItem(QWidget* parent)
 	: QWidget(parent)
 {
-	// 设置无边框窗口
-	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
-
-	// 设置透明背景
+	// Child widgets should not have separate window flags
+	// setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 	setAttribute(Qt::WA_TranslucentBackground);
+	setStyleSheet("background: transparent;");
 
 	// 设置透明并允许透过窗口看到后面的内容
 	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
@@ -57,11 +56,10 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 	this->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
 	
 
-	// 设置无边框窗口
-	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
-
-	// 设置透明背景
+	// Child widgets should not have separate window flags
+	// setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 	setAttribute(Qt::WA_TranslucentBackground);
+	setStyleSheet("background: transparent;");
 
 	// 设置透明并允许透过窗口看到后面的内容
 	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
@@ -107,50 +105,122 @@ ListItem::~ListItem()
 }
 
 
+void ListItem::setLayoutMode(LayoutMode mode) {
+	if (m_layoutMode == mode) return;
+	m_layoutMode = mode;
+	initData();
+	update();
+}
+
 void ListItem::initData()
 {
+	m_itemData.initIcon(); // Refresh icons if target size changed
 	m_type = m_itemData.type();
 
 	if (m_type != ObjectType::Empty_ObjectType)
 	{
-		
 		m_filePath = m_itemData.filePath();
 		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
-		if (m_type == ObjectType::SpecialFolder) {
-			update();
-		}
-		if (m_itemData.fullName() == "This PC") {
-			update();
-		}
 		m_baseName = (m_type == ObjectType::SpecialFolder) ? m_itemData.fullName() : m_fileInfo.baseName();
 		m_icon = m_itemData.icon();
+		
+		m_normalizedPath = QDir::toNativeSeparators(m_filePath).toLower();
+		while (m_normalizedPath.endsWith('\\')) m_normalizedPath.chop(1);
 
-		// 先删除旧的图标 widget，防止重复调用时堆叠
-		if (m_iconWidget) {
-			m_iconWidget->deleteLater();
-			m_iconWidget = nullptr;
-		}
-
-		// 显示图标
 		if (!m_icon.isNull() && !m_icon.availableSizes().isEmpty()) {
-			m_iconWidget = new QLabel(this);
-			// 优先取第3个尺寸，不够则取最后一个
-			int sizeIdx = qMin(2, m_icon.availableSizes().size() - 1);
-			m_iconWidget->setPixmap(m_icon.pixmap(m_icon.availableSizes().at(sizeIdx)));
-			// 设置透明背景
-			m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
-			// 计算居中位置
-			int topMargin = 5;
-			int centerX = (m_itemSize.width() - m_iconWidget->pixmap()->width()) / 2;
-			m_iconWidget->move(centerX, topMargin);
-			// 允许点击穿透
-			m_iconWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
+			if (!m_iconWidget) {
+				m_iconWidget = new QLabel(this);
+				m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
+				m_iconWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
+			}
+			
+			int iconSide;
+			int topMargin;
+			int leftMargin;
+			
+			if (m_layoutMode == LayoutMode::IconMode) {
+				iconSide = qMin(m_itemSize.width() - 4, m_itemSize.height() - 25);
+				iconSide = qBound(16, iconSide, 128); 
+				topMargin = 5;
+				leftMargin = (m_itemSize.width() - iconSide) / 2;
+			} else {
+				// List Mode: standard list icon size (20px in 30px row)
+				iconSide = 20; 
+				topMargin = (m_itemSize.height() - iconSide) / 2;
+				leftMargin = 8;
+			}
+
+			QPixmap rawPix = m_icon.pixmap(iconSide, iconSide);
+			if (rawPix.width() != iconSide || rawPix.height() != iconSide) {
+				rawPix = rawPix.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+			}
+
+			m_iconWidget->setPixmap(rawPix);
+			m_iconWidget->setAlignment(Qt::AlignCenter); 
+			m_iconWidget->resize(iconSide, iconSide);
+			m_iconWidget->move(leftMargin, topMargin);
 			m_iconWidget->show();
+
+			// --- Shortcut Arrow Overlay ---
+			bool isShortcut = m_fileInfo.suffix().toLower() == "lnk" || m_fileInfo.suffix().toLower() == "url";
+			bool showArrowSetting = ListView::instance()->shortcutArrowVisible();
+
+			if (isShortcut && showArrowSetting) {
+				if (!m_shortcutArrowOverlay) {
+					m_shortcutArrowOverlay = new QLabel(this);
+					m_shortcutArrowOverlay->setAttribute(Qt::WA_TranslucentBackground);
+					m_shortcutArrowOverlay->setAttribute(Qt::WA_TransparentForMouseEvents);
+					m_shortcutArrowOverlay->setScaledContents(true);
+				}
+				
+				// Extract the native Windows shortcut arrow
+				QIcon arrowIcon = SysInfoUtil::SysFileIconByDLL(155, 32, "imageres.dll");
+				if (arrowIcon.isNull()) {
+					arrowIcon = SysInfoUtil::SysFileIconByDLL(30, 32, "shell32.dll");
+				}
+
+				if (!arrowIcon.isNull()) {
+					int overlaySize;
+					if (m_layoutMode == LayoutMode::ListMode) {
+						overlaySize = ListView::kListArrowSize;
+					} else {
+						// Map of ViewMode -> Arrow Size
+						ListView::ViewMode currentMode = ListView::instance()->viewMode();
+						switch (currentMode) {
+							case ListView::ViewMode::LargeIcon:  overlaySize = ListView::kLargeArrowSize; break;
+							case ListView::ViewMode::MediumIcon: overlaySize = ListView::kMediumArrowSize; break;
+							case ListView::ViewMode::SmallIcon:  overlaySize = ListView::kSmallArrowSize; break;
+							default: overlaySize = ListView::kMediumArrowSize; break;
+						}
+					}
+
+					QPixmap arrowPix = arrowIcon.pixmap(overlaySize, overlaySize);
+					m_shortcutArrowOverlay->setPixmap(arrowPix);
+					m_shortcutArrowOverlay->setFixedSize(overlaySize, overlaySize);
+					
+					// Position: bottom-left of the icon
+					m_shortcutArrowOverlay->move(leftMargin, topMargin + iconSide - overlaySize);
+					m_shortcutArrowOverlay->show();
+				} else {
+					if (m_shortcutArrowOverlay) m_shortcutArrowOverlay->hide();
+				}
+			} else {
+				if (m_shortcutArrowOverlay) m_shortcutArrowOverlay->hide();
+			}
+		} else {
+			if (m_iconWidget) m_iconWidget->hide();
+			if (m_shortcutArrowOverlay) m_shortcutArrowOverlay->hide();
+		}
+		
+		if (textLabel == nullptr) {
+			textLabel = new QLabel(this);
+			textLabel->setAlignment(Qt::AlignCenter);
+			textLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+			textLabel->show();
 		}
 
 		isReady = true;
 	}
-
 }
 
 void ListItem::setItemData(ListItemData data)
@@ -163,6 +233,7 @@ void ListItem::setItemSize(int width, int height)
 {
 	m_itemSize = QSize(width, height);
 	this->resize(width, height);
+	initData(); // Recompute icon size and position when item size changes
 }
 
 void ListItem::setItemPos(int startX, int startY)
@@ -180,7 +251,9 @@ void ListItem::updateLocationInfo(QPoint pos)
 	this->setItemPos(pos);
 	this->move(pos);
 	m_itemRect = QRect(pos, m_itemSize);
-	int shrinkSize = 15;
+	
+	// Shrink less in ListMode to allow easier clicking and dragging on thin rows
+	int shrinkSize = (m_layoutMode == LayoutMode::IconMode) ? 15 : 2; 
 	m_chooseRect = m_itemRect.adjusted(shrinkSize, shrinkSize, -shrinkSize, -shrinkSize);
 }
 
@@ -241,6 +314,18 @@ void ListItem::contextMenuEvent(QContextMenuEvent* event) {
     emit itemContextMenuRequested(this, event->globalPos());
 }
 
+void ListItem::enterEvent(QEvent* event) {
+    isHovered = true;
+    update();
+    QWidget::enterEvent(event);
+}
+
+void ListItem::leaveEvent(QEvent* event) {
+    isHovered = false;
+    update();
+    QWidget::leaveEvent(event);
+}
+
 void ListItem::paintEvent(QPaintEvent* event) {
     // 如果item不可见或未准备好，直接返回，不进行绘制
     if (!this->isVisible() || !this->isReady) {
@@ -257,44 +342,36 @@ void ListItem::paintEvent(QPaintEvent* event) {
 	QSize size = this->size();
 	// 计算文字宽度并居中
 
+	// 准备文字绘制变量
 	QString text = this->baseName();
 	QFontMetrics fm = painter.fontMetrics();
-
-	// 计算文字需要的空间
 	int textWidth = fm.horizontalAdvance(text);
 	int textHeight = fm.height();
 
-	// 计算绘制位置
-	int textX, textY;
-
-	// 水平位置：居中，但如果文字太长则左对齐并添加省略号
-	if (textWidth > rect.width() - 20) {  // 保留20像素边距
-		text = fm.elidedText(text, Qt::ElideRight, rect.width() - 20);
-		textWidth = fm.horizontalAdvance(text);
-		textX = 10;  // 左对齐
+	if (m_layoutMode == LayoutMode::IconMode) {
+		int textX;
+		if (textWidth > rect.width() - 10) {
+			text = fm.elidedText(text, Qt::ElideRight, rect.width() - 10);
+			textWidth = fm.horizontalAdvance(text);
+			textX = 5;
+		} else {
+			textX = (rect.width() - textWidth) / 2;
+		}
+		textLabel->resize(textWidth, textHeight);
+		textLabel->setText(text);
+		textLabel->move(textX, rect.height() - textHeight - 5);
+	} else {
+		// List Mode: Text to the right of icon
+		int iconRight = 8 + 20 + 10; // Left margin + icon size + spacing
+		int availableTextW = qMax(10, rect.width() - iconRight - 10);
+		if (textWidth > availableTextW) {
+			text = fm.elidedText(text, Qt::ElideRight, availableTextW);
+			textWidth = fm.horizontalAdvance(text);
+		}
+		textLabel->resize(textWidth, textHeight);
+		textLabel->setText(text);
+		textLabel->move(iconRight, (rect.height() - textHeight) / 2);
 	}
-	else {
-		textX = (rect.width() - textWidth) / 2;  // 居中
-	}
-
-	// 垂直位置：底部向上10像素，但要考虑文字基线
-	textY = rect.height() - 15;  // 距离底部10像素
-
-	// 确保文字不会超出下边界
-	if (textY > rect.height() - 5) {
-		textY = rect.height() - 5;
-	}
-
-	// 确保文字不会与上边界重叠
-	if (textY < textHeight) {
-		textY = textHeight;
-	}
-
-	
-	// 绘制文字
-	textLabel->resize(textWidth, textHeight);
-	textLabel->setText(text);
-	textLabel->move(textX, textY);
 	
 
 	//给itemRect画个高亮
@@ -327,6 +404,27 @@ void ListItem::paintEvent(QPaintEvent* event) {
 
 		// 第四层：高亮边框
 		painter.setPen(QPen(QColor(255, 255, 255, 150), 0.7));
+		painter.setBrush(Qt::NoBrush);
+		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+	}
+	else if (isHovered) {
+		// 鼠标悬浮效果（参照选中，但更浅，且增加白色细虚线边框）
+		int width = m_itemSize.width();
+		int height = m_itemSize.height();
+
+		// 背景：一层极浅的背景
+		painter.setPen(Qt::NoPen);
+		painter.setBrush(QColor(255, 255, 255, 25)); // 保持极淡背景
+		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+
+		// 边框：特别细的白色点线
+		QPen dashPen(QColor(255, 255, 255, 100)); // 略微增加不透明度以便看清虚线
+		dashPen.setWidthF(0.8);                  // 特别细
+		dashPen.setStyle(Qt::DotLine);          // 点线风格
+		dashPen.setDashPattern(QVector<qreal>({1.0, 1.0})); // 设置点线模式
+		dashPen.setCapStyle(Qt::FlatCap);        // 点线端点平整
+		
+		painter.setPen(dashPen);
 		painter.setBrush(Qt::NoBrush);
 		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
 	}

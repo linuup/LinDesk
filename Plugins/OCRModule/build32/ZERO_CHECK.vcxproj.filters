@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\Desktop\LinDesk\Plugins\OCRModule\build32\CMakeFiles\0a361c285367d9ace2840a6c16f35466\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{66905A6D-5AB6-31A9-8DB6-C23392B74FF9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <QWidget>
 #include <QDialog>
 #include <QLabel>
@@ -48,6 +48,10 @@ public:
 	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
     
+    void embedToDesktop();
+    void unembedFromDesktop();
+    bool isEmbedded() const { return m_isEmbedded; }
+
 private:
     QPixmap m_backImagePixmap;
     QPixmap m_prevBackImagePixmap;
@@ -56,11 +60,11 @@ private:
     QVariantAnimation* m_transitionAnimation = nullptr;
     QTimer* m_wallpaperLoadTimer = nullptr;
     QString m_currentWallpaperPath;
+    
+    QPushButton* m_embedBtn = nullptr;
+    bool m_isEmbedded = false;
 
-    /// <summary>
-    /// Insert to SystemDesktopWindow
-    /// </summary>
-    void embedToDesktop();
+private slots:
 
 protected:
     void mousePressEvent(QMouseEvent* event);

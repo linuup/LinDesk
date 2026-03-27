@@ -1,4 +1,4 @@
-﻿# CMakeLists.txt for a Qt project that creates a window and draws text with QPainter
+# CMakeLists.txt for a Qt project that creates a window and draws text with QPainter
 cmake_minimum_required(VERSION 3.31)
 
 #C++17 标准
@@ -51,7 +51,7 @@ project("LinDesk")
 add_compile_options("/utf-8")
 
 # 查找 Qt5 库
-find_package(Qt5 COMPONENTS Widgets WinExtras Core REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core OpenGL REQUIRED)
 # 包含 Qt 的 MOC 生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -63,10 +63,10 @@ add_subdirectory("OS")
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/*.h"
-    "src/*.h"
     "src/Data/*.h"
     "src/Monitor/*.h"
     "src/Monitor/*.cpp"
+    "src/*.qrc"
 )
 
 # 添加可执行文件
@@ -78,9 +78,11 @@ target_link_libraries(LinDesk
         Shell32
         Shlwapi
         Comctl32
+        dwmapi
         Qt5::Widgets
         Qt5::Core
         Qt5::WinExtras
+        Qt5::OpenGL
         "OS"
 )
 target_include_directories(LinDesk
@@ -88,4 +90,16 @@ target_include_directories(LinDesk
         ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Monitor
+)
+
+# Plugins Support
+add_subdirectory(Plugins/OCRModule)
+
+# Post-build: Copy OpenSSL DLLs to executable directory
+add_custom_command(TARGET LinDesk POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/Openssl/libcrypto-1_1-x64.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Openssl/libssl-1_1-x64.dll"
+        $<TARGET_FILE_DIR:LinDesk>
+    COMMENT "Copying OpenSSL DLLs to output directory..."
 )

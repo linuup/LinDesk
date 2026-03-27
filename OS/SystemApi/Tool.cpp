@@ -1,4 +1,4 @@
-﻿#include "Tool.h"
+#include "Tool.h"
 
 class Tool;
 
@@ -121,7 +121,8 @@ std::string Tool::WstrToStr(const wchar_t* wstr)
     if (sizeNeeded == 0)
         return std::string();
 
-    std::string strTo(sizeNeeded, 0);
+    // Subtract 1 because WideCharToMultiByte includes the null terminator \0
+    std::string strTo(sizeNeeded - 1, 0);
     WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &strTo[0], sizeNeeded, nullptr, nullptr);
     return strTo;
 }

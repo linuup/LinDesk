@@ -288,4 +288,48 @@ bool IsKeyDown(int nVirtKey)
 
 	return (status != 0);
 }
+QImage SysInfoUtil::autoCropImage(const QImage& source, bool* wasCropped)
+{
+	if (wasCropped) *wasCropped = false;
+	if (source.isNull()) return source;
 
+	int width = source.width();
+	int height = source.height();
+	int left = width, right = 0, top = height, bottom = 0;
+	bool hasVisiblePixel = false;
+
+	// 遍历所有像素，找到非透明像素的边界
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			if (qAlpha(source.pixel(x, y)) > 10) { // 使用较小的阈值过滤极微弱的透明像素
+				if (x < left) left = x;
+				if (x > right) right = x;
+				if (y < top) top = y;
+				if (y > bottom) bottom = y;
+				hasVisiblePixel = true;
+			}
+		}
+	}
+
+	if (!hasVisiblePixel) return source;
+
+	// 计算有效区域并增加 2 像素的安全外边距 (Safety Margin)
+	int cropWidth = qMin(width, right - left + 1 + 4);
+	int cropHeight = qMin(height, bottom - top + 1 + 4);
+	int cropLeft = qMax(0, left - 2);
+	int cropTop = qMax(0, top - 2);
+
+	// 如果裁剪后的区域已经接近原尺寸（留白很少），则不作处理
+	if ((cropWidth >= width * 0.95 && cropHeight >= height * 0.95) || 
+		(cropWidth < 8 || cropHeight < 8)) {
+		return source;
+	}
+
+	// 裁剪并重新缩放回到原尺寸
+	QRect rect(cropLeft, cropTop, cropWidth, cropHeight);
+	QImage cropped = source.copy(rect);
+	
+	if (wasCropped) *wasCropped = true;
+
+	return cropped.scaled(source.size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+}

@@ -111,6 +111,7 @@ public:
         bool checkable = false;   // 是否可选
         bool checked = false;     // 是否已选中
         bool enabled = true;      // 是否可用
+        HBITMAP hBitmap = nullptr;    // 图标位图句柄
     };
 
     /// <summary>
