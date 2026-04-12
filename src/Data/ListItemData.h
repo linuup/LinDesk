@@ -90,6 +90,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 		auto pathTmp = m_iconItem.path.c_str();
 		QFileInfo tmp(pathTmp);
 		tmp = tmp.exists() ? tmp : QFileInfo();
+
 		// Correctly identify special folders excluding Empty and Unknown types
 		if (type != SpecialFolders::UnknownFolder && type != SpecialFolders::Empty) {
 			m_specialFolderType = type;

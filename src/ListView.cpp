@@ -543,6 +543,49 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
 
     if (hitItem) {
         // --- 悬浮在图标上的逻辑 ---
+        // 检查被拖拽的对象是否为系统类型，如果是则禁止拖拽到其他图标上
+        if (m_draggedItem) {
+            QString draggedClsid = m_draggedItem->getItemData().getCLSID();
+            bool isDraggedPC = (draggedClsid == APP_MY_COMPUTER_CLS);
+            bool isDraggedNetwork = (draggedClsid == APP_NETWORK_CLS);
+            bool isDraggedControlPanel = (draggedClsid == APP_CONTROL_PANEL_CLS);
+            bool isDraggedControlPanel1 = (draggedClsid == APP_CONTROL_PANEL1_CLS);
+            bool isDraggedRecycleBin = (draggedClsid == APP_RECYCLE_BIN_CLS && m_draggedItem->filePath() == "::{645FF040-5081-101B-9F08-00AA002F954E}");
+            bool isLinux = (draggedClsid == APP_LINUX_CLS);
+            bool isDraggedSystemIcon = isDraggedPC || isDraggedNetwork || isDraggedControlPanel || isDraggedControlPanel1 || isDraggedRecycleBin || isLinux;
+            
+            if (isDraggedSystemIcon) {
+                if (!m_dragTip) {
+                    m_dragTip = new QLabel(this);
+                    m_dragTip->setStyleSheet(
+                        "QLabel {"
+                        "  background-color: rgba(255, 255, 255, 235);"
+                        "  color: #202020;"
+                        "  border: 1px solid rgba(0, 0, 0, 40);"
+                        "  border-radius: 8px;"
+                        "  padding: 10px 16px;"
+                        "  font-size: 13px;"
+                        "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+                        "}"
+                    );
+                    m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
+                    QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
+                    shadow->setBlurRadius(20);
+                    shadow->setColor(QColor(0, 0, 0, 80));
+                    shadow->setOffset(0, 4);
+                    m_dragTip->setGraphicsEffect(shadow);
+                }
+                m_dragTip->setText("<b style='color:#ff4d4d'>Operation Forbidden</b>");
+                m_dragTip->adjustSize();
+                m_dragTip->move(event->pos() + QPoint(24, 24));
+                m_dragTip->show();
+                m_dragTip->raise();
+                event->setDropAction(Qt::IgnoreAction);
+                event->accept();
+                return;
+            }
+        }
+        
         if (!m_dragTip) {
             m_dragTip = new QLabel(this);
             m_dragTip->setStyleSheet(
