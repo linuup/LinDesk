@@ -229,54 +229,19 @@ protected:
     }
 
     void animateMinimize() {
-        if (m_isAnimating) return;
-        m_isAnimating = true;
-
-        QPropertyAnimation* opacityAnim = new QPropertyAnimation(this, "windowOpacity");
-        opacityAnim->setDuration(150); // 150ms is snappier and hides stutter
-        opacityAnim->setStartValue(1.0);
-        opacityAnim->setEndValue(0.0);
-        opacityAnim->setEasingCurve(QEasingCurve::InQuad);
-
-        connect(opacityAnim, &QPropertyAnimation::finished, this, [this, opacityAnim]() {
-            showMinimized();
-            m_isAnimating = false;
-            opacityAnim->deleteLater();
-        });
-        opacityAnim->start();
+        showMinimized();
     }
 
     void animateMaximize(bool toMax) {
-        if (m_isAnimating) return;
-        m_isAnimating = true;
-
-        QPropertyAnimation* anim = new QPropertyAnimation(this, "geometry");
-        anim->setDuration(300); // 适度增加时长以增强视觉连贯性
-        anim->setEasingCurve(QEasingCurve::OutCubic);
-
         if (toMax) {
             m_normalGeometry = geometry();
-            QRect target = screen()->availableGeometry();
-            anim->setStartValue(m_normalGeometry);
-            anim->setEndValue(target);
+            setWindowState(Qt::WindowMaximized);
             updateLayoutState(true);
         } else {
-            anim->setStartValue(geometry());
-            anim->setEndValue(m_normalGeometry);
+            setWindowState(Qt::WindowNoState);
+            updateLayoutState(false);
         }
-
-        connect(anim, &QPropertyAnimation::finished, this, [this, toMax, anim]() {
-            m_isAnimating = false;
-            m_isMaximized = toMax;
-            if (toMax) {
-                setWindowState(Qt::WindowMaximized);
-            } else {
-                setWindowState(Qt::WindowNoState);
-                updateLayoutState(false);
-            }
-            anim->deleteLater();
-        });
-        anim->start();
+        m_isMaximized = toMax;
     }
 
     // Explicit state check to avoid conflicts during animation

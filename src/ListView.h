@@ -29,9 +29,8 @@
 #include "Monitor/LinDirectoryMonitor.h"
 #include <SelectArea.h>
 #include "SettingUI.h"
-class SettingUI_GL;
- 
-class LinBox; 
+class LinBox;
+class BoxManager; 
 
 class ListView: public QWidget {
 	Q_OBJECT
@@ -93,7 +92,7 @@ public:
 	struct IconShowRule {
 		IconPosMode iconPosMode = IconPosMode::AlignIconToGrid; //图标位置模式，默认与网格对齐
 		ViewMode viewMode = ViewMode::MediumIcon;	//图标显示模式，默认中等图标
-		SortOrderType sortType = SortOrderType::Default;	// 默认使用“默认排序”
+		SortOrderType sortType = SortOrderType::Default;	// 默认使用"默认排序"
 		bool autoArrange = false;        // 是否自动排列
 		bool gridAlignment = false;      // 是否网格对齐
 		bool showDesktopIcons = true;	//是否显示桌面图标
@@ -146,9 +145,12 @@ public:
 		return m_items;
 	}
 	// 添加一个 ListItem
-	void addItem(ListItem* item, bool refresh = true);
+	void addItem(ListItem* item, bool refresh = true);  // Add to the desktop render collection
+    void addItemNoDelete(ListItem* item);  // Add existing item back to desktop
 
 	void removeItem(ListItem* item);
+    void removeItemNoDelete(ListItem* item);
+    ListItem* findItemByPath(const QString& filePath) const;
 
 	// 设置选中的项
 	void setSelectedItem(ListItem* item);
@@ -182,7 +184,7 @@ public:
 	// 获取所有选中的项（支持多选）
 	QVector<ListItem*> selectedItems() const;
 
-	QVector<LinBox*> boxes() const { return m_boxes; }
+	QVector<LinBox*> boxes() const;
     
 	// 获取是否启用多选
 	bool isMultiSelection() const;
@@ -192,11 +194,11 @@ public:
 	}
 
 	void showSettings(LinBox* target = nullptr);
-	void showSettingsGL(LinBox* target = nullptr);
 	static ListView* instance(QWidget* parent = nullptr);
 	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true);
 	bool isItemInAnyBox(const QString& filePath) const;
 	QString getBoxIdForItem(const QString& filePath) const;
+	void saveBoxes();
 	void requestSaveBoxes(); // Move to public
 	void DisableSelecting() {
 		m_isSelecting = false;
@@ -265,7 +267,7 @@ public slots:
 	void onMenuQuitApp();
 	void onMenuLinDesk();
 
-private slots:
+public slots:
 	void performSort(SortOrderType order);
 	void onMenuPaste();
 	void onMenuPasteShortcut();
@@ -274,6 +276,8 @@ private slots:
 	void onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayContextMenuRequested(LinBox* box, ListItem* item, const QPoint& globalPos);
+	void onMenuDestroyBox(LinBox* box);
+	void onMenuCustomBox(LinBox* box);
 
 protected:
 	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
@@ -295,15 +299,13 @@ protected:
 	
 	void refreshView();
 	void createDragGhosts(const QPoint& clickPos);
-	void setupItemConnections(ListItem* item, LinBox* box = nullptr);
+    void setupItemConnections(ListItem* item, LinBox* box = nullptr);
+    void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
+    void applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions);
 	
-	void saveBoxes();
 	void loadBoxes(bool autoUpdateState = true);
-	void setupBoxConnections(LinBox* box);
 	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", bool refresh = true);
-	
-	void onMenuDestroyBox(LinBox* box);
-	void onMenuCustomBox(LinBox* box);
+
 private:
 	explicit ListView(QWidget* parent = nullptr);
 	~ListView();
@@ -317,8 +319,10 @@ private:
 	IconShowRule m_iconShowRule;	// icon show rule
 	QString m_persistencePath;
 	QPointer<SettingUI> m_settingsWindow;
-	QPointer<SettingUI_GL> m_settingsWindowGL;
 	bool m_enablePersistence = true;
+    bool m_isLoadingPersistence = false;
+    bool m_forceConfigLayout = false;
+    bool m_hasLoadedConfigLayout = false;
 	struct DesktopIconInfo { int x, y; QString boxId; };
 	QMap<QString, DesktopIconInfo> m_savedIconPositions;
 
@@ -333,7 +337,7 @@ private:
 	const int m_marginLeft = 2;
 
 	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
-	QVector<ListItem*> m_items;             // 存储桌面显示可见的ListItem对象
+	QVector<ListItem*> m_items;             // 存储当前桌面渲染体系维护的文件对象（含 Box 内对象）
 	QVector<ListItem*> m_hiddenIcons;             // 存储桌面系统图标状态
 	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;             // 存储桌面系统图标状态
 
@@ -365,7 +369,5 @@ private:
 		QPoint offset; // 距离鼠标点击位置的偏移量
 	};
 	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
-	QVector<LinBox*> m_boxes;   // 存储桌面格子
-	QLabel* m_dragTip = nullptr; // 用于显示“使用某程序打开”的提示
-    QTimer* m_saveTimer = nullptr;
+	QLabel* m_dragTip = nullptr; // 用于显示"使用某程序打开"的提示
 };

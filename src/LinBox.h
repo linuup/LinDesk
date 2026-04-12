@@ -68,6 +68,7 @@ signals:
     void customRequested(LinBox* box);
 
 protected:
+    void showEvent(QShowEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;

@@ -3,6 +3,7 @@
 #include <windowsx.h>
 #include <winuser.h>
 #include <QPainter>
+#include <QShowEvent>
 #include <QStyleOption>
 #include <QDebug>
 #include <QMenu>
@@ -13,8 +14,10 @@
 #include "WinBlurHelper.h"
 
 LinBox::LinBox(QWidget* parent) : QWidget(parent) {
-    setWindowFlags(Qt::FramelessWindowHint | Qt::Window | Qt::NoDropShadowWindowHint | Qt::Tool);
+    // 使用Qt::SubWindow使Box成为ListView的真正子窗口，不会覆盖其他软件
+    setWindowFlags(Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::SubWindow);
     setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_OpaquePaintEvent);
     setFocusPolicy(Qt::StrongFocus);
     setStyleSheet("LinBox { background: transparent; }");
     setMouseTracking(true);
@@ -120,6 +123,11 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
 
 LinBox::~LinBox() {}
 
+void LinBox::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    raise();
+}
+
 void LinBox::setShowType(BoxShowType type) {
     if (m_showType == type) return;
     m_showType = type;
@@ -149,7 +157,7 @@ void LinBox::removeListItem(ListItem* item) {
     if (!item) return;
     m_items.removeAll(item);
     item->setBoxId(""); // Item is no longer in this box
-    item->setParent(nullptr);
+    // Note: Do NOT change parent here. Caller is responsible for reparenting.
     item->hide();
     refreshLayout();
     emit geometryChanged(this);
@@ -322,10 +330,20 @@ void LinBox::mouseMoveEvent(QMouseEvent* event) {
         if (m_resizeDir & Right) newGeom.setRight(m_dragStartGeometry.right() + delta.x());
         if (m_resizeDir & Top) newGeom.setTop(m_dragStartGeometry.top() + delta.y());
         if (m_resizeDir & Bottom) newGeom.setBottom(m_dragStartGeometry.bottom() + delta.y());
-        if (newGeom.width() >= 100 && newGeom.height() >= 100) setGeometry(newGeom);
+        if (newGeom.width() >= 100 && newGeom.height() >= 100) {
+            setGeometry(newGeom);
+            update();
+        }
     } else if (m_isMoving) {
+        // 实时跟随鼠标移动
         QPoint delta = event->globalPos() - m_dragStartPos;
-        move(m_dragStartGeometry.topLeft() + delta);
+        QPoint newPos = m_dragStartGeometry.topLeft() + delta;
+        
+        // 移动到新位置
+        move(newPos);
+        
+        // 只更新Box本身，避免层级变化
+        update();
     } else {
         updateCursorShape(event->pos());
     }
@@ -420,7 +438,13 @@ bool LinBox::nativeEvent(const QByteArray& eventType, void* message, long* resul
 
 void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     if (event->mimeData()->hasUrls()) {
-        event->acceptProposedAction();
+        // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
+        if (event->keyboardModifiers() & Qt::ControlModifier) {
+            event->setDropAction(Qt::CopyAction);
+        } else {
+            event->setDropAction(Qt::MoveAction);
+        }
+        event->accept();
         updateDragTip(event->pos(), event->keyboardModifiers() & Qt::ControlModifier);
     }
 }
@@ -431,7 +455,13 @@ void LinBox::dragLeaveEvent(QDragLeaveEvent* event) {
 
 void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     if (event->mimeData()->hasUrls()) {
-        event->acceptProposedAction();
+        // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
+        if (event->keyboardModifiers() & Qt::ControlModifier) {
+            event->setDropAction(Qt::CopyAction);
+        } else {
+            event->setDropAction(Qt::MoveAction);
+        }
+        event->accept();
         updateDragTip(event->pos(), event->keyboardModifiers() & Qt::ControlModifier);
     } else {
         if (m_dragTip) m_dragTip->hide();
@@ -467,7 +497,8 @@ void LinBox::dropEvent(QDropEvent* event) {
     
     lv->requestSaveBoxes();
     
-    event->acceptProposedAction();
+    // 接受当前的 drop action（Move 或 Copy）
+    event->accept();
 }
 
 void LinBox::keyPressEvent(QKeyEvent* event) {
@@ -643,14 +674,10 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     QAction* settingsAction = new QAction("Box Settings", &menu); 
     settingsAction->setIcon(createIcon(0xE713, QColor(28,28,28)));
     
-    QAction* hardwareAction = new QAction("Hardware Settings", &menu); 
-    hardwareAction->setIcon(createIcon(0xE7F7, QColor(28,28,28)));
-
     menu.addAction(renameAction);
     menu.addAction(viewSwitchAction);
     menu.addSeparator();
-    menu.addAction(settingsAction); 
-    menu.addAction(hardwareAction);
+    menu.addAction(settingsAction);
     menu.addAction(destroyAction);
 
     QAction* selectedAction = menu.exec(globalPos);
@@ -665,10 +692,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     } 
     else if (selectedAction == settingsAction) {
         if (ListView::instance()) ListView::instance()->showSettings(this);
-    } 
-    else if (selectedAction == hardwareAction) {
-        if (ListView::instance()) ListView::instance()->showSettingsGL(this);
-    } 
+    }
     else if (selectedAction == destroyAction) {
         emit destroyRequested(this);
     }

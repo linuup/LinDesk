@@ -153,9 +153,8 @@ void FluentDialog::paintEvent(QPaintEvent* event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // Draw the "Smoke" backdrop overlay
-    // If modal and centered, color the full dialog area (which should be the full screen size)
-    painter.fillRect(rect(), QColor(0, 0, 0, 80)); // 31% smoke opacity per spec
+    // No smoke backdrop - keep background transparent
+    // painter.fillRect(rect(), QColor(0, 0, 0, 80)); // Disabled: removed backdrop overlay
 
     // The content widget paints itself via stylesheets, but we can add secondary effects here if needed
 }

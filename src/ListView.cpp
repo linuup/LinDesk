@@ -17,15 +17,20 @@
 #include <QMimeData>
 #include <QUrl>
 #include <QKeyEvent>
+#include <QRegularExpression>
 #include "Fluent/FluentDialog.h"
 #include "LinBox.h"
 #include "Plugins/PluginManager.h"
 #include "HotkeyManager.h"
+#include "BoxManager.h"
+
 // 静态成员初始化
 ListView* ListView::m_instance = nullptr;
 int ListItemData::s_targetIconSize = ListView::kMediumIconW;
 
-ListView::ListView(QWidget* parent) : QWidget(parent) {
+ListView::ListView(QWidget* parent) : QWidget(parent),
+    m_lastRightClickPos(-1, -1)  // 初始化右键点击位置为无效值
+{
     setAcceptDrops(true);
     // 设置桌面背景图片
     //SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, (PVOID)imagePath.toStdString().c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
@@ -89,16 +94,25 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
     rightMenu->initializeCustomMenu();
     rightMenu->setHWND((HWND)this->winId());
 
-    this->initialize();
-    this->initRightMenuConnections();
-    this->syncViewModeSizes(); // Call syncViewModeSizes after initialization
-
+    // Set persistence path first so we can load viewMode before creating items
     setFocusPolicy(Qt::StrongFocus);
 #ifdef QT_DEBUG
     m_persistencePath = QCoreApplication::applicationDirPath() + "/data.json";
 #else
     m_persistencePath = QCoreApplication::applicationDirPath() + "/data.dat";
 #endif
+    
+    // Load viewMode from config BEFORE creating any ListItem objects
+    // This ensures ListItemData::s_targetIconSize is set correctly
+
+    this->initialize();
+    this->initRightMenuConnections();
+    this->syncViewModeSizes(); // Call syncViewModeSizes after initialization
+    
+    // Initialize BoxManager
+    BoxManager::instance(this);
+    BoxManager::instance()->setPersistencePath(m_persistencePath);
+    connect(BoxManager::instance(), &BoxManager::saveRequested, this, &ListView::saveBoxes);
     
     // Defer loading boxes to ensure the event loop is running and windows can be properly shown/mapped
     QTimer::singleShot(100, [this](){
@@ -123,11 +137,6 @@ ListView::ListView(QWidget* parent) : QWidget(parent) {
         }
         this->raise();
     });
-
-    m_saveTimer = new QTimer(this);
-    m_saveTimer->setSingleShot(true);
-    m_saveTimer->setInterval(150);
-    connect(m_saveTimer, &QTimer::timeout, this, &ListView::saveBoxes);
 }
 
 void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
@@ -262,11 +271,12 @@ ListView::~ListView() {
 ListItem* ListView::selectItemByPath(const QString path)
 {
     if (path.isEmpty()) return nullptr;
-    QString target = QDir::toNativeSeparators(path).toLower();
+    QString target = QDir::toNativeSeparators(path);
     while (target.endsWith('\\')) target.chop(1);
 
     for (auto* item : m_allItems) {
         if (item) {
+            QString tmp = item->normalizedPath();
             if (item->normalizedPath() == target) {
                 return item;
             }
@@ -282,6 +292,21 @@ void ListView::clearCheckedItem()
         }
     }
     m_selectedItems.clear();
+    
+    // Also clear selection state for items inside boxes
+    BoxManager* bm = BoxManager::instance();
+    if (bm) {
+        for (auto box : bm->allBoxes()) {
+            if (box) {
+                for (auto* item : box->items()) {
+                    if (item && item->isSelected) {
+                        item->isSelected = false;
+                        item->update();
+                    }
+                }
+            }
+        }
+    }
 }
 
 void ListView::requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems)
@@ -441,7 +466,13 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
 void ListView::dragEnterEvent(QDragEnterEvent* event)
 {
     if (event->mimeData()->hasUrls()) {
-        event->acceptProposedAction();
+        // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
+        if (event->keyboardModifiers() & Qt::ControlModifier) {
+            event->setDropAction(Qt::CopyAction);
+        } else {
+            event->setDropAction(Qt::MoveAction);
+        }
+        event->accept();
     }
 }
 
@@ -457,7 +488,13 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         if (m_dragTip) m_dragTip->hide();
         return;
     }
-    event->acceptProposedAction();
+    // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
+    if (event->keyboardModifiers() & Qt::ControlModifier) {
+        event->setDropAction(Qt::CopyAction);
+    } else {
+        event->setDropAction(Qt::MoveAction);
+    }
+    event->accept();
 
     // 1. Find if we are hovering over an item
     ListItem* hitItem = nullptr;
@@ -607,7 +644,8 @@ void ListView::dropEvent(QDropEvent* event)
             }
         }
         
-        bool isCtrl = event->keyboardModifiers() & Qt::ControlModifier;
+        // 根据键盘修饰符判断是复制还是移动（Ctrl=复制, 无修饰符=移动）
+        bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
 
         if (srcPaths.empty()) return;
 
@@ -616,12 +654,16 @@ void ListView::dropEvent(QDropEvent* event)
         if (isRecycleBin) {
             // Move to Recycle Bin
             CSystemApi::DeleteFiles(srcPaths, true, true); // true = recycle, true = confirm
-            event->acceptProposedAction();
+            event->accept();
             return;
         } else if (hitItem->type() == ObjectType::Folder_ObjectType || hitItem->type() == ObjectType::SpecialFolder) {
-            // Copy files to target folder
-            CSystemApi::CopyFiles(srcPaths, targetPath.toStdWString());
-            event->acceptProposedAction();
+            // 根据键盘修饰符选择复制或移动文件到目标文件夹
+            if (isCopyAction) {
+                CSystemApi::CopyFiles(srcPaths, targetPath.toStdWString());
+            } else {
+                CSystemApi::MoveFiles(srcPaths, targetPath.toStdWString());
+            }
+            event->accept();
             return;
         } else {
             // Open with target app
@@ -641,10 +683,12 @@ void ListView::dropEvent(QDropEvent* event)
 
     // Handle dropping onto the desktop background (no hitItem)
     if (!hitItem) {
-        bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
+        // 根据键盘修饰符判断是复制还是移动（Ctrl=复制, 无修饰符=移动）
+        bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
+        qDebug() << "DropAction:" << event->dropAction() << "isCopyAction:" << isCopyAction << "source:" << event->source();
         
-        // If it's an external drop or a forced copy via Ctrl
-        if (event->source() != this || isCtrl) {
+        // 外部拖放或强制复制
+        if (event->source() != this || isCopyAction) {
             std::vector<std::wstring> srcPaths;
             for (const QUrl& url : urls) {
                 QString localPath = QDir::toNativeSeparators(url.toLocalFile());
@@ -652,10 +696,16 @@ void ListView::dropEvent(QDropEvent* event)
             }
 
             if (!srcPaths.empty()) {
-                // If it's an external source, standard Windows behavior is to copy/move to desktop dir
-                // With Ctrl, we force COPY.
-                CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
-                event->acceptProposedAction();
+                // 根据键盘修饰符选择复制或移动
+                bool result;
+                if (isCopyAction) {
+                    result = CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
+                    qDebug() << "CopyFiles result:" << result << "files:" << srcPaths.size();
+                } else {
+                    result = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
+                    qDebug() << "MoveFiles result:" << result << "files:" << srcPaths.size();
+                }
+                event->accept();
                 return;
             }
         }
@@ -773,6 +823,8 @@ void ListView::dropEvent(QDropEvent* event)
                     }
                 }
             }
+            // 保存图标位置到配置文件
+            requestSaveBoxes();
         }
         clearCheckedItem();
     } else {
@@ -876,6 +928,15 @@ void ListView::initialize()
     QVector<ListItem*> listItems;
     vector<ListItemData> allDatas = loadAllItemsData();
 
+    m_hiddenIcons.clear();
+    if (monitor) {
+        sysIconRegisterInfo = monitor->getCurrentIcons();
+    }
+
+    auto normalizeClsid = [](QString clsid) {
+        return clsid.replace("::", "").replace("{", "").replace("}", "").toLower();
+    };
+
     for (auto it = allDatas.begin(); it != allDatas.end(); it++)
     {
         ListItem* listItem = new ListItem(this);
@@ -883,88 +944,50 @@ void ListView::initialize()
         listItem->setItemData(std::move(*it));
         listItem->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
         
-        // 从 Windows 底层 API 读取的原生坐标同步到桌面元素中
         QPoint nativePos(it->itemData().position.x, it->itemData().position.y);
         qDebug() << "Native position for" << it->itemData().name.c_str() << ":" << nativePos;
 
-        // 如果 nativePos 有效（非纯0），赋予初始位置
         if (nativePos.x() != 0 || nativePos.y() != 0) {
             listItem->updateLocationInfo(nativePos);
             listItem->move(nativePos);
         }
         setupItemConnections(listItem);
  
-        // Mutual exclusion: check if this path is already in a box
-        QString boxId = getBoxIdForItem(listItem->filePath());
+        const QString boxId = getBoxIdForItem(listItem->filePath());
         if (!boxId.isEmpty()) {
             listItem->setBoxId(boxId);
-            listItem->hide(); // Strictly hide from desktop
         }
 
-        if (it->type() != ObjectType::SpecialFolder && listItem->getItemData().fullName() != "desktop.ini") {
-            if (listItem->boxId().isEmpty()) {
-                listItems.push_back(listItem);
+        const bool isSpecial = (it->type() == ObjectType::SpecialFolder) ||
+                               SystemFolderCLSIDs.contains(listItem->getItemData().getCLSID()) ||
+                               listItem->getItemData().fullName() == "desktop.ini" ||
+                               listItem->filePath().startsWith("::");
+        const bool isOsHidden = listItem->fileInfo().isHidden();
+
+        bool isVisibleSpecial = false;
+        if (isSpecial) {
+            const QString itemClsid = normalizeClsid(listItem->getItemData().getCLSID());
+            for (const auto& info : sysIconRegisterInfo) {
+                if (normalizeClsid(info.clsid) == itemClsid) {
+                    isVisibleSpecial = !info.isHidden;
+                    break;
+                }
             }
         }
-        else {
+
+        const bool shouldShowOnDesktop = boxId.isEmpty() &&
+            ((isSpecial && isVisibleSpecial) || (!isSpecial && !isOsHidden));
+
+        if (shouldShowOnDesktop) {
+            listItems.push_back(listItem);
+        } else {
+            listItem->hide();
             m_hiddenIcons.push_back(listItem);
         }
         m_allItems.push_back(listItem);
     }
 
-    //load System Items
-    if (monitor) {
-        sysIconRegisterInfo = monitor->getCurrentIcons();
-    }
-    for (auto it = sysIconRegisterInfo.begin(); it != sysIconRegisterInfo.end(); it++) {
-        if (!it->isHidden) {
-            for (auto s_item = m_hiddenIcons.begin(); s_item != m_hiddenIcons.end(); s_item++) {
-                ListItem* listItem = *s_item;
-                auto clsid = listItem->getItemData().getCLSID();
-                if (clsid.replace("::", "") == it->clsid) {
-                    // Mutual exclusion for system icons
-                    if (listItem->boxId().isEmpty()) {
-                        listItems.push_back(listItem);
-                    }
-                }
-            }
-        }
-    }
     m_items = listItems;
-
-    // Mutual exclusion: remove items that belong to a Box
-    QMutableVectorIterator<ListItem*> boxFilter(m_items);
-    while (boxFilter.hasNext()) {
-        ListItem* item = boxFilter.next();
-        if (item) {
-            // 1. Filter out system-hidden icons (Special folders that shouldn't show)
-            if (m_hiddenIcons.contains(item)) {
-                bool isSystemShown = false;
-                QString itemClsid = item->getItemData().getCLSID();
-                QString tmp = itemClsid.replace("::", "");
-                for (const auto& info : sysIconRegisterInfo) {
-                    if (info.clsid == itemClsid && !info.isHidden) {
-                        isSystemShown = true;
-                        break;
-                    }
-                }
-                if (!isSystemShown) {
-                    item->hide();
-                    boxFilter.remove();
-                    continue;
-                }
-            }
-
-            // 2. Filter out items that belong to a Box
-            QString boxId = getBoxIdForItem(item->filePath());
-            item->setBoxId(boxId); // Update fresh box state
-            
-            if (!boxId.isEmpty()) {
-                item->hide();
-                boxFilter.remove();
-            }
-        }
-    }
 
     // --- Compact Native Layout Algorithm (Fill the gaps) ---
     // 1. Gather all unique physical coordinates from the entire system desktop
@@ -1009,47 +1032,13 @@ void ListView::initialize()
 void ListView::loadIconLayer()
 {
     qDebug() << "[ListView] Starting reload. Master list size:" << m_allItems.size();
-    // Start fresh from all icons, then filter those belonging to boxes
-    m_items = m_allItems;
-    QMutableVectorIterator<ListItem*> it(m_items);
-    while (it.hasNext()) {
-        ListItem* item = it.next();
-        if (item) {
-            // 1. Filter out system-hidden icons (Special folders that shouldn't show)
-            if (m_hiddenIcons.contains(item)) {
-                bool isSystemShown = false;
-                QString itemClsid = item->getItemData().getCLSID();
-                QString tmp = itemClsid.replace("::", "");
-                for (const auto& info : sysIconRegisterInfo) {
-                    if (info.clsid == itemClsid && !info.isHidden) {
-                        isSystemShown = true;
-                        break;
-                    }
-                }
-                if (!isSystemShown) {
-                    item->hide();
-                    it.remove();
-                    continue;
-                }
-            }
-
-            // 2. Filter out items that belong to a Box
-            QString boxId = getBoxIdForItem(item->filePath());
-            item->setBoxId(boxId); // Update fresh box state
-            
-            if (!boxId.isEmpty()) {
-                item->hide();
-                it.remove();
-            }
-        }
-    }
-    
-    qDebug() << "[ListView] After box filtering, icons shown on desktop:" << m_items.size();
-    if (m_iconShowRule.autoArrange) {
+    const bool useConfigState = m_forceConfigLayout || m_hasLoadedConfigLayout;
+    qDebug() << "[ListView] After render filtering, item count in m_items:" << m_items.size();
+    if (m_iconShowRule.autoArrange && !useConfigState) {
         qDebug() << "[ListView] Applying auto-layout (Stable Categorized).";
         this->performSort(m_iconShowRule.sortType); // Use non-toggling version for stability
         loadAutoLayout();
-    } else if (m_enablePersistence) { // Strictly respect current memory positions if persistence is on
+    } else if (m_enablePersistence || useConfigState) { // Prefer config-loaded positions when a config layout exists
         qDebug() << "[ListView] Applying persistent layout.";
         loadPersistentLayout();
     } else if (m_iconShowRule.gridAlignment) {
@@ -1073,7 +1062,7 @@ void ListView::loadIconLayer()
     }
 
     // Refresh all boxes to ensured their icons are positioned and visible
-    for (auto* box : m_boxes) {
+    for (auto box : BoxManager::instance()->allBoxes()) {
         if (box) {
             box->refreshLayout();
             box->raise();
@@ -1398,36 +1387,49 @@ void ListView::addItem(ListItem* item, bool refresh)
 {
     if (!item) return;
     
-    // Mutual exclusion: If this file is already in a Box, don't show on desktop
-    QString bId = getBoxIdForItem(item->filePath());
-    if (!bId.isEmpty()) {
-        item->setBoxId(bId);
-    }
-
-    if (!item->boxId().isEmpty()) {
-        item->hide();
-        m_allItems.push_back(item);
-        return;
-    }
-
-    QPoint pos = generateItemPosition();
-    item->setItemSize(m_iconWidth, m_iconHeight);
-    item->updateLocationInfo(pos);
+        QPoint pos = generateItemPosition();
+        item->setItemSize(m_iconWidth, m_iconHeight);
+        item->updateLocationInfo(pos);
+    
     setupItemConnections(item);
     
+    // 所有文件都加入 m_items 和 m_allItems
     m_items.push_back(item);
     m_allItems.push_back(item);
     
+    item->show();
+}
+
+void ListView::addItemNoDelete(ListItem* item)
+{
+    if (!item) return;
+    
+    // Clear box id - item is returning to desktop
+    item->setBoxId(QString());
+    
+    // Ensure parent is ListView for proper positioning
+    item->setParent(this);
+    
+    // Check if already in m_allItems
+    if (!m_allItems.contains(item)) {
+        m_allItems.push_back(item);
+    }
+    
+    // Check if already in m_items
+    if (!m_items.contains(item)) {
+        QPoint pos = generateItemPosition();
+        item->setItemSize(m_iconWidth, m_iconHeight);
+        item->updateLocationInfo(pos);
+        setupItemConnections(item);
+        m_items.push_back(item);
+    }
+    
+    // Ensure item is visible on desktop
     if (m_iconShowRule.showDesktopIcons) {
         item->show();
-    } else {
-        item->hide();
     }
-
-    if (refresh) {
-        loadIconLayer();
-        update();
-    }
+    
+    update();
 }
 
 void ListView::removeItem(ListItem* item)
@@ -1441,11 +1443,9 @@ void ListView::removeItem(ListItem* item)
         
         // 确保从所属的 Box 中也移除该 item (防止悬空指针)
         if (!item->boxId().isEmpty()) {
-            for (auto* box : m_boxes) {
-                if (box && box->boxId() == item->boxId()) {
-                    box->removeListItem(item);
-                    break;
-                }
+            LinBox* box = BoxManager::instance()->findBoxById(item->boxId());
+            if (box) {
+                box->removeListItem(item);
             }
         }
 
@@ -1464,6 +1464,39 @@ void ListView::removeItem(ListItem* item)
     update();
     repaint();
     
+}
+
+void ListView::removeItemNoDelete(ListItem* item)
+{
+    if (item && item->isReady) {
+        qDebug() << "[removeItemNoDelete]" << item->filePath();
+        m_selectedItems.removeOne(item);
+        
+        // Keep the item in global render collections. Box only stores a reference.
+        item->setVisible(false);
+        item->hide();
+    }
+    
+    // 强制更新界面
+    update();
+    repaint();
+}
+
+ListItem* ListView::findItemByPath(const QString& filePath) const {
+    if (filePath.isEmpty()) return nullptr;
+    
+    QString target = QDir::toNativeSeparators(filePath);
+    while (target.endsWith('\\')) target.chop(1);
+    
+    for (auto* item : m_allItems) {
+        if (!item || !item->isReady) continue;
+        QString itemPath = QDir::toNativeSeparators(item->filePath());
+        while (itemPath.endsWith('\\')) itemPath.chop(1);
+        if (itemPath == target) {
+            return item;
+        }
+    }
+    return nullptr;
 }
 
 void ListView::setSelectedItem(ListItem* item)
@@ -1486,13 +1519,19 @@ ListItem* ListView::selectedItem() const
 /// <returns></returns>
 QPoint ListView::generateItemPosition()
 {
-    // 如果是由UI操作触发的（右键菜单新建），直接使用鼠标右键位置
-    if (m_lastRightClickPos != QPoint(-1, -1)) {
+    qDebug() << "[generateItemPosition] gridAlignment=" << m_iconShowRule.gridAlignment 
+             << "m_lastRightClickPos=" << m_lastRightClickPos;
+    
+    // 非Grid布局且由UI操作触发的（右键菜单新建），直接使用鼠标右键位置
+    if (!m_iconShowRule.gridAlignment && m_lastRightClickPos != QPoint(-1, -1)) {
         QPoint pos = m_lastRightClickPos;
+        qDebug() << "[generateItemPosition] Using right-click position:" << pos;
         // 重置 m_lastRightClickPos，防止非UI创建的文件也使用该坐标
         m_lastRightClickPos = QPoint(-1, -1);
         return pos;
     }
+    
+    qDebug() << "[generateItemPosition] Using grid layout position";
 
     // Grid模式或非UI触发的UnGrid模式：寻找第一个可用的网格位置
     int x = m_marginLeft;
@@ -1781,8 +1820,6 @@ void ListView::onMenuLinDesk() {
     showSettings(nullptr);
 }
 
-#include "SettingUI_GL.h"
-
 void ListView::showSettings(LinBox* target) {
     if (m_settingsWindow) {
         m_settingsWindow->setTargetBox(target);
@@ -1794,19 +1831,6 @@ void ListView::showSettings(LinBox* target) {
     QVector<LinBox*> all = boxes();
     m_settingsWindow = new SettingUI(target, all);
     m_settingsWindow->show();
-}
-
-void ListView::showSettingsGL(LinBox* target) {
-    if (m_settingsWindowGL) {
-        m_settingsWindowGL->setTargetBox(target);
-        m_settingsWindowGL->show();
-        m_settingsWindowGL->raise();
-        m_settingsWindowGL->activateWindow();
-        return;
-    }
-    QVector<LinBox*> all = boxes();
-    m_settingsWindowGL = new SettingUI_GL(target, all);
-    m_settingsWindowGL->show();
 }
 
 void ListView::onMenuSortByName() {
@@ -1856,8 +1880,8 @@ void ListView::onMenuRefresh() {
         // --- Original Refresh Logic ---
         if (m_enablePersistence) {
             for (auto* item : m_allItems) {
-                if (!item) continue;
-                QString normPath = QDir::toNativeSeparators(item->filePath()).toLower();
+                if (!item || item->filePath().isEmpty()) continue;
+                QString normPath = QDir::toNativeSeparators(item->filePath());
                 while (normPath.endsWith('\\')) normPath.chop(1);
                 if (item->pos() != QPoint(0, 0)) {
                     m_savedIconPositions[normPath] = { item->x(), item->y(), item->boxId() };
@@ -1876,7 +1900,11 @@ void ListView::onMenuRefresh() {
         m_hiddenIcons.clear(); 
 
         for (auto* item : m_allItems) {
-            if (!item) continue;
+            if (!item || item->filePath().isEmpty()) continue;
+            
+            // Refresh icon for each item
+            item->refreshIcon();
+            
             QString boxId = getBoxIdForItem(item->filePath());
             item->setBoxId(boxId);
 
@@ -1931,9 +1959,13 @@ void ListView::onMenuRefresh() {
         m_items = desktopVisible;
         update();
 
-        // Ensure boxes are re-shown
-        for (auto* box : m_boxes) {
+        // Refresh icons for items in boxes and ensure boxes are re-shown
+        for (auto box : BoxManager::instance()->allBoxes()) {
             if (box) {
+                for (auto* item : box->items()) {
+                    if (item) item->refreshIcon();
+                }
+                box->refreshLayout();
                 box->show();
                 box->raise();
             }
@@ -1994,6 +2026,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         qDebug() << "[onFileSystemChanged] Creating item:" << newPath;
         ListItem* item = new ListItem(newPath, this);
         addItem(item);
+        
+        // 保存持久化文件，记录新文件位置
+        requestSaveBoxes();
         break;
     }
     case FileSystemEvent::FileDeleted:
@@ -2005,6 +2040,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         ListItem* item = selectItemByPath(deletePath);
         if (item) {
             removeItem(item);
+            
+            // 保存持久化文件，移除已删除文件记录
+            requestSaveBoxes();
         }
         break;
     }
@@ -2034,6 +2072,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             setupItemConnections(newItem); // Connect newly created files to the signaling system. Riverside.
             addItem(newItem);
         }
+        
+        // 保存持久化文件，更新重命名文件记录
+        requestSaveBoxes();
         break;
     }
     case FileSystemEvent::FileUpdated:
@@ -2055,7 +2096,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     }
     
     // Ensure all LinBoxes stay above desktop items
-    for (auto* box : m_boxes) {
+    for (auto box : BoxManager::instance()->allBoxes()) {
         if (box) box->raise();
     }
 }
@@ -2077,49 +2118,47 @@ void ListView::onMenuQuitApp() {
 
 void ListView::onMenuCreateBox()
 {
-	LinBox* box = new LinBox(this);
-	box->move(m_lastRightClickPos);
-	
-    // Inherit parameters from the last created box if available
-    if (!m_boxes.isEmpty()) {
-        LinBox* templateBox = m_boxes.last();
-        box->setBackgroundColor(templateBox->backgroundColor());
-        box->setBackgroundOpacity(templateBox->backgroundOpacity());
-        box->setGlassEffect(templateBox->glassEffect());
-    } else {
-        // Default values when no config exists
-        box->setGlassEffect(false); // Default to NO glass as requested
-        box->setBackgroundOpacity(0.4f);
-    }
+    BoxManager* manager = BoxManager::instance();
+	LinBox* box = manager->createBox(m_lastRightClickPos, this);
     
-	setupBoxConnections(box);
+    // Connect box signals to ListView
+    manager->setupConnections(box, this);
+}
 
-	box->show();
-	box->raise(); // Ensure new box is on top
-	m_boxes.append(box);
-	
-	requestSaveBoxes(); // Save newly created box
+QVector<LinBox*> ListView::boxes() const {
+    QVector<LinBox*> result;
+    for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
+        if (box) result.append(box.data());
+    }
+    return result;
 }
 
 void ListView::setupItemConnections(ListItem* item, LinBox* box)
 {
 	if (!item) return;
 	
+	// 先断开该 item 的所有信号连接，防止重复连接
+	disconnect(item, &ListItem::itemClicked, this, nullptr);
+	disconnect(item, &ListItem::itemMoved, this, nullptr);
+	disconnect(item, &ListItem::itemReleased, this, nullptr);
+	disconnect(item, &ListItem::itemDoubleClicked, this, nullptr);
+	disconnect(item, &ListItem::itemContextMenuRequested, this, nullptr);
+	
 	connect(item, &ListItem::itemClicked, this, [this, box](ListItem* i, QMouseEvent* e) {
 		onItemRelayClicked(box, i, e);
-	}, Qt::UniqueConnection);
+	});
 	connect(item, &ListItem::itemMoved, this, [this, box](ListItem* i, QMouseEvent* e) {
 		onItemRelayMoved(box, i, e);
-	}, Qt::UniqueConnection);
+	});
 	connect(item, &ListItem::itemReleased, this, [this, box](ListItem* i, QMouseEvent* e) {
 		onItemRelayReleased(box, i, e);
-	}, Qt::UniqueConnection);
+	});
 	connect(item, &ListItem::itemDoubleClicked, this, [this, box](ListItem* i, QMouseEvent* e) {
 		onItemRelayDoubleClicked(box, i, e);
-	}, Qt::UniqueConnection);
+	});
 	connect(item, &ListItem::itemContextMenuRequested, this, [this, box](ListItem* i, const QPoint& p) {
 		onItemRelayContextMenuRequested(box, i, p);
-	}, Qt::UniqueConnection);
+	});
 }
 
 void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* event)
@@ -2265,6 +2304,9 @@ void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
             }
             m_ghosts.clear();
             
+            // 保存图标位置到配置文件（拖拽结束后需要保存）
+            requestSaveBoxes();
+            
             return;
         }
 
@@ -2346,6 +2388,9 @@ void ListView::onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* eve
 		if (box) {
 			box->refreshLayout();
 		}
+		
+		// 保存图标位置到配置文件
+		requestSaveBoxes();
 	}
 }
 
@@ -2434,253 +2479,230 @@ void ListView::onMenuDelete(bool permanently)
 }
 
 void ListView::saveBoxes() {
-    QFile file(m_persistencePath);
-    if (!file.open(QIODevice::WriteOnly)) {
-        qDebug() << "Failed to open persistence file for writing:" << m_persistencePath;
+    if (m_isLoadingPersistence) {
         return;
     }
 
-#ifdef QT_DEBUG
-    // Force sync item states
-    for (auto* item : m_allItems) {
+    // 收集所有桌面图标位置（包括Box中的图标）
+    QMap<QString, QMap<QString, QVariant>> iconPositions;
+    
+    // 收集桌面上的图标位置（boxId为空的在桌面上）
+    for (auto* item : m_items) {
         if (!item) continue;
-        bool found = false;
-        for (auto* box : m_boxes) {
-            if (box && box->items().contains(item)) {
-                item->setBoxId(box->boxId());
-                found = true;
-                break;
-            }
-        }
-        if (!found) item->setBoxId("");
+        QString filePath = QDir::toNativeSeparators(item->filePath());
+        while (filePath.endsWith('\\')) filePath.chop(1);
+        
+        QMap<QString, QVariant> posInfo;
+        posInfo["x"] = item->x();
+        posInfo["y"] = item->y();
+        posInfo["boxId"] = item->boxId();  // 空字符串表示在桌面，非空表示在Box中
+        iconPositions[filePath] = posInfo;
     }
-
-    QJsonObject rootObj;
-    QJsonObject settings;
-    settings["persistence"] = m_enablePersistence;
     
-    QJsonObject menu;
-    menu["viewMode"] = (int)m_iconShowRule.viewMode;
-    menu["sortType"] = (int)m_iconShowRule.sortType;
-    menu["iconPosMode"] = (int)m_iconShowRule.iconPosMode;
-    menu["autoArrange"] = m_iconShowRule.autoArrange;
-    menu["gridAlignment"] = m_iconShowRule.gridAlignment;
-    menu["showDesktopIcons"] = m_iconShowRule.showDesktopIcons;
-    menu["doubleClickHideIcons"] = m_iconShowRule.doubleClickHideIcons;
-    settings["menu"] = menu;
-    settings["showShortcutArrow"] = m_iconShowRule.showShortCutArrow;
-    
-    rootObj["Settings"] = settings;
-
-    if (m_enablePersistence) {
-        QJsonArray boxArray;
-        for (auto* box : m_boxes) {
-            if (!box) continue;
-            QJsonObject b;
-            b["id"] = box->boxId();
-            b["title"] = box->boxTitle();
-            b["x"] = box->x();
-            b["y"] = box->y();
-            b["w"] = box->width();
-            b["h"] = box->isCollapsed() ? box->originalHeight() : box->height();
-            b["collapsed"] = box->isCollapsed();
-            b["showType"] = (int)box->showType();
-            b["color"] = box->backgroundColor().name();
-            b["opacity"] = qRound(box->backgroundOpacity() * 100);
-            b["glass"] = box->glassEffect();
-            QJsonArray files;
-            for (auto* item : box->items()) files.append(item->filePath());
-            b["files"] = files;
-            boxArray.append(b);
-        }
-        rootObj["box-datas"] = boxArray;
-
-        QJsonArray desktopArray;
-        for (auto* item : m_allItems) {
+    // 收集Box中的图标位置
+    QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
+    for (auto box : allBoxes) {
+        if (!box) continue;
+        for (auto* item : box->items()) {
             if (!item) continue;
-            QJsonObject iconObj;
-            iconObj["path"] = item->filePath();
-            iconObj["x"] = item->x();
-            iconObj["y"] = item->y();
-            if (!item->boxId().isEmpty()) iconObj["boxId"] = item->boxId();
-            desktopArray.append(iconObj);
-        }
-        rootObj["desktop-datas"] = desktopArray;
-    }
-    
-    // showShortcutArrow is now inside Settings
-
-    file.write(QJsonDocument(rootObj).toJson());
-#else
-    QDataStream out(&file);
-    out << m_enablePersistence;
-    
-    // Header settings (Always load first)
-    out << (int)m_iconShowRule.viewMode << (int)m_iconShowRule.sortType 
-        << (int)m_iconShowRule.iconPosMode << m_iconShowRule.autoArrange 
-        << m_iconShowRule.gridAlignment << m_iconShowRule.showDesktopIcons 
-        << m_iconShowRule.doubleClickHideIcons << m_iconShowRule.showShortCutArrow;
-
-    if (m_enablePersistence) {
-        out << (int)m_boxes.size();
-        for (auto* box : m_boxes) {
-            if (!box) continue;
-            out << box->boxId() << box->boxTitle() << box->geometry() 
-                << box->isCollapsed() << box->originalHeight() << (int)box->showType() 
-                << box->backgroundColor() << (double)box->backgroundOpacity() << box->glassEffect();
-            QStringList files;
-            for (auto* item : box->items()) files << item->filePath();
-            out << files;
-        }
-
-        out << (int)m_allItems.size();
-        for (auto* item : m_allItems) {
-            if (!item) continue;
-            out << item->filePath() << item->x() << item->y() << (item->boxId().isEmpty() ? QString("") : item->boxId());
+            QString filePath = QDir::toNativeSeparators(item->filePath());
+            while (filePath.endsWith('\\')) filePath.chop(1);
+            
+            QMap<QString, QVariant> posInfo;
+            posInfo["x"] = item->x();
+            posInfo["y"] = item->y();
+            posInfo["boxId"] = item->boxId();
+            iconPositions[filePath] = posInfo;
         }
     }
-#endif
-    file.close();
-    qDebug() << "Saved boxes to:" << m_persistencePath;
+    
+    // 更新内存中的保存位置（使用小写 key 以便与查找逻辑匹配）
+    m_savedIconPositions.clear();
+    for (auto it = iconPositions.begin(); it != iconPositions.end(); ++it) {
+        DesktopIconInfo info;
+        info.x = it.value().value("x").toInt();
+        info.y = it.value().value("y").toInt();
+        info.boxId = it.value().value("boxId").toString();
+        m_savedIconPositions[it.key()] = info;
+        
+        // 位置信息已通过 saveBoxes 保存到文件，ListItem 的 m_itemPos 和 m_boxId 已是最新值
+    }
+    
+    BoxManager::instance()->saveAll(
+        m_persistencePath,
+        m_enablePersistence,
+        m_allItems,
+        iconPositions,
+        (int)m_iconShowRule.viewMode,
+        (int)m_iconShowRule.sortType,
+        (int)m_iconShowRule.iconPosMode,
+        m_iconShowRule.autoArrange,
+        m_iconShowRule.gridAlignment,
+        m_iconShowRule.showDesktopIcons,
+        m_iconShowRule.doubleClickHideIcons,
+        m_iconShowRule.showShortCutArrow
+    );
 }
 
 void ListView::requestSaveBoxes() {
-    if (m_saveTimer) {
-        m_saveTimer->start(); // Restart timer
+    if (m_isLoadingPersistence) {
+        return;
+    }
+    BoxManager::instance()->requestSave();
+}
+
+
+
+void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData) {
+    qDebug() << "[applyBoxAssignmentsFromConfig] Processing" << boxData.size() << "boxes";
+    
+    for (const auto& data : boxData) {
+        const QString boxId = data.value("id").toString();
+        LinBox* targetBox = BoxManager::instance()->findBoxById(boxId);
+        if (!targetBox) {
+            qWarning() << "[applyBoxAssignmentsFromConfig] Box not found:" << boxId;
+            continue;
+        }
+        
+        const QStringList files = data.value("files").toStringList();
+        qDebug() << "[applyBoxAssignmentsFromConfig] Box" << boxId << "has" << files.size() << "files";
+        
+        for (const QString& path : files) {
+            ListItem* item = selectItemByPath(path);
+            if (!item) {
+                qWarning() << "[applyBoxAssignmentsFromConfig] Item not found:" << path;
+                continue;
+            }
+            
+            qDebug() << "[applyBoxAssignmentsFromConfig] Moving item to box:" << item->baseName() 
+                     << "from parent:" << item->parentWidget() 
+                     << "to box:" << targetBox;
+            
+            // 设置 boxId 并将 item 实际添加到 box 中
+            item->setBoxId(boxId);
+            item->hide();
+            
+            // 使用 addListItem 来添加，它会正确设置父窗口为 m_contentArea
+            setupItemConnections(item, targetBox);
+            targetBox->addListItem(item, false);
+            
+            qDebug() << "[applyBoxAssignmentsFromConfig] Item moved, new parent:" << item->parentWidget();
+        }
+    }
+}
+
+void ListView::applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions) {
+    for (auto it = iconPositions.begin(); it != iconPositions.end(); ++it) {
+        ListItem* item = selectItemByPath(it.key());
+        if (!item) {
+            qWarning() << "[ListView] No ListItem matched config path:" << it.key();
+            continue;
+        }
+        const QMap<QString, QVariant>& posInfo = it.value();
+        const QString boxIdFromConfig = posInfo.value("boxId").toString();
+        const QString resolvedBoxId = !boxIdFromConfig.isEmpty() ? boxIdFromConfig : item->boxId();
+        item->setBoxId(resolvedBoxId);
+        item->updateLocationInfo(QPoint(posInfo.value("x").toInt(), posInfo.value("y").toInt()));
     }
 }
 
 void ListView::loadBoxes(bool autoUpdateState) {
-    QFile file(m_persistencePath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-         qDebug() << "No persistence file found at:" << m_persistencePath;
-         loadIconLayer(); // Ensure desktop initializes even without a save file
-         update();
-         return;
-    }
+    m_isLoadingPersistence = true;
+    m_forceConfigLayout = false;
+    m_hasLoadedConfigLayout = false;
 
+    // Clear existing boxes before loading (prevent duplicates)
+    QVector<LinBox*> existingBoxes;
+    for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
+        if (box) existingBoxes.append(box.data());
+    }
+    for (auto* box : existingBoxes) {
+        if (box) {
+            // Move items back to desktop first
+            for (auto* item : box->items()) {
+                if (item) {
+                    item->setBoxId(QString());
+                    item->show();
+                    if (!m_items.contains(item)) m_items.push_back(item);
+                }
+            }
+            box->deleteLater();
+        }
+    }
+    BoxManager::instance()->clearBoxes();
+    // 重置所有 item 的 boxId，但保持位置信息
+    for (auto* item : m_allItems) {
+        if (item) {
+            item->setBoxId("");
+        }
+    }
+    
+    QVector<QMap<QString, QVariant>> boxData;
+    QMap<QString, QMap<QString, QVariant>> iconPositions;
+    QMap<QString, QString> iconShowRules;
+    
+    BoxManager::instance()->loadAll(
+        m_persistencePath,
+        autoUpdateState,
+        m_enablePersistence,
+        iconShowRules,
+        (int&)m_iconShowRule.viewMode,
+        (int&)m_iconShowRule.sortType,
+        (int&)m_iconShowRule.iconPosMode,
+        m_iconShowRule.autoArrange,
+        m_iconShowRule.gridAlignment,
+        m_iconShowRule.showDesktopIcons,
+        m_iconShowRule.doubleClickHideIcons,
+        m_iconShowRule.showShortCutArrow,
+        boxData,
+        iconPositions
+    );
+    m_forceConfigLayout = !boxData.isEmpty() || !iconPositions.isEmpty();
+    m_hasLoadedConfigLayout = m_forceConfigLayout;
+    
+    // Update UI settings
+    syncViewModeSizes();
+    updateRightMenuState();
+    
+    // Create boxes from loaded data
+    for (const auto& data : boxData) {
+        createBoxFromSavedData(
+            data.value("title").toString(),
+            QRect(data.value("x").toInt(), data.value("y").toInt(), 
+                  data.value("w").toInt(), data.value("h").toInt()),
+            data.value("collapsed").toBool(),
+            data.value("h").toInt(),
+            data.value("showType").toInt(),
+            data.value("files").toStringList(),
+            QColor(data.value("color").toString()),
+            data.value("opacity").toDouble() / 100.0f,
+            data.value("glass").toBool(),
+            data.value("id").toString(),
+            false
+        );
+    }
+    applyBoxAssignmentsFromConfig(boxData);
+    applySavedPositionsToItems(iconPositions);
+    
+    // Restore icon positions（使用小写 key 以便与查找逻辑匹配）
     m_savedIconPositions.clear();
-
-#ifdef QT_DEBUG
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    QJsonObject rootObj = doc.object();
-    
-    if (rootObj.contains("Settings") || rootObj.contains("settings")) {
-        QString key = rootObj.contains("Settings") ? "Settings" : "settings";
-        QJsonObject s = rootObj[key].toObject();
-        bool fileState = s["persistence"].toBool(true);
-        if (autoUpdateState) m_enablePersistence = fileState;
-        
-        if (s.contains("showShortcutArrow")) {
-            m_iconShowRule.showShortCutArrow = s["showShortcutArrow"].toBool();
-        }
-
-        if (s.contains("menu")) {
-            QJsonObject m = s["menu"].toObject();
-            if (m.contains("viewMode")) m_iconShowRule.viewMode = (ViewMode)m["viewMode"].toInt();
-            if (m.contains("sortType")) m_iconShowRule.sortType = (SortOrderType)m["sortType"].toInt(static_cast<int>(SortOrderType::Default)); // Default to Default
-            if (m.contains("iconPosMode")) m_iconShowRule.iconPosMode = (IconPosMode)m["iconPosMode"].toInt();
-            syncViewModeSizes(); // Apply loaded ViewMode to width/height/spacing variables
-            
-            m_iconShowRule.autoArrange = m["autoArrange"].toBool(m_iconShowRule.autoArrange);
-            m_iconShowRule.gridAlignment = m["gridAlignment"].toBool(m_iconShowRule.gridAlignment);
-            m_iconShowRule.showDesktopIcons = m["showDesktopIcons"].toBool(m_iconShowRule.showDesktopIcons);
-            m_iconShowRule.doubleClickHideIcons = m["doubleClickHideIcons"].toBool(m_iconShowRule.doubleClickHideIcons);
-            qDebug() << "[ListView] Loaded JSON settings. Persistence:" << m_enablePersistence << "ShowIcons:" << m_iconShowRule.showDesktopIcons;
-        }
+    for (auto it = iconPositions.begin(); it != iconPositions.end(); ++it) {
+        m_savedIconPositions[it.key()] = {
+            it.value().value("x").toInt(),
+            it.value().value("y").toInt(),
+            it.value().value("boxId").toString()
+        };
     }
     
-    updateRightMenuState();
-
-    if (!m_enablePersistence) {
-        file.close();
-        loadIconLayer();
-        return;
-    }
-
-    QJsonArray boxArray = rootObj["box-datas"].toArray();
-    for (int i = 0; i < boxArray.size(); ++i) {
-        QJsonObject b = boxArray[i].toObject();
-        QStringList files;
-        QJsonArray fArr = b["files"].toArray();
-        for (int j = 0; j < fArr.size(); ++j) files << fArr[j].toString();
-        
-        QRect geom(b["x"].toInt(), b["y"].toInt(), b["w"].toInt(), b["h"].toInt());
-        QColor color = QColor(b["color"].toString());
-        float opacity = b["opacity"].toDouble() / 100.0f;
-        if (opacity <= 0) opacity = 0.4f;
-        bool glass = b.contains("glass") ? b["glass"].toBool() : true;
-        QString boxId = b.contains("id") ? b["id"].toString() : QUuid::createUuid().toString();
- 
-        createBoxFromSavedData(b["title"].toString(), geom, b["collapsed"].toBool(), b["h"].toInt(), b["showType"].toInt(), files, color, opacity, glass, boxId, false);
-    }
-
-    QJsonArray desktopArray = rootObj["desktop-datas"].toArray();
-    for (int i = 0; i < desktopArray.size(); ++i) {
-        QJsonObject d = desktopArray[i].toObject();
-        QString path = QDir::toNativeSeparators(d["path"].toString()).toLower();
-        m_savedIconPositions[path] = { d["x"].toInt(), d["y"].toInt(), d["boxId"].toString() };
-    }
-#else
-    QDataStream in(&file);
-    bool fileState;
-    in >> fileState;
-    if (autoUpdateState) m_enablePersistence = fileState;
-    
-    // Load show rule state from binary (Always read header)
-    int vMode, sType, pMode;
-    in >> vMode >> sType >> pMode >> m_iconShowRule.autoArrange >> m_iconShowRule.gridAlignment >> m_iconShowRule.showDesktopIcons >> m_iconShowRule.doubleClickHideIcons >> m_iconShowRule.showShortCutArrow;
-    m_iconShowRule.viewMode = (ViewMode)vMode;
-    m_iconShowRule.sortType = (SortOrderType)sType;
-    m_iconShowRule.iconPosMode = (IconPosMode)pMode;
-
-    // Finalize global settings before potentially returning early for data
-    updateRightMenuState();
-
-    if (!m_enablePersistence) {
-        file.close();
-        loadIconLayer(); 
-        return;
-    }
-    int count; in >> count;
-    for (int i = 0; i < count; ++i) {
-        QString boxId; QString title; QRect geom; bool collapsed; int origH; int showType; QStringList files;
-        QColor color; double opacity; bool glass;
-        in >> boxId >> title >> geom >> collapsed >> origH >> showType >> color >> opacity >> glass >> files;
-        createBoxFromSavedData(title, geom, collapsed, origH, showType, files, color, (float)opacity, glass, boxId, false);
-
-    }
-
-    int iconCount; in >> iconCount;
-    for (int i = 0; i < iconCount; ++i) {
-        QString path; int x; int y; QString boxId;
-        in >> path >> x >> y >> boxId;
-        QString normPath = QDir::toNativeSeparators(path).toLower();
-        m_savedIconPositions[normPath] = { x, y, boxId };
-    }
-#endif
-    file.close();
-    
-    // Batch update after all boxes loaded
+    // Load icon layer and update UI
     loadIconLayer();
+    m_forceConfigLayout = false;
     update();
-    requestSaveBoxes();
-
+    m_allItems;
+    m_items;
+    m_isLoadingPersistence = false;
+    
     qDebug() << "Loaded. Persistence:" << m_enablePersistence;
-    updateRightMenuState();
-    loadIconLayer();
-}
-
-void ListView::setupBoxConnections(LinBox* box) {
-    if (!box) return;
-    connect(box, &LinBox::itemRelayClicked, this, &ListView::onItemRelayClicked);
-    connect(box, &LinBox::itemRelayMoved, this, &ListView::onItemRelayMoved);
-    connect(box, &LinBox::itemRelayReleased, this, &ListView::onItemRelayReleased);
-    connect(box, &LinBox::itemRelayDoubleClicked, this, &ListView::onItemRelayDoubleClicked);
-    connect(box, &LinBox::itemRelayContextMenuRequested, this, &ListView::onItemRelayContextMenuRequested);
-    connect(box, &LinBox::geometryChanged, this, &ListView::requestSaveBoxes);
-    connect(box, &LinBox::destroyRequested, this, &ListView::onMenuDestroyBox);
-    connect(box, &LinBox::customRequested, this, &ListView::onMenuCustomBox);
 }
 
 void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId, bool refresh) {
@@ -2697,32 +2719,9 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     box->setBackgroundOpacity(opacity);
     box->setGlassEffect(glass);
     
-    setupBoxConnections(box);
-    
-    for (const QString& path : files) {
-        if (path.trimmed().isEmpty()) continue; // Skip empty/placeholder strings
-        
-        if (QFile::exists(path) || path.startsWith("::")) {
-            // Find existing desktop item or create new if not found
-            ListItem* item = selectItemByPath(path);
-            
-            if (item) {
-                // Reuse existing widget and move into box
-                item->setBoxId(box->boxId());
-                item->hide();
-                m_items.removeOne(item); // Remove from desktop visibly
-                setupItemConnections(item, box);
-                box->addListItem(item, false);
-            } else {
-                // Create brand new
-                item = new ListItem(path, box);
-                item->setBoxId(box->boxId());
-                setupItemConnections(item, box);
-                box->addListItem(item, false);
-                m_allItems.push_back(item); 
-            }
-        }
-    }
+    // Connect to BoxManager and ListView
+    BoxManager::instance()->setupConnections(box, this);
+    BoxManager::instance()->addBox(box);
     
     box->setShowType((LinBox::BoxShowType)showType);
     box->setGeometry(geom);
@@ -2732,7 +2731,6 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     box->setGlassEffect(glass); // Apply blur AFTER window is fully visible to prevent black screen
     box->refreshLayout(); // Force initial tight packing
     box->raise();
-    m_boxes.append(box);
 
     if (refresh) {
         loadIconLayer();
@@ -2744,25 +2742,35 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
 void ListView::onMenuDestroyBox(LinBox* box) {
     if (!box) return;
     
-    // Mutual exclusion: Restore items to desktop
-    QString boxId = box->boxId();
-    for (auto* item : m_allItems) {
-        if (item && item->boxId() == boxId) {
-            item->setBoxId("");
-            item->setParent(this);
-            if (!m_items.contains(item)) {
-                m_items.push_back(item);
-            }
-            if (m_iconShowRule.showDesktopIcons) {
-                item->show();
-            }
+    QVector<ListItem*> boxItems = box->items();
+    for (auto* item : boxItems) {
+        if (!item) continue;
+
+        item->setBoxId("");
+        item->setLayoutMode(ListItem::LayoutMode::IconMode);
+        item->setParent(this);
+        item->setItemSize(m_iconWidth, m_iconHeight);
+        setupItemConnections(item);
+
+        const QPoint desktopPos = generateItemPosition();
+        item->updateLocationInfo(desktopPos);
+        item->setBoxId("");
+
+        if (!m_items.contains(item)) {
+            m_items.push_back(item);
+        }
+
+        QString key = QDir::toNativeSeparators(item->filePath());
+        while (key.endsWith('\\')) key.chop(1);
+        m_savedIconPositions[key] = { desktopPos.x(), desktopPos.y(), "" };
+
+        if (m_iconShowRule.showDesktopIcons) {
+            item->show();
         }
     }
     
-    m_boxes.removeAll(box);
-    box->deleteLater();
-    requestSaveBoxes(); 
-    loadIconLayer(); // Refresh desktop layout
+    BoxManager::instance()->destroyBox(box, this);
+    update();
 }
 
 void ListView::onMenuCustomBox(LinBox* box) {
@@ -2771,56 +2779,7 @@ void ListView::onMenuCustomBox(LinBox* box) {
 }
 
 void ListView::moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh) {
-    if (!targetBox || filePath.isEmpty()) return;
-    
-    QString targetPath = QDir::toNativeSeparators(filePath).toLower();
-    while (targetPath.endsWith('\\')) targetPath.chop(1);
-
-    // 1. Check if it's already in THIS target box
-    for (auto* item : targetBox->items()) {
-        if (item && item->normalizedPath() == targetPath) return;
-    }
-
-    // 2. Find and RE-USE existing item from everywhere (Desktop or other boxes)
-    ListItem* existingItem = selectItemByPath(filePath);
-    
-    if (existingItem) {
-        // Redraw old location on Desktop to avoid ghosting before reparenting
-        update(existingItem->geometry());
-
-        // Correct parent tracking: if it is ALREADY in a box (even this one), remove it first
-        QWidget* p = existingItem->parentWidget();
-        LinBox* oldBox = nullptr;
-        while (p) {
-            oldBox = qobject_cast<LinBox*>(p);
-            if (oldBox) break;
-            p = p->parentWidget();
-        }
-        if (oldBox) {
-            oldBox->removeListItem(existingItem);
-        }
-        
-        // Update state
-        existingItem->setBoxId(targetBox->boxId()); 
-        
-        // Ensure it's not in the desktop visible pool
-        m_items.removeOne(existingItem);
-        
-        // Signals and container move
-        setupItemConnections(existingItem, targetBox);
-        targetBox->addListItem(existingItem, refresh);
-    } 
-    else {
-        // Redraw target box area just in case
-        update(targetBox->geometry());
-
-        // Fallback for external drops
-        ListItem* boxItem = new ListItem(targetPath, targetBox);
-        boxItem->setBoxId(targetBox->boxId());
-        m_allItems.push_back(boxItem); 
-        setupItemConnections(boxItem, targetBox);
-        targetBox->addListItem(boxItem, refresh);
-    }
+    BoxManager::instance()->moveItemToBox(filePath, targetBox, this);
     
     if (refresh) {
         if (m_enablePersistence) {
@@ -2838,28 +2797,11 @@ void ListView::moveItemToBox(const QString& filePath, LinBox* targetBox, bool re
 }
 
 bool ListView::isItemInAnyBox(const QString& filePath) const {
-    return !getBoxIdForItem(filePath).isEmpty();
+    return BoxManager::instance()->isItemInAnyBox(filePath);
 }
 
 QString ListView::getBoxIdForItem(const QString& filePath) const {
-    if (filePath.isEmpty()) return QString();
-    
-    QString target = QDir::toNativeSeparators(filePath).toLower();
-    while (target.endsWith('\\')) target.chop(1);
-
-    for (auto* box : m_boxes) {
-        if (!box) continue;
-        for (auto* item : box->items()) {
-            if (item) {
-                QString itemPath = QDir::toNativeSeparators(item->filePath()).toLower();
-                while (itemPath.endsWith('\\')) itemPath.chop(1);
-                if (itemPath == target) {
-                    return box->boxId();
-                }
-            }
-        }
-    }
-    return QString();
+    return BoxManager::instance()->getBoxIdForItem(filePath);
 }
 
 void ListView::setShortcutArrowVisible(bool visible) {
@@ -2874,33 +2816,64 @@ void ListView::setShortcutArrowVisible(bool visible) {
 }
 
 void ListView::loadPersistentLayout() {
-    for (auto* item : m_items) {
+    const bool useConfigLayout = m_forceConfigLayout || m_hasLoadedConfigLayout;
+    QVector<ListItem*> allItemsSnapshot = m_items;
+
+    //for (auto box : BoxManager::instance()->allBoxes()) {
+    //    if (!box) continue;
+    //    QVector<ListItem*> boxItems = box->items();
+    //    for (auto* item : boxItems) {
+    //        if (item) {
+    //            box->removeListItem(item);
+    //        }
+    //    }
+    //}
+
+    for (auto* item : allItemsSnapshot) {
         if (!item) continue;
 
-        // Ensure item is initialized even if position is missing
         item->setItemSize(m_iconWidth, m_iconHeight);
         item->initData();
+        item->setLayoutMode(ListItem::LayoutMode::IconMode);
+        // Note: Do NOT set parent here. It will be set later based on boxId.
+        setupItemConnections(item);
 
-        QString normPath = QDir::toNativeSeparators(item->filePath()).toLower();
-        while (normPath.endsWith('\\')) normPath.chop(1);
+        // 检查 item 是否已有有效位置
+        QPoint currentPos = item->getLocationInfo();
+        bool hasValidPosition = (currentPos != QPoint(0, 0));
+        
+        if (!hasValidPosition) {
+            QPoint pos = useConfigLayout ? generateItemPosition() : currentPos;
+            if (pos == QPoint(0, 0)) {
+                pos = generateItemPosition();
+            }
+            item->updateLocationInfo(pos);
+            continue;
+        }
 
-        if (m_savedIconPositions.contains(normPath)) {
-            DesktopIconInfo info = m_savedIconPositions[normPath];
-            item->move(info.x, info.y);
-            item->updateLocationInfo(QPoint(info.x, info.y));
-        } else {
-            // Check if it already has a perfectly valid compacted coordinate from initialize()
-            QPoint p = item->getLocationInfo();
-            if (p != QPoint(0, 0)) {
-                item->move(p);
-            } else {
-                // Truly homeless icon: assign a fresh spot
-                p = generateItemPosition();
-                item->move(p);
-                item->updateLocationInfo(p);
+        const QString savedBoxId = item->boxId();
+        if (!savedBoxId.isEmpty()) {
+            LinBox* targetBox = BoxManager::instance()->findBoxById(savedBoxId);
+            if (targetBox) {
+                item->setBoxId(savedBoxId);
+                item->hide();
+                setupItemConnections(item, targetBox);
+                targetBox->addListItem(item, false);
+                continue;
             }
         }
+
+        const QPoint savedPos = item->getLocationInfo();
+        if (savedPos.x() <= 0 || savedPos.y() <= 0) {
+            QPoint newPos = generateItemPosition();
+            item->updateLocationInfo(newPos);
+        } else {
+            item->updateLocationInfo(savedPos);
+        }
+        // Set parent to ListView for desktop items
+        item->setParent(this);
     }
+
 }
 void ListView::setPersistenceEnabled(bool enabled) {
     if (m_enablePersistence == enabled) return;
@@ -2910,12 +2883,14 @@ void ListView::setPersistenceEnabled(bool enabled) {
         loadBoxes(false); // Don't let the file turn us back off!
         loadIconLayer();
     } else {
-        for (auto* box : m_boxes) {
+        m_hasLoadedConfigLayout = false;
+        // Destroy all boxes and restore items to desktop
+        for (auto box : BoxManager::instance()->allBoxes()) {
             if (!box) continue;
             QVector<ListItem*> boxItems = box->items();
             for (auto* item : boxItems) {
                 if (item) {
-                    item->setBoxId("");
+                item->setBoxId("");
                     item->setParent(this);
                     item->show();
                     if (!m_items.contains(item)) m_items.push_back(item);
@@ -2923,7 +2898,7 @@ void ListView::setPersistenceEnabled(bool enabled) {
             }
             box->deleteLater();
         }
-        m_boxes.clear();
+        BoxManager::instance()->clearBoxes();
         loadIconLayer();
     }
     

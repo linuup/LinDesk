@@ -119,12 +119,20 @@ void ListItem::initData()
 
 	if (m_type != ObjectType::Empty_ObjectType)
 	{
-		m_filePath = m_itemData.filePath();
+		if (m_type == ObjectType::SpecialFolder) {
+			m_filePath = QString::fromStdString(m_itemData.itemData().path);
+		} else {
+			m_filePath = m_itemData.filePath();
+		}
 		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
 		m_baseName = (m_type == ObjectType::SpecialFolder) ? m_itemData.fullName() : m_fileInfo.baseName();
 		m_icon = m_itemData.icon();
 		
-		m_normalizedPath = QDir::toNativeSeparators(m_filePath).toLower();
+		if (m_type == ObjectType::SpecialFolder) {
+			m_normalizedPath = QString::fromStdString(m_itemData.itemData().path);
+		} else {
+			m_normalizedPath = QDir::toNativeSeparators(m_filePath);
+		}
 		while (m_normalizedPath.endsWith('\\')) m_normalizedPath.chop(1);
 
 		if (!m_icon.isNull() && !m_icon.availableSizes().isEmpty()) {
@@ -226,7 +234,19 @@ void ListItem::initData()
 void ListItem::setItemData(ListItemData data)
 {
 	m_itemData = data;
-	//update();  // 数据改变时请求重绘
+	m_type = m_itemData.type();
+	if (m_type == ObjectType::SpecialFolder) {
+		m_filePath = QString::fromStdString(m_itemData.itemData().path);
+		m_normalizedPath = m_filePath;
+	}
+	else {
+		m_filePath = m_itemData.filePath();
+		m_normalizedPath = QDir::toNativeSeparators(m_filePath);
+	}
+	while (m_normalizedPath.endsWith('\\')) m_normalizedPath.chop(1);
+	// Reset icon cache so initData will recreate m_iconWidget
+	m_itemData.m_iconSizeCached = -1;
+	//update();  // ?????????
 }
 
 void ListItem::setItemSize(int width, int height)
@@ -257,6 +277,9 @@ void ListItem::updateLocationInfo(QPoint pos)
 	m_chooseRect = m_itemRect.adjusted(shrinkSize, shrinkSize, -shrinkSize, -shrinkSize);
 }
 
+// resetPersistentRenderState 和 applyPersistentRenderState 已移除
+// 现在统一使用 m_itemPos 和 m_boxId，通过 updateLocationInfo 和 setBoxId 管理
+
 void ListItem::checkSelf()
 {
 	isSelected = true;
@@ -286,6 +309,16 @@ ListItemData ListItem::getItemData()
 	return m_itemData;
 }
 
+void ListItem::refreshIcon()
+{
+    // Force icon refresh by resetting cached size and re-initializing
+    m_itemData.m_iconSizeCached = -1;
+    m_itemData.initIcon();
+    m_icon = m_itemData.icon();
+    initData(); // Re-create icon widget with new icon
+    update();   // Trigger repaint
+}
+
 void ListItem::mousePressEvent(QMouseEvent* event)
 {
     event->accept();
@@ -311,6 +344,7 @@ void ListItem::mouseDoubleClickEvent(QMouseEvent* event)
 }
 
 void ListItem::contextMenuEvent(QContextMenuEvent* event) {
+    event->accept();
     emit itemContextMenuRequested(this, event->globalPos());
 }
 

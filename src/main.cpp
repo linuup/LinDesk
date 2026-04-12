@@ -20,7 +20,8 @@ int main(int argc, char *argv[])
     
     //vector<IconItem> items = c.GetDesktopIconsItems(CSystemApi::FindSysListView32());
     //qSetMessagePattern("%{time yyyy-MM-dd hh:mm:ss}--[%{type}]--%{file}--%{function}--%{line}:%{message}");
-    qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
+    //qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
+    
     QApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/Assets/app_icon.png"));
     app.setQuitOnLastWindowClosed(false);

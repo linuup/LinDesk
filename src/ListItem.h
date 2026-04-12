@@ -68,10 +68,15 @@ public:
     void checkSelf();
     void unCheckSelf();
     void openItem();
+    void refreshIcon(); // Refresh icon from system
 
     QString boxId() const { return m_boxId; }
     void setBoxId(const QString& id) { m_boxId = id; }
     const QString& normalizedPath() const { return m_normalizedPath; }
+    // 统一使用 m_itemPos 和 m_boxId，以下方法保持兼容
+    bool hasPersistentRenderState() const { return m_itemPos != QPoint(0, 0) || !m_boxId.isEmpty(); }
+    const QPoint& persistentRenderPos() const { return m_itemPos; }
+    const QString& persistentBoxId() const { return m_boxId; }
 
     bool isReady = false;
     bool isSelected = false; // 是否被选中
