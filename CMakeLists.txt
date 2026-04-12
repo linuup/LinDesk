@@ -72,6 +72,11 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 # 添加可执行文件
 add_executable(LinDesk ${SOURCES})
 
+target_sources(LinDesk PRIVATE
+    src/DesktopItemLoader.cpp
+    src/LayoutPersistenceService.cpp
+)
+
 
 target_link_libraries(LinDesk 
     PRIVATE

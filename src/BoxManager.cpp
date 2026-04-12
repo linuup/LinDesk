@@ -135,6 +135,17 @@ void BoxManager::raiseAllBoxes() {
     }
 }
 
+void BoxManager::bringToFront(LinBox* box) {
+    if (!box) {
+        return;
+    }
+
+    const QPointer<LinBox> ptr(box);
+    m_boxes.removeAll(ptr);
+    m_boxes.append(ptr);
+    raiseAllBoxes();
+}
+
 void BoxManager::setupBoxConnections(LinBox* box) {
     if (!box) return;
     

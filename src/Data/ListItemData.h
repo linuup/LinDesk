@@ -56,10 +56,19 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 	ListItemData(IconItem item) {
 		setIconItem(item);
 		setPIDL(item.pidl_p);
-		setItemDateType(item.specialFolder);
+		const SpecialFolders resolvedType =
+			(item.shortcutTargetSpecialFolder != SpecialFolders::Empty &&
+			 item.shortcutTargetSpecialFolder != SpecialFolders::UnknownFolder)
+				? item.shortcutTargetSpecialFolder
+				: item.specialFolder;
+		setItemDateType(resolvedType);
 		m_fullName = QString::fromStdString(item.name.c_str());
 		m_fileInfo = QFileInfo(QString(item.path.c_str()).replace("LNK", "lnk"));
-		m_clsid = QString::fromStdString(m_iconItem.path.c_str());
+		if (item.shortcutTargetSpecialFolder != SpecialFolders::Empty && item.shortcutTargetSpecialFolder != SpecialFolders::UnknownFolder && !item.shortcutTargetPath.empty()) {
+			m_clsid = QString::fromStdString(item.shortcutTargetPath.c_str());
+		} else {
+			m_clsid = QString::fromStdString(m_iconItem.path.c_str());
+		}
 
 		initIcon();
 		/*qDebug() << "\nFullName:" << m_fullName;

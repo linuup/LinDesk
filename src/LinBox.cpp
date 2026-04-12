@@ -11,13 +11,14 @@
 #include "SettingUI.h"
 #include "ListView.h"
 #include "ListItem.h"
+#include "BoxManager.h"
 #include "WinBlurHelper.h"
 
 LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     // 使用Qt::SubWindow使Box成为ListView的真正子窗口，不会覆盖其他软件
-    setWindowFlags(Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::SubWindow);
+    setWindowFlags(Qt::FramelessWindowHint | Qt::SubWindow);
     setAttribute(Qt::WA_TranslucentBackground);
-    setAttribute(Qt::WA_OpaquePaintEvent);
+    setAttribute(Qt::WA_OpaquePaintEvent, false);
     setFocusPolicy(Qt::StrongFocus);
     setStyleSheet("LinBox { background: transparent; }");
     setMouseTracking(true);
@@ -219,6 +220,18 @@ void LinBox::refreshLayout() {
     emit geometryChanged(this);
 }
 
+void LinBox::moveEvent(QMoveEvent* event) {
+    if (QWidget* parent = parentWidget()) {
+        const QRect oldRect(event->oldPos(), size());
+        const QRect newRect(pos(), size());
+        const QRect dirty = oldRect.united(newRect).adjusted(-12, -12, 12, 12);
+        parent->update(dirty);
+    }
+
+    raise();
+    QWidget::moveEvent(event);
+}
+
 void LinBox::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     refreshLayout();
@@ -253,6 +266,7 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
         if (event->type() == QEvent::MouseButtonPress) {
             QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
             if (mouseEvent->button() == Qt::LeftButton) {
+                BoxManager::instance()->bringToFront(this);
                 // Determine if we should drag or resize
                 // Map the child coordinate to LinBox coordinates
                 QPoint mappedPos = watched == this ? mouseEvent->pos() : ((QWidget*)watched)->mapTo(this, mouseEvent->pos());
@@ -294,7 +308,9 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void LinBox::mousePressEvent(QMouseEvent* event) {
-    raise(); 
+    if (event->button() == Qt::LeftButton) {
+        BoxManager::instance()->bringToFront(this);
+    }
     setFocus();
     if (event->button() == Qt::LeftButton) {
         m_resizeDir = getResizeDir(event->pos());

@@ -26,7 +26,7 @@
  */
 class OCR_Baidu : public QObject, public IOCRPlugin {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID ILinPlugin_IID FILE "mock_ocr.json")
+    Q_PLUGIN_METADATA(IID ILinPlugin_IID FILE "ocr_plugin.json")
     Q_INTERFACES(ILinPlugin IOCRPlugin)
 
 public:

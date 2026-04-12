@@ -27,12 +27,16 @@ target_link_libraries(OCR_Plugin PRIVATE
     Qt5::Network
 )
 
-# Optional: Automatic metadata JSON inclusion
-target_sources(OCR_Plugin PRIVATE mock_ocr.json)
+# Plugin metadata JSON
+target_sources(OCR_Plugin PRIVATE ocr_plugin.json)
 
-# Post-build: Copy to LinDesk runtime plugins directory
-add_custom_command(TARGET OCR_Plugin POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:LinDesk>/plugins
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OCR_Plugin> $<TARGET_FILE_DIR:LinDesk>/plugins/
-    COMMENT "Copying OCR_Plugin to plugins folder..."
-)
+# Post-build: when built from the LinDesk root project, copy the plugin into
+# the app's runtime plugins directory. Standalone builds should not depend on
+# the LinDesk target existing.
+if(TARGET LinDesk)
+    add_custom_command(TARGET OCR_Plugin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:LinDesk>/plugins
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OCR_Plugin> $<TARGET_FILE_DIR:LinDesk>/plugins/
+        COMMENT "Copying OCR_Plugin to plugins folder..."
+    )
+endif()

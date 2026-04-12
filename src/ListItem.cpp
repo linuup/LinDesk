@@ -1,4 +1,5 @@
 #include "ListItem.h"
+#include "DesktopItemLoader.h"
 #include "ListView.h"
 #include <SysInfoUtil.h>
 #include <shellapi.h>
@@ -90,8 +91,8 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 	textLabel->setStyleSheet("color: white; background: transparent;");
 	QString tmp = path;
 	tmp = tmp.replace('/', '\\');
-	ListItemData* data = new ListItemData(CSystemApi::CreateIconItem(tmp.toStdWString().c_str()));
-	setItemData(*data);
+	const ListItemData data = DesktopItemLoader().loadItem(tmp);
+	setItemData(data);
 	initData();
 	updateLocationInfo(QPoint(0, 0));
 	show();

@@ -23,6 +23,8 @@
 #include <windows.h>
 #include <shlobj_core.h>
 #include "ListItem.h"
+#include "DesktopItemLoader.h"
+#include "LayoutPersistenceService.h"
 #include "RightMenu.h"
 #include "Monitor/DesktopInfoMonitor.h"
 #include "DirectoryMonitor.h"
@@ -102,9 +104,6 @@ public:
 
 	// 加载所有桌面图标数据
 
-	// 加载所有桌面图标数据
-	std::vector<ListItemData> loadAllItemsData();
-
 	/// <summary>
 	/// Init default Data 
 	/// </summary>
@@ -153,10 +152,7 @@ public:
     ListItem* findItemByPath(const QString& filePath) const;
 
 	// 设置选中的项
-	void setSelectedItem(ListItem* item);
-
 	// 获取当前选中的项
-	ListItem* selectedItem() const;
 	bool persistenceEnabled() const { return m_enablePersistence; }
 	void setPersistenceEnabled(bool enabled);
 	void setShortcutArrowVisible(bool visible);
@@ -166,8 +162,6 @@ public:
     bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
 	void loadPersistentLayout();
-	void loadPersistenceMetadata();
-	void forceUpdatePersistentPositions();
 	void updateRightMenuState();
 
 	/// <summary>
@@ -176,19 +170,11 @@ public:
 	/// <returns></returns>
 	QPoint generateItemPosition();
 	// 清除所有选中的项
-	void clearSelection();
-
 	// 检查一个项是否被选中
-	bool isItemSelected(ListItem* item) const;
-
 	// 获取所有选中的项（支持多选）
-	QVector<ListItem*> selectedItems() const;
-
 	QVector<LinBox*> boxes() const;
     
 	// 获取是否启用多选
-	bool isMultiSelection() const;
-	
 	bool IsSelecting() const {
 		return m_isSelecting;
 	}
@@ -201,7 +187,7 @@ public:
 	void saveBoxes();
 	void requestSaveBoxes(); // Move to public
 	void DisableSelecting() {
-		m_isSelecting = false;
+		endBackgroundSelection();
 	}
 
 	int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
@@ -220,13 +206,17 @@ public:
 	/// </summary>
 	/// <param name="rect"></param>
 	void refreshCheckedItem(QRect rect);
+	void beginBackgroundSelection(const QPoint& startPos);
+	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
+	void endBackgroundSelection();
+	bool isBackgroundSelectionActive() const { return m_isSelecting; }
+	QRect backgroundSelectionRect() const { return m_selectionRect; }
 	/// <summary>
 	/// 
 	/// </summary>
 	/// <param name="path"></param>
 	/// <returns></returns>
 	ListItem* selectItemByPath(const QString path);
-	void drawHoverEffect();
 	void clearCheckedItem();
 
 private slots:
@@ -297,7 +287,6 @@ protected:
     bool nativeEvent(const QByteArray &eventType, void *message, long *result) override;
     void handleHotkey(int id);
 	
-	void refreshView();
 	void createDragGhosts(const QPoint& clickPos);
     void setupItemConnections(ListItem* item, LinBox* box = nullptr);
     void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
@@ -323,8 +312,7 @@ private:
     bool m_isLoadingPersistence = false;
     bool m_forceConfigLayout = false;
     bool m_hasLoadedConfigLayout = false;
-	struct DesktopIconInfo { int x, y; QString boxId; };
-	QMap<QString, DesktopIconInfo> m_savedIconPositions;
+	QMap<QString, PersistentIconInfo> m_savedIconPositions;
 
 	// 网格布局变量（可随 ViewMode 动态改变）
     QString m_desktopDir; // 存储桌面物理路径

@@ -33,7 +33,6 @@ public:
     ~LinDesktop();
 
     QRect m_lastSelectRect;
-	QPoint m_startPos;    //鼠标点击坐标
 	
     float transitionOpacity() const { return m_transitionOpacity; }
     void setTransitionOpacity(float opacity);
@@ -67,9 +66,9 @@ private:
 private slots:
 
 protected:
-    void mousePressEvent(QMouseEvent* event);
-    void mouseMoveEvent(QMouseEvent* event);
-    void mouseReleaseEvent(QMouseEvent* event);
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event);
     void resizeEvent(QResizeEvent* event) override;
 

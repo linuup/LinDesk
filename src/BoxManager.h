@@ -31,6 +31,7 @@ public:
     void clearBoxes();
     int boxCount() const { return m_boxes.size(); }
     void raiseAllBoxes();
+    void bringToFront(LinBox* box);
     
     // 连接设置
     void setupConnections(LinBox* box, ListView* listView);

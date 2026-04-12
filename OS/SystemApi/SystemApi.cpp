@@ -2,6 +2,220 @@
 #include "SystemApi.h"
 #include "Tool.h"
 #include <Shlwapi.h>
+#include <fstream>
+#include <cstdio>
+
+namespace {
+constexpr size_t kShellLinkHeaderSize = 0x4C;
+constexpr DWORD kHasLinkTargetIDListFlag = 0x00000001;
+
+bool FillTargetNamesFromPidl(PCIDLIST_ABSOLUTE pidl, std::wstring& targetParsingPath,
+                             std::wstring& targetDisplayName)
+{
+    if (!pidl) {
+        return false;
+    }
+
+    // Try multiple SIGDN formats to handle both filesystem and virtual folders
+    // SIGDN_DESKTOPABSOLUTEPARSING works for most cases but may fail for virtual folders
+    // SIGDN_FILESYSPATH works for filesystem items
+    // SIGDN_PARENTRELATIVEFORADDRESSBAR works for some shell namespace items
+
+    // First try DESKTOPABSOLUTEPARSING (works for most shortcuts)
+    wil::unique_cotaskmem_string parsingName;
+    HRESULT hr = SHGetNameFromIDList(pidl, SIGDN_DESKTOPABSOLUTEPARSING, wil::out_param(parsingName));
+    
+    // If that fails, try FILESYSPATH for filesystem items
+    if (FAILED(hr) || !parsingName) {
+        wil::unique_cotaskmem_string fsPath;
+        hr = SHGetNameFromIDList(pidl, SIGDN_FILESYSPATH, wil::out_param(fsPath));
+        if (SUCCEEDED(hr) && fsPath) {
+            parsingName = std::move(fsPath);
+        }
+    }
+
+    // If still no parsing name, try PARENTRELATIVEFORADDRESSBAR
+    if (!parsingName) {
+        wil::unique_cotaskmem_string parentRelPath;
+        hr = SHGetNameFromIDList(pidl, SIGDN_PARENTRELATIVEFORADDRESSBAR, wil::out_param(parentRelPath));
+        if (SUCCEEDED(hr) && parentRelPath) {
+            parsingName = std::move(parentRelPath);
+        }
+    }
+
+    if (parsingName) {
+        targetParsingPath = parsingName.get();
+    }
+
+    wil::unique_cotaskmem_string displayName;
+    if (SUCCEEDED(SHGetNameFromIDList(pidl, SIGDN_NORMALDISPLAY, wil::out_param(displayName))) && displayName) {
+        targetDisplayName = displayName.get();
+    }
+
+    return !targetParsingPath.empty() || !targetDisplayName.empty();
+}
+
+bool TryReadShortcutTargetFromFile(const wchar_t* shortcutPath, std::wstring& targetParsingPath,
+                                   std::wstring& targetDisplayName)
+{
+    if (!shortcutPath) {
+        return false;
+    }
+
+    FILE* file = _wfopen(shortcutPath, L"rb");
+    if (!file) {
+        return false;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return false;
+    }
+
+    const long fileSize = ftell(file);
+    if (fileSize <= 0) {
+        fclose(file);
+        return false;
+    }
+
+    rewind(file);
+    std::vector<char> bytes(static_cast<size_t>(fileSize));
+    const size_t readSize = fread(bytes.data(), 1, bytes.size(), file);
+    fclose(file);
+    if (readSize != bytes.size()) {
+        return false;
+    }
+
+    if (bytes.size() < kShellLinkHeaderSize + sizeof(WORD)) {
+        return false;
+    }
+
+    const DWORD linkFlags = *reinterpret_cast<const DWORD*>(bytes.data() + 0x14);
+    if ((linkFlags & kHasLinkTargetIDListFlag) == 0) {
+        return false;
+    }
+
+    const WORD idListSize = *reinterpret_cast<const WORD*>(bytes.data() + kShellLinkHeaderSize);
+    const size_t idListOffset = kShellLinkHeaderSize + sizeof(WORD);
+    if (idListSize == 0 || bytes.size() < idListOffset + idListSize) {
+        return false;
+    }
+
+    unique_pidl_absolute pidl(reinterpret_cast<PIDLIST_ABSOLUTE>(CoTaskMemAlloc(idListSize)));
+    if (!pidl) {
+        return false;
+    }
+
+    memcpy(pidl.get(), bytes.data() + idListOffset, idListSize);
+    return FillTargetNamesFromPidl(pidl.get(), targetParsingPath, targetDisplayName);
+}
+
+bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetParsingPath,
+                           std::wstring& targetDisplayName)
+{
+    if (!shortcutPath) {
+        return false;
+    }
+    
+    // 检查扩展名（支持大小写）
+    std::wstring pathStr(shortcutPath);
+    std::wstring extension;
+    size_t dotPos = pathStr.find_last_of(L"./\\");
+    if (dotPos != std::wstring::npos && dotPos + 1 < pathStr.length()) {
+        extension = pathStr.substr(dotPos + 1);
+        for (auto& c : extension) c = towlower(c);
+    }
+    if (extension != L"lnk") {
+#ifndef NDEBUG
+        wprintf(L"[ResolveShortcutTarget] Skipping non-lnk file: %s (ext: %s)\n", shortcutPath, extension.c_str());
+#endif
+        return false;
+    }
+
+    const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool shouldUninit = SUCCEEDED(initHr);
+
+    wil::com_ptr_nothrow<IShellLinkW> shellLink;
+    wil::com_ptr_nothrow<IPersistFile> persistFile;
+    unique_pidl_absolute targetPidl;
+    bool resolved = false;
+
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+                                  IID_PPV_ARGS(&shellLink));
+    if (FAILED(hr) || !shellLink) {
+#ifndef NDEBUG
+        wprintf(L"[ResolveShortcutTarget] CoCreateInstance failed: hr=0x%08X\n", hr);
+#endif
+        if (shouldUninit) CoUninitialize();
+        return false;
+    }
+
+    hr = shellLink->QueryInterface(IID_PPV_ARGS(&persistFile));
+    if (FAILED(hr) || !persistFile) {
+#ifndef NDEBUG
+        wprintf(L"[ResolveShortcutTarget] QueryInterface(IPersistFile) failed: hr=0x%08X\n", hr);
+#endif
+        if (shouldUninit) CoUninitialize();
+        return false;
+    }
+
+    hr = persistFile->Load(shortcutPath, STGM_READ);
+    if (FAILED(hr)) {
+#ifndef NDEBUG
+        wprintf(L"[ResolveShortcutTarget] IPersistFile::Load failed: hr=0x%08X, path=%s\n", hr, shortcutPath);
+#endif
+        if (shouldUninit) CoUninitialize();
+        return false;
+    }
+
+    // 方法1: 通过 PIDL 获取目标
+    hr = shellLink->GetIDList(wil::out_param(targetPidl));
+    if (SUCCEEDED(hr) && targetPidl) {
+        resolved = FillTargetNamesFromPidl(targetPidl.get(), targetParsingPath, targetDisplayName);
+#ifndef NDEBUG
+        if (resolved) {
+            wprintf(L"[ResolveShortcutTarget] GetIDList succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
+        }
+#endif
+    }
+
+    // 方法2: 直接获取路径
+    if (!resolved) {
+        WIN32_FIND_DATAW findData{};
+        wchar_t resolvedPath[MAX_PATH] = { 0 };
+        hr = shellLink->GetPath(resolvedPath, MAX_PATH, &findData, SLGP_RAWPATH);
+        if (SUCCEEDED(hr) && resolvedPath[0] != L'\0') {
+            targetParsingPath = resolvedPath;
+            targetDisplayName = PathFindFileNameW(resolvedPath);
+            resolved = true;
+#ifndef NDEBUG
+            wprintf(L"[ResolveShortcutTarget] GetPath succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
+#endif
+        }
+    }
+
+    // 方法3: 直接读取文件
+    if (!resolved) {
+        resolved = TryReadShortcutTargetFromFile(shortcutPath, targetParsingPath, targetDisplayName);
+#ifndef NDEBUG
+        if (resolved) {
+            wprintf(L"[ResolveShortcutTarget] TryReadShortcutTargetFromFile succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
+        }
+#endif
+    }
+
+#ifndef NDEBUG
+    if (!resolved) {
+        wprintf(L"[ResolveShortcutTarget] All methods failed for: %s\n", shortcutPath);
+    }
+#endif
+
+    if (shouldUninit) {
+        CoUninitialize();
+    }
+    return resolved;
+}
+}
 
 // 静态成员变量定义（必须在类外部进行）
 HWND CSystemApi::global_SysListView32 = nullptr;
@@ -139,14 +353,11 @@ IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
 
     LPITEMIDLIST pidl = nullptr;
     HRESULT hr;
-    // 直接解析路径为PIDL
     hr = SHParseDisplayName((PCWSTR)filePath, nullptr, &pidl, 0, nullptr);
     
-    // 处理文件路径逻辑...
     item.path = Tool::WstrToStr(filePath);
     item.pidl_p = pidl;
 
-    // 尝试获取 Shell 友好的显示名称（例如 “此电脑”、“回收站”）
     if (pidl) {
         PWSTR pszName = nullptr;
         if (SUCCEEDED(SHGetNameFromIDList(pidl, SIGDN_NORMALDISPLAY, &pszName))) {
@@ -155,13 +366,23 @@ IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
         }
     }
 
-    // 如果 Shell 名称获取失败，回退到从路径中提取
     if (item.name.empty()) {
         size_t lastSlash = item.path.find_last_of("\\/");
         item.name = (lastSlash != std::string::npos) ? item.path.substr(lastSlash + 1) : item.path;
     }
 
     item.specialFolder = getFolderTypeFromName(filePath);
+
+    std::wstring shortcutTargetPath;
+    std::wstring shortcutTargetDisplayName;
+    if (ResolveShortcutTarget(filePath, shortcutTargetPath, shortcutTargetDisplayName)) {
+        item.shortcutTargetPath = Tool::WstrToStr(shortcutTargetPath.c_str());
+        item.shortcutTargetDisplayName = Tool::WstrToStr(shortcutTargetDisplayName.c_str());
+        const wchar_t* targetSpecialSource = !shortcutTargetPath.empty()
+            ? shortcutTargetPath.c_str()
+            : (!shortcutTargetDisplayName.empty() ? shortcutTargetDisplayName.c_str() : nullptr);
+        item.shortcutTargetSpecialFolder = getFolderTypeFromName(targetSpecialSource);
+    }
 
     return item;
 }
@@ -333,7 +554,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         return iconItems;
     }
     // 创建枚举器以枚举桌面上的所有项
-    IEnumIDList* pEnumIDList;
+    wil::com_ptr_nothrow<IEnumIDList> enumIDList;
     /*SHCONTF_CHECKING_FOR_CHILDREN |
         SHCONTF_FOLDERS |
         SHCONTF_NONFOLDERS |
@@ -356,9 +577,9 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         SHCONTF_INCLUDEHIDDEN |
         SHCONTF_INCLUDESUPERHIDDEN |
         SHCONTF_ENABLE_ASYNC
-        , &pEnumIDList);
+        , &enumIDList);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !enumIDList) {
         DWORD error = GetLastError();
         _tprintf(_T("Failed to get enumeration of desktop items: %d\n"), error);
         return iconItems;
@@ -367,12 +588,14 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
     // 枚举每个文件项
     LPITEMIDLIST pidlItem = nullptr;  // 临时存储PIDL
 
-    while (pEnumIDList->Next(1, &pidlItem, NULL) == S_OK) {
+    while (enumIDList->Next(1, &pidlItem, NULL) == S_OK) {
         // 通过智能指针使用 pidlItem
         STRRET strret;
         IconItem i;
         wchar_t szPath[MAX_PATH];
         wchar_t szName[MAX_PATH];
+        wchar_t szParsingPath[MAX_PATH];
+        
         // 获取名称（SHGDN_NORMAL）
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL, &strret);
         if (SUCCEEDED(hr)) {
@@ -384,18 +607,36 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             _tprintf(_T("Failed to get name: %d\n"), error);
         }
 
-        // 获取路径（SHGDN_FORPARSING）
+        // 获取解析路径（SHGDN_FORPARSING）
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &strret);
         if (SUCCEEDED(hr)) {
-            StrRetToBufW(&strret, pidlItem, szPath, MAX_PATH);
+            StrRetToBufW(&strret, pidlItem, szParsingPath, MAX_PATH);
             if (Tool::WstrToStr(szName) == Tool::getWindowsUsername()) {
                 i.path = "::{59031a47-3f72-44a7-89c5-5595fe6b30ee}";
             }else {
-                i.path = Tool::WstrToStr(szPath);
+                i.path = Tool::WstrToStr(szParsingPath);
             }
         }
         else {
             DWORD error = GetLastError();
+        }
+
+        // 获取实际文件系统路径（用于判断是否为 .lnk 文件）
+        hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL | SHGDN_INFOLDER, &strret);
+        if (SUCCEEDED(hr)) {
+            StrRetToBufW(&strret, pidlItem, szPath, MAX_PATH);
+        }
+
+        std::wstring shortcutTargetPath;
+        std::wstring shortcutTargetDisplayName;
+        // 使用 szParsingPath（.lnk 文件的绝对路径）来解析快捷方式目标
+        if (ResolveShortcutTarget(szParsingPath, shortcutTargetPath, shortcutTargetDisplayName)) {
+            i.shortcutTargetPath = Tool::WstrToStr(shortcutTargetPath.c_str());
+            i.shortcutTargetDisplayName = Tool::WstrToStr(shortcutTargetDisplayName.c_str());
+            const wchar_t* targetSpecialSource = !shortcutTargetPath.empty()
+                ? shortcutTargetPath.c_str()
+                : (!shortcutTargetDisplayName.empty() ? shortcutTargetDisplayName.c_str() : nullptr);
+            i.shortcutTargetSpecialFolder = getFolderTypeFromName(targetSpecialSource);
         }
 
 		// 创建绝对 PIDL 以支持高质量图标提取和其他 Shell 操作
@@ -406,7 +647,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         }
         ILFree(pidlItem); // 释放 EnumIDList 返回的相对 PIDL
 
-		i.specialFolder = getFolderTypeFromName(szPath);
+		i.specialFolder = getFolderTypeFromName(szParsingPath);
         
         // 尝试从可视抓取数组中匹配坐标 (同样进行归一化处理)
         std::string searchName = i.name;
@@ -425,7 +666,6 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         
     }
     // 释放枚举器
-    pEnumIDList->Release();
     return iconItems;
 }
 
@@ -692,7 +932,7 @@ open 打开 lpFile 文件，lpFile 可以是文件或文件夹
 print 打印 lpFile，如果 lpFile 不是文档，则函数失败
 properties 显示属性
 runas 请求以管理员权限运行，比如以管理员权限运行某个exe
-NULL 执行默认”open”动作
+NULL 执行默认"open"动作
 **/
 void CSystemApi::File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_Operations operation)
 {
@@ -736,15 +976,14 @@ HBITMAP CSystemApi::GetShellThumbnail(const wchar_t* path, int width, int height
 {
     if (!path || wcslen(path) == 0) return NULL;
 
-    IShellItem* pShellItem = nullptr;
+    wil::com_ptr_nothrow<IShellItem> shellItem;
     // Create a shell item for the given path (works for files and folders)
-    HRESULT hr = SHCreateItemFromParsingName(path, nullptr, IID_PPV_ARGS(&pShellItem));
+    HRESULT hr = SHCreateItemFromParsingName(path, nullptr, IID_PPV_ARGS(&shellItem));
     if (FAILED(hr)) return NULL;
 
-    IShellItemImageFactory* pImageFactory = nullptr;
-    hr = pShellItem->QueryInterface(IID_PPV_ARGS(&pImageFactory));
+    wil::com_ptr_nothrow<IShellItemImageFactory> imageFactory;
+    hr = shellItem->QueryInterface(IID_PPV_ARGS(&imageFactory));
     if (FAILED(hr)) {
-        pShellItem->Release();
         return NULL;
     }
 
@@ -753,10 +992,7 @@ HBITMAP CSystemApi::GetShellThumbnail(const wchar_t* path, int width, int height
     // GetImage parameters:
     // SIIGBF_RESIZETOFIT: Aspect ratio is maintained while fitting into the box.
     // This flag is crucial for folders as it triggers the composite content preview render.
-    hr = pImageFactory->GetImage(size, SIIGBF_RESIZETOFIT, &hBitmap);
-
-    pImageFactory->Release();
-    pShellItem->Release();
+    hr = imageFactory->GetImage(size, SIIGBF_RESIZETOFIT, &hBitmap);
 
     if (SUCCEEDED(hr) && hBitmap) {
         return hBitmap;

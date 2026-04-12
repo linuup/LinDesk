@@ -1,0 +1,14 @@
+# Ignore build artifacts
+.vs/
+
+.vscode/
+
+Build/
+Build/**/*
+build/
+build/**/*
+build32/
+build32/**/*
+build64/
+build64/**/*
+_standalone_test

@@ -178,17 +178,17 @@ private:
     //ShellContextMenuHandler* const m_handler;
     wil::com_ptr_nothrow<IContextMenu3> m_contextMenu;
 
-    IContextMenu* m_pContextMenu;
+    
 
 
     // 获取桌面IShellFolder文件夹接口...
-    IShellFolder* m_pDesktopFolder;
+    wil::com_ptr_nothrow<IShellFolder> m_pDesktopFolder;
     //IShellFolder文件夹接口...
-    IShellFolder* m_pShellFolder;
-    LPITEMIDLIST m_pPIDL = nullptr;
+    wil::com_ptr_nothrow<IShellFolder> m_pShellFolder;
+    unique_pidl_absolute m_pPIDL;
 
     // 解析路径获取IShellFolder
-    IShellFolder* GetIshellFolderByPath(const wchar_t* path);
+    wil::com_ptr_nothrow<IShellFolder> GetIshellFolderByPath(const wchar_t* path);
 
     /// <summary>
     /// Get Desktop IshellFolder
@@ -203,7 +203,7 @@ private:
     /// <param name="pidl"></param>
     /// <param name="pShellFolder"></param>
     /// <returns></returns>
-    IContextMenu3* IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder);
+    wil::com_ptr_nothrow<IContextMenu3> IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder);
     
 };
 DEFINE_ENUM_FLAG_OPERATORS(ShellContextMenu::Flags);

@@ -11,14 +11,15 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
 {
     if (pidl && operationType!=OperationType::BackGround) {
         GetDesktop_IshellFolder();
-        HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
+        wil::com_ptr_nothrow<IContextMenu> contextMenu;
+        HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, contextMenu.put_void());
         if (FAILED(hr))
         {
             OutputDebugString(L"Failed to get the file's IContextMenu interface.");
             return;
         }
         //Get object Menu interface
-        m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pShellFolder);
+        m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pShellFolder.get());
     }
 }
 
@@ -26,17 +27,18 @@ void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
     operationType = OperationType::link;
     //获取ShellFolder接口
     m_pShellFolder = GetIshellFolderByPath(path);
-    if (m_pShellFolder == nullptr) {
+    if (!m_pShellFolder) {
         return;
     }
-    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
+    wil::com_ptr_nothrow<IContextMenu> contextMenu;
+    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, contextMenu.put_void());
     if (FAILED(hr))
     {
         OutputDebugString(L"Failed to get the file's IContextMenu interface.");
         return;
     }
     //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL,m_pShellFolder);
+    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL.get(), m_pShellFolder.get());
     
 }
 
@@ -45,17 +47,18 @@ void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
     operationType = OperationType::file;
     //获取ShellFolder接口
     m_pShellFolder = GetIshellFolderByPath(path);
-    if (m_pShellFolder == nullptr) {
+    if (!m_pShellFolder) {
         return;
     }
-    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
+    wil::com_ptr_nothrow<IContextMenu> contextMenu;
+    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, contextMenu.put_void());
     if (FAILED(hr))
     {
         OutputDebugString(L"Failed to get the file's IContextMenu interface.");
         return;
     }
     //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL, m_pShellFolder);
+    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL.get(), m_pShellFolder.get());
     
 }
 
@@ -64,17 +67,18 @@ void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
     operationType = OperationType::folder;
     //获取ShellFolder接口
     m_pShellFolder = GetIshellFolderByPath(folderPath);
-    if (m_pShellFolder == nullptr) {
+    if (!m_pShellFolder) {
         return;
     }
-    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, (LPVOID*)&m_pContextMenu);
+    wil::com_ptr_nothrow<IContextMenu> contextMenu;
+    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, contextMenu.put_void());
     if (FAILED(hr))
     {
         OutputDebugString(L"Failed to get the file's IContextMenu interface.");
         return;
     }
     //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL, m_pShellFolder);
+    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL.get(), m_pShellFolder.get());
 }
 
 void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
@@ -122,10 +126,13 @@ void ShellContextMenu::DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls) {
     operationType = OperationType::MultObject;
     unique_pidl_absolute pidlsf;
     // 获取上下文菜单
-    IContextMenu* contextMenu = nullptr;
     GetDesktop_IshellFolder();
-    m_pDesktopFolder->GetUIObjectOf(nullptr, pidls.size(),
-        (LPCITEMIDLIST*)pidls.data(), IID_IContextMenu, nullptr, (void**)&m_contextMenu);
+    wil::com_ptr_nothrow<IContextMenu> contextMenu;
+    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(nullptr, pidls.size(),
+        (LPCITEMIDLIST*)pidls.data(), IID_IContextMenu, nullptr, contextMenu.put_void());
+    if (SUCCEEDED(hr) && contextMenu) {
+        contextMenu->QueryInterface(IID_PPV_ARGS(&m_contextMenu));
+    }
 
 }
 
@@ -400,7 +407,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         
 }
 
-IShellFolder* ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
+wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
 {
     HRESULT hr = NULL;
     //获得父节点的 IShellFolder 接口
@@ -416,26 +423,25 @@ IShellFolder* ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
     case FilePath:// 处理文件路径
         OutputDebugString(L"Process File Path");
         // 解析文件路径以得到文件相对于桌面的 ITEMIDLIST
-        hr = m_pDesktopFolder->ParseDisplayName(NULL, NULL, (LPWSTR)path, NULL, &m_pPIDL, NULL);
-        if (FAILED(hr) || m_pPIDL == nullptr)
+        hr = m_pDesktopFolder->ParseDisplayName(NULL, NULL, (LPWSTR)path, NULL, wil::out_param(m_pPIDL), NULL);
+        if (FAILED(hr) || !m_pPIDL)
         {
             OutputDebugString(L"\nFailed to parse display name for the file:");
             return nullptr;
         }
         return m_pDesktopFolder;
     case DirectoryPath://文件夹路径
-        IShellFolder* iShellFolder = nullptr;
-        hr = SHParseDisplayName(path, nullptr, &m_pPIDL, 0, nullptr);
+        wil::com_ptr_nothrow<IShellFolder> iShellFolder;
+        hr = SHParseDisplayName(path, nullptr, wil::out_param(m_pPIDL), 0, nullptr);
         if (FAILED(hr)) {
             // 处理错误，例如路径无效
             OutputDebugString(L"----------Get PIDL error\n");
             return iShellFolder;
         }
 
-        hr = SHBindToObject(nullptr, m_pPIDL, nullptr, IID_IShellFolder, (void**)&iShellFolder);
+        hr = SHBindToObject(nullptr, m_pPIDL.get(), nullptr, IID_PPV_ARGS(&iShellFolder));
         if (FAILED(hr)) {
             // 释放pidl资源
-            ILFree(m_pPIDL);
             // 处理错误，例如文件夹接口无效
             OutputDebugString(L"----------Get IShellFolder error\n");
             WCHAR szErrMsg[512];
@@ -450,14 +456,19 @@ IShellFolder* ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
 }
 
 
-IContextMenu3* ShellContextMenu::IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder)
+wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder)
 {
     LPCITEMIDLIST relativePIDL = nullptr;
-    IContextMenu3* pContextMenu = nullptr;
+    wil::com_ptr_nothrow<IContextMenu3> pContextMenu;
     if (pidl) {
-        HRESULT hr = SHBindToParent(pidl, IID_IShellFolder, (void**)&pShellFolder, &relativePIDL);
+        wil::com_ptr_nothrow<IShellFolder> parentShellFolder;
+        HRESULT hr = SHBindToParent(pidl, IID_PPV_ARGS(&parentShellFolder), &relativePIDL);
         if (SUCCEEDED(hr)) {
-            pShellFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, reinterpret_cast<void**>(&pContextMenu));
+            wil::com_ptr_nothrow<IContextMenu> baseContextMenu;
+            hr = parentShellFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, baseContextMenu.put_void());
+            if (SUCCEEDED(hr) && baseContextMenu) {
+                baseContextMenu->QueryInterface(IID_PPV_ARGS(&pContextMenu));
+            }
         }
     }
     return pContextMenu;

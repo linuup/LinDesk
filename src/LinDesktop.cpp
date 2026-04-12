@@ -136,67 +136,46 @@ void LinDesktop::unembedFromDesktop()
 
 void LinDesktop::mousePressEvent(QMouseEvent* event)
 {
-	m_startPos = event->pos();
-	update();
+    if (event->button() == Qt::LeftButton && listView) {
+        listView->beginBackgroundSelection(event->pos());
+        m_lastSelectRect = QRect();
+    }
+    QWidget::mousePressEvent(event);
 }
 
 void LinDesktop::mouseMoveEvent(QMouseEvent* event) {
-	//qDebug() << "LinDesktop MouseMoveEvent Pos:" << event->pos();
+    if (!listView || !listView->isBackgroundSelectionActive()) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
 
-	//qDebug() << "MouseMoveEvent:CurrentPoint:" << currentPoint;
-	// 
-	//update drawingMaskRect
-	int start_x = m_startPos.x();
-	int start_y = m_startPos.y();
-	QRect rect(start_x, start_y, event->x() - start_x, event->y() - start_y);
+    QRect rect;
+    const bool shouldShowSelection = listView->updateBackgroundSelection(event->pos(), &rect);
 
-	int rectWidth = abs(rect.width());
-	int rectHeight = abs(rect.height());
-	if (rectWidth == 0 && rectHeight == 0) {
-		return;
-	}
+    selectArea->syncToParent();
+    selectArea->setSelectionRect(rect);
 
-	// 只有当移动距离超过阈值（如3像素）时才显示选择框，防止单击时闪烁
-	if (!selectArea->isVisible() && (rectWidth > 3 || rectHeight > 3)) {
-		selectArea->show();
-	}
-	
-	if (!selectArea->isVisible()) {
-		return;
-	}
+    if (shouldShowSelection) {
+        if (!selectArea->isVisible()) {
+            selectArea->show();
+        }
+        selectArea->raise();
+    } else if (selectArea->isVisible()) {
+        selectArea->hide();
+    }
 
-	//矩形在左上角
-	if (rect.width() < 0 && rect.height() < 0) {
-		rect.setRect(start_x + rect.width(), start_y + rect.height(), rectWidth, rectHeight);
-	}
-	//矩形在右上角
-	else if (rect.width() > 0 && rect.height() < 0) {
-		rect.setRect(start_x, start_y - rectHeight, rectWidth, rectHeight);
-	}//矩形在左下角
-	else if (rect.width() < 0 && rect.height() > 0) {
-		rect.setRect(start_x - rectWidth, start_y, rectWidth, rectHeight);
-
-	}
-	
-	selectArea->rect = rect;
-	//qDebug() << rect;
-	listView->refreshCheckedItem(rect);
-	// 只更新新旧选区重叠的区域
-	rect = m_lastSelectRect.united(rect);
-
-	update(rect); // 仅更新必要区域
-	m_lastSelectRect = rect;
-
+    m_lastSelectRect = rect;
+    QWidget::mouseMoveEvent(event);
 }
 void LinDesktop::mouseReleaseEvent(QMouseEvent* event)
 {
-
-	//qDebug() << "ListView mouseReleaseEvent  Pos:" << event->pos();
-	listView->DisableSelecting();
-	m_startPos = QPoint(0, 0);
-	selectArea->hide();
-	//selecting = false;
-	selectArea->rect = QRect();
+    if (listView) {
+        listView->endBackgroundSelection();
+    }
+    selectArea->hide();
+    selectArea->setSelectionRect(QRect());
+    m_lastSelectRect = QRect();
+    QWidget::mouseReleaseEvent(event);
 }
 void LinDesktop::paintEvent(QPaintEvent* event)
 {
@@ -221,6 +200,9 @@ void LinDesktop::paintEvent(QPaintEvent* event)
 void LinDesktop::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
+    if (selectArea) {
+        selectArea->syncToParent();
+    }
     update();
 }
 

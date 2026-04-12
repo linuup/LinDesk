@@ -1,41 +1,45 @@
-﻿#include "SelectArea.h"
-#include "QPushButton"
-SelectArea::SelectArea(QWidget *parent)
-	: QWidget(parent)
+#include "SelectArea.h"
+
+SelectArea::SelectArea(QWidget* parent)
+    : QWidget(parent)
 {
-    QPalette pal=this->palette();
-    //pal.setBrush(QPalette::Background, QBrush(QColor(100, 160, 240, 70)));
-    setPalette(pal);
-    //setAutoFillBackground(true);
-	setGeometry(this->parentWidget()->geometry());
-    //setAttribute(Qt::WA_AlwaysStackOnTop);
-    //setAttribute(Qt::WA_NoSystemBackground, true); // 禁止背景重绘
+    setAttribute(Qt::WA_TransparentForMouseEvents);
+    setAttribute(Qt::WA_NoSystemBackground, true);
+    setAttribute(Qt::WA_TranslucentBackground);
+    syncToParent();
     hide();
-    //pixmap = QPixmap(QSize(600,1080));
-    //image = QImage(1, 1, QImage::Format_ARGB32);
-    //image.fill(Qt::transparent);  // 透明背景
-    //pixmap.fill(Qt::transparent);  // 填充透明背景
 }
-void SelectArea::mouseMoveEvent(QMouseEvent* event)
-{
-}
-void SelectArea::mousePressEvent(QMouseEvent* event)
-{
 
-}
-void SelectArea::mouseReleaseEvent(QMouseEvent* event)
+void SelectArea::setSelectionRect(const QRect& selectionRect)
 {
+    if (m_rect == selectionRect) {
+        return;
+    }
 
+    const QRect dirty = m_rect.united(selectionRect);
+    m_rect = selectionRect;
+    update(dirty.adjusted(-1, -1, 1, 1));
 }
+
+void SelectArea::syncToParent()
+{
+    if (parentWidget()) {
+        setGeometry(parentWidget()->rect());
+    }
+}
+
 void SelectArea::paintEvent(QPaintEvent* event)
 {
-     QPainter painter(this);
-    painter.fillRect(rect, QColor(100, 160, 240, 70));
+    Q_UNUSED(event);
+    if (!m_rect.isValid() || m_rect.isEmpty()) {
+        return;
+    }
 
-     
-} 
-void SelectArea::showEvent(QShowEvent* event)
-{
+    QPainter painter(this);
+    painter.setPen(QPen(QColor(80, 140, 230, 180), 1));
+    painter.fillRect(m_rect, QColor(100, 160, 240, 70));
+    painter.drawRect(m_rect.adjusted(0, 0, -1, -1));
 }
+
 SelectArea::~SelectArea()
 {}

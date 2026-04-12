@@ -41,26 +41,20 @@ unique_pidl_absolute Tool::GetRootPidl()
 
 HRESULT Tool::BindToIdl(PIDLIST_ABSOLUTE pidl, REFIID riid, void** ppv)
 {
-    IShellFolder* pDesktop = nullptr;
-
-    HRESULT hr = SHGetDesktopFolder(&pDesktop);
-
-    if (SUCCEEDED(hr))
+    wil::com_ptr_nothrow<IShellFolder> desktop;
+    HRESULT hr = SHGetDesktopFolder(&desktop);
+    if (FAILED(hr))
     {
-        /* See http://blogs.msdn.com/b/oldnewthing/archive/2011/08/30/10202076.aspx. */
-        if (pidl->mkid.cb)
-        {
-            hr = pDesktop->BindToObject(pidl, nullptr, riid, ppv);
-        }
-        else
-        {
-            hr = pDesktop->QueryInterface(riid, ppv);
-        }
-
-        pDesktop->Release();
+        return hr;
     }
 
-    return hr;
+    /* See http://blogs.msdn.com/b/oldnewthing/archive/2011/08/30/10202076.aspx. */
+    if (pidl->mkid.cb)
+    {
+        return desktop->BindToObject(pidl, nullptr, riid, ppv);
+    }
+
+    return desktop->QueryInterface(riid, ppv);
 }
 
 

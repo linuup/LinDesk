@@ -12,24 +12,13 @@ class SelectArea : public QWidget
 public:
 	SelectArea(QWidget *parent = nullptr);
 	~SelectArea();
-public:
-    //鼠标点击坐标
-    QPoint m_startPos;
-    QRect rect;  //拖拽选择矩形
-    //QPixmap* selectArea; //拖拽选择绘制区域
-	QPixmap pixmap; //拖拽选择绘制区域
-    QImage image;
-private:
+    void setSelectionRect(const QRect& selectionRect);
+    QRect selectionRect() const { return m_rect; }
+    void syncToParent();
 
-    
-
-    //鼠标松开
-    void mouseReleaseEvent(QMouseEvent* event) override;
-    //鼠标移动
-    void mouseMoveEvent(QMouseEvent* event) override;
-    ////鼠标事件
-    void mousePressEvent(QMouseEvent* event) override;
-    //绘制矩形
+protected:
     void paintEvent(QPaintEvent* event) override;
-    void showEvent(QShowEvent* event) override;
+
+private:
+    QRect m_rect;
 };

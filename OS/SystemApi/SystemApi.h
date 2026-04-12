@@ -7,6 +7,7 @@
 #pragma once
 #include <windows.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <shellapi.h>
 #include "tchar.h"
 #include <string>
@@ -48,17 +49,23 @@ struct IconItem
 {
     std::string name;
     std::string path;
+    std::string shortcutTargetPath;
+    std::string shortcutTargetDisplayName;
     POINT position = { 0, 0 };
-    LPITEMIDLIST pidl_p = nullptr;  // 在定义处直接初始化为nullptr
+    LPITEMIDLIST pidl_p = nullptr;
     SpecialFolders specialFolder = SpecialFolders::Empty;
+    SpecialFolders shortcutTargetSpecialFolder = SpecialFolders::Empty;
 
-    // 可以添加构造函数确保正确初始化
-    IconItem() : pidl_p(nullptr), specialFolder(SpecialFolders::Empty) {
+    IconItem()
+        : pidl_p(nullptr)
+        , specialFolder(SpecialFolders::Empty)
+        , shortcutTargetSpecialFolder(SpecialFolders::Empty)
+    {
         position.x = 0;
         position.y = 0;
     }
 };
-//  右键基本操作
+//  ?????????
 enum File_RightMenu_Operations {
     Z_OPEN,
     Z_EDIT,
