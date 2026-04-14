@@ -17,40 +17,58 @@ public:
             "QWidget#fluentCard { "
             "   background: #ffffff; "
             "   border: 1px solid rgba(0, 0, 0, 0.08); "
-            "   border-bottom: 1px solid rgba(0, 0, 0, 0.15); " 
-            "   border-radius: 8px; "
+            "   border-bottom: 1px solid rgba(0, 0, 0, 0.12); "
             "} "
             "QWidget#fluentCard:hover { "
             "   background: rgba(0, 0, 0, 0.02); "
             "} "
         );
         
-        setFixedHeight(72); 
+        setFixedHeight(72);
 
         QHBoxLayout* hLayout = new QHBoxLayout(this);
         hLayout->setContentsMargins(16, 0, 16, 0);
         hLayout->setSpacing(0);
-        
+
         QLabel* iconL = new QLabel(iconChar, this);
-        iconL->setFixedWidth(32);
+        iconL->setFixedWidth(40);
         iconL->setAlignment(Qt::AlignCenter);
-        iconL->setStyleSheet("font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; font-size: 18px; color: #005fb8; border: none; background: transparent;");
-        
+        iconL->setStyleSheet(
+            "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; "
+            "font-size: 24px; "
+            "color: #0078d4; "
+            "border: none; "
+            "background: transparent;"
+        );
+
         QVBoxLayout* vText = new QVBoxLayout();
-        vText->setSpacing(0); 
-        vText->setContentsMargins(16, 0, 0, 0);
+        vText->setSpacing(0);
+        vText->setContentsMargins(8, 0, 0, 0);
         vText->setAlignment(Qt::AlignVCenter);
-        
+
         QLabel* mainText = new QLabel(title, this);
-        mainText->setStyleSheet("font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-weight: 500; font-size: 14px; color: #1c1c1c; border: none; background: transparent;");
-        
+        mainText->setStyleSheet(
+            "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+            "font-weight: 500; "
+            "font-size: 14px; "
+            "color: #1f2937; "
+            "border: none; "
+            "background: transparent;"
+        );
+
         QLabel* subText = new QLabel(sub, this);
-        subText->setWordWrap(true); 
-        subText->setStyleSheet("font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 12px; color: #616161; border: none; background: transparent;");
-        
+        subText->setWordWrap(true);
+        subText->setStyleSheet(
+            "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+            "font-size: 12px; "
+            "color: #616161; "
+            "border: none; "
+            "background: transparent;"
+        );
+
         vText->addWidget(mainText);
         vText->addWidget(subText);
-        
+
         hLayout->addWidget(iconL);
         hLayout->addLayout(vText);
         hLayout->addStretch();

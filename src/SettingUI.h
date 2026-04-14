@@ -16,7 +16,6 @@
 #include <QListWidget>
 #include "Fluent/FluentBaseWidget.h"
 #include <QCloseEvent>
-#include <QTextEdit>
 
 class LinBox;
 class QStackedWidget;
@@ -42,10 +41,11 @@ private:
     QWidget* createComponentsPage();
 
     QWidget* createPluginsPage();
-    QWidget* createConsolePage();
     QWidget* createAboutPage();
+    QWidget* wrapScrollablePage(QWidget* content);
 
     void updateControlsFromTarget();
+    void updatePreviewStyle();
 
     LinBox* m_targetBox;
     QVector<LinBox*> m_allBoxes;
@@ -58,9 +58,12 @@ private:
     QSlider* m_opacitySlider = nullptr;
     QLabel* m_opacityLabelValue = nullptr;
     FluentToggleSwitch* m_glassToggle = nullptr;
+    QLabel* m_previewBackground = nullptr;
     
-    // Console Page Control
-    QTextEdit* m_logView = nullptr;
+    // Preview sync state (directly from controls)
+    QColor m_previewColor;
+    float m_previewOpacity = 0.5f;
+    bool m_previewGlass = false;
 };
 
 #endif // SETTINGUI_H

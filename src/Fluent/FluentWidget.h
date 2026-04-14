@@ -26,7 +26,7 @@ public:
         m_container->setStyleSheet(
             "QWidget#fluentContainer { "
             "   background-color: rgba(255, 255, 255, 0.95); "
-            "   border: 1px solid rgba(0, 0, 0, 0.1); "
+            "   border: 1px solid rgba(0, 0, 0, 0.08); "
             "   border-radius: 12px; "
             "} "
         );
@@ -39,10 +39,10 @@ public:
 
         // --- Shadow Effect ---
         auto* shadow = new QGraphicsDropShadowEffect(this);
-        shadow->setBlurRadius(25);
+        shadow->setBlurRadius(20);
         shadow->setXOffset(0);
-        shadow->setYOffset(6);
-        shadow->setColor(QColor(0, 0, 0, 80));
+        shadow->setYOffset(4);
+        shadow->setColor(QColor(0, 0, 0, 50));
         m_container->setGraphicsEffect(shadow);
     }
 

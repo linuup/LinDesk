@@ -32,7 +32,7 @@ public:
         icon->setStyleSheet("font-family: 'Segoe MDL2 Assets'; font-size: 20px; color: #0078d4;");
         
         QLabel* title = new QLabel(titleText, container());
-        title->setStyleSheet("font-size: 18px; font-weight: 700; color: #1a1a1a;");
+        title->setStyleSheet("font-size: 18px; font-weight: 600; color: #1f2937;");
         
         header->addWidget(icon);
         header->addWidget(title);
@@ -45,12 +45,12 @@ public:
         m_textEdit->setStyleSheet(
             "QTextEdit { "
             "   background: rgba(0, 0, 0, 0.03); "
-            "   border: 1px solid rgba(0, 0, 0, 0.05); "
+            "   border: 1px solid rgba(0, 0, 0, 0.06); "
             "   border-radius: 8px; "
             "   font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
             "   font-size: 14px; "
             "   line-height: 1.6; "
-            "   color: #333; "
+            "   color: #1f2937; "
             "   padding: 10px; "
             "} "
             "QScrollBar:vertical { border: none; background: transparent; width: 4px; } "
@@ -61,7 +61,7 @@ public:
         // 4. Divider
         QFrame* line = new QFrame(container());
         line->setFrameShape(QFrame::HLine);
-        line->setStyleSheet("background-color: rgba(0, 0, 0, 0.05); height: 1px; border: none;");
+        line->setStyleSheet("background-color: rgba(0, 0, 0, 0.06); height: 1px; border: none;");
         layout->addWidget(line);
 
         // 5. Actions Footer
@@ -90,13 +90,13 @@ public:
         btn->setCursor(Qt::PointingHandCursor);
         if (primary) {
             btn->setStyleSheet(
-                "QPushButton { background-color: #0078d4; color: white; border-radius: 6px; padding: 8px 16px; font-weight: 600; } "
-                "QPushButton:hover { background-color: #106ebe; } "
+                "QPushButton { background-color: #0078d4; color: white; border-radius: 6px; padding: 8px 16px; font-weight: 500; } "
+                "QPushButton:hover { background-color: #006cbd; } "
             );
         } else {
             btn->setStyleSheet(
-                "QPushButton { background-color: #f3f3f3; color: #333; border: 1px solid #d0d0d0; border-radius: 6px; padding: 8px 16px; } "
-                "QPushButton:hover { background-color: #ebebeb; } "
+                "QPushButton { background-color: #ffffff; color: #1f2937; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 16px; font-weight: 500; } "
+                "QPushButton:hover { background-color: #f9fafb; border-color: #d1d5db; } "
             );
         }
         connect(btn, &QPushButton::clicked, this, callback);

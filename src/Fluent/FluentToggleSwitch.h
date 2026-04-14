@@ -45,7 +45,7 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
 
         // Core Fluent 2 Colors
-        QColor accentColor(0, 95, 184); // Win11 Brand Blue
+        QColor accentColor(0, 120, 212); // Fluent Blue #0078d4
         QColor offColor(118, 118, 118);  // Neutral Dark Gray
         
         // Background Pill (Interpolated during animation)

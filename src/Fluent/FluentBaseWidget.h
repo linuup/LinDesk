@@ -38,8 +38,7 @@ public:
         m_container->setStyleSheet(
             "QWidget#fluentBaseContainer { "
             "   background-color: rgba(255, 255, 255, 1.0); " // Standard card opaque
-            "   border: 1px solid rgba(0, 0, 0, 0.1); "
-            "   border-radius: 12px; "
+            "   border: 1px solid rgba(0, 0, 0, 0.08); "
             "} "
         );
         m_rootLayout->addWidget(m_container);
@@ -65,11 +64,10 @@ public:
             btn->setStyleSheet(
                 "QPushButton { "
                 "   font-family: 'Segoe MDL2 Assets'; font-size: 10px; "
-                "   background: transparent; border: none; color: #333; "
-                "   border-top-right-radius: 0px; border-bottom-right-radius: 0px; "
+                "   background: transparent; border: none; color: #1f2937; "
                 "} "
-                "QPushButton:hover { background: rgba(0,0,0,0.05); } "
-                "QPushButton#closeBtn:hover { background: #f44336; color: white; border-top-right-radius: 11px; } "
+                "QPushButton:hover { background: rgba(0,0,0,0.06); } "
+                "QPushButton#closeBtn:hover { background: #dc2626; color: white; } "
             );
             return btn;
         };
@@ -102,10 +100,10 @@ public:
         m_mainVLayout->addLayout(m_centralLayout);
 
         auto* shadow = new QGraphicsDropShadowEffect(this);
-        shadow->setBlurRadius(25);
+        shadow->setBlurRadius(20);
         shadow->setXOffset(0);
-        shadow->setYOffset(6);
-        shadow->setColor(QColor(0, 0, 0, 80));
+        shadow->setYOffset(4);
+        shadow->setColor(QColor(0, 0, 0, 50));
         m_container->setGraphicsEffect(shadow);
 
         setWindowBtnMode(None); // Default
@@ -218,8 +216,7 @@ protected:
             QString("QWidget#fluentBaseContainer { "
             "   background-color: rgba(255, 255, 255, 1.0); "
             "   border: %1; "
-            "   border-radius: %2px; "
-            "} ").arg(maximized ? "none" : "1px solid rgba(0, 0, 0, 0.1)").arg(maximized ? 0 : 12)
+            "} ").arg(maximized ? "none" : "1px solid rgba(0, 0, 0, 0.08)")
         );
 
         // Force a full layout and repaint cycle to clear any ghosts

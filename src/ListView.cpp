@@ -5,24 +5,387 @@
 #include <QFile>
 #include <QSet>
 #include <QCoreApplication>
+#include <QSettings>
 #include "ListView.h"
+#include "DesktopQuadTree.h"
 #include "SettingUI.h"
 #include <QPushButton>
 #include <QtMath>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QGraphicsOpacityEffect>
+#include <QGuiApplication>
+#include <QClipboard>
 #include "SystemApi/SystemApi.h"
 #include <QDrag>
 #include <QMimeData>
 #include <QUrl>
 #include <QKeyEvent>
 #include <QRegularExpression>
+#include <QFileInfo>
+#include <QDir>
+#include <shobjidl.h>
+#include "../OS/SystemApi/resources.h"
 #include "Fluent/FluentDialog.h"
 #include "LinBox.h"
 #include "Plugins/PluginManager.h"
 #include "HotkeyManager.h"
 #include "BoxManager.h"
+
+namespace {
+constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
+
+QString normalizeDesktopPath(const QString& path)
+{
+    QString normalized = QDir::toNativeSeparators(path);
+    while (normalized.endsWith('\\') || normalized.endsWith('/')) {
+        normalized.chop(1);
+    }
+    return normalized;
+}
+
+QStringList extractLocalPathsFromWindowsMimePayload(const QByteArray& payload, bool utf16)
+{
+    QStringList paths;
+    if (payload.isEmpty()) {
+        return paths;
+    }
+
+    if (utf16) {
+        if (payload.size() < 2) {
+            return paths;
+        }
+
+        const ushort* raw = reinterpret_cast<const ushort*>(payload.constData());
+        const int charCount = payload.size() / 2;
+        QString current;
+        for (int i = 0; i < charCount; ++i) {
+            const ushort ch = raw[i];
+            if (ch == 0) {
+                if (!current.isEmpty()) {
+                    paths.append(QDir::toNativeSeparators(current));
+                    current.clear();
+                }
+            } else {
+                current.append(QChar(ch));
+            }
+        }
+        if (!current.isEmpty()) {
+            paths.append(QDir::toNativeSeparators(current));
+        }
+        return paths;
+    }
+
+    const QList<QByteArray> parts = payload.split('\0');
+    for (const QByteArray& part : parts) {
+        if (!part.isEmpty()) {
+            paths.append(QDir::toNativeSeparators(QString::fromLocal8Bit(part)));
+        }
+    }
+    return paths;
+}
+
+QStringList draggedLocalFilePaths(const QMimeData* mimeData)
+{
+    QStringList paths;
+    if (!mimeData) {
+        return paths;
+    }
+
+    for (const QUrl& url : mimeData->urls()) {
+        if (url.isLocalFile()) {
+            const QString localPath = QDir::toNativeSeparators(url.toLocalFile());
+            if (!localPath.isEmpty()) {
+                paths.append(localPath);
+            }
+        }
+    }
+
+    if (paths.isEmpty()) {
+        const QByteArray uriListData = mimeData->data("text/uri-list");
+        const QList<QByteArray> lines = uriListData.split('\n');
+        for (QByteArray line : lines) {
+            line = line.trimmed();
+            if (line.isEmpty() || line.startsWith('#')) {
+                continue;
+            }
+            const QUrl url = QUrl(QString::fromUtf8(line));
+            if (url.isLocalFile()) {
+                const QString localPath = QDir::toNativeSeparators(url.toLocalFile());
+                if (!localPath.isEmpty()) {
+                    paths.append(localPath);
+                }
+            }
+        }
+    }
+
+    if (paths.isEmpty()) {
+        const QStringList formats = mimeData->formats();
+        for (const QString& format : formats) {
+            if (format.contains("FileNameW", Qt::CaseInsensitive)) {
+                paths.append(extractLocalPathsFromWindowsMimePayload(mimeData->data(format), true));
+            } else if (format.contains("FileName", Qt::CaseInsensitive)) {
+                paths.append(extractLocalPathsFromWindowsMimePayload(mimeData->data(format), false));
+            }
+        }
+    }
+
+    paths.removeAll(QString());
+    paths.removeDuplicates();
+    return paths;
+}
+
+QStringList clipboardLocalFilePaths()
+{
+    QStringList paths;
+
+    if (const QClipboard* clipboard = QGuiApplication::clipboard()) {
+        if (const QMimeData* mimeData = clipboard->mimeData()) {
+            for (const QUrl& url : mimeData->urls()) {
+                if (url.isLocalFile()) {
+                    const QString localPath = QDir::toNativeSeparators(url.toLocalFile());
+                    if (!localPath.isEmpty()) {
+                        paths.append(localPath);
+                    }
+                }
+            }
+        }
+    }
+
+    if (!paths.isEmpty()) {
+        paths.removeDuplicates();
+        return paths;
+    }
+
+    if (!IsClipboardFormatAvailable(CF_HDROP) || !OpenClipboard(nullptr)) {
+        return paths;
+    }
+
+    if (const HANDLE clipboardData = GetClipboardData(CF_HDROP)) {
+        const HDROP dropHandle = static_cast<HDROP>(clipboardData);
+        const UINT count = DragQueryFileW(dropHandle, 0xFFFFFFFF, nullptr, 0);
+        wchar_t buffer[MAX_PATH];
+        for (UINT i = 0; i < count; ++i) {
+            const UINT len = DragQueryFileW(dropHandle, i, buffer, MAX_PATH);
+            if (len > 0) {
+                paths.append(QDir::toNativeSeparators(QString::fromWCharArray(buffer, len)));
+            }
+        }
+    }
+
+    CloseClipboard();
+    paths.removeDuplicates();
+    return paths;
+}
+
+bool clipboardContainsCutItems()
+{
+    const UINT format = RegisterClipboardFormatW(L"Preferred DropEffect");
+    if (!format || !IsClipboardFormatAvailable(format) || !OpenClipboard(nullptr)) {
+        return false;
+    }
+
+    bool isCutOperation = false;
+    if (const HANDLE clipboardData = GetClipboardData(format)) {
+        if (const void* locked = GlobalLock(clipboardData)) {
+            const DWORD effect = *static_cast<const DWORD*>(locked);
+            isCutOperation = (effect & kClipboardPreferredDropEffectMove) != 0;
+            GlobalUnlock(clipboardData);
+        }
+    }
+
+    CloseClipboard();
+    return isCutOperation;
+}
+
+QString uniquePasteDestinationPath(const QString& sourcePath, const QString& destDir)
+{
+    const QFileInfo sourceInfo(sourcePath);
+    const QDir dir(destDir);
+    const QString originalFileName = sourceInfo.fileName();
+    QString originalCandidate = dir.filePath(originalFileName);
+
+    if (!QFileInfo::exists(originalCandidate)) {
+        return QDir::toNativeSeparators(originalCandidate);
+    }
+
+    QString copyName;
+    QString extension;
+    if (sourceInfo.isDir()) {
+        copyName = originalFileName + " - Copy";
+    } else {
+        const QString completeSuffix = sourceInfo.completeSuffix();
+        extension = completeSuffix.isEmpty() ? QString() : "." + completeSuffix;
+        const QString baseName = sourceInfo.completeBaseName().isEmpty() ? originalFileName : sourceInfo.completeBaseName();
+        copyName = baseName + " - Copy" + extension;
+    }
+
+    QString candidate = dir.filePath(copyName);
+    int suffix = 2;
+    while (QFileInfo::exists(candidate)) {
+        if (sourceInfo.isDir()) {
+            candidate = dir.filePath(QString("%1 - Copy (%2)").arg(originalFileName).arg(suffix));
+        } else {
+            const QString baseName = sourceInfo.completeBaseName().isEmpty() ? originalFileName : sourceInfo.completeBaseName();
+            candidate = dir.filePath(QString("%1 - Copy (%2)%3").arg(baseName).arg(suffix).arg(extension));
+        }
+        ++suffix;
+    }
+
+    return QDir::toNativeSeparators(candidate);
+}
+
+QString uniqueShortcutPathForTarget(const QString& sourcePath, const QString& desktopDir)
+{
+    const QFileInfo sourceInfo(sourcePath);
+    QString baseName = sourceInfo.fileName();
+    if (baseName.isEmpty()) {
+        baseName = sourceInfo.completeBaseName();
+    }
+    if (baseName.isEmpty()) {
+        baseName = "New Shortcut";
+    }
+
+    QDir dir(desktopDir);
+    QString candidate = dir.filePath(baseName + " - Shortcut.lnk");
+    int suffix = 2;
+    while (QFileInfo::exists(candidate)) {
+        candidate = dir.filePath(QString("%1 - Shortcut (%2).lnk").arg(baseName).arg(suffix));
+        ++suffix;
+    }
+    return QDir::toNativeSeparators(candidate);
+}
+
+bool copyPathToExactDestination(const QString& sourcePath, const QString& destinationPath)
+{
+    const QFileInfo sourceInfo(sourcePath);
+    if (!sourceInfo.exists()) {
+        return false;
+    }
+
+    if (sourceInfo.isDir()) {
+        QDir destParent = QFileInfo(destinationPath).dir();
+        if (!destParent.exists() && !destParent.mkpath(".")) {
+            return false;
+        }
+
+        if (!QDir().mkpath(destinationPath)) {
+            return false;
+        }
+
+        QDir sourceDir(sourcePath);
+        const QFileInfoList entries = sourceDir.entryInfoList(
+            QDir::NoDotAndDotDot | QDir::AllEntries | QDir::Hidden | QDir::System,
+            QDir::DirsFirst | QDir::Name
+        );
+
+        for (const QFileInfo& entry : entries) {
+            const QString childDestination = QDir(destinationPath).filePath(entry.fileName());
+            if (!copyPathToExactDestination(entry.absoluteFilePath(), childDestination)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    QDir destParent = QFileInfo(destinationPath).dir();
+    if (!destParent.exists() && !destParent.mkpath(".")) {
+        return false;
+    }
+
+    if (QFile::exists(destinationPath) && !QFile::remove(destinationPath)) {
+        return false;
+    }
+
+    return QFile::copy(sourcePath, destinationPath);
+}
+
+bool movePathToExactDestination(const QString& sourcePath, const QString& destinationPath)
+{
+    const QFileInfo sourceInfo(sourcePath);
+    if (!sourceInfo.exists()) {
+        return false;
+    }
+
+    QDir destParent = QFileInfo(destinationPath).dir();
+    if (!destParent.exists() && !destParent.mkpath(".")) {
+        return false;
+    }
+
+    if (QFileInfo::exists(destinationPath)) {
+        if (QFileInfo(destinationPath).isDir()) {
+            if (!QDir(destinationPath).removeRecursively()) {
+                return false;
+            }
+        } else if (!QFile::remove(destinationPath)) {
+            return false;
+        }
+    }
+
+    if (sourceInfo.isDir()) {
+        if (QDir().rename(sourcePath, destinationPath)) {
+            return true;
+        }
+
+        if (!copyPathToExactDestination(sourcePath, destinationPath)) {
+            return false;
+        }
+        return QDir(sourcePath).removeRecursively();
+    }
+
+    if (QFile::rename(sourcePath, destinationPath)) {
+        return true;
+    }
+
+    if (!copyPathToExactDestination(sourcePath, destinationPath)) {
+        return false;
+    }
+    return QFile::remove(sourcePath);
+}
+
+bool copyFilesToDesktopWithRule(const QStringList& sourcePaths, const QString& desktopDir)
+{
+    bool ok = true;
+    for (const QString& filePath : sourcePaths) {
+        const QString destinationPath = uniquePasteDestinationPath(filePath, desktopDir);
+        ok = copyPathToExactDestination(filePath, destinationPath) && ok;
+    }
+    return ok;
+}
+
+bool createShellShortcut(const QString& sourcePath, const QString& shortcutPath)
+{
+    const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool shouldUninit = SUCCEEDED(initHr);
+    if (FAILED(initHr) && initHr != RPC_E_CHANGED_MODE) {
+        return false;
+    }
+
+    IShellLinkW* shellLink = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, reinterpret_cast<void**>(&shellLink));
+    if (FAILED(hr) || !shellLink) {
+        if (shouldUninit) CoUninitialize();
+        return false;
+    }
+
+    const std::wstring source = QDir::toNativeSeparators(sourcePath).toStdWString();
+    shellLink->SetPath(source.c_str());
+    shellLink->SetWorkingDirectory(QFileInfo(sourcePath).absolutePath().toStdWString().c_str());
+
+    IPersistFile* persistFile = nullptr;
+    hr = shellLink->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&persistFile));
+    bool ok = false;
+    if (SUCCEEDED(hr) && persistFile) {
+        const std::wstring shortcut = QDir::toNativeSeparators(shortcutPath).toStdWString();
+        ok = SUCCEEDED(persistFile->Save(shortcut.c_str(), TRUE));
+        persistFile->Release();
+    }
+
+    shellLink->Release();
+    if (shouldUninit) CoUninitialize();
+    return ok;
+}
+}
 
 // 静态成员初始化
 ListView* ListView::m_instance = nullptr;
@@ -117,24 +480,15 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     // Defer loading boxes to ensure the event loop is running and windows can be properly shown/mapped
     QTimer::singleShot(100, [this](){
         this->loadBoxes(true);
-        
-        // Only show organize prompt AFTER boxes are loaded and persistence state is known from file
-        if (!m_enablePersistence) {
-            QTimer::singleShot(1000, [this]() {
-                qDebug() << "[FluentDialog] Persistence is OFF after load, offering organization prompt...";
-                FluentDialog* dlg = new FluentDialog(nullptr);
-                dlg->setDialogTitle("桌面整理");
-                dlg->setMessage("是否立即一键整理当前桌面的图标布局？\n（将开启自动布局并持久化存储）");
-                dlg->addActionButton("立即整理", FluentDialog::ActionType::Primary, [this]() {
-                    this->setPersistenceEnabled(true); 
-                    this->onMenuRefresh();
-                });
-                dlg->addActionButton("取消", FluentDialog::ActionType::Close);
-                dlg->show();
-                dlg->raise();
-                dlg->activateWindow();
-            });
+        const QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+        QSettings settings(configPath, QSettings::IniFormat);
+        const bool isFirstLaunch = settings.value("Firslanuch", true).toBool();
+        if (isFirstLaunch) {
+            this->setPersistenceEnabled(true); 
+            settings.setValue("Firslanuch", false);
+            settings.sync();
         }
+        this->onMenuRefresh();
         this->raise();
     });
 }
@@ -265,8 +619,26 @@ void ListView::handleHotkey(int id) {
 }
 ListView::~ListView() {
     saveBoxes();
-    // 清理 ListItem 对象
-    //qDeleteAll(m_listItems);
+    
+    // Clean up drag tip
+    if (m_dragTip) {
+        delete m_dragTip;
+        m_dragTip = nullptr;
+    }
+    
+    // Clean up ghost widgets
+    for (auto& ghost : m_ghosts) {
+        if (ghost.widget) {
+            ghost.widget->deleteLater();
+        }
+    }
+    m_ghosts.clear();
+    
+    // Delete all ListItems in m_allItems
+    qDeleteAll(m_allItems);
+    m_allItems.clear();
+    m_items.clear();
+    m_selectedItems.clear();
 }
 ListItem* ListView::selectItemByPath(const QString path)
 {
@@ -330,24 +702,46 @@ void ListView::requestSystemRightMenu(ObjectType objType, QPoint point, const QV
 
 void ListView::refreshCheckedItem(QRect rect)
 {
-    clearCheckedItem();
-    auto items = this->items();
-    // 遍历所有item，检查与选择矩形的相交关系
+    const QVector<ListItem*> candidates = queryItemsInRect(rect);
+    QSet<ListItem*> nextSelection;
 
-    for (auto* item : items) {
+    for (auto* item : candidates) {
         if (!item) {
             continue;
         }
-        // 获取item的矩形区域
-        QRect itemRect = item->getChooseItemRect(); // 如果是QRectF需要转换
-
-        // 检查是否相交
+        const QRect itemRect = item->getChooseItemRect();
         if (itemRect.intersects(rect)) {
-            m_selectedItems.append(item);
-            item->checkSelf();
+            nextSelection.insert(item);
         }
     }
 
+    QSet<ListItem*> previousSelection;
+    for (auto* item : m_selectedItems) {
+        if (item) {
+            previousSelection.insert(item);
+        }
+    }
+
+    for (auto* item : m_selectedItems) {
+        if (item && !nextSelection.contains(item)) {
+            item->unCheckSelf();
+        }
+    }
+
+    QVector<ListItem*> updatedSelection;
+    updatedSelection.reserve(nextSelection.size());
+
+    for (auto* item : candidates) {
+        if (!item || !nextSelection.contains(item)) {
+            continue;
+        }
+        if (!previousSelection.contains(item)) {
+            item->checkSelf();
+        }
+        updatedSelection.append(item);
+    }
+
+    m_selectedItems = updatedSelection;
 }
 
 void ListView::paintEvent(QPaintEvent* event)
@@ -419,20 +813,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     // draw mouse hover effect
     if (!this->m_isSelecting) {
         auto currentPoint = event->pos();
-        // 如果鼠标悬浮的位置没变化，直接返回
-        if (currentHoverItemRect.contains(currentPoint)) {
 
-            //previousHoverItemIndex = currentHoverItemIndex;
-            //qDebug() << "CurrentHoverItemIndex:" << currentHoverItemIndex;
-            return; // 不进行重复更新
-        }
-
-        //&& currentHoverItemIndex == previousHoverItemIndex
-        //currentHoverItemIndex = -1;
-        //update();
-
-        //currentHoverItemRect = QRect();
-        //currentHoverItemIndex = -1;
     }
 
 
@@ -459,6 +840,7 @@ void ListView::beginBackgroundSelection(const QPoint& startPos)
 {
     clearCheckedItem();
     setFocus();
+    rebuildSpatialIndex();
 
     m_isSelecting = true;
     m_startPos = startPos;
@@ -497,10 +879,42 @@ void ListView::endBackgroundSelection()
     m_selectionRect = QRect();
 }
 
+void ListView::rebuildSpatialIndex()
+{
+    if (!m_spatialIndex) {
+        m_spatialIndex = std::make_unique<DesktopQuadTree>(rect());
+    }
+    m_spatialIndex->setBounds(rect());
+    m_spatialIndex->rebuild(m_items);
+}
+
+QVector<ListItem*> ListView::queryItemsInRect(const QRect& rect) const
+{
+    if (!m_spatialIndex) {
+        QVector<ListItem*> fallback;
+        for (auto* item : m_items) {
+            if (item && item->isVisible() && item->boxId().isEmpty()) {
+                fallback.append(item);
+            }
+        }
+        return fallback;
+    }
+
+    return m_spatialIndex->query(rect);
+}
+
 void ListView::dragEnterEvent(QDragEnterEvent* event)
 {
     if (event->mimeData()->hasUrls()) {
-        // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
+        if (event->source() != this) {
+            if (event->keyboardModifiers() & Qt::ControlModifier) {
+                event->setDropAction(Qt::CopyAction);
+            } else {
+                event->setDropAction(Qt::MoveAction);
+            }
+            event->accept();
+            return;
+        }
         if (event->keyboardModifiers() & Qt::ControlModifier) {
             event->setDropAction(Qt::CopyAction);
         } else {
@@ -522,7 +936,16 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         if (m_dragTip) m_dragTip->hide();
         return;
     }
-    // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
+    if (event->source() != this) {
+        if (m_dragTip) m_dragTip->hide();
+        if (event->keyboardModifiers() & Qt::ControlModifier) {
+            event->setDropAction(Qt::CopyAction);
+        } else {
+            event->setDropAction(Qt::MoveAction);
+        }
+        event->accept();
+        return;
+    }
     if (event->keyboardModifiers() & Qt::ControlModifier) {
         event->setDropAction(Qt::CopyAction);
     } else {
@@ -530,20 +953,28 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
     }
     event->accept();
 
+    const bool isInternalDrag = (event->source() == this);
+    if (!isInternalDrag) {
+        if (m_dragTip) {
+            m_dragTip->hide();
+        }
+        return;
+    }
+
     // 1. Find if we are hovering over an item
     ListItem* hitItem = nullptr;
-    for (auto* item : m_items) {
-        if (item && item->isVisible() && item->geometry().contains(event->pos()) && !m_selectedItems.contains(item)) {
-            hitItem = item;
-            break;
+    if (m_iconShowRule.gridAlignment) {
+        for (auto* item : m_items) {
+            if (item && item->isVisible() && item->geometry().contains(event->pos()) && !m_selectedItems.contains(item)) {
+                hitItem = item;
+                break;
+            }
         }
     }
 
     bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
 
     if (hitItem) {
-        // --- 悬浮在图标上的逻辑 ---
-        // 检查被拖拽的对象是否为系统类型，如果是则禁止拖拽到其他图标上
         if (m_draggedItem) {
             QString draggedClsid = m_draggedItem->getItemData().getCLSID();
             bool isDraggedPC = (draggedClsid == APP_MY_COMPUTER_CLS);
@@ -553,28 +984,9 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             bool isDraggedRecycleBin = (draggedClsid == APP_RECYCLE_BIN_CLS && m_draggedItem->filePath() == "::{645FF040-5081-101B-9F08-00AA002F954E}");
             bool isLinux = (draggedClsid == APP_LINUX_CLS);
             bool isDraggedSystemIcon = isDraggedPC || isDraggedNetwork || isDraggedControlPanel || isDraggedControlPanel1 || isDraggedRecycleBin || isLinux;
-            
+
             if (isDraggedSystemIcon) {
-                if (!m_dragTip) {
-                    m_dragTip = new QLabel(this);
-                    m_dragTip->setStyleSheet(
-                        "QLabel {"
-                        "  background-color: rgba(255, 255, 255, 235);"
-                        "  color: #202020;"
-                        "  border: 1px solid rgba(0, 0, 0, 40);"
-                        "  border-radius: 8px;"
-                        "  padding: 10px 16px;"
-                        "  font-size: 13px;"
-                        "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
-                        "}"
-                    );
-                    m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
-                    QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
-                    shadow->setBlurRadius(20);
-                    shadow->setColor(QColor(0, 0, 0, 80));
-                    shadow->setOffset(0, 4);
-                    m_dragTip->setGraphicsEffect(shadow);
-                }
+                ensureDragTip();
                 m_dragTip->setText("<b style='color:#ff4d4d'>Operation Forbidden</b>");
                 m_dragTip->adjustSize();
                 m_dragTip->move(event->pos() + QPoint(24, 24));
@@ -585,34 +997,17 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
                 return;
             }
         }
-        
-        if (!m_dragTip) {
-            m_dragTip = new QLabel(this);
-            m_dragTip->setStyleSheet(
-                "QLabel {"
-                "  background-color: rgba(255, 255, 255, 235);" // Premium Light Acrylic
-                "  color: #202020;"
-                "  border: 1px solid rgba(0, 0, 0, 40);"
-                "  border-radius: 8px;"
-                "  padding: 10px 16px;"
-                "  font-size: 13px;"
-                "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
-                "}"
-            );
-            m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
-            QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
-            shadow->setBlurRadius(20);
-            shadow->setColor(QColor(0, 0, 0, 80)); 
-            shadow->setOffset(0, 4);
-            m_dragTip->setGraphicsEffect(shadow);
-        }
+
+        ensureDragTip();
 
         QString clsid = hitItem->getItemData().getCLSID();
         bool isRecycleBin = (clsid == APP_RECYCLE_BIN_CLS);
         bool isPC = (clsid == APP_MY_COMPUTER_CLS);
         bool isNetwork = (clsid == APP_NETWORK_CLS);
         bool isControlPanel = (clsid == APP_CONTROL_PANEL_CLS);
-        bool isFolder = (hitItem->type() == ObjectType::Folder_ObjectType || hitItem->type() == ObjectType::SpecialFolder);
+        bool isFolder = (hitItem->type() == ObjectType::Folder_ObjectType ||
+                         hitItem->type() == ObjectType::SpecialFolder ||
+                         hitItem->type() == ObjectType::DiskLetter);
 
         if (isPC || isNetwork || isControlPanel) {
             m_dragTip->setText("<b style='color:#ff4d4d'>Operation Forbidden</b>");
@@ -626,19 +1021,27 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         }
 
         QString actionKeyword;
-        QString highlightColor = "#70a1ff"; // Fluent Blue accent
+        QString highlightColor = "#70a1ff";
+        const bool isDraggedDiskLetter = (m_draggedItem && m_draggedItem->type() == ObjectType::DiskLetter);
+        QString htmlText;
 
         if (isRecycleBin) {
             actionKeyword = "Move to";
-            highlightColor = "#ff4d4d"; // Red for Delete/Recycle Bin
+            highlightColor = "#ff4d4d";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, hitItem->baseName());
+        } else if (isFolder && isDraggedDiskLetter) {
+            htmlText = QString("<b style='color:%1'>在</b> <span>%2</span> <b style='color:%1'>里创建链接</b>")
+                .arg(highlightColor, hitItem->baseName());
         } else if (isFolder) {
             actionKeyword = isCtrl ? "Copy to" : "Move to";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, hitItem->baseName());
         } else {
             actionKeyword = "Open with";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, hitItem->baseName());
         }
-
-        QString htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
-            .arg(highlightColor).arg(actionKeyword).arg(hitItem->baseName());
 
         m_dragTip->setText(htmlText);
         m_dragTip->adjustSize();
@@ -646,44 +1049,16 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         m_dragTip->show();
         m_dragTip->raise();
         event->accept();
-    } 
-    else {
-        // --- 悬浮在桌面背景上的逻辑 ---
-        if (isCtrl) {
-            if (!m_dragTip) {
-                m_dragTip = new QLabel(this);
-                m_dragTip->setStyleSheet(
-                    "QLabel {"
-                    "  background-color: rgba(255, 255, 255, 235);" 
-                    "  color: #202020;"
-                    "  border: 1px solid rgba(0, 0, 0, 40);"
-                    "  border-radius: 8px;"
-                    "  padding: 10px 16px;"
-                    "  font-size: 13px;"
-                    "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
-                    "}"
-                );
-                m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
-                QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
-                shadow->setBlurRadius(20);
-                shadow->setColor(QColor(0, 0, 0, 80)); 
-                shadow->setOffset(0, 4);
-                m_dragTip->setGraphicsEffect(shadow);
-            }
-            m_dragTip->setText("<b style='color:#70a1ff'>Copy to</b> <span>Desktop</span>");
-            m_dragTip->adjustSize();
-            m_dragTip->move(event->pos() + QPoint(24, 24));
-            m_dragTip->show();
-            m_dragTip->raise();
-        } else {
-            if (m_dragTip) m_dragTip->hide();
+    } else {
+        if (m_dragTip) {
+            m_dragTip->hide();
         }
     }
 }
 
 void ListView::dropEvent(QDropEvent* event)
 {
-    if (m_dragTip) m_dragTip->hide();
+    //if (m_dragTip) m_dragTip->hide();
 
     ListItem* hitItem = nullptr;
     if (m_iconShowRule.gridAlignment) {
@@ -697,7 +1072,7 @@ void ListView::dropEvent(QDropEvent* event)
 
     const QMimeData* mime = event->mimeData();
     if (!mime->hasUrls()) return;
-    QList<QUrl> urls = mime->urls();
+    const QStringList draggedPaths = draggedLocalFilePaths(mime);
 
     // Drop onto an APP/File: Open with it; Drop onto Folder: Copy to it
     if (hitItem && !m_selectedItems.contains(hitItem)) {
@@ -713,8 +1088,7 @@ void ListView::dropEvent(QDropEvent* event)
         QStringList args;
         std::vector<std::wstring> srcPaths;
 
-        for (const QUrl& url : urls) {
-            QString localPath = QDir::toNativeSeparators(url.toLocalFile());
+        for (const QString& localPath : draggedPaths) {
             if (!localPath.isEmpty()) {
                 args << "\"" + localPath + "\"";
                 srcPaths.push_back(localPath.toStdWString());
@@ -733,7 +1107,9 @@ void ListView::dropEvent(QDropEvent* event)
             CSystemApi::DeleteFiles(srcPaths, true, true); // true = recycle, true = confirm
             event->accept();
             return;
-        } else if (hitItem->type() == ObjectType::Folder_ObjectType || hitItem->type() == ObjectType::SpecialFolder) {
+        } else if (hitItem->type() == ObjectType::Folder_ObjectType ||
+                   hitItem->type() == ObjectType::SpecialFolder ||
+                   hitItem->type() == ObjectType::DiskLetter) {
             // 根据键盘修饰符选择复制或移动文件到目标文件夹
             if (isCopyAction) {
                 CSystemApi::CopyFiles(srcPaths, targetPath.toStdWString());
@@ -756,19 +1132,17 @@ void ListView::dropEvent(QDropEvent* event)
         }
     }
 
-    if (urls.isEmpty()) return;
+    if (draggedPaths.isEmpty()) return;
 
     // Handle dropping onto the desktop background (no hitItem)
     if (!hitItem) {
         // 根据键盘修饰符判断是复制还是移动（Ctrl=复制, 无修饰符=移动）
         bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
-        qDebug() << "DropAction:" << event->dropAction() << "isCopyAction:" << isCopyAction << "source:" << event->source();
         
         // 外部拖放或强制复制
         if (event->source() != this || isCopyAction) {
             std::vector<std::wstring> srcPaths;
-            for (const QUrl& url : urls) {
-                QString localPath = QDir::toNativeSeparators(url.toLocalFile());
+            for (const QString& localPath : draggedPaths) {
                 if (!localPath.isEmpty()) srcPaths.push_back(localPath.toStdWString());
             }
 
@@ -777,10 +1151,8 @@ void ListView::dropEvent(QDropEvent* event)
                 bool result;
                 if (isCopyAction) {
                     result = CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
-                    qDebug() << "CopyFiles result:" << result << "files:" << srcPaths.size();
                 } else {
                     result = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
-                    qDebug() << "MoveFiles result:" << result << "files:" << srcPaths.size();
                 }
                 event->accept();
                 return;
@@ -908,8 +1280,7 @@ void ListView::dropEvent(QDropEvent* event)
         // --- 外部拖入逻辑 ---
         QString desktopDir = m_desktopDir;
         std::vector<std::wstring> srcPaths;
-        for (const QUrl& url : urls) {
-            QString local = url.toLocalFile();
+        for (const QString& local : draggedPaths) {
             if (!local.isEmpty() && QDir::toNativeSeparators(local) != QDir::toNativeSeparators(desktopDir)) {
                 srcPaths.push_back(QDir::toNativeSeparators(local).toStdWString());
             }
@@ -981,6 +1352,7 @@ void ListView::initialize()
     // ===================================
 
     QVector<ListItem*> listItems;
+    QVector<ListItem*> itemsWithoutNativePos;
     vector<ListItemData> allDatas = DesktopItemLoader().loadAllItems();
 
     m_hiddenIcons.clear();
@@ -1018,6 +1390,7 @@ void ListView::initialize()
                                listItem->getItemData().fullName() == "desktop.ini" ||
                                listItem->filePath().startsWith("::");
         const bool isOsHidden = listItem->fileInfo().isHidden();
+        const bool isAppHiddenShellFolder = DesktopItemLoader::shouldTreatAsHiddenShellFolder(listItem->getItemData());
 
         bool isVisibleSpecial = false;
         if (isSpecial) {
@@ -1030,11 +1403,15 @@ void ListView::initialize()
             }
         }
 
-        const bool shouldShowOnDesktop = boxId.isEmpty() &&
+        const bool shouldShowOnDesktop = !isAppHiddenShellFolder &&
+            boxId.isEmpty() &&
             ((isSpecial && isVisibleSpecial) || (!isSpecial && !isOsHidden));
 
         if (shouldShowOnDesktop) {
             listItems.push_back(listItem);
+            if (listItem->type() == ObjectType::DiskLetter) {
+                itemsWithoutNativePos.push_back(listItem);
+            }
         } else {
             listItem->hide();
             m_hiddenIcons.push_back(listItem);
@@ -1062,24 +1439,47 @@ void ListView::initialize()
         return a.y() < b.y();
     });
 
-    // 3. Sort the currently visible items by their original coordinates to maintain order
-    std::sort(m_items.begin(), m_items.end(), [](ListItem* a, ListItem* b){
+    // 3. Split visible items into those with native coordinates and those without.
+    QVector<ListItem*> itemsWithNativePos;
+    QSet<ListItem*> noNativePosSet(itemsWithoutNativePos.begin(), itemsWithoutNativePos.end());
+    for (auto* item : m_items) {
+        if (!item) continue;
+        if (!noNativePosSet.contains(item)) {
+            itemsWithNativePos.push_back(item);
+        }
+    }
+
+    // 4. Sort only the items with native coordinates to maintain order.
+    std::sort(itemsWithNativePos.begin(), itemsWithNativePos.end(), [](ListItem* a, ListItem* b){
         QPoint pa = a->getLocationInfo();
         QPoint pb = b->getLocationInfo();
         if (qAbs(pa.x() - pb.x()) > 10) return pa.x() < pb.x();
         return pa.y() < pb.y();
     });
 
-    // 4. Sequentially assign the tightly packed slots back to the visible items
+    // 5. Sequentially assign the tightly packed slots back to items that actually had native positions.
     qDebug() << "=== Compacted Native Layout ===";
-    for (int i = 0; i < m_items.size() && i < nativeSlots.size(); ++i) {
-        m_items[i]->updateLocationInfo(nativeSlots[i]);
-        m_items[i]->move(nativeSlots[i]);
+    for (int i = 0; i < itemsWithNativePos.size() && i < nativeSlots.size(); ++i) {
+        itemsWithNativePos[i]->updateLocationInfo(nativeSlots[i]);
+        itemsWithNativePos[i]->move(nativeSlots[i]);
         qDebug() << QString("Item(%1) compacted to Position:(%2, %3) - Name: %4")
                     .arg(i)
                     .arg(nativeSlots[i].x())
                     .arg(nativeSlots[i].y())
-                    .arg(m_items[i]->getItemData().fullName());
+                    .arg(itemsWithNativePos[i]->getItemData().fullName());
+    }
+
+    // 6. Items without native positions (for example drive letters on Win11) are placed afterwards
+    // so they do not consume compacted desktop slots and overlap coordinate-backed items.
+    for (auto* item : itemsWithoutNativePos) {
+        if (!item || !m_items.contains(item)) continue;
+        const QPoint generatedPos = generateItemPosition();
+        item->updateLocationInfo(generatedPos);
+        item->move(generatedPos);
+        qDebug() << QString("Deferred item placed at Position:(%1, %2) - Name: %3")
+                    .arg(generatedPos.x())
+                    .arg(generatedPos.y())
+                    .arg(item->getItemData().fullName());
     }
     qDebug() << "===============================";
 }
@@ -1149,7 +1549,8 @@ void ListView::loadAutoLayout()
             Icon_Y = m_marginTop;
         }
     }
-    
+
+    rebuildSpatialIndex();
 }
 
 void ListView::loadGridLayout()
@@ -1203,6 +1604,8 @@ void ListView::loadGridLayout()
             }
         }
     }
+
+    rebuildSpatialIndex();
 }
 ListView::SortOrderType ListView::getOppositeDirection() {
 
@@ -1300,7 +1703,7 @@ void ListView::sortByCategorized()
         // 1. Definition of priority groups
         auto getPriority = [](ListItem* item) -> int {
             if (item->type() == ObjectType::SpecialFolder) return 0; // System Folders
-            if (item->fileInfo().isDir()) return 1;                  // Regular Folders
+            if (item->type() == ObjectType::DiskLetter || item->fileInfo().isDir()) return 1; // Directory-like items
             
             QString ext = item->fileInfo().suffix().toLower();
             if (ext == "exe" || ext == "lnk" || ext == "url") return 2; // Apps
@@ -1407,8 +1810,10 @@ void ListView::sortByType(bool ascending)
             return aIsSpecial;
 
         // 按文件扩展名排序；文件夹扩展名视为空字符串（排最前）
-        QString extA = a->fileInfo().isDir() ? QString() : a->fileInfo().suffix().toLower();
-        QString extB = b->fileInfo().isDir() ? QString() : b->fileInfo().suffix().toLower();
+        const bool aIsDirLike = (a->type() == ObjectType::DiskLetter) || a->fileInfo().isDir();
+        const bool bIsDirLike = (b->type() == ObjectType::DiskLetter) || b->fileInfo().isDir();
+        QString extA = aIsDirLike ? QString() : a->fileInfo().suffix().toLower();
+        QString extB = bIsDirLike ? QString() : b->fileInfo().suffix().toLower();
         if (extA != extB)
             return ascending ? (extA < extB) : (extA > extB);
 
@@ -1443,10 +1848,13 @@ void ListView::sortByDate(bool ascending)
 void ListView::addItem(ListItem* item, bool refresh)
 {
     if (!item) return;
-    
-        QPoint pos = generateItemPosition();
-        item->setItemSize(m_iconWidth, m_iconHeight);
-        item->updateLocationInfo(pos);
+
+    QPoint pos;
+    if (!takeReservedCreatedItemPosition(item->filePath(), pos)) {
+        pos = generateItemPosition();
+    }
+    item->setItemSize(m_iconWidth, m_iconHeight);
+    item->updateLocationInfo(pos);
     
     setupItemConnections(item);
     
@@ -1455,6 +1863,7 @@ void ListView::addItem(ListItem* item, bool refresh)
     m_allItems.push_back(item);
     
     item->show();
+    rebuildSpatialIndex();
 }
 
 void ListView::addItemNoDelete(ListItem* item)
@@ -1485,7 +1894,8 @@ void ListView::addItemNoDelete(ListItem* item)
     if (m_iconShowRule.showDesktopIcons) {
         item->show();
     }
-    
+
+    rebuildSpatialIndex();
     update();
 }
 
@@ -1518,6 +1928,7 @@ void ListView::removeItem(ListItem* item)
     }
     
     // 强制更新界面
+    rebuildSpatialIndex();
     update();
     repaint();
     
@@ -1535,6 +1946,7 @@ void ListView::removeItemNoDelete(ListItem* item)
     }
     
     // 强制更新界面
+    rebuildSpatialIndex();
     update();
     repaint();
 }
@@ -1554,6 +1966,113 @@ ListItem* ListView::findItemByPath(const QString& filePath) const {
         }
     }
     return nullptr;
+}
+
+QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
+{
+    QPoint pos = requestedPos;
+    if (pos == QPoint(-1, -1)) {
+        pos = const_cast<ListView*>(this)->generateItemPosition();
+    }
+
+    if (m_iconShowRule.gridAlignment) {
+        const int strideX = m_iconWidth + m_colSpacing;
+        const int strideY = m_iconHeight + m_rowSpacing;
+
+        int gridX = qMax(0, qRound((double)(pos.x() - m_marginLeft) / strideX));
+        int gridY = qMax(0, qRound((double)(pos.y() - m_marginTop) / strideY));
+
+        while (true) {
+            QPoint candidate(
+                m_marginLeft + gridX * strideX,
+                m_marginTop + gridY * strideY
+            );
+            candidate.setX(qMax(m_marginLeft, qMin(candidate.x(), width() - m_iconWidth)));
+            candidate.setY(qMax(m_marginTop, qMin(candidate.y(), height() - m_bottomPadding - m_iconHeight)));
+
+            bool occupied = false;
+            for (auto* item : m_items) {
+                if (!item || !item->boxId().isEmpty()) continue;
+                if (item->pos() == candidate) {
+                    occupied = true;
+                    break;
+                }
+            }
+
+            if (!occupied) {
+                for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
+                    if (it.value() == candidate) {
+                        occupied = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!occupied) {
+                return candidate;
+            }
+
+            ++gridY;
+            if (m_marginTop + gridY * strideY > height() - m_bottomPadding - m_iconHeight) {
+                gridY = 0;
+                ++gridX;
+            }
+        }
+    }
+
+    pos.setX(qMax(m_marginLeft, qMin(pos.x(), width() - m_iconWidth)));
+    pos.setY(qMax(m_marginTop, qMin(pos.y(), height() - m_bottomPadding - m_iconHeight)));
+
+    while (true) {
+        QRect candidateRect(pos, QSize(m_iconWidth, m_iconHeight));
+        bool occupied = false;
+
+        for (auto* item : m_items) {
+            if (!item || !item->boxId().isEmpty()) continue;
+            if (candidateRect.intersects(item->geometry())) {
+                occupied = true;
+                break;
+            }
+        }
+
+        if (!occupied) {
+            for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
+                QRect pendingRect(it.value(), QSize(m_iconWidth, m_iconHeight));
+                if (candidateRect.intersects(pendingRect)) {
+                    occupied = true;
+                    break;
+                }
+            }
+        }
+
+        if (!occupied) {
+            return pos;
+        }
+
+        pos += QPoint(16, 16);
+        pos.setX(qMax(m_marginLeft, qMin(pos.x(), width() - m_iconWidth)));
+        pos.setY(qMax(m_marginTop, qMin(pos.y(), height() - m_bottomPadding - m_iconHeight)));
+    }
+}
+
+void ListView::reserveCreatedItemPosition(const QString& filePath, const QPoint& requestedPos)
+{
+    const QString normalizedPath = normalizeDesktopPath(filePath);
+    if (normalizedPath.isEmpty()) return;
+    m_pendingCreatedItemPositions[normalizedPath] = resolveCreatePosition(requestedPos);
+}
+
+bool ListView::takeReservedCreatedItemPosition(const QString& filePath, QPoint& posOut)
+{
+    const QString normalizedPath = normalizeDesktopPath(filePath);
+    auto it = m_pendingCreatedItemPositions.find(normalizedPath);
+    if (it == m_pendingCreatedItemPositions.end()) {
+        return false;
+    }
+
+    posOut = it.value();
+    m_pendingCreatedItemPositions.erase(it);
+    return true;
 }
 
 /// <summary>
@@ -1592,7 +2111,7 @@ QPoint ListView::generateItemPosition()
         for (auto* item : m_items) {
             if (item && item->boxId().isEmpty() && (item->pos().x() > 0 || item->pos().y() > 0)) {
                 // If the item has already been assigned a position (not 0,0), respect its occupation
-                if (currentRect.intersects(item->getItemRect())) {
+                if (currentRect.intersects(item->geometry())) {
                     occupied = true;
                     break;
                 }
@@ -1642,7 +2161,6 @@ void ListView::initRightMenuConnections() {
     connect(menu, &RightMenu::refreshTriggered, this, &ListView::onMenuRefresh);
     connect(menu, &RightMenu::pasteTriggered, this, &ListView::onMenuPaste);
     connect(menu, &RightMenu::pasteShortcutTriggered, this, &ListView::onMenuPasteShortcut);
-    connect(menu, &RightMenu::undoDeleteTriggered, this, &ListView::onMenuUndoDelete);
     connect(menu, &RightMenu::createBoxTriggered, this, &ListView::onMenuCreateBox);
     connect(menu, &RightMenu::linDeskTriggered, this, &ListView::onMenuLinDesk);
     connect(menu, &RightMenu::quitAppTriggered, this, &ListView::onMenuQuitApp);
@@ -1800,12 +2318,23 @@ void ListView::onMenuShowDesktopIcons() {
         for (auto item : m_items) {
             item->hide();
         }
+        for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
+            if (box) {
+                box->hide();
+            }
+        }
     } else {
         m_iconShowRule.showDesktopIcons = true;
         this->rightMenu->setShowDesktopIconsChecked(true);
         for (auto item : m_items) {
             item->show();
         }
+        for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
+            if (box) {
+                box->show();
+            }
+        }
+        BoxManager::instance()->raiseAllBoxes();
     }
     requestSaveBoxes();
 }
@@ -1925,6 +2454,7 @@ void ListView::onMenuRefresh() {
                               item->filePath().startsWith("::"));
             
             bool isOsHidden = item->fileInfo().isHidden();
+            const bool isAppHiddenShellFolder = DesktopItemLoader::shouldTreatAsHiddenShellFolder(item->getItemData());
 
             if (isSpecial) {
                 QString itemClsid = item->getItemData().getCLSID();
@@ -1946,7 +2476,10 @@ void ListView::onMenuRefresh() {
                 isVisibleSpecial = systemSaysVisible;
             }
 
-            if (!boxId.isEmpty()) {
+            if (isAppHiddenShellFolder) {
+                item->hide();
+                m_hiddenIcons.push_back(item);
+            } else if (!boxId.isEmpty()) {
                 if (item->parent() == this) item->hide();
                 m_hiddenIcons.push_back(item);
             } else if (isOsHidden && !isSpecial) {
@@ -1984,16 +2517,54 @@ void ListView::onMenuRefresh() {
 }
 
 void ListView::onMenuPaste() {
-    qDebug() << "ListView: Paste triggered";
+    const QStringList filePaths = clipboardLocalFilePaths();
+    if (filePaths.isEmpty()) {
+        qDebug() << "ListView: Paste skipped, clipboard has no local files";
+        return;
+    }
+
+    const bool isCutOperation = clipboardContainsCutItems();
+    bool ok = true;
+
+    if (isCutOperation) {
+        std::vector<std::wstring> srcPaths;
+        srcPaths.reserve(filePaths.size());
+        for (const QString& filePath : filePaths) {
+            srcPaths.push_back(QDir::toNativeSeparators(filePath).toStdWString());
+        }
+
+        const std::wstring desktopDir = QDir::toNativeSeparators(m_desktopDir).toStdWString();
+        ok = CSystemApi::MoveFiles(srcPaths, desktopDir);
+    } else {
+        ok = copyFilesToDesktopWithRule(filePaths, m_desktopDir);
+    }
+
+    qDebug() << "ListView: Paste triggered" << (isCutOperation ? "[move]" : "[copy]") << "result:" << ok;
+    if (ok) {
+        if (isCutOperation) {
+            QGuiApplication::clipboard()->clear();
+        }
+    }
 }
 
 void ListView::onMenuPasteShortcut() {
-    qDebug() << "ListView: Paste Shortcut triggered";
+    const QStringList filePaths = clipboardLocalFilePaths();
+    if (filePaths.isEmpty()) {
+        qDebug() << "ListView: Paste Shortcut skipped, clipboard has no local files";
+        return;
+    }
+
+    int createdCount = 0;
+    for (const QString& filePath : filePaths) {
+        const QString shortcutPath = uniqueShortcutPathForTarget(filePath, m_desktopDir);
+        if (createShellShortcut(filePath, shortcutPath)) {
+            ++createdCount;
+        }
+    }
+
+    qDebug() << "ListView: Paste Shortcut triggered, created:" << createdCount << "of" << filePaths.size();
 }
 
-void ListView::onMenuUndoDelete() {
-    qDebug() << "ListView: Undo Delete triggered";
-}
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 {
     // 规范化路径（统一用反斜杠，去掉末尾斜杠）
@@ -2036,6 +2607,22 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         qDebug() << "[onFileSystemChanged] Creating item:" << newPath;
         ListItem* item = new ListItem(newPath, this);
         addItem(item);
+
+        auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
+        if (boxIt != m_pendingCreatedItemBoxes.end()) {
+            QPointer<LinBox> targetBox = boxIt.value();
+            m_pendingCreatedItemBoxes.erase(boxIt);
+            if (targetBox) {
+                moveItemToBox(newPath, targetBox, false);
+                targetBox->refreshLayout();
+                targetBox->raise();
+                if (m_iconShowRule.autoArrange) {
+                    loadIconLayer();
+                } else {
+                    update();
+                }
+            }
+        }
         
         // 保存持久化文件，记录新文件位置
         requestSaveBoxes();
@@ -2080,6 +2667,22 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             ListItem* newItem = new ListItem(newPath, this);
             setupItemConnections(newItem); // Connect newly created files to the signaling system. Riverside.
             addItem(newItem);
+        }
+
+        auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
+        if (boxIt != m_pendingCreatedItemBoxes.end()) {
+            QPointer<LinBox> targetBox = boxIt.value();
+            m_pendingCreatedItemBoxes.erase(boxIt);
+            if (targetBox) {
+                moveItemToBox(newPath, targetBox, false);
+                targetBox->refreshLayout();
+                targetBox->raise();
+                if (m_iconShowRule.autoArrange) {
+                    loadIconLayer();
+                } else {
+                    update();
+                }
+            }
         }
         
         // 保存持久化文件，更新重命名文件记录
@@ -2173,6 +2776,16 @@ void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* even
 {
 	if (!item) return;
 
+    const ListItemData itemData = item->getItemData();
+    qDebug().noquote()
+        << QString("[ItemClick] name=\"%1\" path=\"%2\" clsid=\"%3\" type=%4 boxId=\"%5\" normalizedPath=\"%6\"")
+            .arg(item->baseName(),
+                 item->filePath(),
+                 itemData.getCLSID(),
+                 QString::number(static_cast<int>(item->type())),
+                 item->boxId(),
+                 item->normalizedPath());
+
 	if (event->button() == Qt::LeftButton) {
 		// Ensure focus is on the correct window to receive Delete shortcuts
 		if (box) box->setFocus();
@@ -2238,7 +2851,6 @@ void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
                 // Update ghosts while moving within or over the Box
                 for (auto& ghost : m_ghosts) {
                     if (ghost.widget) {
-                        // Use global mouse position for top-level ghost windows
                         ghost.widget->move(globalPos + ghost.offset);
                     }
                 }
@@ -2413,12 +3025,11 @@ void ListView::createDragGhosts(const QPoint& clickPos)
 	for (auto* item : m_selectedItems) {
 		if (!item) continue;
 
-		// Use top-level Window flags so the ghost stays above both the Desktop and the Box window.
-		// Qt::Tool prevents taskbar entry.
-		QLabel* ghostWidget = new QLabel(nullptr); 
-		ghostWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint | Qt::WindowTransparentForInput);
+		QLabel* ghostWidget = new QLabel(nullptr);
+        ghostWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowTransparentForInput);
 		ghostWidget->setAttribute(Qt::WA_TranslucentBackground);
 		ghostWidget->setAttribute(Qt::WA_NoSystemBackground);
+        ghostWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
 		ghostWidget->setStyleSheet("background: transparent;");
 
 		// 抓取快照（临时取消选中以获得干净图标）
@@ -2432,19 +3043,23 @@ void ListView::createDragGhosts(const QPoint& clickPos)
 		ghostWidget->setPixmap(pixmap);
 		ghostWidget->setFixedSize(item->size());
 		
-		// Use global coordinates directly since the ghosts are now top-level windows
 		QPoint globalItemPos = item->mapToGlobal(QPoint(0,0));
-		
-		// Map the initial ListView-relative click position back to absolute screen coordinates
-		QPoint globalClickPos = this->mapToGlobal(clickPos); 
-		
-		// The offset keeps the cursor at the exact relative spot over the icon it was clicked on
+		QPoint globalClickPos = this->mapToGlobal(clickPos);
 		QPoint offset = globalItemPos - globalClickPos;
 		
-		// Snap immediately to the current cursor position to avoid a 1-frame jump
-		QPoint currentGlobalMousePos = QCursor::pos();
-		ghostWidget->move(currentGlobalMousePos + offset);
+		ghostWidget->move(QCursor::pos() + offset);
 		ghostWidget->show();
+        if (HWND hwnd = reinterpret_cast<HWND>(ghostWidget->winId())) {
+            SetWindowPos(
+                hwnd,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+            );
+        }
 
 		m_ghosts.append({ ghostWidget, item, offset });
 	}
@@ -2470,6 +3085,32 @@ void ListView::onItemRelayContextMenuRequested(LinBox* box, ListItem* item, cons
 
 	requestSystemRightMenu(item->type(), globalPos, m_selectedItems);
 }
+
+void ListView::ensureDragTip() {
+    if (!m_dragTip) {
+        m_dragTip = new QLabel(this);
+        m_dragTip->setTextFormat(Qt::RichText);
+        m_dragTip->setStyleSheet(
+            "QLabel {"
+            "  background-color: rgba(255, 255, 255, 235);"
+            "  color: #202020;"
+            "  border: 1px solid rgba(0, 0, 0, 40);"
+            "  border-radius: 8px;"
+            "  padding: 10px 16px;"
+            "  font-size: 13px;"
+            "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+            "}"
+        );
+        m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
+        QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
+        shadow->setBlurRadius(20);
+        shadow->setColor(QColor(0, 0, 0, 80));
+        shadow->setOffset(0, 4);
+        m_dragTip->setGraphicsEffect(shadow);
+        m_dragTip->hide();
+    }
+}
+
 void ListView::onMenuDelete(bool permanently)
 {
     if (m_selectedItems.isEmpty()) return;
@@ -2756,12 +3397,115 @@ void ListView::moveItemToBox(const QString& filePath, LinBox* targetBox, bool re
     qDebug() << "Moved item to box (re-parented):" << filePath << "->" << targetBox->boxTitle();
 }
 
+bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode)
+{
+    if (sourcePaths.isEmpty() || !targetBox) {
+        return false;
+    }
+
+    bool ok = true;
+    QStringList createdPaths;
+
+    for (const QString& sourcePath : sourcePaths) {
+        if (sourcePath.isEmpty()) {
+            continue;
+        }
+
+        const QString destinationPath = uniquePasteDestinationPath(sourcePath, m_desktopDir);
+        const QString normalizedDestination = normalizeDesktopPath(destinationPath);
+
+        bool singleOk = false;
+        if (copyMode) {
+            singleOk = copyPathToExactDestination(sourcePath, destinationPath);
+        } else {
+            singleOk = movePathToExactDestination(sourcePath, destinationPath);
+        }
+
+        if (singleOk) {
+            createdPaths.append(normalizedDestination);
+            m_pendingCreatedItemBoxes[normalizedDestination] = targetBox;
+        } else {
+            ok = false;
+        }
+    }
+
+    return ok && !createdPaths.isEmpty();
+}
+
+QStringList ListView::resolveDraggedLocalPaths(const QMimeData* mimeData) const
+{
+    return draggedLocalFilePaths(mimeData);
+}
+
+bool ListView::handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode)
+{
+    if (!targetItem || sourcePaths.isEmpty()) {
+        return false;
+    }
+
+    const QString targetPath = targetItem->filePath();
+    const QString clsid = targetItem->getItemData().getCLSID();
+
+    if (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS) {
+        return false;
+    }
+
+    std::vector<std::wstring> srcPaths;
+    QStringList args;
+    for (const QString& localPath : sourcePaths) {
+        if (!localPath.isEmpty()) {
+            const QString nativePath = QDir::toNativeSeparators(localPath);
+            args << "\"" + nativePath + "\"";
+            srcPaths.push_back(nativePath.toStdWString());
+        }
+    }
+
+    if (srcPaths.empty()) {
+        return false;
+    }
+
+    const bool isRecycleBin = (clsid == APP_RECYCLE_BIN_CLS);
+    if (isRecycleBin) {
+        CSystemApi::DeleteFiles(srcPaths, true, true);
+        return true;
+    }
+
+    if (targetItem->type() == ObjectType::Folder_ObjectType ||
+        targetItem->type() == ObjectType::SpecialFolder ||
+        targetItem->type() == ObjectType::DiskLetter) {
+        if (copyMode) {
+            return CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetPath).toStdWString());
+        }
+        return CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetPath).toStdWString());
+    }
+
+    std::wstring wApp = QDir::toNativeSeparators(targetPath).toStdWString();
+    std::wstring wArgs = args.join(" ").toStdWString();
+    HINSTANCE result = ShellExecuteW(NULL, L"open", wApp.c_str(), wArgs.c_str(), NULL, SW_SHOWNORMAL);
+    return (INT_PTR)result > 32;
+}
+
 bool ListView::isItemInAnyBox(const QString& filePath) const {
     return BoxManager::instance()->isItemInAnyBox(filePath);
 }
 
 QString ListView::getBoxIdForItem(const QString& filePath) const {
     return BoxManager::instance()->getBoxIdForItem(filePath);
+}
+
+QString ListView::dumpAllItemsJson() const
+{
+    return DesktopItemLoader::dumpListItemsJson(m_allItems);
+}
+
+QString ListView::dumpVisibleItemsJson() const
+{
+    return DesktopItemLoader::dumpListItemsJson(m_items);
+}
+
+QString ListView::dumpHiddenItemsJson() const
+{
+    return DesktopItemLoader::dumpListItemsJson(m_hiddenIcons);
 }
 
 void ListView::setShortcutArrowVisible(bool visible) {

@@ -1,28 +1,36 @@
 #include "LinDesktop.h"
+#include "Fluent/FluentDialog.h"
+#include <QCoreApplication>
+#include <QSettings>
 
 LinDesktop::LinDesktop(QWidget* parent)
-	: QWidget(parent)
+    : QWidget(parent)
 {
-	setWindowTitle("LinDesk");
-	setObjectName("LinDesk");
-	setGeometry(QApplication::primaryScreen()->geometry());
-	
-	// 设置透明背景
-	setAttribute(Qt::WA_TranslucentBackground);
-	
-	m_transitionAnimation = new QVariantAnimation(this);
-	m_transitionAnimation->setDuration(m_transitionDuration);
-	m_transitionAnimation->setStartValue(0.0f);
-	m_transitionAnimation->setEndValue(1.0f);
-	connect(m_transitionAnimation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
-		setTransitionOpacity(value.toFloat());
-	});
+    m_configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    {
+        QSettings settings(m_configPath, QSettings::IniFormat);
+        m_isFirstLaunch = settings.value("Firslanuch", true).toBool();
+    }
 
-	loadBackImage();
-	selectArea = new SelectArea(this);
-	listView = ListView::instance(this);
-	
-	embedToDesktop();
+    setWindowTitle("LinDesk");
+    setObjectName("LinDesk");
+    setGeometry(QApplication::primaryScreen()->geometry());
+
+    setAttribute(Qt::WA_TranslucentBackground);
+
+    m_transitionAnimation = new QVariantAnimation(this);
+    m_transitionAnimation->setDuration(m_transitionDuration);
+    m_transitionAnimation->setStartValue(0.0f);
+    m_transitionAnimation->setEndValue(1.0f);
+    connect(m_transitionAnimation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+        setTransitionOpacity(value.toFloat());
+    });
+
+    loadBackImage();
+    selectArea = new SelectArea(this);
+    listView = ListView::instance(this);
+
+    embedToDesktop();
 
     m_monitor = new DesktopInfoMonitor(this);
     m_monitor->startListening();
@@ -30,15 +38,15 @@ LinDesktop::LinDesktop(QWidget* parent)
 
     m_wallpaperLoadTimer = new QTimer(this);
     m_wallpaperLoadTimer->setSingleShot(true);
-    m_wallpaperLoadTimer->setInterval(500); // 500ms debounce
+    m_wallpaperLoadTimer->setInterval(500);
     connect(m_wallpaperLoadTimer, &QTimer::timeout, this, &LinDesktop::loadBackImage);
-	
+    QTimer::singleShot(800, this, &LinDesktop::checkFirstLaunchPrompt);
 }
 
 LinDesktop::~LinDesktop()
 {
-
 }
+
 void LinDesktop::setTransitionOpacity(float opacity)
 {
     m_transitionOpacity = opacity;
@@ -61,78 +69,104 @@ void LinDesktop::onWallpaperChanged()
 
 void LinDesktop::loadBackImage()
 {
-    // Store current as previous for transition
     if (!m_backImagePixmap.isNull()) {
         m_prevBackImagePixmap = m_backImagePixmap;
     }
 
-    // Get path from API
     QString path = SysInfoUtil::GetWallpaperUsingAPI();
     qDebug() << "[LinDesktop] Loading wallpaper from:" << path;
 
     QImage newImage;
     if (path.isEmpty() || !newImage.load(path)) {
-        // Fallback or retry? Registry might be ahead of the file system
         qDebug() << "[LinDesktop] Failed to load wallpaper. Retrying in 1s...";
         QTimer::singleShot(1000, this, &LinDesktop::loadBackImage);
         return;
     }
 
-    // Success! Update current path
     m_currentWallpaperPath = path;
 
-    // Store current as previous for transition
     if (!m_backImagePixmap.isNull()) {
         m_prevBackImagePixmap = m_backImagePixmap;
     }
 
     m_backImagePixmap = QPixmap::fromImage(newImage);
 
-    // Trigger transition if we have a previous image
     if (!m_prevBackImagePixmap.isNull()) {
         m_transitionAnimation->stop();
         m_transitionAnimation->start();
-    }
-    else {
+    } else {
         m_transitionOpacity = 1.0f;
         update();
     }
 }
+
 void LinDesktop::requestHoverEffect()
 {
 }
+
+void LinDesktop::checkFirstLaunchPrompt()
+{
+    if (m_firstLaunchPromptShown || !m_isFirstLaunch) {
+        return;
+    }
+
+    m_firstLaunchPromptShown = true;
+
+    auto markHandled = [this]() {
+        QSettings writeSettings(m_configPath, QSettings::IniFormat);
+        writeSettings.setValue("Firslanuch", false);
+        writeSettings.sync();
+        m_isFirstLaunch = false;
+    };
+
+    FluentDialog* dlg = new FluentDialog(nullptr);
+    dlg->setDialogTitle(QString::fromUtf8("桌面整理"));
+    dlg->setMessage(QString::fromUtf8("检测到这是第一次启动，是否立即整理桌面，还是保持原系统布局？"));
+    listView->hide();
+    dlg->addActionButton(QString::fromUtf8("整理桌面"), FluentDialog::ActionType::Primary, [this, markHandled]() {
+        markHandled();
+        if (listView) {
+            listView->sortItems(ListView::SortOrderType::SortByName_ASC);
+            listView->updateRightMenuState();
+            listView->loadAutoLayout();
+            listView->update();
+            listView->requestSaveBoxes();
+            listView->show();
+        }
+    });
+    dlg->addActionButton(QString::fromUtf8("保持原系统布局"), FluentDialog::ActionType::Secondary, [this, markHandled]() {
+        listView->show();
+        markHandled();
+    });
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+}
+
 void LinDesktop::embedToDesktop()
 {
-	HWND hwnd = CSystemApi::FindRealDesktop();
-	if (hwnd) {
-		setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
-		
-		// Ensure 1:1 with desktop size
-		setGeometry(QApplication::primaryScreen()->geometry());
-		
-		SetParent((HWND)this->winId(), hwnd);
-		m_isEmbedded = true;
-		show();
-	}
+    HWND hwnd = CSystemApi::FindRealDesktop();
+    if (hwnd) {
+        setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+        setGeometry(QApplication::primaryScreen()->geometry());
+        SetParent((HWND)this->winId(), hwnd);
+        m_isEmbedded = true;
+        show();
+    }
 }
 
 void LinDesktop::unembedFromDesktop()
 {
-	SetParent((HWND)this->winId(), NULL);
-	
-	// Restore standard window flags: Title bar + Taskbar icon
-	setWindowFlags(Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
-	
-	m_isEmbedded = false;
-	
-	// If it was full screen, shrink it a bit so the title bar is easier to see/move
+    SetParent((HWND)this->winId(), NULL);
+    setWindowFlags(Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
+    m_isEmbedded = false;
+
     QRect screenGeom = QApplication::primaryScreen()->availableGeometry();
     resize(screenGeom.width() * 0.8, screenGeom.height() * 0.8);
     move(screenGeom.center() - rect().center());
-    
-	show();
-}
 
+    show();
+}
 
 void LinDesktop::mousePressEvent(QMouseEvent* event)
 {
@@ -143,7 +177,8 @@ void LinDesktop::mousePressEvent(QMouseEvent* event)
     QWidget::mousePressEvent(event);
 }
 
-void LinDesktop::mouseMoveEvent(QMouseEvent* event) {
+void LinDesktop::mouseMoveEvent(QMouseEvent* event)
+{
     if (!listView || !listView->isBackgroundSelectionActive()) {
         QWidget::mouseMoveEvent(event);
         return;
@@ -167,6 +202,7 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event) {
     m_lastSelectRect = rect;
     QWidget::mouseMoveEvent(event);
 }
+
 void LinDesktop::mouseReleaseEvent(QMouseEvent* event)
 {
     if (listView) {
@@ -177,20 +213,25 @@ void LinDesktop::mouseReleaseEvent(QMouseEvent* event)
     m_lastSelectRect = QRect();
     QWidget::mouseReleaseEvent(event);
 }
+
+
+
+
+
 void LinDesktop::paintEvent(QPaintEvent* event)
 {
-	QPainter painter(this);
+    Q_UNUSED(event);
+
+    QPainter painter(this);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
     QRect targetRect = rect();
 
-    // Draw previous wallpaper during transition (fading out)
     if (m_transitionOpacity < 1.0f && !m_prevBackImagePixmap.isNull()) {
         painter.setOpacity(1.0f - m_transitionOpacity);
         painter.drawPixmap(targetRect, m_prevBackImagePixmap.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
     }
 
-    // Draw current wallpaper with transition opacity
     if (!m_backImagePixmap.isNull()) {
         painter.setOpacity(m_transitionOpacity);
         painter.drawPixmap(targetRect, m_backImagePixmap.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
@@ -208,9 +249,10 @@ void LinDesktop::resizeEvent(QResizeEvent* event)
 
 void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 {
+    Q_UNUSED(event);
 }
 
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
-	return QWidget::nativeEvent(eventType, message, result);
+    return QWidget::nativeEvent(eventType, message, result);
 }

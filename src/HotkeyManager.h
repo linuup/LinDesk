@@ -29,6 +29,7 @@ private:
     ~HotkeyManager();
 
     static HotkeyManager* m_instance;
+    HWND m_registeredHwnd = nullptr;
     QMap<int, QString> m_hotkeyActions; // ID -> ActionID
     int m_nextHotkeyId = 100; // IDs for RegisterHotKey starting from 100
 };

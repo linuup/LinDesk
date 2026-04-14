@@ -1,9 +1,67 @@
 #include "ListItem.h"
 #include "DesktopItemLoader.h"
+#include "IconCacheManager.h"
 #include "ListView.h"
 #include <SysInfoUtil.h>
 #include <shellapi.h>
 class ListView;
+
+namespace {
+
+QString buildIconIdentityKey(const ListItemData& data,
+                             ObjectType type,
+                             const QFileInfo& fileInfo,
+                             const QString& normalizedPath)
+{
+    if (type == ObjectType::SpecialFolder) {
+        return QString("special:%1").arg(data.getCLSID());
+    }
+
+    const QString suffix = fileInfo.suffix().toLower();
+    if (fileInfo.isDir()) {
+        return QString("dir:%1").arg(normalizedPath);
+    }
+
+    if (suffix == "exe" || suffix == "lnk" || suffix == "url" || suffix == "ico" || suffix == "appref-ms") {
+        return QString("path:%1").arg(normalizedPath);
+    }
+
+    if (!suffix.isEmpty()) {
+        return QString("ext:%1").arg(suffix);
+    }
+
+    return QString("path:%1").arg(normalizedPath);
+}
+
+QString buildBaseIconCacheKey(const QString& identityKey)
+{
+    return QString("%1|base|%2").arg(identityKey).arg(ListItemData::s_targetIconSize);
+}
+
+QString buildRenderPixmapCacheKey(const QString& identityKey, int iconSide)
+{
+    return QString("%1|render|%2").arg(identityKey).arg(iconSide);
+}
+
+QString buildShortcutArrowCacheKey(int overlaySize)
+{
+    return QString("shortcut_arrow|%1").arg(overlaySize);
+}
+
+QIcon requestSystemShellFallbackIcon(const QFileInfo& fileInfo, ObjectType type)
+{
+    if (type == ObjectType::SpecialFolder) {
+        return SysInfoUtil::SysFileIconByDLL(4, ListItemData::s_targetIconSize, "shell32.dll");
+    }
+
+    if (fileInfo.isDir()) {
+        return SysInfoUtil::SysFileIconByDLL(4, ListItemData::s_targetIconSize, "shell32.dll");
+    }
+
+    return SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll");
+}
+
+}
 
 ListItem::ListItem(QWidget* parent)
 	: QWidget(parent)
@@ -115,7 +173,6 @@ void ListItem::setLayoutMode(LayoutMode mode) {
 
 void ListItem::initData()
 {
-	m_itemData.initIcon(); // Refresh icons if target size changed
 	m_type = m_itemData.type();
 
 	if (m_type != ObjectType::Empty_ObjectType)
@@ -126,7 +183,16 @@ void ListItem::initData()
 			m_filePath = m_itemData.filePath();
 		}
 		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
-		m_baseName = (m_type == ObjectType::SpecialFolder) ? m_itemData.fullName() : m_fileInfo.baseName();
+		if (m_type == ObjectType::SpecialFolder) {
+			m_baseName = m_itemData.fullName();
+		} else if (m_type == ObjectType::DiskLetter) {
+			m_baseName = m_itemData.fullName().trimmed();
+			if (m_baseName.isEmpty()) {
+				m_baseName = QDir::toNativeSeparators(m_filePath);
+			}
+		} else {
+			m_baseName = m_fileInfo.baseName();
+		}
 		m_icon = m_itemData.icon();
 		
 		if (m_type == ObjectType::SpecialFolder) {
@@ -136,7 +202,17 @@ void ListItem::initData()
 		}
 		while (m_normalizedPath.endsWith('\\')) m_normalizedPath.chop(1);
 
-		if (!m_icon.isNull() && !m_icon.availableSizes().isEmpty()) {
+        const QString iconIdentityKey = buildIconIdentityKey(m_itemData, m_type, m_fileInfo, m_normalizedPath);
+        const QString baseIconCacheKey = buildBaseIconCacheKey(iconIdentityKey);
+        m_icon = IconCacheManager::instance().getIcon(baseIconCacheKey, [this]() {
+            m_itemData.initIcon();
+            return m_itemData.icon();
+        });
+        if (m_icon.isNull()) {
+            m_icon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
+        }
+
+		if (!m_icon.isNull()) {
 			if (!m_iconWidget) {
 				m_iconWidget = new QLabel(this);
 				m_iconWidget->setAttribute(Qt::WA_TranslucentBackground);
@@ -159,10 +235,28 @@ void ListItem::initData()
 				leftMargin = 8;
 			}
 
-			QPixmap rawPix = m_icon.pixmap(iconSide, iconSide);
-			if (rawPix.width() != iconSide || rawPix.height() != iconSide) {
-				rawPix = rawPix.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-			}
+            const QString renderPixmapCacheKey = buildRenderPixmapCacheKey(iconIdentityKey, iconSide);
+			QPixmap rawPix = IconCacheManager::instance().getPixmap(renderPixmapCacheKey, [this, iconSide]() {
+                QPixmap pix = m_icon.pixmap(iconSide, iconSide);
+                if (pix.width() != iconSide || pix.height() != iconSide) {
+                    pix = pix.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                }
+                return pix;
+            });
+            if (rawPix.isNull()) {
+                QIcon fallbackIcon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
+                rawPix = fallbackIcon.pixmap(iconSide, iconSide);
+            }
+            if (m_type == ObjectType::DiskLetter && !rawPix.isNull()) {
+                QPixmap fadedPix(rawPix.size());
+                fadedPix.fill(Qt::transparent);
+                QPainter fadePainter(&fadedPix);
+                fadePainter.setRenderHint(QPainter::SmoothPixmapTransform);
+                fadePainter.setOpacity(0.8);
+                fadePainter.drawPixmap(0, 0, rawPix);
+                fadePainter.end();
+                rawPix = fadedPix;
+            }
 
 			m_iconWidget->setPixmap(rawPix);
 			m_iconWidget->setAlignment(Qt::AlignCenter); 
@@ -203,7 +297,13 @@ void ListItem::initData()
 						}
 					}
 
-					QPixmap arrowPix = arrowIcon.pixmap(overlaySize, overlaySize);
+					QPixmap arrowPix = IconCacheManager::instance().getPixmap(buildShortcutArrowCacheKey(overlaySize), [overlaySize]() {
+                        QIcon cachedArrowIcon = SysInfoUtil::SysFileIconByDLL(155, 32, "imageres.dll");
+                        if (cachedArrowIcon.isNull()) {
+                            cachedArrowIcon = SysInfoUtil::SysFileIconByDLL(30, 32, "shell32.dll");
+                        }
+                        return cachedArrowIcon.pixmap(overlaySize, overlaySize);
+                    });
 					m_shortcutArrowOverlay->setPixmap(arrowPix);
 					m_shortcutArrowOverlay->setFixedSize(overlaySize, overlaySize);
 					
@@ -297,21 +397,25 @@ void ListItem::unCheckSelf()
 
 void ListItem::openItem()
 {
-	if (!isReady || m_filePath.isEmpty()) return;
+	if (m_filePath.isEmpty()) return;
 
-	// 使用 Windows ShellExecuteW 打开文件或文件夹
-	// 转换路径为本地分隔符（虽然 ShellExecute 通常处理两者，但本地化更稳妥）
-	std::wstring wPath = QDir::toNativeSeparators(m_filePath).toStdWString();
-	ShellExecuteW(NULL, L"open", wPath.c_str(), NULL, NULL, SW_SHOWNORMAL);
+	// Let Windows Shell handle activation so invalid executables and broken
+	// shortcuts surface the same native error UI Explorer would show.
+	const QString nativePath = QDir::toNativeSeparators(m_filePath);
+	CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(nativePath.utf16()), Z_OPEN);
 }
 
-ListItemData ListItem::getItemData()
+ListItemData ListItem::getItemData() const
 {
 	return m_itemData;
 }
 
 void ListItem::refreshIcon()
 {
+    const QString identityKey = buildIconIdentityKey(m_itemData, m_type, m_fileInfo, m_normalizedPath);
+    IconCacheManager::instance().invalidateIcon(buildBaseIconCacheKey(identityKey));
+    IconCacheManager::instance().invalidatePixmapsByPrefix(identityKey + "|render|");
+
     // Force icon refresh by resetting cached size and re-initializing
     m_itemData.m_iconSizeCached = -1;
     m_itemData.initIcon();

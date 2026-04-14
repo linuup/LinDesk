@@ -288,14 +288,7 @@ void DesktopInfoMonitor::refreshIconsState() {
         if (value.isValid()) {
             icon.isHidden = (value.toUInt() == 1);
         } else {
-            // Default visibility if registry key is missing:
-            // Libraries and WSL are HIDDEN by default on most Windows installs
-            if (clsid == "{031E4825-7B94-4DC3-B131-E946B44C8DD5}" || 
-                clsid == "{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}") {
-                icon.isHidden = true;
-            } else {
-                icon.isHidden = false;
-            }
+            icon.isHidden = true;
         }
         
         icon.value = value;

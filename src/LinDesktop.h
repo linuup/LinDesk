@@ -46,12 +46,14 @@ public:
     void loadBackImage();
 	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
+    void checkFirstLaunchPrompt();
     
     void embedToDesktop();
     void unembedFromDesktop();
     bool isEmbedded() const { return m_isEmbedded; }
 
 private:
+    QString m_configPath;
     QPixmap m_backImagePixmap;
     QPixmap m_prevBackImagePixmap;
     float m_transitionOpacity = 1.0f;
@@ -62,6 +64,8 @@ private:
     
     QPushButton* m_embedBtn = nullptr;
     bool m_isEmbedded = false;
+    bool m_firstLaunchPromptShown = false;
+    bool m_isFirstLaunch = true;
 
 private slots:
 

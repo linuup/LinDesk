@@ -29,7 +29,7 @@ public:
         m_container->setStyleSheet(
             "QWidget#fluentDialogContainer { "
             "   background-color: rgba(255, 255, 255, 0.98); "
-            "   border: 1px solid rgba(0, 0, 0, 0.1); "
+            "   border: 1px solid rgba(0, 0, 0, 0.08); "
             "   border-radius: 12px; "
             "} "
         );
@@ -40,10 +40,10 @@ public:
         m_centralLayout->setSpacing(0);
 
         auto* shadow = new QGraphicsDropShadowEffect(this);
-        shadow->setBlurRadius(25);
+        shadow->setBlurRadius(20);
         shadow->setXOffset(0);
-        shadow->setYOffset(5);
-        shadow->setColor(QColor(0, 0, 0, 70));
+        shadow->setYOffset(4);
+        shadow->setColor(QColor(0, 0, 0, 50));
         m_container->setGraphicsEffect(shadow);
     }
 

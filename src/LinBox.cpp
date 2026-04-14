@@ -8,11 +8,13 @@
 #include <QDebug>
 #include <QMenu>
 #include <QAction>
+#include <QDir>
 #include "SettingUI.h"
 #include "ListView.h"
 #include "ListItem.h"
 #include "BoxManager.h"
 #include "WinBlurHelper.h"
+#include "Fluent/FluentDragTip.h"
 
 LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     // 使用Qt::SubWindow使Box成为ListView的真正子窗口，不会覆盖其他软件
@@ -42,18 +44,33 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleEdit = new QLineEdit(m_titleBar);
     m_titleEdit->setVisible(false);
     m_titleEdit->setText(m_title);
+    m_titleEdit->setAlignment(Qt::AlignCenter);
+    m_titleEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_titleEdit->setFixedHeight(22);
     m_titleEdit->setStyleSheet("background: white; color: black; border-radius: 4px; padding: 2px;");
 
     m_viewSwitchBtn = new QPushButton(m_titleBar);
     m_viewSwitchBtn->setFixedSize(24, 24);
     
     QFont iconFont("Segoe Fluent Icons");
-    if (!QFontInfo(iconFont).exactMatch()) {
+    bool fontLoaded = QFontInfo(iconFont).exactMatch();
+    if (!fontLoaded) {
         iconFont.setFamily("Segoe MDL2 Assets");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    if (!fontLoaded) {
+        iconFont.setFamily("Segoe UI Symbol");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    if (!fontLoaded) {
+        iconFont.setFamily("Wingdings");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
     }
     iconFont.setPixelSize(14);
     m_viewSwitchBtn->setFont(iconFont);
-    m_viewSwitchBtn->setText(u8"\uE8EF"); 
+    // Use text icons as fallback if font doesn't support Fluent Icons
+    QString viewIcon = fontLoaded ? u8"\uE8EF" : "▦";  // Grid or fallback
+    m_viewSwitchBtn->setText(viewIcon);
     m_viewSwitchBtn->setStyleSheet("QPushButton { background: transparent; color: white; border: none; border-radius: 4px; } "
                                    "QPushButton:hover { background: rgba(255, 255, 255, 40); } "
                                    "QPushButton:pressed { background: rgba(255, 255, 255, 20); }");
@@ -61,12 +78,15 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_collapseBtn = new QPushButton(m_titleBar);
     m_collapseBtn->setFixedSize(24, 24);
     m_collapseBtn->setFont(iconFont);
-    m_collapseBtn->setText(u8"\uE70E"); 
+    // Use text icons as fallback if font doesn't support Fluent Icons
+    QString collapseIcon = fontLoaded ? u8"\uE70E" : "−";  // ChevronDown or fallback
+    m_collapseBtn->setText(collapseIcon);
     m_collapseBtn->setStyleSheet("QPushButton { background: transparent; color: white; border: none; border-radius: 4px; } "
                                  "QPushButton:hover { background: rgba(255, 255, 255, 40); } ");
 
     titleLayout->insertWidget(0, m_collapseBtn);
-    titleLayout->addWidget(m_titleEdit);
+    titleLayout->addStretch();
+    titleLayout->addWidget(m_titleEdit, 1);
     titleLayout->addStretch();
     titleLayout->addWidget(m_viewSwitchBtn);
 
@@ -106,14 +126,12 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     connect(m_collapseBtn, &QPushButton::clicked, this, &LinBox::toggleCollapse);
 
     connect(m_titleEdit, &QLineEdit::returnPressed, this, [this]() {
-        setBoxTitle(m_titleEdit->text());
-        m_titleEdit->setVisible(false);
+        commitTitleEditing();
     });
 
     connect(m_titleEdit, &QLineEdit::editingFinished, this, [this]() {
         if (m_titleEdit->isVisible()) {
-            setBoxTitle(m_titleEdit->text());
-            m_titleEdit->setVisible(false);
+            commitTitleEditing();
         }
     });
 
@@ -122,7 +140,16 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     raise(); 
 }
 
-LinBox::~LinBox() {}
+LinBox::~LinBox() {
+    // Clean up drag tip
+    if (m_dragTip) {
+        delete m_dragTip;
+        m_dragTip = nullptr;
+    }
+    // Note: m_items (ListItem*) are not deleted here because they are shared
+    // between ListView's m_allItems and Box's m_items. The ListView destructor
+    // will handle the actual ListItem deletion through m_allItems.
+}
 
 void LinBox::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
@@ -132,10 +159,26 @@ void LinBox::showEvent(QShowEvent* event) {
 void LinBox::setShowType(BoxShowType type) {
     if (m_showType == type) return;
     m_showType = type;
+    QFont iconFont("Segoe Fluent Icons");
+    bool fontLoaded = QFontInfo(iconFont).exactMatch();
+    if (!fontLoaded) {
+        iconFont.setFamily("Segoe MDL2 Assets");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    if (!fontLoaded) {
+        iconFont.setFamily("Segoe UI Symbol");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    if (!fontLoaded) {
+        iconFont.setFamily("Wingdings");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    iconFont.setPixelSize(14);
+    m_viewSwitchBtn->setFont(iconFont);
     if (m_showType == BoxShowType::Icon_ShowType) {
-        m_viewSwitchBtn->setText(u8"\uE8EF"); 
+        m_viewSwitchBtn->setText(fontLoaded ? u8"\uE8EF" : "▦");
     } else {
-        m_viewSwitchBtn->setText(u8"\uECA5"); 
+        m_viewSwitchBtn->setText(fontLoaded ? u8"\uECA5" : "☰");
     }
     refreshLayout();
     emit geometryChanged(this);
@@ -244,6 +287,21 @@ void LinBox::setBoxTitle(const QString& title) {
     emit geometryChanged(this);
 }
 
+void LinBox::beginTitleEditing() {
+    m_titleEdit->setText(m_title);
+    m_titleEdit->show();
+    m_titleEdit->setFocus();
+    m_titleEdit->selectAll();
+    m_titleBar->update();
+}
+
+void LinBox::commitTitleEditing() {
+    const QString newTitle = m_titleEdit->text().trimmed();
+    setBoxTitle(newTitle.isEmpty() ? m_title : newTitle);
+    m_titleEdit->hide();
+    m_titleBar->update();
+}
+
 bool LinBox::eventFilter(QObject* watched, QEvent* event) {
     if (watched == m_titleBar && event->type() == QEvent::Paint) {
         if (!m_titleEdit->isVisible()) {
@@ -257,7 +315,7 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             QRect textRect = m_titleBar->rect().adjusted(35, 0, -35, 0);
             QFontMetrics fm(p.font());
             QString elidedTitle = fm.elidedText(m_title, Qt::ElideRight, textRect.width());
-            p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, elidedTitle);
+            p.drawText(textRect, Qt::AlignCenter, elidedTitle);
         }
         return false; // Let the widget continue painting its own background/hover if it has style
     }
@@ -265,6 +323,15 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
     if (watched == m_titleBar || watched == m_contentArea) {
         if (event->type() == QEvent::MouseButtonPress) {
             QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+            if (m_titleEdit->isVisible()) {
+                const QWidget* sourceWidget = qobject_cast<QWidget*>(watched);
+                const QPoint titlePos = sourceWidget == m_titleBar
+                    ? mouseEvent->pos()
+                    : m_titleBar->mapFromGlobal(sourceWidget->mapToGlobal(mouseEvent->pos()));
+                if (!m_titleEdit->geometry().contains(titlePos)) {
+                    commitTitleEditing();
+                }
+            }
             if (mouseEvent->button() == Qt::LeftButton) {
                 BoxManager::instance()->bringToFront(this);
                 // Determine if we should drag or resize
@@ -297,9 +364,7 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
             // Only trigger rename if we clicked in the title area, not on buttons
             if (isDragArea(mouseEvent->pos())) {
-                m_titleEdit->show();
-                m_titleEdit->setFocus();
-                m_titleEdit->selectAll();
+                beginTitleEditing();
                 return true;
             }
         }
@@ -308,6 +373,12 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void LinBox::mousePressEvent(QMouseEvent* event) {
+    if (m_titleEdit->isVisible()) {
+        const QPoint titlePos = m_titleBar->mapFrom(this, event->pos());
+        if (!m_titleEdit->geometry().contains(titlePos)) {
+            commitTitleEditing();
+        }
+    }
     if (event->button() == Qt::LeftButton) {
         BoxManager::instance()->bringToFront(this);
     }
@@ -383,6 +454,12 @@ void LinBox::paintEvent(QPaintEvent* event) {
         style()->drawPrimitive(QStyle::PE_Widget, &opt, &p, this);
         
         p.setRenderHint(QPainter::Antialiasing);
+        // Fill the content area with background color to avoid transparency
+        int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
+        int a = (int)(m_bgOpacity * 255);
+        if (a < 5) a = 20;
+        p.fillRect(rect().adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth),
+                   QColor(r, g, b, a));
         p.setPen(QPen(QColor(255, 255, 255, 50), 1));
         QRect contentRect = rect().adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth);
         p.drawRect(contentRect.adjusted(0, 0, -1, -1));
@@ -452,16 +529,101 @@ bool LinBox::nativeEvent(const QByteArray& eventType, void* message, long* resul
     return QWidget::nativeEvent(eventType, message, result);
 }
 
-void LinBox::dragEnterEvent(QDragEnterEvent* event) {
-    if (event->mimeData()->hasUrls()) {
-        // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
-        if (event->keyboardModifiers() & Qt::ControlModifier) {
-            event->setDropAction(Qt::CopyAction);
-        } else {
-            event->setDropAction(Qt::MoveAction);
+ListItem* LinBox::hitItemAt(const QPoint& boxPos) const
+{
+    if (!m_contentArea) {
+        return nullptr;
+    }
+
+    const QPoint contentPos = m_contentArea->mapFromGlobal(mapToGlobal(boxPos));
+    for (int i = m_items.size() - 1; i >= 0; --i) {
+        ListItem* item = m_items[i];
+        if (item && item->isVisible() && item->geometry().contains(contentPos)) {
+            return item;
         }
-        event->accept();
-        updateDragTip(event->pos(), event->keyboardModifiers() & Qt::ControlModifier);
+    }
+    return nullptr;
+}
+
+void LinBox::showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl)
+{
+    if (!item) {
+        if (m_dragTip) m_dragTip->hide();
+        return;
+    }
+
+    if (!m_dragTip) {
+        m_dragTip = new FluentDragTip();
+    }
+
+    const QString clsid = item->getItemData().getCLSID();
+    const bool isRecycleBin = (clsid == APP_RECYCLE_BIN_CLS);
+    const bool isPC = (clsid == APP_MY_COMPUTER_CLS);
+    const bool isNetwork = (clsid == APP_NETWORK_CLS);
+    const bool isControlPanel = (clsid == APP_CONTROL_PANEL_CLS);
+    const bool isFolder = (item->type() == ObjectType::Folder_ObjectType ||
+                           item->type() == ObjectType::SpecialFolder ||
+                           item->type() == ObjectType::DiskLetter);
+
+    if (isPC || isNetwork || isControlPanel) {
+        m_dragTip->setText("<b style='color:#ff4d4d'>Operation Forbidden</b>");
+    } else {
+        QString actionKeyword;
+        QString highlightColor = "#70a1ff";
+        QString htmlText;
+        ListItem* draggedItem = nullptr;
+        if (ListView* lv = ListView::instance()) {
+            draggedItem = lv->draggedItem();
+        }
+        const bool isDraggedDiskLetter = (draggedItem && draggedItem->type() == ObjectType::DiskLetter);
+
+        if (isRecycleBin) {
+            actionKeyword = "Move to";
+            highlightColor = "#ff4d4d";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, item->baseName());
+        } else if (isFolder && isDraggedDiskLetter) {
+            htmlText = QString("<b style='color:%1'>在</b> <span>%2</span> <b style='color:%1'>里创建链接</b>")
+                .arg(highlightColor, item->baseName());
+        } else if (isFolder) {
+            actionKeyword = isCtrl ? "Copy to" : "Move to";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, item->baseName());
+        } else {
+            actionKeyword = "Open with";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, item->baseName());
+        }
+        m_dragTip->setText(htmlText);
+    }
+
+    QPoint targetPos = boxPos + QPoint(24, 24);
+    if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(boxPos.x() - m_dragTip->width() - 8);
+    if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(boxPos.y() - m_dragTip->height() - 8);
+    m_dragTip->showAt(mapToGlobal(targetPos));
+}
+
+void LinBox::dragEnterEvent(QDragEnterEvent* event) {
+    if (!event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+
+    const bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
+    const bool isInternalDrag = (event->source() != nullptr);
+    ListItem* hitItem = hitItemAt(event->pos());
+    const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
+    const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
+
+    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+    event->accept();
+
+    if (hitItem) {
+        showDropTipForItem(hitItem, event->pos(), isCtrl);
+    } else if (isInternalDrag) {
+        if (m_dragTip) m_dragTip->hide();
+    } else {
+        updateDragTip(event->pos(), isCtrl);
     }
 }
 
@@ -470,17 +632,27 @@ void LinBox::dragLeaveEvent(QDragLeaveEvent* event) {
 }
 
 void LinBox::dragMoveEvent(QDragMoveEvent* event) {
-    if (event->mimeData()->hasUrls()) {
-        // 默认设置为 MoveAction，按住 Ctrl 时切换为 CopyAction
-        if (event->keyboardModifiers() & Qt::ControlModifier) {
-            event->setDropAction(Qt::CopyAction);
-        } else {
-            event->setDropAction(Qt::MoveAction);
-        }
-        event->accept();
-        updateDragTip(event->pos(), event->keyboardModifiers() & Qt::ControlModifier);
-    } else {
+    if (!event->mimeData()->hasUrls()) {
         if (m_dragTip) m_dragTip->hide();
+        event->ignore();
+        return;
+    }
+
+    const bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
+    const bool isInternalDrag = (event->source() != nullptr);
+    ListItem* hitItem = hitItemAt(event->pos());
+    const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
+    const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
+
+    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+    event->accept();
+
+    if (hitItem) {
+        showDropTipForItem(hitItem, event->pos(), isCtrl);
+    } else if (isInternalDrag) {
+        if (m_dragTip) m_dragTip->hide();
+    } else {
+        updateDragTip(event->pos(), isCtrl);
     }
 }
 
@@ -491,30 +663,51 @@ void LinBox::dropEvent(QDropEvent* event) {
     
     ListView* lv = ListView::instance();
     if (!lv) return;
-    
-    for (const QUrl& url : mime->urls()) {
-        QString filePath = url.toLocalFile();
-        if (!filePath.isEmpty()) {
-            lv->moveItemToBox(filePath, this, false); // Optimized: no immediate persistence or layout
+
+    QStringList paths = lv->resolveDraggedLocalPaths(mime);
+
+    if (paths.isEmpty()) {
+        event->ignore();
+        return;
+    }
+
+    const bool isInternalDrag = (event->source() != nullptr);
+    const bool copyMode = (event->keyboardModifiers() & Qt::ControlModifier);
+    ListItem* hitItem = hitItemAt(event->pos());
+
+    if (hitItem) {
+        if (lv->handleDroppedPathsOnItem(paths, hitItem, copyMode)) {
+            event->accept();
+        } else {
+            event->ignore();
         }
+        return;
     }
-    
-    // 2. Refresh layouts efficiently
-    this->refreshLayout();
-    this->raise(); 
-    
-    // Desktop Sync: Only trigger full redistribution if Auto-Arrange is active.
-    // In manual mode, the icon was already hidden from the desktop visible pool.
-    if (lv->isAutoArrangeEnabled()) {
-        lv->loadIconLayer();
+
+    if (isInternalDrag) {
+        for (const QString& filePath : paths) {
+            lv->moveItemToBox(filePath, this, false);
+        }
+
+        this->refreshLayout();
+        this->raise();
+
+        if (lv->isAutoArrangeEnabled()) {
+            lv->loadIconLayer();
+        } else {
+            lv->update();
+        }
+
+        lv->requestSaveBoxes();
+        event->accept();
+        return;
+    }
+
+    if (lv->importPathsToBox(paths, this, copyMode)) {
+        event->accept();
     } else {
-        lv->update();
+        event->ignore();
     }
-    
-    lv->requestSaveBoxes();
-    
-    // 接受当前的 drop action（Move 或 Copy）
-    event->accept();
 }
 
 void LinBox::keyPressEvent(QKeyEvent* event) {
@@ -570,17 +763,34 @@ void LinBox::updateCursorShape(const QPoint& pos) {
 }
 
 void LinBox::toggleCollapse() {
+    QFont iconFont("Segoe Fluent Icons");
+    bool fontLoaded = QFontInfo(iconFont).exactMatch();
+    if (!fontLoaded) {
+        iconFont.setFamily("Segoe MDL2 Assets");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    if (!fontLoaded) {
+        iconFont.setFamily("Segoe UI Symbol");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    if (!fontLoaded) {
+        iconFont.setFamily("Wingdings");
+        fontLoaded = QFontInfo(iconFont).exactMatch();
+    }
+    iconFont.setPixelSize(14);
+    m_collapseBtn->setFont(iconFont);
+
     if (!m_isCollapsed) {
         m_originalHeight = height();
         m_scrollArea->hide(); // Hide scroll area instead of content area directly
         setFixedHeight(m_titleHeight + 2 * m_borderWidth);
-        m_collapseBtn->setText(u8"\uE70D");
+        m_collapseBtn->setText(fontLoaded ? u8"\uE70D" : "+");
         m_isCollapsed = true;
     } else {
         m_scrollArea->show();
         setMinimumHeight(100); setMaximumHeight(16777215);
         resize(width(), m_originalHeight);
-        m_collapseBtn->setText(u8"\uE70E");
+        m_collapseBtn->setText(fontLoaded ? u8"\uE70E" : "−");
         m_isCollapsed = false;
     }
     emit geometryChanged(this);
@@ -630,28 +840,28 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     // 100% Windows 11 Context Menu Clone (Light Theme)
     menu.setStyleSheet(
         "QMenu { "
-        "  background-color: rgba(255, 255, 255, 175); "
-        "  border: 1px solid rgba(0, 0, 0, 0.15); "
-        "  border-top: 1px solid rgba(255, 255, 255, 0.45); " // Glass highlight
+        "  background-color: rgba(255, 255, 255, 230); "
+        "  border: 1px solid rgba(0, 0, 0, 0.08); "
+        "  border-top: 1px solid rgba(255, 255, 255, 0.8); " // Glass highlight
         "  border-radius: 12px; "
         "  padding: 6px 2px; "
-        "  color: #000000; "
+        "  color: #1a1a1a; "
         "  font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
         "  font-size: 14px; "
         "} "
         "QMenu::item { "
         "  background-color: transparent; "
-        "  padding: 6px 40px 6px 12px; " // Spacing for icons and text
+        "  padding: 8px 44px 8px 14px; " // Larger spacing for bigger icons
         "  border-radius: 4px; "
         "  margin: 1px 6px; "
         "} "
         "QMenu::item:selected { "
-        "  background-color: rgba(0, 0, 0, 0.065); "
-        "  color: #000000; "
+        "  background-color: rgba(0, 120, 212, 0.15); "
+        "  color: #1a1a1a; "
         "} "
         "QMenu::separator { "
         "  height: 1px; "
-        "  background: rgba(0, 0, 0, 0.06); "
+        "  background: rgba(0, 0, 0, 0.08); "
         "  margin: 4px 14px; "
         "}"
     );
@@ -661,9 +871,9 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
         WinBlurHelper::applyBlur(&menu, WinBlurHelper::Acrylic);
     });
 
-    // Dynamic Icon Creation (High DPI & Fallback aware)
+    // Dynamic Icon Creation (High DPI & Fallback aware) - Larger icons
     auto createIcon = [](char16_t code, const QColor& color) {
-        QPixmap pix(32, 32); 
+        QPixmap pix(40, 40); 
         pix.fill(Qt::transparent); 
         QPainter p(&pix); 
         p.setRenderHint(QPainter::Antialiasing); 
@@ -671,7 +881,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
         
         QFont f("Segoe Fluent Icons");
         if (!QFontInfo(f).exactMatch()) f.setFamily("Segoe MDL2 Assets");
-        f.setPixelSize(16);
+        f.setPixelSize(20); // Larger icon font
         p.setFont(f); 
         p.setPen(color); 
         p.drawText(pix.rect(), Qt::AlignCenter, QString(code)); 
@@ -698,10 +908,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 
     QAction* selectedAction = menu.exec(globalPos);
     if (selectedAction == renameAction) {
-        m_titleEdit->show(); 
-        m_titleEdit->setFocus(); 
-        m_titleEdit->selectAll(); 
-        m_titleBar->update(); 
+        beginTitleEditing();
     } 
     else if (selectedAction == viewSwitchAction) {
         setShowType(m_showType == BoxShowType::Icon_ShowType ? BoxShowType::List_ShowType : BoxShowType::Icon_ShowType);
@@ -715,39 +922,17 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 }
 
 void LinBox::updateDragTip(const QPoint& pos, bool isCtrl) {
-    if (isCtrl) {
-        if (!m_dragTip) {
-            m_dragTip = new QLabel(this);
-            m_dragTip->setStyleSheet(
-                "QLabel {"
-                "  background-color: rgba(255, 255, 255, 235);" 
-                "  color: #202020;"
-                "  border: 1px solid rgba(0, 0, 0, 40);"
-                "  border-radius: 8px;"
-                "  padding: 10px 16px;"
-                "  font-size: 13px;"
-                "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
-                "}"
-            );
-            m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
-            QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
-            shadow->setBlurRadius(20);
-            shadow->setColor(QColor(0, 0, 0, 80)); 
-            shadow->setOffset(0, 4);
-            m_dragTip->setGraphicsEffect(shadow);
-        }
-        
-        m_dragTip->setText("<b style='color:#70a1ff'>Copy to</b> <span>Box</span>");
-        m_dragTip->adjustSize();
-
-        QPoint targetPos = pos + QPoint(24, 24);
-        if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(pos.x() - m_dragTip->width() - 8);
-        if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(pos.y() - m_dragTip->height() - 8);
-
-        m_dragTip->move(targetPos);
-        m_dragTip->show();
-        m_dragTip->raise();
-    } else {
-        if (m_dragTip) m_dragTip->hide();
+    if (!m_dragTip) {
+        m_dragTip = new FluentDragTip();
     }
+
+    m_dragTip->setText(isCtrl
+        ? "<b style='color:#70a1ff'>Copy to</b> <span>this Box</span>"
+        : "<b style='color:#70a1ff'>Move to</b> <span>this Box</span>");
+
+    QPoint targetPos = pos + QPoint(24, 24);
+    if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(pos.x() - m_dragTip->width() - 8);
+    if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(pos.y() - m_dragTip->height() - 8);
+
+    m_dragTip->showAt(mapToGlobal(targetPos));
 }

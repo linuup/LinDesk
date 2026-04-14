@@ -119,11 +119,11 @@ signals:
 	// 5-Paste shortcut
 	void pasteShortcutTriggered();
 
-	// 6-Undo delete
-	void undoDeleteTriggered();
-
 	// 7-Create Box
 	void createBoxTriggered();
+
+	// 7.5-Organize Desktop
+	void organizeDesktopTriggered();
 	
 	// 8-Exit
 	void quitAppTriggered();
@@ -150,10 +150,10 @@ public slots:
 	void onSortByDate();
 	// Refresh
 	void onRefresh();
+
+	void onOrganizeDesktop();
 	void onPaste();
 	void onPasteShortcut();
-	// Undo delete
-	void onUndoDelete();
 	void onCreateBox();
 	void onQuitApp();
 	void onLinDesk();
@@ -192,6 +192,7 @@ private:
 	QAction* m_sortByNameAction = nullptr;
 	QAction* m_sortBySizeAction = nullptr;
 	QAction* m_sortByTypeAction = nullptr;
+	QAction* m_pasteAction = nullptr;
 	QAction* m_createBoxAction = nullptr;
 	QAction* m_linDeskAction = nullptr;
 	QAction* pasteShortcutAction = nullptr;
@@ -207,8 +208,10 @@ private:
 	/// </summary>
 	QMenu* createViewSubMenu();
 
-	/// create undo delete menu
 	QMenu* createUndoDeleteMenu() const;
+	void updatePasteActionsState();
+	bool clipboardHasFileItems() const;
+	bool clipboardContainsCutItems() const;
 	
 	/// <summary>
 	/// 

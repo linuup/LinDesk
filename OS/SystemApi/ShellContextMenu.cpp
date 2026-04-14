@@ -1,6 +1,69 @@
 
 #include "ShellContextMenu.h"
 
+namespace {
+int FindTopLevelMenuAnchor(HMENU menu)
+{
+    if (!menu) {
+        return -1;
+    }
+
+    const int exactBackgroundAnchor = MenuHelper::FindMenuItem(menu, TEXT("Next desktop background"));
+    if (exactBackgroundAnchor != -1) {
+        return exactBackgroundAnchor;
+    }
+
+    const int exactCnBackgroundAnchor = MenuHelper::FindMenuItem(menu, TEXT("下一张桌面背景"));
+    if (exactCnBackgroundAnchor != -1) {
+        return exactCnBackgroundAnchor;
+    }
+
+    const int organizeAnchor = MenuHelper::FindMenuItem(menu, TEXT("开启桌面整理"));
+    if (organizeAnchor != -1) {
+        return organizeAnchor;
+    }
+
+    const wchar_t* exactCandidates[] = {
+        TEXT("Next desktop background"),
+        TEXT("下一张桌面背景"),
+        TEXT("New"),
+        TEXT("新建"),
+        TEXT("Display settings"),
+        TEXT("显示设置"),
+        TEXT("Personalize"),
+        TEXT("个性化"),
+        TEXT("开启桌面整理")
+    };
+
+    for (const auto* candidate : exactCandidates) {
+        const int pos = MenuHelper::FindMenuItem(menu, candidate);
+        if (pos != -1) {
+            return pos;
+        }
+    }
+
+    const int count = GetMenuItemCount(menu);
+    for (int i = 0; i < count; ++i) {
+        const std::wstring text = MenuHelper::GetMenuItemString(menu, i, true);
+        if (text.empty()) {
+            continue;
+        }
+
+        if (text.find(L"desktop background") != std::wstring::npos ||
+            text.find(L"桌面背景") != std::wstring::npos ||
+            text == L"New" || text == L"新建" ||
+            text.find(L"Display settings") != std::wstring::npos ||
+            text.find(L"显示设置") != std::wstring::npos ||
+            text.find(L"Personalize") != std::wstring::npos ||
+            text.find(L"个性化") != std::wstring::npos) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+}
+
 void ShellContextMenu::DisplayDesktopContextMenu()
 {
     operationType = OperationType::BackGround;
@@ -306,20 +369,35 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                     } else if (!item.children.empty()) {
                         HMENU hSubMenu = CreatePopupMenu();
                         addItems(hSubMenu, item.children);
-                        InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
+                        UINT insertPos = 0;
+                        if (hMenuTarget == hMenu.get() && item.text == L"Undo Delete") {
+                            int anchor = FindTopLevelMenuAnchor(hMenuTarget);
+                            if (anchor >= 0) {
+                                insertPos = static_cast<UINT>(anchor);
+                            }
+                        }
+                        InsertMenuW(hMenuTarget, insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
                     } else {
                         UINT id = nextId++;
                         UINT flags = MF_BYPOSITION | MF_STRING;
                         if (item.checked) flags |= MF_CHECKED;
                         if (!item.enabled) flags |= MF_GRAYED;
-                        
-                        InsertMenuW(hMenuTarget, 0, flags, id, item.text.c_str());
+
+                        UINT insertPos = 0;
+                        if (hMenuTarget == hMenu.get() && item.text == L"Undo Delete") {
+                            int anchor = FindTopLevelMenuAnchor(hMenuTarget);
+                            if (anchor >= 0) {
+                                insertPos = static_cast<UINT>(anchor);
+                            }
+                        }
+
+                        InsertMenuW(hMenuTarget, insertPos, flags, id, item.text.c_str());
                         
                         if (item.hBitmap) {
                             MENUITEMINFOW mii = { sizeof(mii) };
                             mii.fMask = MIIM_BITMAP;
                             mii.hbmpItem = item.hBitmap;
-                            SetMenuItemInfoW(hMenuTarget, 0, TRUE, &mii);
+                            SetMenuItemInfoW(hMenuTarget, insertPos, TRUE, &mii);
                         }
                         
                         if (item.callback) {
@@ -404,7 +482,32 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             m_contextMenu->InvokeCommand(&commandInfo);
         }
     }
-        
+}
+
+bool ShellContextMenu::IsBackgroundCommandEnabled(HWND hwnd, UINT commandId)
+{
+    operationType = OperationType::BackGround;
+    m_contextMenu = MaybeGetShellContextMenu(hwnd);
+    if (!m_contextMenu) {
+        return false;
+    }
+
+    wil::unique_hmenu hMenu(CreatePopupMenu());
+    if (!hMenu) {
+        return false;
+    }
+
+    m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
+        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+
+    RemoveTencentDeskGoMenu(hMenu.get());
+
+    HMENU parentMenu = MenuHelper::FindParentMenu(hMenu.get(), commandId);
+    if (!parentMenu) {
+        return false;
+    }
+
+    return MenuHelper::IsMenuItemEnabled(parentMenu, commandId, false);
 }
 
 wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)

@@ -22,10 +22,6 @@ public:
 
     // 有参构造函数 - 通过 ListItemData 初始化
     explicit ListItem(const QString& path, QWidget* parent = nullptr);
-    // 禁止拷贝构造函数
-    //ListItem(const ListItem&) = delete;
-    // 禁止赋值操作符
-    //ListItem& operator=(const ListItem&) = delete;
 
     ~ListItem();
 	// 初始化数据
@@ -49,7 +45,7 @@ public:
     }
     const QRect& getItemRect() const { return m_itemRect; }
     const QRect& getChooseItemRect() const { return m_chooseRect; }
-    ListItemData getItemData(); // 设置对应的 ListItemData
+    ListItemData getItemData() const; // 设置对应的 ListItemData
 
     void setItemData(ListItemData data);
     void setItemSize(int width,int heigh);

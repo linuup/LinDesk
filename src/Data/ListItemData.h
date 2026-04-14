@@ -79,17 +79,35 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 		m_iconItem = item;
 	}
 
-	// 初始化
 	bool setPIDL(LPITEMIDLIST pidl) {
 		m_pidl = std::move(pidl);
 		//m_pidl.reset(ILClone(pidl));
 		if (!m_pidl) return false;
 		return updatePropertiesFromPIDL();
 	}
+	bool isDriveRootPath(const QString& rawPath) const {
+		if (rawPath.isEmpty()) {
+			return false;
+		}
+
+		const QString nativePath = QDir::toNativeSeparators(rawPath);
+		std::wstring wPath = nativePath.toStdWString();
+		if (wPath.empty()) {
+			return false;
+		}
+
+		if (!PathIsRootW(wPath.c_str())) {
+			return false;
+		}
+
+		const UINT driveType = GetDriveTypeW(wPath.c_str());
+		return driveType != DRIVE_NO_ROOT_DIR && driveType != DRIVE_UNKNOWN;
+	}
 	void setItemDateType(const SpecialFolders type) {
 		auto pathTmp = m_iconItem.path.c_str();
 		QFileInfo tmp(pathTmp);
 		tmp = tmp.exists() ? tmp : QFileInfo();
+		const QString rawPath = QString::fromStdString(m_iconItem.path);
 
 		// Correctly identify special folders excluding Empty and Unknown types
 		if (type != SpecialFolders::UnknownFolder && type != SpecialFolders::Empty) {
@@ -97,14 +115,23 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 			m_type = ObjectType::SpecialFolder;
 		}
 		else {
-			//判断对象类型
-			if (tmp.isFile()) {
+			//?????????
+			if (isDriveRootPath(rawPath)) {
+				m_type = ObjectType::DiskLetter;
+			}
+			else if (tmp.isFile()) {
 				m_type = ObjectType::File;
 				//m_type = ObjectType::Link;
 			}
 			else if (tmp.isDir()) {
 				m_type = ObjectType::Folder_ObjectType;
 			}
+            else {
+                const QString suffix = QFileInfo(rawPath).suffix().toLower();
+                if (!rawPath.isEmpty() && (suffix == "lnk" || suffix == "url" || suffix == "appref-ms" || suffix == "ico")) {
+                    m_type = ObjectType::File;
+                }
+            }
 		}
 	}
 	//移动构造函数，禁止复制
@@ -263,7 +290,6 @@ public:
 				m_icon = newIcon;
 			}
 			
-			qDebug() << "[initIcon]" << m_fullName << "Target:" << s_targetIconSize << "Extracted:" << newIcon.availableSizes();
 		}
 	}
 	bool updatePropertiesFromPIDL() {

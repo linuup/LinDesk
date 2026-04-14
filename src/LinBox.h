@@ -103,6 +103,10 @@ private:
     ResizeDir getResizeDir(const QPoint& pos);
     bool isDragArea(const QPoint& pos);
     void showCustomContextMenu(const QPoint& globalPos);
+    void beginTitleEditing();
+    void commitTitleEditing();
+    ListItem* hitItemAt(const QPoint& boxPos) const;
+    void showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl);
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<ListItem*> m_items;
@@ -135,7 +139,7 @@ private:
     QString m_id; 
 
 private:
-    QLabel* m_dragTip = nullptr;
+    class FluentDragTip* m_dragTip = nullptr;
     void updateDragTip(const QPoint& pos, bool isCtrl);
 };
 

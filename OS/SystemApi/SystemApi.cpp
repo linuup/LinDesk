@@ -647,6 +647,14 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         }
         ILFree(pidlItem); // 释放 EnumIDList 返回的相对 PIDL
 
+        if (i.pidl_p && Tool::WstrToStr(szName) != Tool::getWindowsUsername()) {
+            std::wstring resolvedItemPath;
+            std::wstring resolvedItemDisplayName;
+            if (FillTargetNamesFromPidl(i.pidl_p, resolvedItemPath, resolvedItemDisplayName) && !resolvedItemPath.empty()) {
+                i.path = Tool::WstrToStr(resolvedItemPath.c_str());
+            }
+        }
+
 		i.specialFolder = getFolderTypeFromName(szParsingPath);
         
         // 尝试从可视抓取数组中匹配坐标 (同样进行归一化处理)

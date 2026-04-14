@@ -16,7 +16,7 @@ public:
 
         // Background
         if (opt.state & QStyle::State_Selected) {
-            painter->setBrush(QColor(0, 120, 212)); // Microsoft Blue
+            painter->setBrush(QColor(0, 120, 212)); // Fluent Blue #0078d4
             painter->setPen(Qt::NoPen);
             painter->drawRoundedRect(opt.rect.adjusted(4, 2, -4, -2), 4, 4);
         } else if (opt.state & QStyle::State_MouseOver) {
@@ -24,7 +24,7 @@ public:
         }
 
         // Text
-        painter->setPen((opt.state & QStyle::State_Selected) ? Qt::white : QColor(32, 32, 32));
+        painter->setPen((opt.state & QStyle::State_Selected) ? Qt::white : QColor(31, 41, 55));
         QFont font = painter->font();
         font.setPixelSize(13);
         painter->setFont(font);

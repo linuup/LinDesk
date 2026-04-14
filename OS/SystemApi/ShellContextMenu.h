@@ -122,6 +122,7 @@ public:
     }
 
     void ShowMenu(HWND hwnd, const POINT *pt, IUnknown* site, Flags flags = Flags::Standard);
+    bool IsBackgroundCommandEnabled(HWND hwnd, UINT commandId);
 
 
     /// <summary>	

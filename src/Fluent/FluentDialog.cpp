@@ -36,7 +36,6 @@ void FluentDialog::setupUi() {
     m_contentWidget->setStyleSheet(
         "#contentWidget {"
         "  background-color: white;"
-        "  border-radius: 8px;"
         "}"
     );
 
@@ -46,13 +45,13 @@ void FluentDialog::setupUi() {
 
     // Title
     m_titleLabel = new QLabel(this);
-    m_titleLabel->setStyleSheet("font-size: 20px; font-weight: 600; color: #1a1a1a;");
+    m_titleLabel->setStyleSheet("font-size: 20px; font-weight: 600; color: #1f2937;");
     m_titleLabel->setWordWrap(true);
     m_mainLayout->addWidget(m_titleLabel);
 
     // Message
     m_messageLabel = new QLabel(this);
-    m_messageLabel->setStyleSheet("font-size: 14px; color: #5a5a5a;");
+    m_messageLabel->setStyleSheet("font-size: 14px; color: #6b7280;");
     m_messageLabel->setWordWrap(true);
     m_mainLayout->addWidget(m_messageLabel);
 
@@ -76,9 +75,9 @@ void FluentDialog::setupUi() {
 
     // Initial shadow effect (optional but recommended)
     QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_contentWidget);
-    shadow->setBlurRadius(25);
-    shadow->setOffset(0, 8);
-    shadow->setColor(QColor(0, 0, 0, 45));
+    shadow->setBlurRadius(20);
+    shadow->setOffset(0, 4);
+    shadow->setColor(QColor(0, 0, 0, 40));
     m_contentWidget->setGraphicsEffect(shadow);
 }
 
@@ -102,38 +101,38 @@ void FluentDialog::addActionButton(const QString& text, ActionType type, std::fu
     if (type == ActionType::Primary) {
         button->setStyleSheet(
             "QPushButton {"
-            "  background-color: #005a9e;" // Fluent Accent
+            "  background-color: #0078d4;" // Fluent Blue
             "  color: white;"
             "  border: none;"
-            "  border-radius: 4px;"
+            "  border-radius: 6px;"
             "  padding: 6px 24px;"
             "  font-weight: 500;"
             "}"
-            "QPushButton:hover { background-color: #0063b1; }"
-            "QPushButton:pressed { background-color: #004578; }"
+            "QPushButton:hover { background-color: #006cbd; }"
+            "QPushButton:pressed { background-color: #005a9e; }"
         );
     } else if (type == ActionType::Secondary) {
         button->setStyleSheet(
             "QPushButton {"
-            "  background-color: #fdfdfd;"
-            "  border: 1px solid #d1d1d1;"
-            "  border-radius: 4px;"
+            "  background-color: #ffffff;"
+            "  border: 1px solid #e5e7eb;"
+            "  border-radius: 6px;"
             "  padding: 6px 24px;"
-            "  color: #202020;"
+            "  color: #1f2937;"
             "}"
-            "QPushButton:hover { background-color: #f5f5f5; border-color: #c1c1c1; }"
-            "QPushButton:pressed { background-color: #e5e5e5; }"
+            "QPushButton:hover { background-color: #f9fafb; border-color: #d1d5db; }"
+            "QPushButton:pressed { background-color: #f3f4f6; }"
         );
     } else { // ActionType::Close
         button->setStyleSheet(
             "QPushButton {"
             "  background-color: transparent;"
             "  border: none;"
-            "  border-radius: 4px;"
+            "  border-radius: 6px;"
             "  padding: 6px 24px;"
-            "  color: #4a4a4a;"
+            "  color: #6b7280;"
             "}"
-            "QPushButton:hover { background-color: rgba(0, 0, 0, 0.05); }"
+            "QPushButton:hover { background-color: rgba(0, 0, 0, 0.06); }"
             "QPushButton:pressed { background-color: rgba(0, 0, 0, 0.1); }"
         );
     }

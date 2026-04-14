@@ -17,6 +17,8 @@
 #include <QTimer>
 #include <QSharedPointer>
 #include <QPointer>
+#include <QMap>
+#include <memory>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
@@ -33,6 +35,7 @@
 #include "SettingUI.h"
 class LinBox;
 class BoxManager; 
+class DesktopQuadTree;
 
 class ListView: public QWidget {
 	Q_OBJECT
@@ -159,8 +162,9 @@ public:
 	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
     void setDoubleClickHideIconsEnabled(bool enabled);
     	bool isDoubleClickHideIconsEnabled() const;
-    bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
+	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
+	ListItem* draggedItem() const { return m_draggedItem; }
 	void loadPersistentLayout();
 	void updateRightMenuState();
 
@@ -182,17 +186,19 @@ public:
 	void showSettings(LinBox* target = nullptr);
 	static ListView* instance(QWidget* parent = nullptr);
 	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true);
+	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode);
+	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
+	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode);
 	bool isItemInAnyBox(const QString& filePath) const;
 	QString getBoxIdForItem(const QString& filePath) const;
 	void saveBoxes();
 	void requestSaveBoxes(); // Move to public
+	QString dumpAllItemsJson() const;
+	QString dumpVisibleItemsJson() const;
+	QString dumpHiddenItemsJson() const;
 	void DisableSelecting() {
 		endBackgroundSelection();
 	}
-
-	int currentHoverItemIndex = -1; // 当前鼠标悬停的图标索引
-	int previousHoverItemIndex = -1; // 上一个鼠标悬停的图标索引
-	QRect currentHoverItemRect;  // 当前鼠标悬停的图标区域
 
 	/// <summary>
 	/// 请求系统右键菜单
@@ -218,6 +224,8 @@ public:
 	/// <returns></returns>
 	ListItem* selectItemByPath(const QString path);
 	void clearCheckedItem();
+    void rebuildSpatialIndex();
+    QVector<ListItem*> queryItemsInRect(const QRect& rect) const;
 
 private slots:
 
@@ -250,9 +258,8 @@ private slots:
 	void onMenuSortByDate();
 	
 public slots:
-    void onMenuDelete(bool permanently = false);
+	void onMenuDelete(bool permanently = false);
 	void onMenuRefresh();
-	void onMenuUndoDelete();
 	void onMenuCreateBox();
 	void onMenuQuitApp();
 	void onMenuLinDesk();
@@ -291,6 +298,9 @@ protected:
     void setupItemConnections(ListItem* item, LinBox* box = nullptr);
     void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
     void applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions);
+	QPoint resolveCreatePosition(const QPoint& requestedPos) const;
+	void reserveCreatedItemPosition(const QString& filePath, const QPoint& requestedPos);
+	bool takeReservedCreatedItemPosition(const QString& filePath, QPoint& posOut);
 	
 	void loadBoxes(bool autoUpdateState = true);
 	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", bool refresh = true);
@@ -313,6 +323,7 @@ private:
     bool m_forceConfigLayout = false;
     bool m_hasLoadedConfigLayout = false;
 	QMap<QString, PersistentIconInfo> m_savedIconPositions;
+    std::unique_ptr<DesktopQuadTree> m_spatialIndex;
 
 	// 网格布局变量（可随 ViewMode 动态改变）
     QString m_desktopDir; // 存储桌面物理路径
@@ -344,6 +355,8 @@ private:
 	QPoint m_selectionStart;     // 鼠标点击开始时的位置
 	QRect m_selectionRect;
 	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
+	QMap<QString, QPoint> m_pendingCreatedItemPositions;
+	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
 	//Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel,Recycle Bin
 	DesktopInfoMonitor* monitor;
 	//use SHChangeNotifyRegister to monitor desktop directory changes
@@ -357,5 +370,7 @@ private:
 		QPoint offset; // 距离鼠标点击位置的偏移量
 	};
 	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
-	QLabel* m_dragTip = nullptr; // 用于显示"使用某程序打开"的提示
+    QLabel* m_dragTip = nullptr; // 用于显示"使用某程序打开"的提示
+
+	void ensureDragTip();
 };

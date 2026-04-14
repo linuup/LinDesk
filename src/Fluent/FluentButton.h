@@ -12,12 +12,12 @@ public:
     explicit FluentButton(const QString& text, QWidget* parent = nullptr) : QPushButton(text, parent) {
         setFixedSize(120, 32);
         setCursor(Qt::PointingHandCursor);
-        m_bgColor = QColor(0, 120, 212); // Accent Blue
+        m_bgColor = QColor(0, 120, 212); // Fluent Blue #0078d4
         
         m_hoverAnim = new QVariantAnimation(this);
         m_hoverAnim->setDuration(150);
         m_hoverAnim->setStartValue(QColor(0, 120, 212));
-        m_hoverAnim->setEndValue(QColor(16, 110, 190)); // Darker on hover
+        m_hoverAnim->setEndValue(QColor(0, 100, 180)); // Darker on hover
         connect(m_hoverAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& v){
             m_bgColor = v.value<QColor>();
             update();

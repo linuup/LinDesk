@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 使用 Unicode
 add_definitions(-DUNICODE -D_UNICODE)
 
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 # --- vcpkg 自动搜索逻辑 ---
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)

@@ -8,6 +8,14 @@
 #include <qstandardpaths.h>
 #include "../SystemApi/Tool.h"
 #include <QtWinExtras/QtWin>
+#include <QGuiApplication>
+#include <QClipboard>
+#include <QMimeData>
+#include <QUrl>
+
+namespace {
+constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
+}
   
 QMenu* RightMenu::createSortBySubMenu()
 {
@@ -133,11 +141,16 @@ void RightMenu::initializeCustomMenu()
     m_customMenu->addSeparator();
     
     // 5-Paste
-    QAction* pasteAction = new QAction("Paste", m_customMenu);
-    pasteAction->setEnabled(false);
-    connect(pasteAction, &QAction::triggered, this, &RightMenu::onPaste);
-    m_customMenu->addAction(pasteAction);
-    
+    m_pasteAction = new QAction("Paste", m_customMenu);
+    m_pasteAction->setEnabled(false);
+    connect(m_pasteAction, &QAction::triggered, this, &RightMenu::onPaste);
+    m_customMenu->addAction(m_pasteAction);
+
+    pasteShortcutAction = new QAction("Paste shortcut", m_customMenu);
+    pasteShortcutAction->setEnabled(false);
+    connect(pasteShortcutAction, &QAction::triggered, this, &RightMenu::onPasteShortcut);
+    m_customMenu->addAction(pasteShortcutAction);
+
     m_customMenu->addSeparator();
 
     // 7-Create Box
@@ -159,6 +172,11 @@ void RightMenu::initializeCustomMenu()
 
     connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
     m_customMenu->addAction(m_createBoxAction);
+
+    // 7.5-Organize Desktop
+    QAction* organizeDesktopAction = new QAction("Organize Desktop", m_customMenu);
+    connect(organizeDesktopAction, &QAction::triggered, this, &RightMenu::onOrganizeDesktop);
+    m_customMenu->addAction(organizeDesktopAction);
 
     // 9-LinDesk
     m_linDeskAction = new QAction("LinDesk", m_customMenu);
@@ -192,17 +210,82 @@ void RightMenu::onSortByDate() { m_sortByDateAction->setChecked(true); emit sort
 void RightMenu::onRefresh() { emit refreshTriggered(); }
 void RightMenu::onPaste() { emit pasteTriggered(); }
 void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
-void RightMenu::onUndoDelete() { emit undoDeleteTriggered(); }
 void RightMenu::onCreateBox() { emit createBoxTriggered(); }
+void RightMenu::onOrganizeDesktop() { emit organizeDesktopTriggered(); }
 void RightMenu::onQuitApp() { emit quitAppTriggered(); }
 void RightMenu::onLinDesk() { emit linDeskTriggered(); }
 
+bool RightMenu::clipboardHasFileItems() const
+{
+    const QClipboard* clipboard = QGuiApplication::clipboard();
+    if (!clipboard) {
+        return false;
+    }
+
+    const QMimeData* mimeData = clipboard->mimeData();
+    if (mimeData && mimeData->hasUrls()) {
+        for (const QUrl& url : mimeData->urls()) {
+            if (url.isLocalFile()) {
+                return true;
+            }
+        }
+    }
+
+    if (!IsClipboardFormatAvailable(CF_HDROP) || !OpenClipboard(nullptr)) {
+        return false;
+    }
+
+    bool hasFiles = false;
+    if (const HANDLE clipboardData = GetClipboardData(CF_HDROP)) {
+        const HDROP dropHandle = static_cast<HDROP>(clipboardData);
+        hasFiles = DragQueryFileW(dropHandle, 0xFFFFFFFF, nullptr, 0) > 0;
+    }
+
+    CloseClipboard();
+    return hasFiles;
+}
+
+bool RightMenu::clipboardContainsCutItems() const
+{
+    const UINT format = RegisterClipboardFormatW(L"Preferred DropEffect");
+    if (!format || !IsClipboardFormatAvailable(format) || !OpenClipboard(nullptr)) {
+        return false;
+    }
+
+    bool isCutOperation = false;
+    if (const HANDLE clipboardData = GetClipboardData(format)) {
+        const void* locked = GlobalLock(clipboardData);
+        if (locked) {
+            const DWORD effect = *static_cast<const DWORD*>(locked);
+            isCutOperation = (effect & kClipboardPreferredDropEffectMove) != 0;
+            GlobalUnlock(clipboardData);
+        }
+    }
+
+    CloseClipboard();
+    return isCutOperation;
+}
+
+void RightMenu::updatePasteActionsState()
+{
+    const bool hasFileItems = clipboardHasFileItems();
+    const bool isCutOperation = hasFileItems && clipboardContainsCutItems();
+
+    if (m_pasteAction) {
+        m_pasteAction->setEnabled(hasFileItems);
+    }
+    if (pasteShortcutAction) {
+        // Match Explorer behavior more closely: shortcut creation is disabled for cut items.
+        pasteShortcutAction->setEnabled(hasFileItems && !isCutOperation);
+    }
+}
 
 void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 	ShellContextMenu scm;
 	POINT p = { pos.x(),pos.y() };
 	const POINT* position = &p;
 	if (this->fileType == ObjectType::BackGround) {
+		const_cast<RightMenu*>(this)->updatePasteActionsState();
 		scm.DisplayDesktopContextMenu();
 
 		// 将自定义菜单项注册到Shell背景菜单中
@@ -255,7 +338,7 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 		}
 	}else if (this->fileType == ObjectType::File) {
 		scm.setOperationType(ShellContextMenu::OperationType::file);
-	}else if (this->fileType == ObjectType::Folder_ObjectType) {
+	}else if (this->fileType == ObjectType::Folder_ObjectType || this->fileType == ObjectType::DiskLetter) {
 		scm.setOperationType(ShellContextMenu::OperationType::folder);
 	}else if (this->fileType == ObjectType::SpecialFolder) {
 		scm.setOperationType(ShellContextMenu::OperationType::specialFolder);

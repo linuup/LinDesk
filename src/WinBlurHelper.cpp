@@ -42,7 +42,8 @@ void WinBlurHelper::applyBlur(QWidget* widget, BlurMode mode) {
     MARGINS margins = {-1};
     DwmExtendFrameIntoClientArea(hwnd, &margins);
 
-    BOOL darkMode = TRUE;
+    // Use light mode for better visibility (dark mode makes menus too dark)
+    BOOL darkMode = FALSE;
     DwmSetWindowAttribute(hwnd, 20, &darkMode, sizeof(darkMode)); // DWMWA_USE_IMMERSIVE_DARK_MODE
 
     // 2. Windows 11 Official Backdrop (Modern API)
