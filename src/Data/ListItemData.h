@@ -153,9 +153,25 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 	const SpecialFolders specialFolderType() const { return m_specialFolderType; }
 	LPITEMIDLIST pidl() const { return m_pidl; }
 
-	/*bool isSystemFolder(const QString& path) {
-		return SystemFolderCLSIDs.contains(path);
-	}*/
+	bool isShortcutType() const {
+		QString ext = m_fileInfo.suffix().toLower();
+		return (ext == "lnk" || ext == "url" || ext == "appref-ms");
+	}
+
+	QString displayNameForRename() const {
+		if (isShortcutType()) {
+			return m_fileInfo.completeBaseName();
+		}
+		return m_fullName;
+	}
+
+	QString extensionForRename() const {
+		if (isShortcutType()) {
+			QString ext = m_fileInfo.suffix();
+			return ext.isEmpty() ? "" : "." + ext;
+		}
+		return "";
+	}
 public:
 	int m_iconSizeCached = -1;
 	void initIcon() {
@@ -265,7 +281,45 @@ public:
 			}
 		}
 
-		// 如果图标仍然为空（空白快捷方式等），使用默认空文件图标
+		// --- Win32 SHGetFileInfo fallback (Win11 compatibility) ---
+		// QFileIconProvider can fail on Win11 for certain file types.
+		// Try the Windows Shell Jumbo Image List first for high-quality icons,
+		// then fall back to standard SHGetFileInfo.
+		if (newIcon.isNull()) {
+			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
+			SHFILEINFOW sfi = { 0 };
+
+			// Attempt 1: Jumbo (256x256) via IImageList
+			if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX)) {
+				static const GUID IID_IImageList_Local = {
+					0x46EB5926, 0x582E, 0x4017,
+					{ 0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50 }
+				};
+				IImageList* imageList = nullptr;
+				// SHIL_JUMBO = 4
+				if (SUCCEEDED(SHGetImageList(4, IID_IImageList_Local, (void**)&imageList))) {
+					HICON hIcon = nullptr;
+					if (SUCCEEDED(imageList->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &hIcon))) {
+						newIcon = QtWin::fromHICON(hIcon);
+						DestroyIcon(hIcon);
+					}
+					imageList->Release();
+				}
+			}
+
+			// Attempt 2: Standard SHGetFileInfo LARGEICON
+			if (newIcon.isNull()) {
+				memset(&sfi, 0, sizeof(sfi));
+				if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
+					if (sfi.hIcon) {
+						newIcon = QtWin::fromHICON(sfi.hIcon);
+						DestroyIcon(sfi.hIcon);
+					}
+				}
+			}
+		}
+
+		// Ultimate fallback: blank file icon from shell32.dll
 		if (newIcon.isNull()) {
 			newIcon = SysInfoUtil::SysFileIconByDLL(0, s_targetIconSize, "shell32.dll");
 		}

@@ -38,7 +38,6 @@ private:
     QWidget* createGeneralPage();
     QWidget* createDesktopPage();
     QWidget* createGridPage();
-    QWidget* createComponentsPage();
 
     QWidget* createPluginsPage();
     QWidget* createAboutPage();

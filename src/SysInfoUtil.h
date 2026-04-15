@@ -121,6 +121,7 @@ namespace SysInfoUtil{
     //从注册表获取桌面背景路径
     QString GetDesktopWallpaperPath();
     QString GetWallpaperUsingAPI();
+    QString GetRobustWallpaperPath();
 
     // 视觉自动裁剪 (Visual Auto-Crop)
     QImage autoCropImage(const QImage& image, bool* wasCropped = nullptr);

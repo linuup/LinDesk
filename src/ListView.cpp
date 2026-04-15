@@ -31,6 +31,7 @@
 #include "Plugins/PluginManager.h"
 #include "HotkeyManager.h"
 #include "BoxManager.h"
+#include "ListViewDebugPanel.h"
 
 namespace {
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
@@ -490,6 +491,10 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         }
         this->onMenuRefresh();
         this->raise();
+
+        // Open debug panel on startup
+        auto* debugPanel = new ListViewDebugPanel(this);
+        debugPanel->show();
     });
 }
 
@@ -668,7 +673,7 @@ void ListView::clearCheckedItem()
     // Also clear selection state for items inside boxes
     BoxManager* bm = BoxManager::instance();
     if (bm) {
-        for (auto box : bm->allBoxes()) {
+        for (const auto& box : bm->allBoxes()) {
             if (box) {
                 for (auto* item : box->items()) {
                     if (item && item->isSelected) {
@@ -787,6 +792,7 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
+    RenameManager::instance()->cancelRename();
     beginBackgroundSelection(event->pos());
     event->ignore();
 }
@@ -905,6 +911,7 @@ QVector<ListItem*> ListView::queryItemsInRect(const QRect& rect) const
 
 void ListView::dragEnterEvent(QDragEnterEvent* event)
 {
+    RenameManager::instance()->cancelRename();
     if (event->mimeData()->hasUrls()) {
         if (event->source() != this) {
             if (event->keyboardModifiers() & Qt::ControlModifier) {
@@ -1058,6 +1065,7 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
 
 void ListView::dropEvent(QDropEvent* event)
 {
+    RenameManager::instance()->cancelRename();
     //if (m_dragTip) m_dragTip->hide();
 
     ListItem* hitItem = nullptr;
@@ -1298,6 +1306,7 @@ void ListView::dropEvent(QDropEvent* event)
 
 void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
+    RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
         // ListItem handles item double click itself and emits itemDoubleClicked.
         // Only keep the desktop-background double click behavior here.
@@ -1316,6 +1325,12 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+    if (event->key() == Qt::Key_F2) {
+        if (m_selectedItems.size() == 1) {
+            RenameManager::instance()->startRename(m_selectedItems.first());
+            return;
+        }
+    }
     if (event->key() == Qt::Key_Delete) {
         bool permanently = (event->modifiers() & Qt::ShiftModifier);
         onMenuDelete(permanently);
@@ -1517,7 +1532,7 @@ void ListView::loadIconLayer()
     }
 
     // Refresh all boxes to ensured their icons are positioned and visible
-    for (auto box : BoxManager::instance()->allBoxes()) {
+    for (auto& box : BoxManager::instance()->allBoxes()) {
         if (box) {
             box->refreshLayout();
             box->raise();
@@ -2254,6 +2269,14 @@ void ListView::syncViewModeSizes() {
     }
 }
 
+void ListView::setDebugGridSpacing(int rowSpacing, int colSpacing)
+{
+    m_rowSpacing = rowSpacing;
+    m_colSpacing = colSpacing;
+    loadIconLayer();
+    update();
+}
+
 void ListView::onMenuLargeIcons() {
     qDebug() << "ListView: Large Icons triggered";
     if (m_iconShowRule.viewMode == ViewMode::LargeIcon) return;
@@ -2503,7 +2526,7 @@ void ListView::onMenuRefresh() {
         update();
 
         // Refresh icons for items in boxes and ensure boxes are re-shown
-        for (auto box : BoxManager::instance()->allBoxes()) {
+        for (const auto& box : BoxManager::instance()->allBoxes()) {
             if (box) {
                 for (auto* item : box->items()) {
                     if (item) item->refreshIcon();
@@ -2707,7 +2730,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     }
     
     // Ensure all LinBoxes stay above desktop items
-    for (auto box : BoxManager::instance()->allBoxes()) {
+    for (const auto& box : BoxManager::instance()->allBoxes()) {
         if (box) box->raise();
     }
 }
@@ -2800,25 +2823,49 @@ void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* even
 				item->unCheckSelf();
 			} else {
 				m_selectedItems.append(item);
+				item->setFullNameExpanded(false);
 				item->checkSelf();
 			}
+            m_wasSelectedBeforeClick = false; // Multi-select cancels rename timing
 		} else if (modifiers & Qt::ShiftModifier) {
 			// Shift: 追加选中
 			if (!m_selectedItems.contains(item)) {
 				m_selectedItems.append(item);
+				item->setFullNameExpanded(false);
 				item->checkSelf();
 			}
+            m_wasSelectedBeforeClick = false;
 		} else {
 			// 无修饰键：
 			// 如果点击的 item 已经在多选集合里，保留整个选中组（准备多选拖动）
 			// 否则清空选中，只选这一个
 			if (!m_selectedItems.contains(item)) {
+                RenameManager::instance()->cancelRename(); // New selection cancels rename
 				clearCheckedItem();
 				m_selectedItems.append(item);
+				item->setFullNameExpanded(true);
 				item->checkSelf();
-			}
-			// else: item 已在选中列表，选中状态不变，继续持有整个多选组拖动
+                m_wasSelectedBeforeClick = false;
+			} else {
+                item->setFullNameExpanded(true);
+                item->raise();
+                m_wasSelectedBeforeClick = (m_selectedItems.size() == 1);
+            }
 		}
+
+        // Windows Rename Rhythm: 
+        // If single item was already selected, and we click it again after a delay
+        if (m_wasSelectedBeforeClick && m_lastClickedItem == item && m_selectedItems.size() == 1) {
+            if (m_clickTimer.isValid() && m_clickTimer.elapsed() > 500 && m_clickTimer.elapsed() < 5000) {
+                // Trigger rename
+                RenameManager::instance()->startRename(item);
+                m_isDragging = false; 
+                return;
+            }
+        }
+
+        m_lastClickedItem = item;
+        m_clickTimer.restart();
 
 		// Start Dragging
 		m_draggedItem = item;
@@ -2837,6 +2884,7 @@ void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* even
 
 void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
 {
+    RenameManager::instance()->cancelRename(); // Any move cancels rename
 	if (m_isDragging) {
 		QPoint globalPos = item->mapToGlobal(event->pos());
 		QPoint mousePos = this->mapFromGlobal(globalPos);
@@ -3067,6 +3115,7 @@ void ListView::createDragGhosts(const QPoint& clickPos)
 
 void ListView::onItemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent* event)
 {
+    RenameManager::instance()->cancelRename(); // Double click cancels rename
 	if (item) {
 		item->openItem();
 	}
@@ -3074,6 +3123,7 @@ void ListView::onItemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent
 
 void ListView::onItemRelayContextMenuRequested(LinBox* box, ListItem* item, const QPoint& globalPos)
 {
+    RenameManager::instance()->cancelRename(); // Context menu cancels rename
 	if (!item) return;
 
 	// Ensure item is selected for context menu
@@ -3591,7 +3641,7 @@ void ListView::setPersistenceEnabled(bool enabled) {
         // Destroy all boxes and restore items to desktop
         for (auto box : BoxManager::instance()->allBoxes()) {
             if (!box) continue;
-            QVector<ListItem*> boxItems = box->items();
+            const auto& boxItems = box->items();
             for (auto* item : boxItems) {
                 if (item) {
                 item->setBoxId("");

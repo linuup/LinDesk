@@ -2,6 +2,10 @@
 #include "DesktopItemLoader.h"
 #include "IconCacheManager.h"
 #include "ListView.h"
+#include "FilenameEditor.h"
+#include "RenameManager.h"
+#include <QFontMetrics>
+#include <QRegularExpression>
 #include <SysInfoUtil.h>
 #include <shellapi.h>
 class ListView;
@@ -61,6 +65,154 @@ QIcon requestSystemShellFallbackIcon(const QFileInfo& fileInfo, ObjectType type)
     return SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll");
 }
 
+bool isShortcutSuffix(const QFileInfo& fileInfo)
+{
+    const QString suffix = fileInfo.suffix().toLower();
+    return suffix == "lnk" || suffix == "url" || suffix == "appref-ms";
+}
+
+QString buildVisibleDisplayName(const ListItemData& data,
+                                const QFileInfo& fileInfo,
+                                ObjectType type,
+                                const QString& filePath)
+{
+    if (type == ObjectType::SpecialFolder) {
+        return data.fullName();
+    }
+
+    if (type == ObjectType::DiskLetter) {
+        const QString fullName = data.fullName().trimmed();
+        return fullName.isEmpty() ? QDir::toNativeSeparators(filePath) : fullName;
+    }
+
+    if (isShortcutSuffix(fileInfo)) {
+        const QString shortcutName = fileInfo.completeBaseName();
+        return shortcutName.isEmpty() ? data.fullName() : shortcutName;
+    }
+
+    if (fileInfo.isFile()) {
+        const QString fileName = fileInfo.fileName();
+        return fileName.isEmpty() ? data.fullName() : fileName;
+    }
+
+    if (fileInfo.isDir()) {
+        const QString dirName = fileInfo.fileName();
+        return dirName.isEmpty() ? data.fullName() : dirName;
+    }
+
+    return data.fullName();
+}
+
+int fixedIconSideForMode(ListItem::LayoutMode layoutMode)
+{
+    if (layoutMode == ListItem::LayoutMode::ListMode) {
+        return 20;
+    }
+
+    ListView* listView = ListView::instance();
+    if (!listView) {
+        return 48;
+    }
+
+    switch (listView->viewMode()) {
+    case ListView::ViewMode::LargeIcon:
+        return 96;
+    case ListView::ViewMode::SmallIcon:
+        return 32;
+    case ListView::ViewMode::MediumIcon:
+    default:
+        return 48;
+    }
+}
+
+QSize baseItemSizeForMode(ListItem::LayoutMode layoutMode)
+{
+    if (layoutMode == ListItem::LayoutMode::ListMode) {
+        return QSize(0, 30);
+    }
+
+    ListView* listView = ListView::instance();
+    if (!listView) {
+        return QSize(76, 78);
+    }
+
+    switch (listView->viewMode()) {
+    case ListView::ViewMode::LargeIcon:
+        return QSize(ListView::kLargeIconW, ListView::kLargeIconH);
+    case ListView::ViewMode::SmallIcon:
+        return QSize(ListView::kSmallIconW, ListView::kSmallIconH);
+    case ListView::ViewMode::MediumIcon:
+    default:
+        return QSize(ListView::kMediumIconW, ListView::kMediumIconH);
+    }
+}
+
+bool isWrapSeparator(QChar ch)
+{
+    return ch.isSpace() || ch == '-' || ch == '_' || ch == '.' || ch == '(' || ch == ')' || ch == '[' || ch == ']';
+}
+
+QStringList buildDesktopLines(const QString& text, const QFontMetrics& metrics, int width, int maxLines)
+{
+    QString remaining = text;
+    remaining.replace('\n', ' ');
+
+    QStringList lines;
+    if (remaining.isEmpty() || width <= 0 || maxLines <= 0) {
+        lines << remaining;
+        return lines;
+    }
+
+    while (!remaining.isEmpty() && lines.size() < maxLines) {
+        if (metrics.horizontalAdvance(remaining) <= width) {
+            lines << remaining;
+            break;
+        }
+
+        if (lines.size() == maxLines - 1) {
+            lines << metrics.elidedText(remaining, Qt::ElideRight, width);
+            break;
+        }
+
+        int bestFit = 0;
+        int preferredBreak = -1;
+        for (int i = 1; i <= remaining.size(); ++i) {
+            const QString candidate = remaining.left(i);
+            if (metrics.horizontalAdvance(candidate) > width) {
+                break;
+            }
+
+            bestFit = i;
+            if (isWrapSeparator(remaining.at(i - 1))) {
+                preferredBreak = i;
+            }
+        }
+
+        int splitIndex = preferredBreak;
+        // Prefer a natural separator only when it is already close to the
+        // maximum fit width; otherwise keep filling the current line.
+        if (splitIndex <= 0 || bestFit - splitIndex > 3) {
+            splitIndex = bestFit;
+        }
+        if (splitIndex <= 0) {
+            splitIndex = 1;
+        }
+
+        QString currentLine = remaining.left(splitIndex).trimmed();
+        if (currentLine.isEmpty()) {
+            currentLine = remaining.left(splitIndex);
+        }
+        lines << currentLine;
+        remaining = remaining.mid(splitIndex).trimmed();
+    }
+
+    if (lines.isEmpty()) {
+        lines << metrics.elidedText(text, Qt::ElideRight, width);
+    }
+
+    return lines;
+}
+
 }
 
 ListItem::ListItem(QWidget* parent)
@@ -93,10 +245,12 @@ ListItem::ListItem(QWidget* parent)
 
 	// 设置微软雅黑字体
 	QFont yaheiFont;
-	yaheiFont.setFamily("Microsoft YaHei");
-	yaheiFont.setPointSize(10);
-	yaheiFont.setWeight(QFont::ExtraLight);
-	//textLabel->setFont(yaheiFont);
+	yaheiFont.setFamily("Microsoft YaHei UI");
+	yaheiFont.setPointSize(9);
+	yaheiFont.setWeight(QFont::Normal);
+	textLabel->setFont(yaheiFont);
+	textLabel->setTextFormat(Qt::PlainText);
+	textLabel->setWordWrap(false);
 
 	
 	textLabel->setStyleSheet("color: white; background: transparent;");
@@ -141,10 +295,12 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 
 	// 设置微软雅黑字体
 	QFont yaheiFont;
-	yaheiFont.setFamily("Microsoft YaHei");
-	yaheiFont.setPointSize(10);
-	yaheiFont.setWeight(QFont::ExtraLight);
-	//textLabel->setFont(yaheiFont);
+	yaheiFont.setFamily("Microsoft YaHei UI");
+	yaheiFont.setPointSize(9);
+	yaheiFont.setWeight(QFont::Normal);
+	textLabel->setFont(yaheiFont);
+	textLabel->setTextFormat(Qt::PlainText);
+	textLabel->setWordWrap(false);
 
 	textLabel->setStyleSheet("color: white; background: transparent;");
 	QString tmp = path;
@@ -183,16 +339,7 @@ void ListItem::initData()
 			m_filePath = m_itemData.filePath();
 		}
 		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
-		if (m_type == ObjectType::SpecialFolder) {
-			m_baseName = m_itemData.fullName();
-		} else if (m_type == ObjectType::DiskLetter) {
-			m_baseName = m_itemData.fullName().trimmed();
-			if (m_baseName.isEmpty()) {
-				m_baseName = QDir::toNativeSeparators(m_filePath);
-			}
-		} else {
-			m_baseName = m_fileInfo.baseName();
-		}
+		m_baseName = buildVisibleDisplayName(m_itemData, m_fileInfo, m_type, m_filePath);
 		m_icon = m_itemData.icon();
 		
 		if (m_type == ObjectType::SpecialFolder) {
@@ -211,6 +358,10 @@ void ListItem::initData()
         if (m_icon.isNull()) {
             m_icon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
         }
+        // Ultimate fallback: blank file icon so no item is ever invisible
+        if (m_icon.isNull()) {
+            m_icon = SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll");
+        }
 
 		if (!m_icon.isNull()) {
 			if (!m_iconWidget) {
@@ -224,13 +375,13 @@ void ListItem::initData()
 			int leftMargin;
 			
 			if (m_layoutMode == LayoutMode::IconMode) {
-				iconSide = qMin(m_itemSize.width() - 4, m_itemSize.height() - 25);
-				iconSide = qBound(16, iconSide, 128); 
-				topMargin = 5;
+				iconSide = qBound(16, fixedIconSideForMode(m_layoutMode), 128);
+				iconSide = qMin(iconSide, m_itemSize.width() - 4);
+				topMargin = 2;
 				leftMargin = (m_itemSize.width() - iconSide) / 2;
 			} else {
 				// List Mode: standard list icon size (20px in 30px row)
-				iconSide = 20; 
+				iconSide = fixedIconSideForMode(m_layoutMode);
 				topMargin = (m_itemSize.height() - iconSide) / 2;
 				leftMargin = 8;
 			}
@@ -323,10 +474,50 @@ void ListItem::initData()
 		
 		if (textLabel == nullptr) {
 			textLabel = new QLabel(this);
-			textLabel->setAlignment(Qt::AlignCenter);
+			textLabel->setTextFormat(Qt::PlainText);
+			textLabel->setWordWrap(false);
 			textLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
 			textLabel->show();
 		}
+
+        if (m_layoutMode == LayoutMode::IconMode) {
+            const QSize baseSize = baseItemSizeForMode(m_layoutMode);
+            const int baseWidth = baseSize.width() > 0 ? baseSize.width() : m_itemSize.width();
+            const int baseHeight = baseSize.height() > 0 ? baseSize.height() : m_itemSize.height();
+            const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode), 128), baseWidth - 4);
+            const QRect iconArea((baseWidth - iconSide) / 2, 2, iconSide, iconSide);
+            const int textWidth = qMax(10, baseWidth - 4);
+            const QFontMetrics labelMetrics(textLabel->font());
+            int textHeight = 0;
+            if (m_expandFullNameOnSelect) {
+                const QString expandedText = m_expandedPreviewText.isEmpty() ? m_baseName : m_expandedPreviewText;
+                textHeight = FilenameEditor::heightForText(expandedText, textLabel->font(), textWidth);
+            } else {
+                const QStringList lines = buildDesktopLines(m_baseName, labelMetrics, textWidth, 2);
+                const int lineCount = qMax(1, lines.size());
+                textHeight = lineCount * labelMetrics.lineSpacing();
+            }
+            const int desiredHeight = qMax(baseHeight, iconArea.bottom() + 4 + textHeight);
+
+            if (m_itemSize.width() != baseWidth || m_itemSize.height() != desiredHeight) {
+                m_itemSize = QSize(baseWidth, desiredHeight);
+                resize(m_itemSize);
+                updateLocationInfo(m_itemPos);
+            }
+        }
+
+        if (isSelected || m_expandFullNameOnSelect) {
+            raise();
+            if (m_iconWidget) {
+                m_iconWidget->raise();
+            }
+            if (m_shortcutArrowOverlay) {
+                m_shortcutArrowOverlay->raise();
+            }
+            if (textLabel) {
+                textLabel->raise();
+            }
+        }
 
 		isReady = true;
 	}
@@ -390,6 +581,9 @@ void ListItem::checkSelf()
 void ListItem::unCheckSelf()
 {
 	isSelected = false;
+    m_expandFullNameOnSelect = false;
+    m_expandedPreviewText.clear();
+    initData();
 	if (this->isReady == true) {
 		update();
 	}
@@ -420,8 +614,72 @@ void ListItem::refreshIcon()
     m_itemData.m_iconSizeCached = -1;
     m_itemData.initIcon();
     m_icon = m_itemData.icon();
+
+    // Fallback: system shell icon
+    if (m_icon.isNull()) {
+        m_icon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
+    }
+    // Ultimate fallback: blank file icon
+    if (m_icon.isNull()) {
+        m_icon = SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll");
+    }
+
     initData(); // Re-create icon widget with new icon
     update();   // Trigger repaint
+}
+
+void ListItem::setFullNameExpanded(bool expanded)
+{
+    if (m_expandFullNameOnSelect == expanded) {
+        return;
+    }
+    m_expandFullNameOnSelect = expanded;
+    if (!expanded) {
+        m_expandedPreviewText.clear();
+    }
+    initData();
+    update();
+}
+
+void ListItem::setExpandedPreviewText(const QString& text)
+{
+    if (m_expandedPreviewText == text) {
+        return;
+    }
+    m_expandedPreviewText = text;
+    initData();
+    update();
+}
+
+QRect ListItem::iconRect() const
+{
+    if (m_layoutMode == LayoutMode::ListMode) {
+        const int iconSide = fixedIconSideForMode(m_layoutMode);
+        const int topMargin = (height() - iconSide) / 2;
+        return QRect(8, topMargin, iconSide, iconSide);
+    }
+
+    const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode), 128), width() - 4);
+    const int leftMargin = (width() - iconSide) / 2;
+    return QRect(leftMargin, 2, iconSide, iconSide);
+}
+
+QRect ListItem::textRect() const
+{
+    if (m_layoutMode == LayoutMode::ListMode) {
+        return QRect(36, 0, qMax(10, width() - 40), height());
+    }
+
+    const QRect iconArea = iconRect();
+    const int top = iconArea.bottom() + 4;
+    return QRect(2, top, qMax(10, width() - 4), qMax(18, height() - top));
+}
+
+QRect ListItem::renameEditorRect() const
+{
+    QRect rect = textRect();
+    rect.setHeight(qMax(22, rect.height()));
+    return rect;
 }
 
 void ListItem::mousePressEvent(QMouseEvent* event)
@@ -482,35 +740,31 @@ void ListItem::paintEvent(QPaintEvent* event) {
 	// 计算文字宽度并居中
 
 	// 准备文字绘制变量
-	QString text = this->baseName();
-	QFontMetrics fm = painter.fontMetrics();
-	int textWidth = fm.horizontalAdvance(text);
-	int textHeight = fm.height();
+	QString text = displayName();
+	QFont labelFont = textLabel ? textLabel->font() : font();
+	painter.setFont(labelFont);
+	QFontMetrics fm(labelFont);
+	const QRect labelRect = textRect();
+	const QStringList textLines = (m_layoutMode == LayoutMode::IconMode)
+		? buildDesktopLines(text, fm, labelRect.width(), m_expandFullNameOnSelect ? 64 : 2)
+		: QStringList{ fm.elidedText(text, Qt::ElideRight, labelRect.width()) };
 
-	if (m_layoutMode == LayoutMode::IconMode) {
-		int textX;
-		if (textWidth > rect.width() - 10) {
-			text = fm.elidedText(text, Qt::ElideRight, rect.width() - 10);
-			textWidth = fm.horizontalAdvance(text);
-			textX = 5;
-		} else {
-			textX = (rect.width() - textWidth) / 2;
-		}
-		textLabel->resize(textWidth, textHeight);
-		textLabel->setText(text);
-		textLabel->move(textX, rect.height() - textHeight - 5);
-	} else {
-		// List Mode: Text to the right of icon
-		int iconRight = 8 + 20 + 10; // Left margin + icon size + spacing
-		int availableTextW = qMax(10, rect.width() - iconRight - 10);
-		if (textWidth > availableTextW) {
-			text = fm.elidedText(text, Qt::ElideRight, availableTextW);
-			textWidth = fm.horizontalAdvance(text);
-		}
-		textLabel->resize(textWidth, textHeight);
-		textLabel->setText(text);
-		textLabel->move(iconRight, (rect.height() - textHeight) / 2);
-	}
+    // Check if renaming
+    if (RenameManager::instance()->activeItem() == this) {
+        if (textLabel) textLabel->hide();
+    } else {
+        if (textLabel) textLabel->show();
+
+        if (m_layoutMode == LayoutMode::IconMode) {
+            textLabel->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
+            textLabel->setGeometry(labelRect);
+            textLabel->setText(textLines.join("\n"));
+        } else {
+            textLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+            textLabel->setGeometry(labelRect);
+            textLabel->setText(textLines.value(0));
+        }
+    }
 	
 
 	//给itemRect画个高亮

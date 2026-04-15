@@ -25,7 +25,6 @@
 #include "Fluent/FluentCard.h"
 #include "Fluent/FluentColorWheel.h"
 #include "SysInfoUtil.h" // For ShortcutArrowManager
-#include "SoftDesktopTextPreview.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
@@ -192,7 +191,6 @@ void SettingUI::initUI() {
         {0xE80F, "General"},
         {0xE7F4, "Desktop"},
         {0xEA37, "Box"},
-        {0xEBE8, "Tests"},
         {0xE74C, "Plugins"},
         {0xE946, "About"}
     };
@@ -219,7 +217,6 @@ void SettingUI::initUI() {
     m_contentStack->addWidget(wrapScrollablePage(createGeneralPage()));
     m_contentStack->addWidget(wrapScrollablePage(createDesktopPage()));
     m_contentStack->addWidget(wrapScrollablePage(createGridPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createComponentsPage()));
     m_contentStack->addWidget(createPluginsPage());
     m_contentStack->addWidget(wrapScrollablePage(createAboutPage()));
 
@@ -495,89 +492,6 @@ QWidget* SettingUI::createGridPage() {
     return page;
 }
 
-QWidget* SettingUI::createComponentsPage() {
-    QWidget* page = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(35, 25, 35, 25);
-    layout->setSpacing(15);
-
-    QLabel* title = new QLabel("UI Tests & Benchmarks", page);
-    title->setObjectName("pageTitle");
-    layout->addWidget(title);
-
-    // 1. Open Windows Desktop Icon Settings
-    QPushButton* deskIconBtn = new QPushButton("Open Settings", page);
-    deskIconBtn->setFixedSize(120, 32);
-    deskIconBtn->setCursor(Qt::PointingHandCursor);
-    deskIconBtn->setStyleSheet("background: #0078d4; border: none; border-radius: 6px; font-weight: 500; color: #ffffff;");
-    connect(deskIconBtn, &QPushButton::clicked, this, []() {
-        QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,0");
-    });
-    layout->addWidget(new FluentCard(u8"\uE71D", "Desktop Icon Settings", "Access the native Windows dialog to control which system icons appear on your desktop", deskIconBtn, page));
-
-    // 2. Embedded Desktop Mode
-    ListView* lv = ListView::instance();
-    LinDesktop* desk = lv ? qobject_cast<LinDesktop*>(lv->parentWidget()) : nullptr;
-    
-    FluentToggleSwitch* embedToggle = new FluentToggleSwitch(page);
-    embedToggle->setObjectName("glassToggle");
-    embedToggle->setCursor(Qt::PointingHandCursor);
-    if (desk) embedToggle->setChecked(desk->isEmbedded(), false);
-    
-    connect(embedToggle, &FluentToggleSwitch::toggled, this, [desk](bool checked){
-        if (desk) {
-            if (checked) desk->embedToDesktop();
-            else desk->unembedFromDesktop();
-        }
-    });
-
-    layout->addWidget(new FluentCard(u8"\uE7F4", "Embedded Desktop Mode", "Attach window to the Windows worker window layer", embedToggle, page));
-
-    // 3. Refresh Desktop
-    QPushButton* refreshBtn = new QPushButton("Refresh", page);
-    refreshBtn->setFixedSize(80, 32);
-    refreshBtn->setCursor(Qt::PointingHandCursor);
-    refreshBtn->setStyleSheet("background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-weight: 500; color: #0078d4;");
-    connect(refreshBtn, &QPushButton::clicked, this, [](){
-        ListView* lv = ListView::instance();
-        if (lv) {
-            lv->onMenuRefresh();
-        }
-    });
-
-    layout->addWidget(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render the desktop icon layout", refreshBtn, page));
-
-    // 4. Persistence Toggle
-    FluentToggleSwitch* persistToggle = new FluentToggleSwitch(page);
-    persistToggle->setObjectName("glassToggle"); // Switch style
-    persistToggle->setCursor(Qt::PointingHandCursor);
-    persistToggle->setChecked(lv ? lv->persistenceEnabled() : true, false);
-    
-    connect(persistToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
-        ListView* lv = ListView::instance();
-        if (lv) lv->setPersistenceEnabled(checked);
-    });
-    layout->addWidget(new FluentCard(u8"\uE71B", "Data Persistence", "Automatically load and save box and icon info from storage", persistToggle, page));
-
-    QLabel* previewTitle = new QLabel("Desktop Text Blend Test", page);
-    previewTitle->setStyleSheet("font-size: 14px; font-weight: 600; color: #111827; margin-top: 6px;");
-    layout->addWidget(previewTitle);
-
-    QLabel* previewDesc = new QLabel("Preview a softer Windows-style icon label effect with dark inner and outer blending.", page);
-    previewDesc->setWordWrap(true);
-    previewDesc->setStyleSheet("font-size: 12px; color: #6b7280; margin-bottom: 2px;");
-    layout->addWidget(previewDesc);
-
-    SoftDesktopTextPreview* textPreview = new SoftDesktopTextPreview(page);
-    QFont previewFont("Segoe UI");
-    previewFont.setPixelSize(36);
-    textPreview->setPreviewFont(previewFont);
-    textPreview->setText("New Text Document.txt");
-    layout->addWidget(textPreview);
-
-    layout->addStretch();
-    return page;
-}
 
 
 

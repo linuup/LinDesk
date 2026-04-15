@@ -73,13 +73,15 @@ void LinDesktop::loadBackImage()
         m_prevBackImagePixmap = m_backImagePixmap;
     }
 
-    QString path = SysInfoUtil::GetWallpaperUsingAPI();
+    QString path = SysInfoUtil::GetRobustWallpaperPath();
     qDebug() << "[LinDesktop] Loading wallpaper from:" << path;
 
     QImage newImage;
     if (path.isEmpty() || !newImage.load(path)) {
-        qDebug() << "[LinDesktop] Failed to load wallpaper. Retrying in 1s...";
-        QTimer::singleShot(1000, this, &LinDesktop::loadBackImage);
+        qDebug() << "[LinDesktop] Failed to load wallpaper. Retrying in 2s...";
+        // If it's the first load or we have no image, keep retrying.
+        // If we already have an image, we can afford to wait.
+        QTimer::singleShot(2000, this, &LinDesktop::loadBackImage);
         return;
     }
 

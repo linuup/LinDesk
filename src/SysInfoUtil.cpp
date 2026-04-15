@@ -2,6 +2,12 @@
 #include "SysInfoUtil.h"
 #include <QtWinExtras/qwinfunctions.h>
 #include <iostream>
+#include <shobjidl.h>
+#include <shlobj.h>
+#include <comdef.h>
+#include <QImageReader>
+#include <QStandardPaths>
+#include <QFileInfoList>
 //QMap<QString, SysFileIcon>* SysInfoUtil::SysIconRegedit_State()
 //{
 //	QMap<QString, SysFileIcon>* regeditValue = new QMap<QString, SysFileIcon>;
@@ -225,17 +231,80 @@ QString SysInfoUtil::GetDesktopWallpaperPath()
 	qWarning() << "Failed to retrieve desktop wallpaper path from the registry";
 	return QString();*/
 }
-
 QString SysInfoUtil::GetWallpaperUsingAPI()
 {
-	wchar_t wallpaperPath[MAX_PATH];
+    wchar_t wallpaperPath[MAX_PATH];
 
-	// 使用 SystemParametersInfo 获取壁纸路径
-	if (SystemParametersInfo(SPI_GETDESKWALLPAPER, MAX_PATH, wallpaperPath, 0)) {
-		return QString::fromWCharArray(wallpaperPath);
-	}
+    // 使用 SystemParametersInfo 获取壁纸路径
+    if (SystemParametersInfo(SPI_GETDESKWALLPAPER, MAX_PATH, wallpaperPath, 0)) {
+        return QString::fromWCharArray(wallpaperPath);
+    }
 
-	return QString();
+    return QString();
+}
+
+bool isValidWallpaper(const QString& path) {
+    if (path.isEmpty()) return false;
+    QFileInfo info(path);
+    if (!info.exists() || info.size() <= 0) return false;
+    
+    // Quick check if it's actually an image format we can read
+    QImageReader reader(path);
+    if (reader.format().isEmpty()) return false;
+    
+    return true;
+}
+
+QString SysInfoUtil::GetRobustWallpaperPath()
+{
+    QString path;
+
+    // 1. Try IDesktopWallpaper (Recommended for Win10/11)
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
+        IDesktopWallpaper* pDesktopWallpaper = nullptr;
+        hr = CoCreateInstance(CLSID_DesktopWallpaper, NULL, CLSCTX_ALL, IID_IDesktopWallpaper, (void**)&pDesktopWallpaper);
+        if (SUCCEEDED(hr)) {
+            LPWSTR wallpaperPath = nullptr;
+            // Get wallpaper for the primary monitor (NULL uses the default if not multi-monitor specific)
+            hr = pDesktopWallpaper->GetWallpaper(NULL, &wallpaperPath);
+            if (SUCCEEDED(hr) && wallpaperPath) {
+                path = QString::fromWCharArray(wallpaperPath);
+                CoTaskMemFree(wallpaperPath);
+            }
+            pDesktopWallpaper->Release();
+        }
+        if (hr != RPC_E_CHANGED_MODE) CoUninitialize();
+    }
+
+    if (isValidWallpaper(path)) return path;
+
+    // 2. Fall back to SystemParametersInfo
+    path = GetWallpaperUsingAPI();
+    if (isValidWallpaper(path)) return path;
+
+    // 3. Fall back to Registry
+    path = GetDesktopWallpaperPath();
+    if (isValidWallpaper(path)) return path;
+
+    // 4. Final attempt: Scan the Themes directory for Transcoded_000, etc.
+    // Sometimes SPI_GETDESKWALLPAPER returns a zero-byte "TranscodedWallpaper" 
+    // while the actual content is in Transcoded_000
+    QString themesDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) 
+                        + "/../Roaming/Microsoft/Windows/Themes";
+    QDir dir(themesDir);
+    if (dir.exists()) {
+        QStringList filters;
+        filters << "Transcoded_*";
+        QFileInfoList list = dir.entryInfoList(filters, QDir::Files, QDir::Time);
+        for (const QFileInfo& fileInfo : list) {
+            if (isValidWallpaper(fileInfo.absoluteFilePath())) {
+                return fileInfo.absoluteFilePath();
+            }
+        }
+    }
+
+    return path; // Return whatever we found, even if invalid, as a last resort
 }
 
 

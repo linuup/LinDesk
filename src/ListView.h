@@ -28,6 +28,7 @@
 #include "DesktopItemLoader.h"
 #include "LayoutPersistenceService.h"
 #include "RightMenu.h"
+#include "RenameManager.h"
 #include "Monitor/DesktopInfoMonitor.h"
 #include "DirectoryMonitor.h"
 #include "Monitor/LinDirectoryMonitor.h"
@@ -164,6 +165,9 @@ public:
     	bool isDoubleClickHideIconsEnabled() const;
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
+	int rowSpacing() const { return m_rowSpacing; }
+	int colSpacing() const { return m_colSpacing; }
+	void setDebugGridSpacing(int rowSpacing, int colSpacing);
 	ListItem* draggedItem() const { return m_draggedItem; }
 	void loadPersistentLayout();
 	void updateRightMenuState();
@@ -352,6 +356,12 @@ private:
 	QPoint m_originalPos; // 记录原始位置，用于取消拖动s
 	QPoint m_lastRightClickPos; // 记录最后一次右键点击的位置
 	QPoint m_startPos;     // 鼠标点击开始时的位置
+    
+    // Rename timing
+    QElapsedTimer m_clickTimer;
+    ListItem* m_lastClickedItem = nullptr;
+    bool m_wasSelectedBeforeClick = false;
+
 	QPoint m_selectionStart;     // 鼠标点击开始时的位置
 	QRect m_selectionRect;
 	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem

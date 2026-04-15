@@ -37,6 +37,7 @@ public:
         return tmp.replace("\\", "/");
     }
     const QString& baseName() const { return m_baseName; }
+    QString displayName() const { return m_baseName; }
     const QSize& size() const { return m_itemSize; }
     const QPoint& pos() const { return m_itemPos; }
     const ObjectType type() const { return m_type; }
@@ -65,6 +66,12 @@ public:
     void unCheckSelf();
     void openItem();
     void refreshIcon(); // Refresh icon from system
+    QRect iconRect() const;
+    QRect textRect() const;
+    QRect renameEditorRect() const;
+    void setFullNameExpanded(bool expanded);
+    bool isFullNameExpanded() const { return m_expandFullNameOnSelect; }
+    void setExpandedPreviewText(const QString& text);
 
     QString boxId() const { return m_boxId; }
     void setBoxId(const QString& id) { m_boxId = id; }
@@ -120,5 +127,7 @@ private:
      LayoutMode m_layoutMode = LayoutMode::IconMode;
 	 QString m_boxId; // ID of the box this item belongs to (empty for desktop)
      QString m_normalizedPath; // Normalized path for fast lookup
+     bool m_expandFullNameOnSelect = false;
+     QString m_expandedPreviewText;
 };
 #endif // LISTITEM_H
