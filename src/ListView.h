@@ -267,6 +267,7 @@ public slots:
 	void onMenuCreateBox();
 	void onMenuQuitApp();
 	void onMenuLinDesk();
+    void resetRenameClickState();
 
 public slots:
 	void performSort(SortOrderType order);

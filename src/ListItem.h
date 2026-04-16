@@ -129,5 +129,6 @@ private:
      QString m_normalizedPath; // Normalized path for fast lookup
      bool m_expandFullNameOnSelect = false;
      QString m_expandedPreviewText;
+     QSize m_baseItemSize;
 };
 #endif // LISTITEM_H

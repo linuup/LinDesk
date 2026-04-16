@@ -17,6 +17,7 @@
 #include "ListItem.h"
 #include <QMimeData>
 #include <QUuid>
+#include <QPixmap>
 
 class LinBox : public QWidget {
     Q_OBJECT
@@ -106,7 +107,15 @@ private:
     void beginTitleEditing();
     void commitTitleEditing();
     ListItem* hitItemAt(const QPoint& boxPos) const;
+    ListItem* findItemByPath(const QString& filePath) const;
+    int insertionIndexForPos(const QPoint& boxPos, ListItem* draggedItem, bool* alignAfterPrev = nullptr) const;
+    QRect insertionIndicatorRect() const;
+    bool isReorderDrag(const QStringList& paths, ListItem** draggedItem = nullptr) const;
+    void clearReorderPreview();
     void showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl);
+    void scheduleBlurRefresh();
+    void updateBlurCache();
+    QPixmap captureBackgroundPixmap() const;
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<ListItem*> m_items;
@@ -129,6 +138,7 @@ private:
     ResizeDir m_resizeDir = None;
     QPoint m_dragStartPos;
     QRect m_dragStartGeometry;
+    bool m_geometryChangedDuringInteraction = false;
     
     int m_borderWidth = 8;
     int m_titleHeight = 30;
@@ -141,6 +151,16 @@ private:
 private:
     class FluentDragTip* m_dragTip = nullptr;
     void updateDragTip(const QPoint& pos, bool isCtrl);
+    class QTimer* m_blurRefreshTimer = nullptr;
+    QPixmap m_blurCache;
+    bool m_isCapturingBackground = false;
+    bool m_isRefreshingLayout = false;
+    int m_lastLayoutContentWidth = -1;
+    int m_lastLayoutItemCount = -1;
+    BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;
+    ListItem* m_reorderDragItem = nullptr;
+    int m_reorderInsertIndex = -1;
+    bool m_reorderIndicatorAfterPrev = false;
 };
 
 #endif // LINBOX_H

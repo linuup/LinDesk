@@ -141,6 +141,9 @@ void BoxManager::bringToFront(LinBox* box) {
     }
 
     const QPointer<LinBox> ptr(box);
+    if (!m_boxes.isEmpty() && m_boxes.back() == ptr) {
+        return;
+    }
     m_boxes.removeAll(ptr);
     m_boxes.append(ptr);
     raiseAllBoxes();

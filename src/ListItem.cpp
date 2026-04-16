@@ -218,6 +218,7 @@ QStringList buildDesktopLines(const QString& text, const QFontMetrics& metrics, 
 ListItem::ListItem(QWidget* parent)
 	: QWidget(parent)
 {
+    m_baseItemSize = QSize(76, 78);
 	// Child widgets should not have separate window flags
 	// setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 	setAttribute(Qt::WA_TranslucentBackground);
@@ -258,6 +259,7 @@ ListItem::ListItem(QWidget* parent)
 
 ListItem::ListItem(const QString& path, QWidget* parent)
 	: QWidget(parent)
+	, m_baseItemSize(76, 78)
 	, m_itemSize(76, 78)
 	, m_itemPos(0, 0)
 	, m_iconWidget(nullptr)
@@ -481,9 +483,9 @@ void ListItem::initData()
 		}
 
         if (m_layoutMode == LayoutMode::IconMode) {
-            const QSize baseSize = baseItemSizeForMode(m_layoutMode);
-            const int baseWidth = baseSize.width() > 0 ? baseSize.width() : m_itemSize.width();
-            const int baseHeight = baseSize.height() > 0 ? baseSize.height() : m_itemSize.height();
+            const QSize fallbackBaseSize = baseItemSizeForMode(m_layoutMode);
+            const int baseWidth = m_baseItemSize.width() > 0 ? m_baseItemSize.width() : fallbackBaseSize.width();
+            const int baseHeight = m_baseItemSize.height() > 0 ? m_baseItemSize.height() : fallbackBaseSize.height();
             const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode), 128), baseWidth - 4);
             const QRect iconArea((baseWidth - iconSide) / 2, 2, iconSide, iconSide);
             const int textWidth = qMax(10, baseWidth - 4);
@@ -543,7 +545,8 @@ void ListItem::setItemData(ListItemData data)
 
 void ListItem::setItemSize(int width, int height)
 {
-	m_itemSize = QSize(width, height);
+	m_baseItemSize = QSize(width, height);
+	m_itemSize = m_baseItemSize;
 	this->resize(width, height);
 	initData(); // Recompute icon size and position when item size changes
 }

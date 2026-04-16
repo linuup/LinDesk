@@ -2882,9 +2882,17 @@ void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* even
 	}
 }
 
+void ListView::resetRenameClickState()
+{
+    m_lastClickedItem = nullptr;
+    m_wasSelectedBeforeClick = false;
+    m_clickTimer.invalidate();
+}
+
 void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
 {
     RenameManager::instance()->cancelRename(); // Any move cancels rename
+    resetRenameClickState();
 	if (m_isDragging) {
 		QPoint globalPos = item->mapToGlobal(event->pos());
 		QPoint mousePos = this->mapFromGlobal(globalPos);
