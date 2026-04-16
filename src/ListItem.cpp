@@ -340,7 +340,7 @@ void ListItem::initData()
 		} else {
 			m_filePath = m_itemData.filePath();
 		}
-		m_fileInfo = QFileInfo(m_filePath.replace("LNK", "lnk"));
+		m_fileInfo = QFileInfo(m_filePath);
 		m_baseName = buildVisibleDisplayName(m_itemData, m_fileInfo, m_type, m_filePath);
 		m_icon = m_itemData.icon();
 		
@@ -530,17 +530,16 @@ void ListItem::setItemData(ListItemData data)
 	m_itemData = data;
 	m_type = m_itemData.type();
 	if (m_type == ObjectType::SpecialFolder) {
-		m_filePath = QString::fromStdString(m_itemData.itemData().path);
+        m_filePath = data.filePath();
 		m_normalizedPath = m_filePath;
-	}
-	else {
-		m_filePath = m_itemData.filePath();
+	}else {
+		m_filePath = data.filePath();
 		m_normalizedPath = QDir::toNativeSeparators(m_filePath);
 	}
 	while (m_normalizedPath.endsWith('\\')) m_normalizedPath.chop(1);
 	// Reset icon cache so initData will recreate m_iconWidget
 	m_itemData.m_iconSizeCached = -1;
-	//update();  // ?????????
+	//update();
 }
 
 void ListItem::setItemSize(int width, int height)

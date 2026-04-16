@@ -152,11 +152,6 @@ void RightMenu::initializeCustomMenu()
     m_customMenu->addAction(pasteShortcutAction);
 
     m_customMenu->addSeparator();
-
-    // 7-Create Box
-    m_createBoxAction = new QAction("New Box", m_customMenu);
-    
-    // Create a grid icon for shell menu integration
     QPixmap gridPix(16, 16);
     gridPix.fill(Qt::transparent);
     {
@@ -168,27 +163,47 @@ void RightMenu::initializeCustomMenu()
         p.drawRect(2, 9, 5, 5);
         p.drawRect(9, 9, 5, 5);
     }
+
+    const QIcon linDeskIcon(":/Assets/icon.png");
+    QMenu* linDeskMenu = new QMenu("LinDesk", m_customMenu);
+    if (linDeskIcon.isNull()) {
+        qDebug() << "图标加载失败，检查路径:" << ":/Assets/icon.png";
+        // 可以设置一个默认图标
+        linDeskMenu->setIcon(QIcon::fromTheme("application-x-executable"));
+    }
+    else {
+        linDeskMenu->setIcon(linDeskIcon);
+    }
+    linDeskMenu->menuAction()->setIcon(linDeskIcon);
+
+    // 7-Create Box
+    m_createBoxAction = new QAction("New Box", m_customMenu);
+    
+    // Create a grid icon for shell menu integration
+    
     m_createBoxAction->setIcon(QIcon(gridPix));
 
     connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
     m_customMenu->addAction(m_createBoxAction);
 
     // 7.5-Organize Desktop
-    QAction* organizeDesktopAction = new QAction("Organize Desktop", m_customMenu);
+    QAction* organizeDesktopAction = new QAction("Organize Desktop", linDeskMenu);
     connect(organizeDesktopAction, &QAction::triggered, this, &RightMenu::onOrganizeDesktop);
-    m_customMenu->addAction(organizeDesktopAction);
+    linDeskMenu->addAction(organizeDesktopAction);
 
-    // 9-LinDesk
-    m_linDeskAction = new QAction("LinDesk", m_customMenu);
-    m_linDeskAction->setIcon(QIcon(":/Assets/app_icon.png"));
+    // 9.1-Setting
+    m_linDeskAction = new QAction("Setting", linDeskMenu);
+    m_linDeskAction->setIcon(linDeskIcon);
     connect(m_linDeskAction, &QAction::triggered, this, &RightMenu::onLinDesk);
-    m_customMenu->addAction(m_linDeskAction);
+    linDeskMenu->addAction(m_linDeskAction);
     
     // 8-Exit
-    QAction* exitAction = new QAction("Exit LinDesk", m_customMenu);
-    exitAction->setIcon(QIcon(":/Assets/app_icon.png"));
+    QAction* exitAction = new QAction("Exit LinDesk", linDeskMenu);
+    exitAction->setIcon(QIcon(":/Assets/icon.png"));
     connect(exitAction, &QAction::triggered, this, &RightMenu::onQuitApp);
-    m_customMenu->addAction(exitAction);
+    linDeskMenu->addAction(exitAction);
+
+    m_customMenu->addMenu(linDeskMenu);
 
     m_customMenu->setFixedWidth(150);
     m_customMenu->setStyleSheet("QMenu { font-weight: bold; font-family: 'Segoe UI', sans-serif; }");

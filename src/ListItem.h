@@ -31,7 +31,9 @@ public:
     //const QRect& rect() const { return m_itemRect; };
 
     const QIcon& icon() const { return m_icon; }
-    const QString& filePath() const { return m_filePath; }
+    const QString& filePath() const {
+        return m_filePath; 
+    }
     QString windowsFilePath() const {
         QString tmp = m_filePath;
         return tmp.replace("\\", "/");
@@ -41,9 +43,7 @@ public:
     const QSize& size() const { return m_itemSize; }
     const QPoint& pos() const { return m_itemPos; }
     const ObjectType type() const { return m_type; }
-    const QString ListItem::getSortName() const {
-        return m_baseName.toLower();
-    }
+    const QString getSortName() const { return m_baseName.toLower(); }
     const QRect& getItemRect() const { return m_itemRect; }
     const QRect& getChooseItemRect() const { return m_chooseRect; }
     ListItemData getItemData() const; // 设置对应的 ListItemData

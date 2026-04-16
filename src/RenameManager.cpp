@@ -38,6 +38,7 @@ void RenameManager::startRename(ListItem* item) {
     // Preparation
     ListItemData data = item->getItemData();
     QString editorText = data.displayNameForRename();
+    m_originalDisplayName = editorText;
     m_extensionToRestore = data.extensionForRename();
 
     // Create or show editor
@@ -100,6 +101,7 @@ void RenameManager::cancelRename() {
 
     ListItem* item = m_activeItem.data();
     m_activeItem = nullptr;
+    m_originalDisplayName.clear();
     
     if (item) {
         item->setExpandedPreviewText(QString());
@@ -110,21 +112,32 @@ void RenameManager::cancelRename() {
 void RenameManager::finishRename() {
     if (!m_activeItem || !m_editor) return;
 
-    QString newBase = m_editor->text().trimmed();
+    const QString editedText = m_editor->text().trimmed();
     QString oldPath = m_activeItem->filePath();
     
     m_editor->hide();
     ListItem* item = m_activeItem.data();
     m_activeItem = nullptr;
+    const QString originalDisplayName = m_originalDisplayName;
+    m_originalDisplayName.clear();
 
-    if (newBase.isEmpty() || newBase == QFileInfo(oldPath).completeBaseName()) {
-        if (item) item->update();
+    if (!item) {
+        return;
+    }
+
+    item->setExpandedPreviewText(QString());
+
+    if (editedText.isEmpty() || editedText == originalDisplayName) {
+        item->update();
         return;
     }
 
     // Reconstruct full new path
     QFileInfo oldInfo(oldPath);
-    QString newFileName = newBase + m_extensionToRestore;
+    QString newFileName = editedText;
+    if (!m_extensionToRestore.isEmpty()) {
+        newFileName += m_extensionToRestore;
+    }
     
     // If it wasn't a shortcut, we might need to preserve the original extension if the user didn't type it
     // But usually in Windows, if you edit foo.txt to bar, it becomes bar.txt unless you show extensions.
@@ -141,8 +154,7 @@ void RenameManager::finishRename() {
         }
     }
 
-    if (item) item->update();
-    if (item) item->setExpandedPreviewText(QString());
+    item->update();
 }
 
 void RenameManager::onCommit() {

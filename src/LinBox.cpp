@@ -14,6 +14,8 @@
 #include <QTimer>
 #include <QWindow>
 #include <QtMath>
+#include <limits>
+#include <climits>
 #include "SettingUI.h"
 #include "ListView.h"
 #include "ListItem.h"
@@ -174,6 +176,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     setStyleSheet("LinBox { background: transparent; }");
     setMouseTracking(true);
     
+    setMinimumSize(m_minBoxWidth, m_minBoxHeight);
     resize(300, 400);
     setAcceptDrops(true);
     m_blurRefreshTimer = new QTimer(this);
@@ -185,7 +188,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_mainLayout->setContentsMargins(m_borderWidth, m_borderWidth, m_borderWidth, m_borderWidth);
     m_mainLayout->setSpacing(0);
 
-    this->m_title = "Brand New Box";
+    this->m_title = "New Box";
     m_titleBar = new QWidget(this);
     m_titleBar->setFixedHeight(m_titleHeight);
     m_titleBar->setObjectName("titleBar");
@@ -307,6 +310,11 @@ LinBox::~LinBox() {
 void LinBox::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
     raise();
+    refreshLayout();
+    QTimer::singleShot(0, this, [this]() {
+        m_lastLayoutContentWidth = -1;
+        refreshLayout();
+    });
     if (!m_isCapturingBackground) {
         scheduleBlurRefresh();
     }
@@ -337,6 +345,10 @@ void LinBox::setShowType(BoxShowType type) {
         m_viewSwitchBtn->setText(fontLoaded ? u8"\uECA5" : "☰");
     }
     refreshLayout();
+    QTimer::singleShot(0, this, [this]() {
+        m_lastLayoutContentWidth = -1;
+        refreshLayout();
+    });
     emit geometryChanged(this);
 }
 
@@ -353,14 +365,34 @@ void LinBox::addListItem(ListItem* item, bool refresh) {
     }
 }
 
-void LinBox::removeListItem(ListItem* item) {
+void LinBox::insertListItem(ListItem* item, int index, bool refresh) {
+    if (!item) return;
+    m_items.removeAll(item);
+    const int clampedIndex = qBound(0, index, m_items.size());
+    m_items.insert(clampedIndex, item);
+    item->setParent(m_contentArea);
+    item->setBoxId(m_id);
+    item->show();
+    item->raise();
+    m_lastLayoutItemCount = -1;
+    if (refresh) {
+        refreshLayout();
+        emit geometryChanged(this);
+    }
+}
+
+void LinBox::removeListItem(ListItem* item, bool refresh) {
     if (!item) return;
     m_items.removeAll(item);
     item->setBoxId(""); // Item is no longer in this box
     // Note: Do NOT change parent here. Caller is responsible for reparenting.
     item->hide();
-    refreshLayout();
-    emit geometryChanged(this);
+    if (refresh) {
+        refreshLayout();
+        emit geometryChanged(this);
+    } else {
+        m_lastLayoutItemCount = -1;
+    }
 }
 
 void LinBox::refreshLayout() {
@@ -371,7 +403,15 @@ void LinBox::refreshLayout() {
     const int rowSpacing = 8;
     const int marginLeft = 5; 
     const int marginTop = 5;
-    const int contentW = qMax(1, m_contentArea->width());
+    if (m_mainLayout) {
+        m_mainLayout->activate();
+    }
+    if (m_scrollArea) {
+        m_scrollArea->updateGeometry();
+    }
+    const int viewportW = (m_scrollArea && m_scrollArea->viewport()) ? m_scrollArea->viewport()->width() : 0;
+    const int fallbackContentW = qMax(1, width() - (m_borderWidth * 2));
+    const int contentW = qMax(1, qMax(qMax(m_contentArea->width(), viewportW), fallbackContentW));
     const bool layoutUnchanged =
         m_lastLayoutContentWidth == contentW &&
         m_lastLayoutItemCount == m_items.size() &&
@@ -405,12 +445,17 @@ void LinBox::refreshLayout() {
         }
     } else {
         int listItemH = 30; 
-        int listItemW = contentW - 2 * marginLeft;
         for (int i = 0; i < m_items.size(); ++i) {
+            ListItem* item = m_items[i];
+            const QFont textFont("Microsoft YaHei UI", 9);
+            const QFontMetrics fm(textFont);
+            const int iconAreaW = 8 + 20 + 8; // left padding + icon + gap
+            const int textW = qMax(24, fm.horizontalAdvance(item->displayName()));
+            const int rightPadding = 12;
+            const int listItemW = qMin(contentW - 2 * marginLeft, iconAreaW + textW + rightPadding);
             const int x = marginLeft;
             const int y = marginTop + i * (listItemH + 2);
             const QPoint targetPos(x, y);
-            ListItem* item = m_items[i];
             item->setLayoutMode(ListItem::LayoutMode::ListMode);
             if (item->size() != QSize(listItemW, listItemH)) {
                 item->setItemSize(listItemW, listItemH);
@@ -434,8 +479,9 @@ void LinBox::refreshLayout() {
     } else {
         totalHeight = marginTop + m_items.size() * (30 + 2) + 10;
     }
+    m_contentArea->setMinimumWidth(contentW);
     m_contentArea->setMinimumHeight(totalHeight);
-    m_contentArea->resize(m_contentArea->width(), totalHeight);
+    m_contentArea->resize(contentW, totalHeight);
 
     m_lastLayoutContentWidth = contentW;
     m_lastLayoutItemCount = m_items.size();
@@ -671,10 +717,12 @@ void LinBox::paintEvent(QPaintEvent* event) {
     if (!indicatorRect.isNull()) {
         p.setPen(Qt::NoPen);
         if (m_showType == BoxShowType::Icon_ShowType && indicatorRect.width() <= 4) {
-            p.setBrush(QColor(0, 255, 255, 235));
+            const QColor accent(0, 255, 255, 235);
+            p.setBrush(accent);
             p.drawRect(indicatorRect);
         } else if (m_showType == BoxShowType::Icon_ShowType) {
-            p.setBrush(QColor(0, 255, 255, 235));
+            const QColor accent(0, 255, 255, 235);
+            p.setBrush(accent);
             p.drawRect(indicatorRect);
         } else {
             p.setBrush(QColor(0, 255, 255, 230));
@@ -775,24 +823,7 @@ ListItem* LinBox::findItemByPath(const QString& filePath) const
     return nullptr;
 }
 
-bool LinBox::isReorderDrag(const QStringList& paths, ListItem** draggedItem) const
-{
-    if (paths.size() != 1) {
-        return false;
-    }
-
-    ListItem* item = findItemByPath(paths.first());
-    if (!item) {
-        return false;
-    }
-
-    if (draggedItem) {
-        *draggedItem = item;
-    }
-    return true;
-}
-
-int LinBox::insertionIndexForPos(const QPoint& boxPos, ListItem* draggedItem, bool* alignAfterPrev) const
+int LinBox::insertionIndexForPos(const QPoint& boxPos, const QVector<ListItem*>& draggedItems, bool* alignAfterPrev) const
 {
     if (m_items.isEmpty()) {
         if (alignAfterPrev) *alignAfterPrev = false;
@@ -801,7 +832,9 @@ int LinBox::insertionIndexForPos(const QPoint& boxPos, ListItem* draggedItem, bo
 
     const QPoint contentPos = m_contentArea->mapFromGlobal(mapToGlobal(boxPos));
     QVector<ListItem*> orderedItems = m_items;
-    orderedItems.removeAll(draggedItem);
+    for (ListItem* draggedItem : draggedItems) {
+        orderedItems.removeAll(draggedItem);
+    }
 
     if (orderedItems.isEmpty()) {
         if (alignAfterPrev) *alignAfterPrev = false;
@@ -837,23 +870,30 @@ int LinBox::insertionIndexForPos(const QPoint& boxPos, ListItem* draggedItem, bo
         }
     }
 
-    int targetRow = 0;
-    qint64 bestRowDistance = 0x7fffffffffffffffLL;
-    for (int rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
-        const QRect rowRect = orderedItems[rows[rowIndex].first()]->getItemRect()
-            .united(orderedItems[rows[rowIndex].last()]->getItemRect());
-        if (contentPos.y() >= rowRect.top() && contentPos.y() <= rowRect.bottom()) {
-            targetRow = rowIndex;
-            bestRowDistance = -1;
-            break;
+    QVector<QRect> rowRects;
+    QVector<int> rowCenters;
+    rowRects.reserve(rows.size());
+    rowCenters.reserve(rows.size());
+    for (const QVector<int>& row : rows) {
+        QRect rowRect = orderedItems[row.first()]->getItemRect();
+        for (int idx : row) {
+            rowRect = rowRect.united(orderedItems[idx]->getItemRect());
         }
+        rowRects.append(rowRect);
+        rowCenters.append(rowRect.center().y());
+    }
 
-        const int rowCenterY = rowRect.center().y();
-        const qint64 dy = static_cast<qint64>(contentPos.y()) - rowCenterY;
-        const qint64 distance = dy * dy;
-        if (distance < bestRowDistance) {
-            bestRowDistance = distance;
+    int targetRow = 0;
+    for (int rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
+        const int upperBound = (rowIndex == 0)
+            ? INT_MIN
+            : (rowCenters[rowIndex - 1] + rowCenters[rowIndex]) / 2;
+        const int lowerBound = (rowIndex == rows.size() - 1)
+            ? INT_MAX
+            : (rowCenters[rowIndex] + rowCenters[rowIndex + 1]) / 2;
+        if (contentPos.y() >= upperBound && contentPos.y() < lowerBound) {
             targetRow = rowIndex;
+            break;
         }
     }
 
@@ -861,38 +901,37 @@ int LinBox::insertionIndexForPos(const QPoint& boxPos, ListItem* draggedItem, bo
     const QRect firstRect = orderedItems[row.first()]->getItemRect();
     const QRect lastRect = orderedItems[row.last()]->getItemRect();
 
-    if (contentPos.x() <= firstRect.left()) {
-        if (alignAfterPrev) *alignAfterPrev = false;
-        return row.first();
-    }
+    struct InsertionLane {
+        int insertIndex = 0;
+        bool afterPrev = false;
+        int x = 0;
+    };
 
-    for (int idx : row) {
-        const QRect rect = orderedItems[idx]->getItemRect();
-        if (rect.contains(contentPos)) {
-            if (alignAfterPrev) *alignAfterPrev = false;
-            return idx;
-        }
-    }
-
+    QVector<InsertionLane> lanes;
+    lanes.reserve(row.size() + 1);
+    lanes.append({row.first(), false, firstRect.left()});
     for (int i = 0; i < row.size() - 1; ++i) {
         const QRect currentRect = orderedItems[row[i]]->getItemRect();
         const QRect nextRect = orderedItems[row[i + 1]]->getItemRect();
-        if (contentPos.x() > currentRect.right() && contentPos.x() < nextRect.left()) {
-            if (alignAfterPrev) *alignAfterPrev = true;
-            return row[i] + 1;
+        lanes.append({row[i] + 1, true, (currentRect.right() + nextRect.left()) / 2});
+    }
+    const int trailingIndex = (targetRow + 1 < rows.size()) ? rows[targetRow + 1].first() : orderedItems.size();
+    lanes.append({trailingIndex, true, lastRect.right() + 1});
+
+    int bestLane = 0;
+    int bestDistance = INT_MAX;
+    for (int i = 0; i < lanes.size(); ++i) {
+        const int distance = qAbs(contentPos.x() - lanes[i].x);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestLane = i;
         }
     }
 
-    if (contentPos.x() >= lastRect.right()) {
-        if (alignAfterPrev) *alignAfterPrev = true;
-        if (targetRow + 1 < rows.size()) {
-            return rows[targetRow + 1].first();
-        }
-        return orderedItems.size();
+    if (alignAfterPrev) {
+        *alignAfterPrev = lanes[bestLane].afterPrev;
     }
-
-    if (alignAfterPrev) *alignAfterPrev = false;
-    return row.first();
+    return lanes[bestLane].insertIndex;
 }
 
 QRect LinBox::insertionIndicatorRect() const
@@ -902,7 +941,9 @@ QRect LinBox::insertionIndicatorRect() const
     }
 
     QVector<ListItem*> orderedItems = m_items;
-    orderedItems.removeAll(m_reorderDragItem);
+    for (ListItem* draggedItem : m_reorderDragItems) {
+        orderedItems.removeAll(draggedItem);
+    }
     auto itemBorderRectInBox = [this](ListItem* item) -> QRect {
         if (!item) {
             return QRect();
@@ -950,8 +991,8 @@ QRect LinBox::insertionIndicatorRect() const
 
 void LinBox::clearReorderPreview()
 {
-    if (m_reorderDragItem || m_reorderInsertIndex >= 0) {
-        m_reorderDragItem = nullptr;
+    if (!m_reorderDragItems.isEmpty() || m_reorderInsertIndex >= 0) {
+        m_reorderDragItems.clear();
         m_reorderInsertIndex = -1;
         m_reorderIndicatorAfterPrev = false;
         update();
@@ -1022,26 +1063,39 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
         return;
     }
 
+    ListView* lv = ListView::instance();
     const bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
     const bool isInternalDrag = (event->source() != nullptr);
     QStringList paths;
-    if (ListView* lv = ListView::instance()) {
+    if (lv) {
         paths = lv->resolveDraggedLocalPaths(event->mimeData());
     }
-    ListItem* reorderItem = nullptr;
-    if (isInternalDrag && isReorderDrag(paths, &reorderItem)) {
-        if (ListView* lv = ListView::instance()) {
-            lv->resetRenameClickState();
-        }
-        m_reorderDragItem = reorderItem;
-        m_reorderInsertIndex = insertionIndexForPos(event->pos(), reorderItem, &m_reorderIndicatorAfterPrev);
+    ListItem* hitItem = hitItemAt(event->pos());
+    const QVector<ListItem*> draggedItems = (isInternalDrag && lv)
+        ? lv->orderedDraggedItemsForPaths(paths)
+        : QVector<ListItem*>();
+
+    if (hitItem && !draggedItems.contains(hitItem)) {
+        clearReorderPreview();
+        const QString clsid = hitItem->getItemData().getCLSID();
+        const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
+        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        event->accept();
+        showDropTipForItem(hitItem, event->pos(), isCtrl);
+        return;
+    }
+
+    if (!draggedItems.isEmpty()) {
+        lv->resetRenameClickState();
+        m_reorderDragItems = draggedItems;
+        m_reorderInsertIndex = insertionIndexForPos(event->pos(), draggedItems, &m_reorderIndicatorAfterPrev);
         if (m_dragTip) m_dragTip->hide();
         event->setDropAction(Qt::MoveAction);
         event->accept();
         update();
         return;
     }
-    ListItem* hitItem = hitItemAt(event->pos());
+
     const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
@@ -1069,26 +1123,39 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
         return;
     }
 
+    ListView* lv = ListView::instance();
     const bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
     const bool isInternalDrag = (event->source() != nullptr);
     QStringList paths;
-    if (ListView* lv = ListView::instance()) {
+    if (lv) {
         paths = lv->resolveDraggedLocalPaths(event->mimeData());
     }
-    ListItem* reorderItem = nullptr;
-    if (isInternalDrag && isReorderDrag(paths, &reorderItem)) {
-        if (ListView* lv = ListView::instance()) {
-            lv->resetRenameClickState();
-        }
-        m_reorderDragItem = reorderItem;
-        m_reorderInsertIndex = insertionIndexForPos(event->pos(), reorderItem, &m_reorderIndicatorAfterPrev);
+    ListItem* hitItem = hitItemAt(event->pos());
+    const QVector<ListItem*> draggedItems = (isInternalDrag && lv)
+        ? lv->orderedDraggedItemsForPaths(paths)
+        : QVector<ListItem*>();
+
+    if (hitItem && !draggedItems.contains(hitItem)) {
+        clearReorderPreview();
+        const QString clsid = hitItem->getItemData().getCLSID();
+        const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
+        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        event->accept();
+        showDropTipForItem(hitItem, event->pos(), isCtrl);
+        return;
+    }
+
+    if (!draggedItems.isEmpty()) {
+        lv->resetRenameClickState();
+        m_reorderDragItems = draggedItems;
+        m_reorderInsertIndex = insertionIndexForPos(event->pos(), draggedItems, &m_reorderIndicatorAfterPrev);
         if (m_dragTip) m_dragTip->hide();
         event->setDropAction(Qt::MoveAction);
         event->accept();
         update();
         return;
     }
-    ListItem* hitItem = hitItemAt(event->pos());
+
     const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
@@ -1126,30 +1193,59 @@ void LinBox::dropEvent(QDropEvent* event) {
     const bool copyMode = (event->keyboardModifiers() & Qt::ControlModifier);
     ListItem* hitItem = hitItemAt(event->pos());
 
-    ListItem* reorderItem = nullptr;
-    if (isInternalDrag && isReorderDrag(paths, &reorderItem)) {
-        lv->resetRenameClickState();
-        const int insertIndex = insertionIndexForPos(event->pos(), reorderItem, &m_reorderIndicatorAfterPrev);
-        m_items.removeAll(reorderItem);
-        const int clampedIndex = qBound(0, insertIndex, m_items.size());
-        m_items.insert(clampedIndex, reorderItem);
-        m_lastLayoutItemCount = -1;
-        clearReorderPreview();
-        refreshLayout();
-        raise();
-        lv->requestSaveBoxes();
-        event->setDropAction(Qt::MoveAction);
-        event->accept();
-        return;
-    }
+    const QVector<ListItem*> draggedItems = isInternalDrag
+        ? lv->orderedDraggedItemsForPaths(paths)
+        : QVector<ListItem*>();
 
-    if (hitItem) {
+    if (hitItem && !draggedItems.contains(hitItem)) {
+        clearReorderPreview();
         if (lv->handleDroppedPathsOnItem(paths, hitItem, copyMode)) {
             event->accept();
         } else {
             event->ignore();
         }
+        return;
+    }
+
+    if (!draggedItems.isEmpty()) {
+        lv->resetRenameClickState();
+        const int insertIndex = insertionIndexForPos(event->pos(), draggedItems, &m_reorderIndicatorAfterPrev);
         clearReorderPreview();
+
+        bool allFromThisBox = true;
+        for (ListItem* draggedItem : draggedItems) {
+            if (!m_items.contains(draggedItem)) {
+                allFromThisBox = false;
+                break;
+            }
+        }
+
+        if (allFromThisBox) {
+            QVector<ListItem*> orderedDraggedItems;
+            for (ListItem* existingItem : m_items) {
+                if (draggedItems.contains(existingItem)) {
+                    orderedDraggedItems.append(existingItem);
+                }
+            }
+            for (ListItem* draggedItem : orderedDraggedItems) {
+                m_items.removeAll(draggedItem);
+            }
+            const int clampedIndex = qBound(0, insertIndex, m_items.size());
+            for (int i = 0; i < orderedDraggedItems.size(); ++i) {
+                m_items.insert(clampedIndex + i, orderedDraggedItems[i]);
+            }
+            m_lastLayoutItemCount = -1;
+            refreshLayout();
+            raise();
+            lv->requestSaveBoxes();
+            event->setDropAction(Qt::MoveAction);
+            event->accept();
+            return;
+        }
+
+        lv->moveItemsToBox(draggedItems, this, insertIndex, true);
+        event->setDropAction(Qt::MoveAction);
+        event->accept();
         return;
     }
 
@@ -1259,7 +1355,8 @@ void LinBox::toggleCollapse() {
         m_isCollapsed = true;
     } else {
         m_scrollArea->show();
-        setMinimumHeight(100); setMaximumHeight(16777215);
+        setMinimumSize(m_minBoxWidth, m_minBoxHeight);
+        setMaximumHeight(16777215);
         resize(width(), m_originalHeight);
         m_collapseBtn->setText(fontLoaded ? u8"\uE70E" : "−");
         m_isCollapsed = false;
@@ -1280,26 +1377,14 @@ void LinBox::setGlassEffect(bool enabled) {
 }
 
 void LinBox::refreshStyles() {
-    int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
-    
     // Ensure the window is transparent to show the DWM blur effect
     this->setAttribute(Qt::WA_TranslucentBackground);
     this->setStyleSheet("background: transparent; border: none;");
 
-    int finalA = m_glassEffect ? 0 : (int)(m_bgOpacity * 255);
-    int titleA = m_glassEffect ? 0 : (int)(m_bgOpacity * 255);
-    
-    int finalR = m_glassEffect ? 0 : r;
-    int finalG = m_glassEffect ? 0 : g;
-    int finalB = m_glassEffect ? 0 : b;
-
-    if (!m_glassEffect && finalA < 5) finalA = 20;
-
-    QString titleBgs = m_glassEffect ? "transparent" : QString("rgba(%1, %2, %3, %4)").arg(finalR).arg(finalG).arg(finalB).arg(titleA);
-    QString contentBgs = m_glassEffect ? "transparent" : QString("rgba(%1, %2, %3, %4)").arg(finalR).arg(finalG).arg(finalB).arg(finalA);
-
-    m_titleBar->setStyleSheet(QString("QWidget#titleBar { background: %1; border-radius: 0px; }").arg(titleBgs));
-    m_contentArea->setStyleSheet(QString("QWidget#contentArea { background: %1; border-radius: 0px; }").arg(contentBgs));
+    // Let LinBox::paintEvent render one unified background for the full box.
+    // Keeping title/content transparent avoids subtle alpha/color mismatches.
+    m_titleBar->setStyleSheet("QWidget#titleBar { background: transparent; border-radius: 0px; }");
+    m_contentArea->setStyleSheet("QWidget#contentArea { background: transparent; border-radius: 0px; }");
     update();
 }
 
@@ -1392,90 +1477,33 @@ void LinBox::updateBlurCache()
 }
 
 void LinBox::showCustomContextMenu(const QPoint& globalPos) {
-    QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
-    menu.setAttribute(Qt::WA_TranslucentBackground);
-    
-    // 100% Windows 11 Context Menu Clone (Light Theme)
-    menu.setStyleSheet(
-        "QMenu { "
-        "  background-color: rgba(255, 255, 255, 230); "
-        "  border: 1px solid rgba(0, 0, 0, 0.08); "
-        "  border-top: 1px solid rgba(255, 255, 255, 0.8); " // Glass highlight
-        "  border-radius: 12px; "
-        "  padding: 6px 2px; "
-        "  color: #1a1a1a; "
-        "  font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
-        "  font-size: 14px; "
-        "} "
-        "QMenu::item { "
-        "  background-color: transparent; "
-        "  padding: 8px 44px 8px 14px; " // Larger spacing for bigger icons
-        "  border-radius: 4px; "
-        "  margin: 1px 6px; "
-        "} "
-        "QMenu::item:selected { "
-        "  background-color: rgba(0, 120, 212, 0.15); "
-        "  color: #1a1a1a; "
-        "} "
-        "QMenu::separator { "
-        "  height: 1px; "
-        "  background: rgba(0, 0, 0, 0.08); "
-        "  margin: 4px 14px; "
-        "}"
-    );
+    QMenu menu;
+    menu.setStyleSheet(QString());
+    menu.setMinimumWidth(180);
 
-    // Apply Blur to the menu window (Acrylic effect)
-    QTimer::singleShot(0, [&menu]() {
-        WinBlurHelper::applyBlur(&menu, WinBlurHelper::Acrylic);
-    });
-
-    // Dynamic Icon Creation (High DPI & Fallback aware) - Larger icons
-    auto createIcon = [](char16_t code, const QColor& color) {
-        QPixmap pix(40, 40); 
-        pix.fill(Qt::transparent); 
-        QPainter p(&pix); 
-        p.setRenderHint(QPainter::Antialiasing); 
-        p.setRenderHint(QPainter::TextAntialiasing);
-        
-        QFont f("Segoe Fluent Icons");
-        if (!QFontInfo(f).exactMatch()) f.setFamily("Segoe MDL2 Assets");
-        f.setPixelSize(20); // Larger icon font
-        p.setFont(f); 
-        p.setPen(color); 
-        p.drawText(pix.rect(), Qt::AlignCenter, QString(code)); 
-        return QIcon(pix);
-    };
-
-    QAction* renameAction = new QAction("Rename", &menu); 
-    renameAction->setIcon(createIcon(0xE8AC, QColor(28,28,28)));
-    
-    QAction* viewSwitchAction = new QAction(m_showType == BoxShowType::Icon_ShowType ? "List View" : "Icon View", &menu);
-    viewSwitchAction->setIcon(createIcon(0xE10F, QColor(28,28,28)));
-
-    QAction* destroyAction = new QAction("Destroy Box", &menu); 
-    destroyAction->setIcon(createIcon(0xE74D, QColor(255,69,58)));
-
-    QAction* settingsAction = new QAction("Box Settings", &menu); 
-    settingsAction->setIcon(createIcon(0xE713, QColor(28,28,28)));
-    
-    menu.addAction(renameAction);
-    menu.addAction(viewSwitchAction);
+    QAction* renameAction = menu.addAction("Rename");
+    QAction* toggleViewAction = menu.addAction(
+        m_showType == BoxShowType::Icon_ShowType ? "List View" : "Icon View");
     menu.addSeparator();
-    menu.addAction(settingsAction);
-    menu.addAction(destroyAction);
+    QAction* settingsAction = menu.addAction("Box Settings");
+    QAction* destroyAction = menu.addAction("Destroy Box");
 
     QAction* selectedAction = menu.exec(globalPos);
+    if (!selectedAction) {
+        return;
+    }
+
     if (selectedAction == renameAction) {
         beginTitleEditing();
-    } 
-    else if (selectedAction == viewSwitchAction) {
-        setShowType(m_showType == BoxShowType::Icon_ShowType ? BoxShowType::List_ShowType : BoxShowType::Icon_ShowType);
-    } 
-    else if (selectedAction == settingsAction) {
-        if (ListView::instance()) ListView::instance()->showSettings(this);
-    }
-    else if (selectedAction == destroyAction) {
+    } else if (selectedAction == toggleViewAction) {
+        setShowType(m_showType == BoxShowType::Icon_ShowType
+                        ? BoxShowType::List_ShowType
+                        : BoxShowType::Icon_ShowType);
+    } else if (selectedAction == settingsAction) {
+        if (ListView::instance()) {
+            ListView::instance()->showSettings(this);
+        }
+    } else if (selectedAction == destroyAction) {
         emit destroyRequested(this);
     }
 }

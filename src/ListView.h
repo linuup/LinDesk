@@ -189,7 +189,9 @@ public:
 
 	void showSettings(LinBox* target = nullptr);
 	static ListView* instance(QWidget* parent = nullptr);
-	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true);
+	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true, int insertIndex = -1);
+	void moveItemsToBox(const QVector<ListItem*>& items, LinBox* targetBox, int insertIndex = -1, bool refresh = true);
+	QVector<ListItem*> orderedDraggedItemsForPaths(const QStringList& paths) const;
 	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode);
 	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
 	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode);

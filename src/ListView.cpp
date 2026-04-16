@@ -210,26 +210,18 @@ QString uniquePasteDestinationPath(const QString& sourcePath, const QString& des
         return QDir::toNativeSeparators(originalCandidate);
     }
 
-    QString copyName;
     QString extension;
-    if (sourceInfo.isDir()) {
-        copyName = originalFileName + " - Copy";
-    } else {
+    QString nameStem = originalFileName;
+    if (!sourceInfo.isDir()) {
         const QString completeSuffix = sourceInfo.completeSuffix();
         extension = completeSuffix.isEmpty() ? QString() : "." + completeSuffix;
-        const QString baseName = sourceInfo.completeBaseName().isEmpty() ? originalFileName : sourceInfo.completeBaseName();
-        copyName = baseName + " - Copy" + extension;
+        nameStem = sourceInfo.completeBaseName().isEmpty() ? originalFileName : sourceInfo.completeBaseName();
     }
 
-    QString candidate = dir.filePath(copyName);
+    QString candidate = dir.filePath(QString("%1(%2)%3").arg(nameStem).arg(1).arg(extension));
     int suffix = 2;
     while (QFileInfo::exists(candidate)) {
-        if (sourceInfo.isDir()) {
-            candidate = dir.filePath(QString("%1 - Copy (%2)").arg(originalFileName).arg(suffix));
-        } else {
-            const QString baseName = sourceInfo.completeBaseName().isEmpty() ? originalFileName : sourceInfo.completeBaseName();
-            candidate = dir.filePath(QString("%1 - Copy (%2)%3").arg(baseName).arg(suffix).arg(extension));
-        }
+        candidate = dir.filePath(QString("%1(%2)%3").arg(nameStem).arg(suffix).arg(extension));
         ++suffix;
     }
 
@@ -943,16 +935,6 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         if (m_dragTip) m_dragTip->hide();
         return;
     }
-    if (event->source() != this) {
-        if (m_dragTip) m_dragTip->hide();
-        if (event->keyboardModifiers() & Qt::ControlModifier) {
-            event->setDropAction(Qt::CopyAction);
-        } else {
-            event->setDropAction(Qt::MoveAction);
-        }
-        event->accept();
-        return;
-    }
     if (event->keyboardModifiers() & Qt::ControlModifier) {
         event->setDropAction(Qt::CopyAction);
     } else {
@@ -961,28 +943,20 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
     event->accept();
 
     const bool isInternalDrag = (event->source() == this);
-    if (!isInternalDrag) {
-        if (m_dragTip) {
-            m_dragTip->hide();
-        }
-        return;
-    }
 
     // 1. Find if we are hovering over an item
     ListItem* hitItem = nullptr;
-    if (m_iconShowRule.gridAlignment) {
-        for (auto* item : m_items) {
-            if (item && item->isVisible() && item->geometry().contains(event->pos()) && !m_selectedItems.contains(item)) {
-                hitItem = item;
-                break;
-            }
+    for (auto* item : m_items) {
+        if (item && item->isVisible() && item->geometry().contains(event->pos()) && !m_selectedItems.contains(item)) {
+            hitItem = item;
+            break;
         }
     }
 
     bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
 
     if (hitItem) {
-        if (m_draggedItem) {
+        if (isInternalDrag && m_draggedItem) {
             QString draggedClsid = m_draggedItem->getItemData().getCLSID();
             bool isDraggedPC = (draggedClsid == APP_MY_COMPUTER_CLS);
             bool isDraggedNetwork = (draggedClsid == APP_NETWORK_CLS);
@@ -1057,7 +1031,15 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         m_dragTip->raise();
         event->accept();
     } else {
-        if (m_dragTip) {
+        if (isCtrl) {
+            ensureDragTip();
+            const QString htmlText = QString("<b style='color:#70a1ff'>Copy to</b> <span>Desktop</span>");
+            m_dragTip->setText(htmlText);
+            m_dragTip->adjustSize();
+            m_dragTip->move(event->pos() + QPoint(24, 24));
+            m_dragTip->show();
+            m_dragTip->raise();
+        } else if (m_dragTip) {
             m_dragTip->hide();
         }
     }
@@ -1066,15 +1048,13 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
 void ListView::dropEvent(QDropEvent* event)
 {
     RenameManager::instance()->cancelRename();
-    //if (m_dragTip) m_dragTip->hide();
+    if (m_dragTip) m_dragTip->hide();
 
     ListItem* hitItem = nullptr;
-    if (m_iconShowRule.gridAlignment) {
-        for (auto* item : m_items) {
-            if (item && item->isVisible() && item->geometry().contains(event->pos()) && !m_selectedItems.contains(item)) {
-                hitItem = item;
-                break;
-            }
+    for (auto* item : m_items) {
+        if (item && item->isVisible() && item->geometry().contains(event->pos()) && !m_selectedItems.contains(item)) {
+            hitItem = item;
+            break;
         }
     }
 
@@ -1158,7 +1138,7 @@ void ListView::dropEvent(QDropEvent* event)
                 // 根据键盘修饰符选择复制或移动
                 bool result;
                 if (isCopyAction) {
-                    result = CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
+                    result = copyFilesToDesktopWithRule(draggedPaths, m_desktopDir);
                 } else {
                     result = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
                 }
@@ -3221,6 +3201,7 @@ void ListView::requestSaveBoxes() {
 
 void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData) {
     qDebug() << "[applyBoxAssignmentsFromConfig] Processing" << boxData.size() << "boxes";
+    QSet<LinBox*> boxesToRefresh;
     
     for (const auto& data : boxData) {
         const QString boxId = data.value("id").toString();
@@ -3251,9 +3232,16 @@ void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVarian
             // 使用 addListItem 来添加，它会正确设置父窗口为 m_contentArea
             setupItemConnections(item, targetBox);
             targetBox->addListItem(item, false);
+            boxesToRefresh.insert(targetBox);
             
             qDebug() << "[applyBoxAssignmentsFromConfig] Item moved, new parent:" << item->parentWidget();
         }
+    }
+
+    for (LinBox* box : boxesToRefresh) {
+        if (!box) continue;
+        box->refreshLayout();
+        box->raise();
     }
 }
 
@@ -3382,8 +3370,8 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     BoxManager::instance()->setupConnections(box, this);
     BoxManager::instance()->addBox(box);
     
-    box->setShowType((LinBox::BoxShowType)showType);
     box->setGeometry(geom);
+    box->setShowType((LinBox::BoxShowType)showType);
     if (collapsed) box->toggleCollapse();
 
     box->show();
@@ -3437,22 +3425,127 @@ void ListView::onMenuCustomBox(LinBox* box) {
     qDebug() << "Customize box requested:" << box->boxTitle();
 }
 
-void ListView::moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh) {
-    BoxManager::instance()->moveItemToBox(filePath, targetBox, this);
+void ListView::moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh, int insertIndex) {
+    ListItem* item = findItemByPath(filePath);
+    LinBox* sourceBox = nullptr;
+    if (item && !item->boxId().isEmpty()) {
+        sourceBox = BoxManager::instance()->findBoxById(item->boxId());
+    }
+
+    BoxManager::instance()->moveItemToBox(filePath, targetBox, this, insertIndex, false);
+
+    if (sourceBox && sourceBox != targetBox) {
+        sourceBox->refreshLayout();
+        sourceBox->update();
+    }
+
+    if (targetBox) {
+        targetBox->refreshLayout();
+        targetBox->update();
+        targetBox->raise();
+    }
     
     if (refresh) {
-        if (m_enablePersistence) {
-            loadPersistentLayout();
-        } else if (m_iconShowRule.autoArrange) {
-            loadAutoLayout();
-        } else {
-            loadGridLayout();
-        }
         update();
         requestSaveBoxes();
     }
     
-    qDebug() << "Moved item to box (re-parented):" << filePath << "->" << targetBox->boxTitle();
+    qDebug() << "Moved item to box (re-parented):" << filePath << "->" << targetBox->boxTitle() << "index=" << insertIndex;
+}
+
+void ListView::moveItemsToBox(const QVector<ListItem*>& items, LinBox* targetBox, int insertIndex, bool refresh)
+{
+    if (!targetBox || items.isEmpty()) {
+        return;
+    }
+
+    QVector<ListItem*> orderedItems;
+    QSet<ListItem*> seenItems;
+    QSet<LinBox*> sourceBoxes;
+    for (ListItem* item : items) {
+        if (!item || seenItems.contains(item)) {
+            continue;
+        }
+        seenItems.insert(item);
+        orderedItems.append(item);
+        if (!item->boxId().isEmpty()) {
+            if (LinBox* sourceBox = BoxManager::instance()->findBoxById(item->boxId())) {
+                if (sourceBox != targetBox) {
+                    sourceBoxes.insert(sourceBox);
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < orderedItems.size(); ++i) {
+        BoxManager::instance()->moveItemToBox(orderedItems[i]->filePath(), targetBox, this, insertIndex + i, false);
+    }
+
+    for (LinBox* sourceBox : sourceBoxes) {
+        if (!sourceBox) continue;
+        sourceBox->refreshLayout();
+        sourceBox->update();
+    }
+
+    targetBox->refreshLayout();
+    targetBox->update();
+    targetBox->raise();
+
+    if (refresh) {
+        update();
+        requestSaveBoxes();
+    }
+}
+
+QVector<ListItem*> ListView::orderedDraggedItemsForPaths(const QStringList& paths) const
+{
+    QVector<ListItem*> resolvedItems;
+    QSet<ListItem*> seenItems;
+    for (const QString& path : paths) {
+        if (ListItem* item = findItemByPath(path)) {
+            if (!seenItems.contains(item)) {
+                seenItems.insert(item);
+                resolvedItems.append(item);
+            }
+        }
+    }
+
+    if (resolvedItems.isEmpty()) {
+        return resolvedItems;
+    }
+
+    QSet<QString> sourceBoxIds;
+    bool hasDesktopItems = false;
+    for (ListItem* item : resolvedItems) {
+        if (!item) continue;
+        if (item->boxId().isEmpty()) {
+            hasDesktopItems = true;
+        } else {
+            sourceBoxIds.insert(item->boxId());
+        }
+    }
+
+    QVector<ListItem*> orderedItems;
+    if (sourceBoxIds.size() == 1 && !hasDesktopItems) {
+        if (LinBox* sourceBox = BoxManager::instance()->findBoxById(*sourceBoxIds.begin())) {
+            for (ListItem* item : sourceBox->items()) {
+                if (seenItems.contains(item)) {
+                    orderedItems.append(item);
+                }
+            }
+        }
+    } else if (sourceBoxIds.isEmpty() && hasDesktopItems) {
+        for (ListItem* item : m_items) {
+            if (seenItems.contains(item)) {
+                orderedItems.append(item);
+            }
+        }
+    }
+
+    if (!orderedItems.isEmpty()) {
+        return orderedItems;
+    }
+    return resolvedItems;
 }
 
 bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode)
@@ -3580,6 +3673,7 @@ void ListView::setShortcutArrowVisible(bool visible) {
 void ListView::loadPersistentLayout() {
     const bool useConfigLayout = m_forceConfigLayout || m_hasLoadedConfigLayout;
     QVector<ListItem*> allItemsSnapshot = m_items;
+    QSet<LinBox*> boxesToRefresh;
 
     //for (auto box : BoxManager::instance()->allBoxes()) {
     //    if (!box) continue;
@@ -3593,6 +3687,19 @@ void ListView::loadPersistentLayout() {
 
     for (auto* item : allItemsSnapshot) {
         if (!item) continue;
+
+        const QString savedBoxId = item->boxId();
+        if (!savedBoxId.isEmpty()) {
+            LinBox* targetBox = BoxManager::instance()->findBoxById(savedBoxId);
+            if (targetBox) {
+                item->setBoxId(savedBoxId);
+                item->hide();
+                setupItemConnections(item, targetBox);
+                targetBox->addListItem(item, false);
+                boxesToRefresh.insert(targetBox);
+                continue;
+            }
+        }
 
         item->setItemSize(m_iconWidth, m_iconHeight);
         item->initData();
@@ -3613,18 +3720,6 @@ void ListView::loadPersistentLayout() {
             continue;
         }
 
-        const QString savedBoxId = item->boxId();
-        if (!savedBoxId.isEmpty()) {
-            LinBox* targetBox = BoxManager::instance()->findBoxById(savedBoxId);
-            if (targetBox) {
-                item->setBoxId(savedBoxId);
-                item->hide();
-                setupItemConnections(item, targetBox);
-                targetBox->addListItem(item, false);
-                continue;
-            }
-        }
-
         const QPoint savedPos = item->getLocationInfo();
         if (savedPos.x() <= 0 || savedPos.y() <= 0) {
             QPoint newPos = generateItemPosition();
@@ -3636,6 +3731,11 @@ void ListView::loadPersistentLayout() {
         item->setParent(this);
     }
 
+    for (LinBox* box : boxesToRefresh) {
+        if (!box) continue;
+        box->refreshLayout();
+        box->raise();
+    }
 }
 void ListView::setPersistenceEnabled(bool enabled) {
     if (m_enablePersistence == enabled) return;

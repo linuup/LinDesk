@@ -15,11 +15,7 @@
 #include <QSet>
 
 namespace {
-QString normalizeItemPath(const QString& path) {
-    QString normalized = QDir::toNativeSeparators(path);
-    while (normalized.endsWith('\\')) normalized.chop(1);
-    return normalized;
-}
+
 }
 
 BoxManager* BoxManager::m_instance = nullptr;
@@ -45,6 +41,20 @@ LinBox* BoxManager::createBox(const QPoint& pos, QWidget* parent) {
     LinBox* box = new LinBox(parent);
     box->setBoxId(QUuid::createUuid().toString());
     box->move(pos);
+
+    LinBox* templateBox = nullptr;
+    for (const auto& ptr : m_boxes) {
+        if (LinBox* existing = ptr.data()) {
+            templateBox = existing;
+            break;
+        }
+    }
+    if (templateBox) {
+        box->setShowType(templateBox->showType());
+        box->setBackgroundColor(templateBox->backgroundColor());
+        box->setBackgroundOpacity(templateBox->backgroundOpacity());
+        box->setGlassEffect(templateBox->glassEffect());
+    }
     
     setupBoxConnections(box);
     box->show();
@@ -207,7 +217,7 @@ void BoxManager::saveAll() {
         QSet<QString> seenPaths;
         for (auto* item : box->items()) {
             if (!item) continue;
-            QString filePath = normalizeItemPath(item->filePath());
+            QString filePath = item->filePath();
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files.append(filePath);
@@ -231,7 +241,7 @@ void BoxManager::saveAll() {
         QSet<QString> seenPaths;
         for (auto* item : box->items()) {
             if (!item) continue;
-            QString filePath = normalizeItemPath(item->filePath());
+            QString filePath = item->filePath();
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files << filePath;
@@ -303,7 +313,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
         QSet<QString> seenPaths;
         for (auto* item : box->items()) {
             if (!item) continue;
-            QString filePath = normalizeItemPath(item->filePath());
+            QString filePath = item->filePath();
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files.append(filePath);
@@ -327,7 +337,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
         QSet<QString> seenPaths;
         for (auto* item : box->items()) {
             if (!item) continue;
-            QString filePath = normalizeItemPath(item->filePath());
+            QString filePath = item->filePath();
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files << filePath;
@@ -585,7 +595,7 @@ void BoxManager::setAllBoxesBackgroundOpacity(float opacity) {
     requestSave();
 }
 
-void BoxManager::moveItemToBox(const QString& filePath, LinBox* targetBox, ListView* listView) {
+void BoxManager::moveItemToBox(const QString& filePath, LinBox* targetBox, ListView* listView, int insertIndex, bool refreshBoxes) {
     if (filePath.isEmpty() || !targetBox || !listView) return;
     
     // Find and remove item from its current location
@@ -595,14 +605,17 @@ void BoxManager::moveItemToBox(const QString& filePath, LinBox* targetBox, ListV
     // Check if item is in another box, if so remove it
     LinBox* currentBox = findBoxContainingItem(filePath);
     if (currentBox && currentBox != targetBox) {
-        currentBox->removeListItem(item);
+        currentBox->removeListItem(item, refreshBoxes);
     }
     
     // Update item's box id BEFORE adding to new box
     item->setBoxId(targetBox->boxId());
     
-    // Add to target box FIRST (before removing from ListView)
-    targetBox->addListItem(item, false);
+    if (insertIndex >= 0) {
+        targetBox->insertListItem(item, insertIndex, refreshBoxes);
+    } else {
+        targetBox->addListItem(item, refreshBoxes);
+    }
     
     requestSave();
 }

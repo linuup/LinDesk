@@ -358,28 +358,14 @@ QWidget* SettingUI::createGridPage() {
     previewLabel->setStyleSheet("font-size: 12px; font-weight: 600; color: #6b7280;");
     previewLayout->addWidget(previewLabel);
     
-    // Center container for the preview
-    QWidget* previewCenter = new QWidget(previewContainer);
-    previewCenter->setFixedHeight(145);
-    QHBoxLayout* previewCenterLayout = new QHBoxLayout(previewCenter);
-    previewCenterLayout->setContentsMargins(0, 0, 0, 0);
-    previewCenterLayout->setAlignment(Qt::AlignCenter);
-    
-    // Custom preview widget that draws BoxPreview.png and box overlay
-    m_previewBackground = new QLabel(previewCenter);
-    m_previewBackground->setFixedSize(350, 140);
+    // Preview surface fills the available preview area.
+    m_previewBackground = new QLabel(previewContainer);
+    m_previewBackground->setMinimumHeight(145);
+    m_previewBackground->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_previewBackground->setScaledContents(false);
     m_previewBackground->setStyleSheet("border-radius: 12px;");
-    
-    // Load and set the BoxPreview.png using Qt resource system
-    QPixmap bgPixmap(":/Assets/BoxPreview.png");
-    if (!bgPixmap.isNull()) {
-        m_previewBackground->setPixmap(bgPixmap.scaled(350, 140, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
-    }
     m_previewBackground->setAlignment(Qt::AlignCenter);
-    
-    previewCenterLayout->addWidget(m_previewBackground);
-    previewLayout->addWidget(previewCenter);
+    previewLayout->addWidget(m_previewBackground);
     
     // Add preview to layout at TOP (not inside a card)
     layout->addWidget(previewContainer);
@@ -410,14 +396,15 @@ QWidget* SettingUI::createGridPage() {
     );
 
     QVBoxLayout* colorValueLayout = new QVBoxLayout();
-    colorValueLayout->setContentsMargins(0, 8, 0, 0);
-    colorValueLayout->setSpacing(8);
-    colorValueLayout->addWidget(colorValueEdit, 0, Qt::AlignTop);
+    colorValueLayout->setContentsMargins(0, 0, 0, 0);
+    colorValueLayout->setSpacing(0);
+    colorValueLayout->addStretch();
+    colorValueLayout->addWidget(colorValueEdit, 0, Qt::AlignVCenter);
     colorValueLayout->addStretch();
 
-    if (m_targetBox) {
-        colorWheel->setColor(m_targetBox->backgroundColor());
-        colorValueEdit->setText(m_targetBox->backgroundColor().name().toUpper());
+    if (LinBox* sourceBox = controlSourceBox()) {
+        colorWheel->setColor(sourceBox->backgroundColor());
+        colorValueEdit->setText(sourceBox->backgroundColor().name().toUpper());
     } else {
         colorValueEdit->setText(colorWheel->color().name().toUpper());
     }
@@ -442,9 +429,8 @@ QWidget* SettingUI::createGridPage() {
     m_opacitySlider = new QSlider(Qt::Horizontal, page);
     m_opacitySlider->setRange(5, 100);
     m_opacitySlider->setFixedWidth(150);
-    if (m_targetBox) m_opacitySlider->setValue(m_targetBox->backgroundOpacity() * 100);
-    
-    m_opacityLabelValue = new QLabel("50%", page);
+
+    m_opacityLabelValue = new QLabel(page);
     m_opacityLabelValue->setFixedWidth(35);
     m_opacityLabelValue->setStyleSheet("color: #6b7280; font-weight: 500;");
 
@@ -464,9 +450,17 @@ QWidget* SettingUI::createGridPage() {
 
     layout->addWidget(new FluentCard(u8"\uE7E6", "Background Opacity", "Adjust the semi-transparency level of the grid surface", opacActionSide, page));
 
+    int initialOpacity = qRound(m_previewOpacity * 100.0f);
+    if (LinBox* sourceBox = controlSourceBox()) {
+        initialOpacity = qRound(sourceBox->backgroundOpacity() * 100.0f);
+    }
+    initialOpacity = qBound(m_opacitySlider->minimum(), initialOpacity, m_opacitySlider->maximum());
+    m_opacitySlider->setValue(initialOpacity);
+    m_opacityLabelValue->setText(QString("%1%").arg(initialOpacity));
+
     // 3. Acrylic Toggle
     m_glassToggle = new FluentToggleSwitch(page);
-    if (m_targetBox) m_glassToggle->setChecked(m_targetBox->glassEffect(), false);
+    if (LinBox* sourceBox = controlSourceBox()) m_glassToggle->setChecked(sourceBox->glassEffect(), false);
     
     connect(m_glassToggle, &FluentToggleSwitch::toggled, this, [this](bool v){ 
         for(auto b : m_allBoxes) b->setGlassEffect(v); 
@@ -479,10 +473,10 @@ QWidget* SettingUI::createGridPage() {
     layout->addWidget(new FluentCard(u8"\uE91B", "Acrylic Glass Effect", "Enable real-time DWM background blur for a translucent look", m_glassToggle, page));
 
     // Initial preview style sync
-    if (m_targetBox) {
-        m_previewColor = m_targetBox->backgroundColor();
-        m_previewOpacity = m_targetBox->backgroundOpacity();
-        m_previewGlass = m_targetBox->glassEffect();
+    if (LinBox* sourceBox = controlSourceBox()) {
+        m_previewColor = sourceBox->backgroundColor();
+        m_previewOpacity = sourceBox->backgroundOpacity();
+        m_previewGlass = sourceBox->glassEffect();
     } else {
         m_previewColor = QColor(40, 40, 40);
     }
@@ -685,29 +679,47 @@ void SettingUI::setupStyles() {
 
 void SettingUI::setTargetBox(LinBox* target) {
     m_targetBox = target;
-    if (m_targetBox) {
-        updateControlsFromTarget();
-    }
+    updateControlsFromTarget();
 }
 
 void SettingUI::updateControlsFromTarget() {
-    if (!m_targetBox) return;
+    LinBox* sourceBox = controlSourceBox();
+    if (!sourceBox) return;
     if (m_opacitySlider) {
-        m_opacitySlider->setValue((int)(m_targetBox->backgroundOpacity() * 100));
+        m_opacitySlider->setValue(qBound(m_opacitySlider->minimum(),
+                                         qRound(sourceBox->backgroundOpacity() * 100.0f),
+                                         m_opacitySlider->maximum()));
         m_opacityLabelValue->setText(QString("%1%").arg(m_opacitySlider->value()));
     }
     if (m_glassToggle) {
-        m_glassToggle->setChecked(m_targetBox->glassEffect());
+        m_glassToggle->setChecked(sourceBox->glassEffect());
     }
     // Sync preview state from target box
-    m_previewColor = m_targetBox->backgroundColor();
-    m_previewOpacity = m_targetBox->backgroundOpacity();
-    m_previewGlass = m_targetBox->glassEffect();
+    m_previewColor = sourceBox->backgroundColor();
+    m_previewOpacity = sourceBox->backgroundOpacity();
+    m_previewGlass = sourceBox->glassEffect();
     updatePreviewStyle();
+}
+
+LinBox* SettingUI::controlSourceBox() const {
+    if (m_targetBox) {
+        return m_targetBox;
+    }
+
+    for (LinBox* box : m_allBoxes) {
+        if (box) {
+            return box;
+        }
+    }
+    return nullptr;
 }
 
 void SettingUI::updatePreviewStyle() {
     if (!m_previewBackground) return;
+
+    const QSize previewSize = m_previewBackground->size().expandedTo(QSize(320, 145));
+    const int canvasW = previewSize.width();
+    const int canvasH = previewSize.height();
     
     int r = m_previewColor.red();
     int g = m_previewColor.green();
@@ -717,7 +729,7 @@ void SettingUI::updatePreviewStyle() {
     if (a < 5) a = 20;
     
     // Create a new pixmap with BoxPreview.png as background and draw box on top
-    QPixmap canvas(280, 130);
+    QPixmap canvas(canvasW, canvasH);
     canvas.fill(Qt::transparent);
     
     QPainter painter(&canvas);
@@ -727,20 +739,21 @@ void SettingUI::updatePreviewStyle() {
     // Draw background image using Qt resource system
     QPixmap bgPixmap(":/Assets/BoxPreview.png");
     if (!bgPixmap.isNull()) {
-        painter.drawPixmap(0, 0, bgPixmap.scaled(280, 130, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+        painter.drawPixmap(0, 0, bgPixmap.scaled(canvasW, canvasH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     } else {
         // Fallback: draw gradient background
-        QLinearGradient grad(0, 0, 280, 130);
+        QLinearGradient grad(0, 0, canvasW, canvasH);
         grad.setColorAt(0, QColor(45, 55, 72));
         grad.setColorAt(1, QColor(30, 35, 45));
         painter.fillRect(canvas.rect(), grad);
     }
     
-    // Calculate box dimensions and position
+    // Keep the preview box itself at a fixed size while the background fills
+    // the whole preview surface.
     const int boxW = 200;
     const int boxH = 120;
-    const int boxX = (280 - boxW) / 2;
-    const int boxY = (130 - boxH) / 2;
+    const int boxX = (canvasW - boxW) / 2;
+    const int boxY = (canvasH - boxH) / 2;
     const int titleBarH = 28;
     const int borderWidth = 4;
     
@@ -783,7 +796,7 @@ void SettingUI::updatePreviewStyle() {
         painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), 4, 4);
         
         // Draw shadow effect (simple drop shadow)
-        QPixmap shadowCanvas(280, 130);
+        QPixmap shadowCanvas(canvasW, canvasH);
         shadowCanvas.fill(Qt::transparent);
         QPainter shadowPainter(&shadowCanvas);
         shadowPainter.setRenderHint(QPainter::Antialiasing);

@@ -22,14 +22,14 @@ int main(int argc, char *argv[])
     //// 允许图标使用高分像素图
     //QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     // 获取桌面上所有文件的列表
-    
-    //vector<IconItem> items = c.GetDesktopIconsItems(CSystemApi::FindSysListView32());
+
     //qSetMessagePattern("%{time yyyy-MM-dd hh:mm:ss}--[%{type}]--%{file}--%{function}--%{line}:%{message}");
     //qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
     
     QApplication app(argc, argv);
-    app.setWindowIcon(QIcon(":/Assets/app_icon.png"));
+    app.setWindowIcon(QIcon(":/Assets/icon.png"));
     app.setQuitOnLastWindowClosed(false);
+    QApplication::setStyle("Fusion");
 
     const AppLaunchOptions launchOptions = AppLaunchOptions::fromArguments(QCoreApplication::arguments());
     

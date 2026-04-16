@@ -45,6 +45,7 @@ private:
 
     void updateControlsFromTarget();
     void updatePreviewStyle();
+    LinBox* controlSourceBox() const;
 
     LinBox* m_targetBox;
     QVector<LinBox*> m_allBoxes;

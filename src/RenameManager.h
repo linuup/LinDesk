@@ -30,4 +30,5 @@ private:
     QPointer<ListItem> m_activeItem;
     FilenameEditor* m_editor = nullptr;
     QString m_extensionToRestore; // Reserved extension for shortcuts
+    QString m_originalDisplayName;
 };

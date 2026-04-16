@@ -32,7 +32,8 @@ public:
 
     void setShowType(BoxShowType type);
     void addListItem(ListItem* item, bool refresh = true);
-    void removeListItem(ListItem* item);
+    void insertListItem(ListItem* item, int index, bool refresh = true);
+    void removeListItem(ListItem* item, bool refresh = true);
     void setBoxTitle(const QString& title);
     void setResizeBorderWidth(int width);
     void toggleCollapse();
@@ -108,9 +109,8 @@ private:
     void commitTitleEditing();
     ListItem* hitItemAt(const QPoint& boxPos) const;
     ListItem* findItemByPath(const QString& filePath) const;
-    int insertionIndexForPos(const QPoint& boxPos, ListItem* draggedItem, bool* alignAfterPrev = nullptr) const;
+    int insertionIndexForPos(const QPoint& boxPos, const QVector<ListItem*>& draggedItems, bool* alignAfterPrev = nullptr) const;
     QRect insertionIndicatorRect() const;
-    bool isReorderDrag(const QStringList& paths, ListItem** draggedItem = nullptr) const;
     void clearReorderPreview();
     void showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl);
     void scheduleBlurRefresh();
@@ -142,6 +142,8 @@ private:
     
     int m_borderWidth = 8;
     int m_titleHeight = 30;
+    int m_minBoxWidth = 180;
+    int m_minBoxHeight = 120;
 
     QColor m_bgColor = QColor(40, 40, 40); // Standard dark gray instead of pure black
     float m_bgOpacity = 0.5f;             // Slightly higher default opacity
@@ -158,7 +160,7 @@ private:
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;
     BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;
-    ListItem* m_reorderDragItem = nullptr;
+    QVector<ListItem*> m_reorderDragItems;
     int m_reorderInsertIndex = -1;
     bool m_reorderIndicatorAfterPrev = false;
 };
