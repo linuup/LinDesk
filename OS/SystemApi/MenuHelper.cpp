@@ -147,11 +147,20 @@ namespace MenuHelper
 
 	int FindMenuItem(HMENU hMenu, const wchar_t* itemName)
 	{
-		int count = GetMenuItemCount(hMenu);
-		for (int i = 0; i < count; i++) {
-			auto name = MenuHelper::GetMenuItemString(hMenu, i, true);
-			//OutputDebugString(name.c_str());
-			if (name == itemName) {
+		if (!hMenu || !itemName || *itemName == L'\0') {
+			return -1;
+		}
+
+		const std::wstring target(itemName);
+		const int count = GetMenuItemCount(hMenu);
+		if (count <= 0) {
+			return -1;
+		}
+
+		for (int i = 0; i < count; ++i) {
+			int a = MenuHelper::GetMenuItemIDIncludingSubmenu(hMenu, i);
+			const std::wstring name = MenuHelper::GetMenuItemString(hMenu, i, true);
+			if (name == target) {
 				return i;
 			}
 		}

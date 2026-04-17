@@ -54,7 +54,7 @@ project("LinDesk")
 add_compile_options("/utf-8")
 
 # 查找 Qt5 库
-find_package(Qt5 COMPONENTS Widgets WinExtras Core OpenGL REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core OpenGL LinguistTools REQUIRED)
 # 包含 Qt 的 MOC 生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -66,9 +66,6 @@ add_subdirectory("OS")
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/*.h"
-    "src/Data/*.h"
-    "src/Monitor/*.h"
-    "src/Monitor/*.cpp"
     "src/*.qrc"
 )
 
@@ -79,12 +76,6 @@ add_executable(LinDesk ${SOURCES})
 set_target_properties(LinDesk PROPERTIES
     WIN32_EXECUTABLE "$<$<NOT:$<CONFIG:Debug>>:TRUE>"
 )
-
-target_sources(LinDesk PRIVATE
-    src/DesktopItemLoader.cpp
-    src/LayoutPersistenceService.cpp
-)
-
 
 target_link_libraries(LinDesk 
     PRIVATE
@@ -102,7 +93,34 @@ target_include_directories(LinDesk
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Monitor
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/box
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/Fluent
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/models
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/models/data
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/monitor
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins
+)
+
+set(TS_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_en_US.ts
+    ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_zh_CN.ts
+)
+
+qt5_add_translation(QM_FILES ${TS_FILES})
+
+add_custom_target(translations ALL DEPENDS ${QM_FILES})
+add_dependencies(LinDesk translations)
+
+add_custom_command(TARGET LinDesk POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LinDesk>/translations"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${QM_FILES}
+        "$<TARGET_FILE_DIR:LinDesk>/translations"
+    COMMENT "Copying translation files to output directory..."
 )
 
 # Plugins Support

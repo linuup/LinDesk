@@ -1,9 +1,9 @@
-#include "PluginManager.h"
+#include "plugins/PluginManager.h"
 #include <QDir>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QPluginLoader> // Added as per instruction snippet
-#include "HotkeyManager.h" // Added as per instruction
+#include "services/HotkeyManager.h" // Added as per instruction
 #include <Windows.h> // Added as per instruction snippet
 
 PluginManager* PluginManager::m_instance = nullptr;

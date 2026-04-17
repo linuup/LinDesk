@@ -1,5 +1,5 @@
-#include "DirectoryMonitor.h"
-#include "DirectoryMonitor.h"
+#include "monitor/DirectoryMonitor.h"
+#include "monitor/DirectoryMonitor.h"
 #include <QDebug>
 #include <QDateTime>
 #include <shlobj.h>

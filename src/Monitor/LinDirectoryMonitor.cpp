@@ -1,4 +1,4 @@
-#include "LinDirectoryMonitor.h"
+﻿#include "monitor/LinDirectoryMonitor.h"
 #include <QDebug>
 #include <QDateTime>
 #include <QDir>
@@ -13,7 +13,7 @@ LinDirectoryMonitor::LinDirectoryMonitor(const QString& path, bool recursive, QO
     , m_recursiveMonitor(recursive)
     , m_running(false)
 {
-    // 格式化路径
+    // 鏍煎紡鍖栬矾寰?
     m_path = QDir::toNativeSeparators(m_path);
     if (m_path.endsWith(QDir::separator())) {
         m_path.chop(1);
@@ -34,7 +34,7 @@ bool LinDirectoryMonitor::startListening() {
         return true;
     }
 
-    // 打开目录句柄
+    // 鎵撳紑鐩綍鍙ユ焺
     m_hDirectory = CreateFileW(
         (LPCWSTR)m_path.toStdWString().c_str(),
         FILE_LIST_DIRECTORY,
@@ -46,24 +46,24 @@ bool LinDirectoryMonitor::startListening() {
     );
 
     if (m_hDirectory == INVALID_HANDLE_VALUE) {
-        qDebug() << "❌ Failed to open directory:" << m_path << "Error:" << GetLastError();
+        qDebug() << "鉂?Failed to open directory:" << m_path << "Error:" << GetLastError();
         emit errorOccurred("Failed to open directory");
         return false;
     }
 
-    // 创建停止事件
+    // 鍒涘缓鍋滄浜嬩欢
     m_hStopEvent = CreateEvent(nullptr, TRUE, FALSE, nullptr);
     if (!m_hStopEvent) {
         CloseHandle(m_hDirectory);
         m_hDirectory = INVALID_HANDLE_VALUE;
-        qDebug() << "❌ Failed to create stop event";
+        qDebug() << "鉂?Failed to create stop event";
         return false;
     }
 
     m_running = true;
     m_thread = std::make_unique<std::thread>(&LinDirectoryMonitor::monitorThread, this);
     
-    qDebug() << "✅ Started monitoring directory:" << m_path;
+    qDebug() << "鉁?Started monitoring directory:" << m_path;
     return true;
 }
 
@@ -74,18 +74,21 @@ void LinDirectoryMonitor::stopListening()
 
     m_running = false;
 
-    // 触发停止事件
+    // 瑙﹀彂鍋滄浜嬩欢
     if (m_hStopEvent) {
         SetEvent(m_hStopEvent);
     }
+    if (m_hDirectory != INVALID_HANDLE_VALUE) {
+        CancelIoEx(m_hDirectory, nullptr);
+    }
 
-    // 等待线程结束
+    // 绛夊緟绾跨▼缁撴潫
     if (m_thread && m_thread->joinable()) {
         m_thread->join();
     }
     m_thread.reset();
 
-    // 关闭句柄
+    // 鍏抽棴鍙ユ焺
     if (m_hDirectory != INVALID_HANDLE_VALUE) {
         CloseHandle(m_hDirectory);
         m_hDirectory = INVALID_HANDLE_VALUE;
@@ -99,7 +102,7 @@ void LinDirectoryMonitor::stopListening()
     qDebug() << "Monitoring stopped";
 }
 
-// 监控线程
+// 鐩戞帶绾跨▼
 void LinDirectoryMonitor::monitorThread()
 {
     DWORD notifyFilter = FILE_NOTIFY_CHANGE_FILE_NAME |
@@ -112,7 +115,7 @@ void LinDirectoryMonitor::monitorThread()
     while (m_running) {
         DWORD bytesReturned = 0;
         
-        // 同步调用 ReadDirectoryChangesW
+        // 鍚屾璋冪敤 ReadDirectoryChangesW
         BOOL success = ReadDirectoryChangesW(
             m_hDirectory,
             m_buffer,
@@ -140,7 +143,7 @@ void LinDirectoryMonitor::monitorThread()
     }
 }
 
-// 处理通知
+// 澶勭悊閫氱煡
 void LinDirectoryMonitor::processNotification(FILE_NOTIFY_INFORMATION* info)
 {
     while (true) {
@@ -151,7 +154,7 @@ void LinDirectoryMonitor::processNotification(FILE_NOTIFY_INFORMATION* info)
         FileSystemEventInfo eventInfo;
         eventInfo.timestamp = QDateTime::currentDateTime();
         
-        // 检查是否是目录
+        // 妫€鏌ユ槸鍚︽槸鐩綍
         QFileInfo fileInfo(fullPath);
         bool isDirectory = fileInfo.exists() ? fileInfo.isDir() : false;
         eventInfo.isDirectory = isDirectory;
@@ -169,9 +172,9 @@ void LinDirectoryMonitor::processNotification(FILE_NOTIFY_INFORMATION* info)
             break;
             
         case FILE_ACTION_REMOVED:
-            // 删除时文件已不存在,无法判断类型
-            // 根据过滤器,DIR_NAME 变化会单独通知
-            // 这里暂时都用 FileDeleted,ListView 会处理
+            // 鍒犻櫎鏃舵枃浠跺凡涓嶅瓨鍦?鏃犳硶鍒ゆ柇绫诲瀷
+            // 鏍规嵁杩囨护鍣?DIR_NAME 鍙樺寲浼氬崟鐙€氱煡
+            // 杩欓噷鏆傛椂閮界敤 FileDeleted,ListView 浼氬鐞?
             eventInfo.eventType = FileSystemEvent::FileDeleted;
             eventInfo.oldPath = fullPath;
             qDebug() << "[FileDeleted]" << fullPath;
@@ -191,7 +194,7 @@ void LinDirectoryMonitor::processNotification(FILE_NOTIFY_INFORMATION* info)
             
         case FILE_ACTION_RENAMED_OLD_NAME:
             m_lastOldPath = fullPath;
-            // 暂存是否是目录(如果还存在的话)
+            // 鏆傚瓨鏄惁鏄洰褰?濡傛灉杩樺瓨鍦ㄧ殑璇?
             m_lastOldPathIsDir = isDirectory;
             qDebug() << "[RenamedOld]" << fullPath << (isDirectory ? "(Dir)" : "(File)");
             break;
@@ -215,7 +218,7 @@ void LinDirectoryMonitor::processNotification(FILE_NOTIFY_INFORMATION* info)
             break;
         }
 
-        // 发送非重命名事件
+        // 鍙戦€侀潪閲嶅懡鍚嶄簨浠?
         if (info->Action != FILE_ACTION_RENAMED_OLD_NAME && 
             info->Action != FILE_ACTION_RENAMED_NEW_NAME) {
             emit fileSystemChanged(eventInfo);
@@ -229,7 +232,7 @@ void LinDirectoryMonitor::processNotification(FILE_NOTIFY_INFORMATION* info)
     }
 }
 
-// Windows 事件转换
+// Windows 浜嬩欢杞崲
 FileSystemEvent LinDirectoryMonitor::fromWinEvent(DWORD action) {
     switch (action) {
     case FILE_ACTION_ADDED:           return FileSystemEvent::FileCreated;
@@ -241,7 +244,7 @@ FileSystemEvent LinDirectoryMonitor::fromWinEvent(DWORD action) {
     }
 }
 
-// 事件转字符串
+// 浜嬩欢杞瓧绗︿覆
 QString LinDirectoryMonitor::eventToString(FileSystemEvent event)
 {
     switch (event) {
@@ -262,3 +265,4 @@ QString LinDirectoryMonitor::eventToString(FileSystemEvent event)
     default:                                  return "UnknownEvent";
     }
 }
+

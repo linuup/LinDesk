@@ -17,7 +17,6 @@
 //定义为Unicode
 
 
-
 class PidlHelper {
 
 public:
@@ -43,8 +42,6 @@ public:
 static const int MIN_SHELL_MENU_ID = 1;
 static const int MAX_SHELL_MENU_ID = 1000;
 static const int CUSTOM_MENU_ID_BASE = 10001;
-
-
 
 
 /// <summary>
@@ -81,7 +78,8 @@ public:
         specialFolder,//特殊文件夹
         MultObject,//多个项目，文件和文件号组合
         diskLetter,//盘符
-        BackGround//背景
+        BackGround,//背景
+        boxBackground
     };
     void setOperationType(OperationType type) {
         operationType = type;
@@ -91,13 +89,7 @@ public:
 
     ~ShellContextMenu() {};
 
-
-    
-
 private:
-    // 防止拷贝构造和赋值操作
-    //ShellContextMenu(ShellContextMenu const&) = delete;
-    //ShellContextMenu& operator=(ShellContextMenu const&) = delete;
 public:
 
     /// <summary>
@@ -139,6 +131,8 @@ public:
     */
     //为桌面生成右键上下文菜单
     void DisplayDesktopContextMenu();
+
+    void DisplayBoxBackgroundContextMenu();
 
     void DisplayItemContextMenu(LPITEMIDLIST pidl);
     //为快捷方式生成右键上下文菜单

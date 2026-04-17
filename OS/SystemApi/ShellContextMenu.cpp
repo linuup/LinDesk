@@ -24,9 +24,9 @@ int FindTopLevelMenuAnchor(HMENU menu)
     }
 
     const wchar_t* exactCandidates[] = {
-        TEXT("Next desktop background"),
+        TEXT("&Next desktop background"),
         TEXT("下一张桌面背景"),
-        TEXT("New"),
+        TEXT("Ne&w"),
         TEXT("新建"),
         TEXT("Display settings"),
         TEXT("显示设置"),
@@ -62,6 +62,43 @@ int FindTopLevelMenuAnchor(HMENU menu)
 
     return -1;
 }
+
+void KeepOnlyNewMenuForBoxBackground(HMENU menu)
+{
+    if (!menu) {
+        return;
+    }
+
+    const wchar_t* newCn = L"\x65B0\x5EFA"; // 新建
+    int keepPos = -1;
+    const int count = GetMenuItemCount(menu);
+    for (int i = 0; i < count; ++i) {
+        const std::wstring text = MenuHelper::GetMenuItemString(menu, i, true);
+        if (text.empty()) {
+            continue;
+        }
+
+        if (text == L"Ne&w" || text == newCn ||
+            text.find(L"Ne&w") != std::wstring::npos ||
+            text.find(newCn) != std::wstring::npos) {
+            keepPos = i;
+            break;
+        }
+    }
+    if (keepPos == -1) {
+        return;
+    }
+
+    for (int i = GetMenuItemCount(menu) - 1; i >= 0; --i) {
+        if (i == keepPos) {
+            continue;
+        }
+        DeleteMenu(menu, static_cast<UINT>(i), MF_BYPOSITION);
+    }
+
+    MenuHelper::RemoveAdjacentSeparators(menu);
+    MenuHelper::RemoveTrailingSeparators(menu);
+    }
 }
 
 void ShellContextMenu::DisplayDesktopContextMenu()
@@ -70,9 +107,15 @@ void ShellContextMenu::DisplayDesktopContextMenu()
     SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent));
 }
 
+void ShellContextMenu::DisplayBoxBackgroundContextMenu()
+{
+    operationType = OperationType::boxBackground;
+    SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent));
+}
+
 void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
 {
-    if (pidl && operationType!=OperationType::BackGround) {
+    if (pidl && operationType != OperationType::BackGround && operationType != OperationType::boxBackground) {
         GetDesktop_IshellFolder();
         wil::com_ptr_nothrow<IContextMenu> contextMenu;
         HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, contextMenu.put_void());
@@ -301,6 +344,7 @@ void ShellContextMenu::RemoveTencentDeskGoMenu(HMENU hmenu)
 
     // 找到菜单项的位置
     int menuPos = MenuHelper::FindMenuItem(hmenu, TEXT("开启桌面整理"));
+    
     // 如果找到了，删除该菜单项
     if (menuPos != -1)
     {
@@ -312,7 +356,7 @@ void ShellContextMenu::RemoveTencentDeskGoMenu(HMENU hmenu)
 }
 
 void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flags flags) {
-    if(operationType == ShellContextMenu::OperationType::BackGround){
+    if(operationType == ShellContextMenu::OperationType::BackGround || operationType == ShellContextMenu::OperationType::boxBackground){
         m_contextMenu = MaybeGetShellContextMenu(hwnd);
     }
     if (!m_contextMenu) {
@@ -345,8 +389,11 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
         CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
 
-    if (operationType == OperationType::BackGround) {
+    if (operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
         RemoveTencentDeskGoMenu(hMenu.get());
+        if (operationType == OperationType::boxBackground) {
+            KeepOnlyNewMenuForBoxBackground(hMenu.get());
+        }
 
         // 将自定义菜单项插入到背景菜单顶部
         if (!m_customItems.empty()) {
@@ -449,25 +496,28 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             /*if (compareVerb(verb, L"open"))
             {
                 handled = true;
-            }
-            else if (compareVerb(verb,L"rename"))
+            }*/
+            if (compareVerb(verb,L"rename"))
             {
                 handled = true;
+                if (hwnd) {
+                    SendMessage(hwnd, WM_LINDESK_START_INLINE_RENAME, 0, 0);
+                }
             }
-            else if (compareVerb(verb, L"copy"))
+            /*else if (compareVerb(verb, L"copy"))
             {
                 handled = true;
             }
             else if (compareVerb(verb, L"cut"))
             {
-            }else */
+            }else
             if (compareVerb(verb, L"delete"))
             {
                 handled = false;
 
                 //SendMessage(hwnd, WM_USER + 52, 0, 0);
-            }
-
+            }*/
+            
         }
 
         //auto viewMenus = BuildViewsMenu();
@@ -617,55 +667,6 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
             contextMenu2->HandleMenuMsg(msg, wParam, lParam);
         }
         break;
-
-        //case WM_MENUSELECT:
-        //{
-        //    if (!m_statusBar)
-        //    {
-        //        break;
-        //    }
-
-        //    if (HIWORD(wParam) == 0xFFFF && lParam == 0)
-        //    {
-        //        m_statusBar->HandleStatusBarMenuClose();
-        //    }
-        //    else
-        //    {
-        //        m_statusBar->HandleStatusBarMenuOpen();
-
-        //        UINT menuItemId = LOWORD(wParam);
-
-        //        if (WI_IsAnyFlagSet(HIWORD(wParam), MF_POPUP | MF_SEPARATOR))
-        //        {
-        //            m_statusBar->SetPartText(0, L"");
-        //        }
-        //        else if (menuItemId >= MIN_SHELL_MENU_ID && menuItemId <= MAX_SHELL_MENU_ID)
-        //        {
-        //            //CHECK(m_contextMenu);
-
-        //            TCHAR helpString[512];
-        //            HRESULT hr = m_contextMenu->GetCommandString(menuItemId - MIN_SHELL_MENU_ID,
-        //                GCS_HELPTEXT, nullptr, reinterpret_cast<LPSTR>(helpString),
-        //                static_cast<UINT>(std::size(helpString)));
-
-        //            if (FAILED(hr))
-        //            {
-        //                StringCchCopy(helpString, std::size(helpString), L"");
-        //            }
-
-        //            m_statusBar->SetPartText(0, helpString);
-        //        }
-        //        else
-        //        {
-        //            std::wstring helpString = m_handler->GetHelpTextForItem(menuItemId);
-        //            m_statusBar->SetPartText(0, helpString.c_str());
-        //        }
-        //    }
-
-        //    // Prevent the message from been passed onto the original window.
-        //    return 0;
-        //}
-        break;
     }
 
     return DefSubclassProc(hwnd, msg, wParam, lParam);
@@ -683,16 +684,6 @@ wil::unique_hmenu ShellContextMenu::BuildSortMenu()
 
 HRESULT GetRootPidl(PIDLIST_ABSOLUTE* pidl)
 {
-    // While using SHGetKnownFolderIDList() with FOLDERID_Desktop would be simpler than the method
-    // used here, that method fails in Windows PE (with ERROR_FILE_NOT_FOUND). That failure is
-    // unusual, since although the filesystem desktop folder doesn't exist, the virtual desktop
-    // folder at the root of the shell namespace is still accessible and the pidl returned by
-    // SHGetKnownFolderIDList() represents the root folder.
-    // Retrieving the pidl using the method below works consistently, however.
-    // Example:
-    // unique_pidl_absolute rootPidl;
-    // HRESULT hr = GetRootPidl(wil::out_param(rootPidl));
-
     wil::com_ptr_nothrow<IShellFolder> desktop;
     RETURN_IF_FAILED(SHGetDesktopFolder(&desktop));
     return SHGetIDListFromObject(desktop.get(), pidl);

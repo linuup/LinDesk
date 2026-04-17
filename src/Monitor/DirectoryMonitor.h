@@ -3,7 +3,7 @@
 #include <QString>
 #include "ShObjIdl_core.h"
 #include <QObject>
-#include "Monitor/IDirectoryMonitorInterface.h"
+#include "monitor/IDirectoryMonitorInterface.h"
 
 class DirectoryMonitor : public IDirectoryMonitorListener
 {

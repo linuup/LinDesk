@@ -1,4 +1,4 @@
-#include "DesktopInfoMonitor.h"
+#include "monitor/DesktopInfoMonitor.h"
 #include <QDebug>
 #include <QTimer>
 #include <QCoreApplication>

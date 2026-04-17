@@ -4,7 +4,7 @@
 #include <QObject>
 #include <thread>
 #include <atomic>
-#include "Monitor/IDirectoryMonitorInterface.h"
+#include "monitor/IDirectoryMonitorInterface.h"
 
 // 缓冲区大小
 const int LIN_BUFFER_SIZE = 64 * 1024;

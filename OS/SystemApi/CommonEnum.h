@@ -1,4 +1,5 @@
-﻿#pragma once
+#pragma once
+#include <windows.h>
 
 
 enum SpecialFolders {
@@ -25,5 +26,8 @@ enum ObjectType
     SpecialFolder,//特殊文件夹
     DiskLetter,//盘符
     BackGround,//背景
+    Box
 };
+
+constexpr UINT WM_LINDESK_START_INLINE_RENAME = WM_APP + 201;
 

@@ -2,7 +2,7 @@
 #include <QObject>
 #include <QList>
 #include <QPluginLoader>
-#include "ILinPlugin.h"
+#include "plugins/ILinPlugin.h"
 
 /**
  * @brief Manages the discovery and loading of dynamic DLL plugins
