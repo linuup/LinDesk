@@ -13,6 +13,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QWindow>
+#include <QStyleFactory>
 #include <QtMath>
 #include <limits>
 #include <climits>
@@ -20,6 +21,7 @@
 #include "ListView.h"
 #include "ListItem.h"
 #include "BoxManager.h"
+#include "RightMenu.h"
 #include "WinBlurHelper.h"
 #include "Fluent/FluentDragTip.h"
 
@@ -1480,6 +1482,52 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     QMenu menu;
     menu.setStyleSheet(QString());
     menu.setMinimumWidth(180);
+    if (QStyle* windowsStyle = QStyleFactory::create("windows")) {
+        menu.setStyle(windowsStyle);
+    }
+
+    auto cloneMenuActions = [&](auto&& self, QMenu* sourceMenu, QMenu* targetMenu) -> void {
+        if (!sourceMenu || !targetMenu) {
+            return;
+        }
+
+        for (QAction* sourceAction : sourceMenu->actions()) {
+            if (!sourceAction) {
+                continue;
+            }
+
+            if (sourceAction->isSeparator()) {
+                targetMenu->addSeparator();
+                continue;
+            }
+
+            if (QMenu* sourceSubMenu = sourceAction->menu()) {
+                QMenu* targetSubMenu = new QMenu(sourceAction->text(), targetMenu);
+                targetSubMenu->setIcon(sourceAction->icon());
+                if (QStyle* windowsStyle = QStyleFactory::create("windows")) {
+                    targetSubMenu->setStyle(windowsStyle);
+                }
+                targetSubMenu->setStyleSheet(QString());
+                self(self, sourceSubMenu, targetSubMenu);
+                targetMenu->addMenu(targetSubMenu);
+                continue;
+            }
+
+            QAction* targetAction = new QAction(sourceAction->icon(), sourceAction->text(), targetMenu);
+            targetAction->setEnabled(sourceAction->isEnabled());
+            targetAction->setCheckable(sourceAction->isCheckable());
+            targetAction->setChecked(sourceAction->isChecked());
+            QObject::connect(targetAction, &QAction::triggered, sourceAction, &QAction::trigger);
+            targetMenu->addAction(targetAction);
+        }
+    };
+
+    if (QMenu* sharedMenu = RightMenu::getInstance()->getCustomMenu()) {
+        cloneMenuActions(cloneMenuActions, sharedMenu, &menu);
+        if (!menu.actions().isEmpty()) {
+            menu.addSeparator();
+        }
+    }
 
     QAction* renameAction = menu.addAction("Rename");
     QAction* toggleViewAction = menu.addAction(

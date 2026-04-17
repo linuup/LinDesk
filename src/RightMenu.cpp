@@ -12,6 +12,8 @@
 #include <QClipboard>
 #include <QMimeData>
 #include <QUrl>
+#include <QApplication>
+#include <QStyle>
 
 namespace {
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
@@ -156,26 +158,27 @@ void RightMenu::initializeCustomMenu()
     gridPix.fill(Qt::transparent);
     {
         QPainter p(&gridPix);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(QPen(QColor(0, 120, 212), 1.5));
-        p.drawRect(2, 2, 5, 5);
-        p.drawRect(9, 2, 5, 5);
-        p.drawRect(2, 9, 5, 5);
-        p.drawRect(9, 9, 5, 5);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        // 使用更粗的线条
+        p.setPen(QPen(QColor(0, 120, 212), 2.0));
+        p.setBrush(Qt::NoBrush);
+
+        // 绘制加号
+        p.drawLine(3, 8, 13, 8);  // 水平线
+        p.drawLine(8, 3, 8, 13);  // 垂直线
     }
+    // 获取系统文件夹图标
+    QIcon folderIcon = QApplication::style()->standardIcon(QStyle::SP_DirIcon);
+
+    // 转换为 16x16 像素图
+    QPixmap pixmap = folderIcon.pixmap(16, 16);
 
     const QIcon linDeskIcon(":/Assets/icon.png");
     QMenu* linDeskMenu = new QMenu("LinDesk", m_customMenu);
-    if (linDeskIcon.isNull()) {
-        qDebug() << "图标加载失败，检查路径:" << ":/Assets/icon.png";
-        // 可以设置一个默认图标
-        linDeskMenu->setIcon(QIcon::fromTheme("application-x-executable"));
-    }
-    else {
-        linDeskMenu->setIcon(linDeskIcon);
-    }
-    linDeskMenu->menuAction()->setIcon(linDeskIcon);
 
+    //linDeskMenu->setIcon(QIcon::fromTheme("application-x-executable"));
+    linDeskMenu->setIcon(pixmap);
     // 7-Create Box
     m_createBoxAction = new QAction("New Box", m_customMenu);
     
@@ -188,9 +191,10 @@ void RightMenu::initializeCustomMenu()
 
     // 7.5-Organize Desktop
     QAction* organizeDesktopAction = new QAction("Organize Desktop", linDeskMenu);
+    
     connect(organizeDesktopAction, &QAction::triggered, this, &RightMenu::onOrganizeDesktop);
     linDeskMenu->addAction(organizeDesktopAction);
-
+    organizeDesktopAction->setIcon(gridPix);
     // 9.1-Setting
     m_linDeskAction = new QAction("Setting", linDeskMenu);
     m_linDeskAction->setIcon(linDeskIcon);
@@ -315,9 +319,14 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 						item.isSeparator = true;
 					} else {
 						item.text = action->text().toStdWString();
-						// Convert icon to HBITMAP with alpha
-						if (!action->icon().isNull()) {
-							QPixmap pix = action->icon().pixmap(16, 16);
+						// Convert icon to HBITMAP with alpha.
+						// For submenu entries, prefer the QAction icon and fall back to the submenu icon itself.
+						QIcon icon = action->icon();
+						if (icon.isNull() && action->menu()) {
+							icon = action->menu()->icon();
+						}
+						if (!icon.isNull()) {
+							QPixmap pix = icon.pixmap(16, 16);
 							HBITMAP hBmp = QtWin::toHBITMAP(pix, QtWin::HBitmapAlpha);
 							item.hBitmap = hBmp;
 							tempBitmaps.push_back(hBmp);

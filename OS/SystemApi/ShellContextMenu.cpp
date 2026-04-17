@@ -377,6 +377,12 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                             }
                         }
                         InsertMenuW(hMenuTarget, insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
+                        if (item.hBitmap) {
+                            MENUITEMINFOW mii = { sizeof(mii) };
+                            mii.fMask = MIIM_BITMAP;
+                            mii.hbmpItem = item.hBitmap;
+                            SetMenuItemInfoW(hMenuTarget, insertPos, TRUE, &mii);
+                        }
                     } else {
                         UINT id = nextId++;
                         UINT flags = MF_BYPOSITION | MF_STRING;
