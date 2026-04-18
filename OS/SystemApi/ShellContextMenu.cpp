@@ -321,6 +321,10 @@ wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::MaybeGetShellContextMenu(H
 // Returns the parsing path for the current directory, but only if it's a filesystem path.
 std::optional<std::string> ShellContextMenu::MaybeGetFilesystemDirectory() const
 {
+    if (m_directoryOverride && !m_directoryOverride->empty()) {
+        return m_directoryOverride;
+    }
+
     wil::com_ptr_nothrow<IShellItem> shellItem;
     unique_pidl_absolute pidlDesktop;
     HRESULT hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));

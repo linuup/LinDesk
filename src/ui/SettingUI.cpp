@@ -500,49 +500,6 @@ QWidget* SettingUI::createGridPage() {
     m_glassCard = new FluentCard(u8"\uE91B", tr("Acrylic Glass Effect"), tr("Enable real-time DWM background blur for a translucent look"), m_glassToggle, page);
     layout->addWidget(m_glassCard);
 
-    // 4. Mapped folder path
-    QWidget* mappedFolderSide = new QWidget(page);
-    QHBoxLayout* mappedFolderLayout = new QHBoxLayout(mappedFolderSide);
-    mappedFolderLayout->setContentsMargins(0, 0, 0, 0);
-    mappedFolderLayout->setSpacing(10);
-
-    m_mappedFolderPathEdit = new QLineEdit(mappedFolderSide);
-    m_mappedFolderPathEdit->setReadOnly(true);
-    m_mappedFolderPathEdit->setPlaceholderText(tr("Not mapped"));
-    m_mappedFolderPathEdit->setMinimumWidth(240);
-
-    m_mapFolderButton = new FluentButton(tr("Map Folder"), mappedFolderSide);
-    connect(m_mapFolderButton, &QPushButton::clicked, this, [this]() { chooseMappedFolder(); });
-
-    mappedFolderLayout->addWidget(m_mappedFolderPathEdit, 1);
-    mappedFolderLayout->addWidget(m_mapFolderButton, 0);
-
-    m_mappedFolderCard = new FluentCard(u8"\uE8B7", tr("Mapped Folder"), tr("Bind this Box to a real folder and mirror its direct child items."), mappedFolderSide, page);
-    layout->addWidget(m_mappedFolderCard);
-
-    // 5. Mapped folder actions
-    QWidget* mappedFolderActionsSide = new QWidget(page);
-    QHBoxLayout* mappedFolderActionsLayout = new QHBoxLayout(mappedFolderActionsSide);
-    mappedFolderActionsLayout->setContentsMargins(0, 0, 0, 0);
-    mappedFolderActionsLayout->setSpacing(8);
-
-    m_remapFolderButton = new FluentButton(tr("Remap Folder"), mappedFolderActionsSide);
-    connect(m_remapFolderButton, &QPushButton::clicked, this, [this]() { chooseMappedFolder(); });
-
-    m_openMappedFolderButton = new FluentButton(tr("Open Folder"), mappedFolderActionsSide);
-    connect(m_openMappedFolderButton, &QPushButton::clicked, this, [this]() { openMappedFolder(); });
-
-    m_clearMappedFolderButton = new FluentButton(tr("Clear Mapping"), mappedFolderActionsSide);
-    connect(m_clearMappedFolderButton, &QPushButton::clicked, this, [this]() { clearMappedFolder(); });
-
-    mappedFolderActionsLayout->addWidget(m_remapFolderButton, 0);
-    mappedFolderActionsLayout->addWidget(m_openMappedFolderButton, 0);
-    mappedFolderActionsLayout->addWidget(m_clearMappedFolderButton, 0);
-    mappedFolderActionsLayout->addStretch(1);
-
-    m_mappedFolderActionsCard = new FluentCard(u8"\uE7C3", tr("Mapped Folder Actions"), tr("Open the mapped folder, choose another folder, or clear the current mapping."), mappedFolderActionsSide, page);
-    layout->addWidget(m_mappedFolderActionsCard);
-
     // Initial preview style sync
     if (LinBox* sourceBox = controlSourceBox()) {
         m_previewColor = sourceBox->backgroundColor();
@@ -552,7 +509,6 @@ QWidget* SettingUI::createGridPage() {
         m_previewColor = QColor(40, 40, 40);
     }
     updatePreviewStyle();
-    updateMappedFolderControls();
 
     layout->addStretch();
     return page;
@@ -757,7 +713,6 @@ void SettingUI::setTargetBox(LinBox* target) {
 void SettingUI::updateControlsFromTarget() {
     LinBox* sourceBox = controlSourceBox();
     if (!sourceBox) {
-        updateMappedFolderControls();
         return;
     }
     if (m_opacitySlider) {
@@ -774,7 +729,6 @@ void SettingUI::updateControlsFromTarget() {
     m_previewOpacity = sourceBox->backgroundOpacity();
     m_previewGlass = sourceBox->glassEffect();
     updatePreviewStyle();
-    updateMappedFolderControls();
 }
 
 LinBox* SettingUI::controlSourceBox() const {
@@ -788,132 +742,6 @@ LinBox* SettingUI::controlSourceBox() const {
         }
     }
     return nullptr;
-}
-
-void SettingUI::updateMappedFolderControls()
-{
-    LinBox* sourceBox = controlSourceBox();
-    const bool hasTarget = (sourceBox != nullptr);
-    const bool isMapped = hasTarget && sourceBox->isFolderMapped();
-    const QString mappedPath = isMapped ? QDir::toNativeSeparators(sourceBox->mappedFolderPath()) : QString();
-    const bool canOpenFolder = isMapped && !mappedPath.isEmpty();
-
-    if (m_mappedFolderPathEdit) {
-        m_mappedFolderPathEdit->setEnabled(hasTarget);
-        m_mappedFolderPathEdit->setText(mappedPath);
-        m_mappedFolderPathEdit->setPlaceholderText(hasTarget ? tr("Not mapped") : tr("No Box selected"));
-    }
-
-    if (m_mapFolderButton) {
-        m_mapFolderButton->setEnabled(hasTarget);
-        m_mapFolderButton->setText(isMapped ? tr("Change Folder...") : tr("Map Folder"));
-    }
-
-    if (m_openMappedFolderButton) {
-        m_openMappedFolderButton->setEnabled(canOpenFolder);
-    }
-    if (m_clearMappedFolderButton) {
-        m_clearMappedFolderButton->setEnabled(isMapped);
-    }
-    if (m_remapFolderButton) {
-        m_remapFolderButton->setEnabled(hasTarget);
-    }
-
-    if (m_mappedFolderCard) {
-        m_mappedFolderCard->setTitle(tr("Mapped Folder"));
-        QString subtitle = tr("Bind this Box to a real folder and mirror its direct child items.");
-        if (isMapped) {
-            switch (sourceBox->mappedFolderState()) {
-            case LinBox::MappedFolderState::Missing:
-                subtitle = tr("The mapped folder no longer exists. Choose another folder or clear the mapping.");
-                break;
-            case LinBox::MappedFolderState::NoAccess:
-                subtitle = tr("LinDesk cannot access this mapped folder right now.");
-                break;
-            case LinBox::MappedFolderState::Normal:
-            default:
-                subtitle = tr("This Box mirrors the direct child items of the selected folder.");
-                break;
-            }
-        }
-        m_mappedFolderCard->setSubtitle(subtitle);
-    }
-
-    if (m_mappedFolderActionsCard) {
-        m_mappedFolderActionsCard->setTitle(tr("Mapped Folder Actions"));
-        QString subtitle = tr("Open the mapped folder, choose another folder, or clear the current mapping.");
-        if (isMapped && sourceBox->mappedFolderState() == LinBox::MappedFolderState::Missing) {
-            subtitle = tr("The mapped path is invalid. Use Remap Folder or Clear Mapping.");
-        } else if (isMapped && sourceBox->mappedFolderState() == LinBox::MappedFolderState::NoAccess) {
-            subtitle = tr("The mapped path is unavailable right now. Try Open Folder or Remap Folder.");
-        }
-        m_mappedFolderActionsCard->setSubtitle(subtitle);
-    }
-}
-
-void SettingUI::chooseMappedFolder()
-{
-    LinBox* sourceBox = controlSourceBox();
-    if (!sourceBox) {
-        return;
-    }
-
-    const QString startDir = sourceBox->isFolderMapped()
-        ? sourceBox->mappedFolderPath()
-        : QDir::homePath();
-
-    const QString selectedDir = QFileDialog::getExistingDirectory(
-        this,
-        tr("Select Folder to Map"),
-        startDir,
-        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
-
-    if (selectedDir.isEmpty()) {
-        return;
-    }
-
-    sourceBox->setMappedFolderPath(selectedDir);
-    if (ListView* lv = ListView::instance()) {
-        lv->reloadMappedFolderBox(sourceBox);
-        lv->requestSaveBoxes();
-    }
-    sourceBox->refreshLayout();
-    sourceBox->update();
-    updateMappedFolderControls();
-}
-
-void SettingUI::clearMappedFolder()
-{
-    LinBox* sourceBox = controlSourceBox();
-    if (!sourceBox || !sourceBox->isFolderMapped()) {
-        return;
-    }
-
-    if (ListView* lv = ListView::instance()) {
-        lv->clearMappedFolderBox(sourceBox);
-    }
-    sourceBox->clearMappedFolderPath();
-    sourceBox->refreshLayout();
-    sourceBox->update();
-    if (ListView* lv = ListView::instance()) {
-        lv->requestSaveBoxes();
-    }
-    updateMappedFolderControls();
-}
-
-void SettingUI::openMappedFolder()
-{
-    LinBox* sourceBox = controlSourceBox();
-    if (!sourceBox || !sourceBox->isFolderMapped()) {
-        return;
-    }
-
-    const QString mappedPath = sourceBox->mappedFolderPath();
-    if (mappedPath.isEmpty()) {
-        return;
-    }
-
-    QDesktopServices::openUrl(QUrl::fromLocalFile(mappedPath));
 }
 
 void SettingUI::updatePreviewStyle() {
@@ -1160,22 +988,6 @@ void SettingUI::retranslateUi() {
         m_glassCard->setTitle(tr("Acrylic Glass Effect"));
         m_glassCard->setSubtitle(tr("Enable real-time DWM background blur for a translucent look"));
     }
-    if (m_mapFolderButton) {
-        m_mapFolderButton->setText(controlSourceBox() && controlSourceBox()->isFolderMapped() ? tr("Change Folder...") : tr("Map Folder"));
-    }
-    if (m_remapFolderButton) {
-        m_remapFolderButton->setText(tr("Remap Folder"));
-    }
-    if (m_openMappedFolderButton) {
-        m_openMappedFolderButton->setText(tr("Open Folder"));
-    }
-    if (m_clearMappedFolderButton) {
-        m_clearMappedFolderButton->setText(tr("Clear Mapping"));
-    }
-    if (m_mappedFolderPathEdit && m_mappedFolderPathEdit->text().isEmpty()) {
-        m_mappedFolderPathEdit->setPlaceholderText(controlSourceBox() ? tr("Not mapped") : tr("No Box selected"));
-    }
-
     if (m_languageCombo) {
         const QString currentCode = m_languageCombo->currentData().toString();
         m_languageCombo->blockSignals(true);
@@ -1189,8 +1001,6 @@ void SettingUI::retranslateUi() {
         m_languageCombo->setCurrentIndex(languageIndex);
         m_languageCombo->blockSignals(false);
     }
-
-    updateMappedFolderControls();
     updatePreviewStyle();
 }
 

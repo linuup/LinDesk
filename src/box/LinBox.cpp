@@ -43,6 +43,17 @@ QString normalizeMappedFolderPath(const QString& path)
     return normalized;
 }
 
+QString defaultDesktopPath()
+{
+    PWSTR path = nullptr;
+    QString desktopPath;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) {
+        desktopPath = QString::fromWCharArray(path);
+        CoTaskMemFree(path);
+    }
+    return QDir::toNativeSeparators(desktopPath);
+}
+
 bool isDriveRootPath(const QString& path)
 {
     return path.length() == 2 && path[1] == ':';
@@ -959,6 +970,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
             p.drawRect(indicatorRect);
         }
     }
+
 }
 
 void LinBox::beginItemSelection(const QPoint& contentPos)
@@ -968,14 +980,16 @@ void LinBox::beginItemSelection(const QPoint& contentPos)
         listView->clearCheckedItem();
     }
 
-    if (!m_selectionBand) {
-        m_selectionBand = new QRubberBand(QRubberBand::Rectangle, m_contentArea);
+    if (!m_selectionArea) {
+        m_selectionArea = new SelectArea(m_contentArea);
     }
 
     m_isSelectingItems = true;
     m_selectionStartPos = contentPos;
-    m_selectionBand->setGeometry(QRect(contentPos, QSize(1, 1)));
-    m_selectionBand->show();
+    m_selectionArea->syncToParent();
+    m_selectionArea->setSelectionRect(QRect(contentPos, QSize(1, 1)));
+    m_selectionArea->show();
+    m_selectionArea->raise();
     updateItemSelection(contentPos);
 }
 
@@ -986,8 +1000,9 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
     }
 
     const QRect selectionRect = QRect(m_selectionStartPos, contentPos).normalized();
-    if (m_selectionBand) {
-        m_selectionBand->setGeometry(selectionRect);
+    if (m_selectionArea) {
+        m_selectionArea->syncToParent();
+        m_selectionArea->setSelectionRect(selectionRect);
     }
 
     QVector<ListItem*> selectedItems;
@@ -1009,8 +1024,9 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
 void LinBox::finishItemSelection()
 {
     m_isSelectingItems = false;
-    if (m_selectionBand) {
-        m_selectionBand->hide();
+    if (m_selectionArea) {
+        m_selectionArea->setSelectionRect(QRect());
+        m_selectionArea->hide();
     }
 }
 
@@ -1900,6 +1916,12 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     // Update paste state before showing menu
     RightMenu::getInstance()->updatePasteActionsState();
     scm.DisplayBoxBackgroundContextMenu();
+    const QString contextPath = isFolderMapped()
+        ? normalizeMappedFolderPath(mappedFolderPath())
+        : defaultDesktopPath();
+    if (!contextPath.isEmpty()) {
+        scm.setFilesystemDirectory(contextPath.toStdString());
+    }
 
     std::vector<HBITMAP> tempBitmaps;
     std::vector<ShellContextMenu::CustomMenuItem> items;

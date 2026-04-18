@@ -112,6 +112,14 @@ public:
     void setCustomMenuItems(const std::vector<CustomMenuItem>& items) {
         m_customItems = items;
     }
+    void setFilesystemDirectory(const std::string& directoryPath) {
+        m_directoryOverride = directoryPath.empty()
+            ? std::nullopt
+            : std::optional<std::string>(directoryPath);
+    }
+    void clearFilesystemDirectory() {
+        m_directoryOverride.reset();
+    }
 
     void ShowMenu(HWND hwnd, const POINT *pt, IUnknown* site, Flags flags = Flags::Standard);
 
@@ -153,6 +161,7 @@ public:
   
 private:
     OperationType operationType = OperationType::BackGround;
+    std::optional<std::string> m_directoryOverride;
 
     wil::com_ptr_nothrow<IContextMenu3> MaybeGetShellContextMenu(HWND hwnd) const;	//获取文件Shell上下文接口
 

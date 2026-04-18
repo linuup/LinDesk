@@ -48,12 +48,8 @@ private:
     QWidget* wrapScrollablePage(QWidget* content);
 
     void updateControlsFromTarget();
-    void updateMappedFolderControls();
     void updatePreviewStyle();
     LinBox* controlSourceBox() const;
-    void chooseMappedFolder();
-    void clearMappedFolder();
-    void openMappedFolder();
 
     LinBox* m_targetBox;
     QVector<LinBox*> m_allBoxes;
@@ -86,15 +82,8 @@ private:
     FluentCard* m_colorCard = nullptr;
     FluentCard* m_opacityCard = nullptr;
     FluentCard* m_glassCard = nullptr;
-    FluentCard* m_mappedFolderCard = nullptr;
-    FluentCard* m_mappedFolderActionsCard = nullptr;
 
     FluentComboBox* m_languageCombo = nullptr;
-    QLineEdit* m_mappedFolderPathEdit = nullptr;
-    QPushButton* m_mapFolderButton = nullptr;
-    QPushButton* m_remapFolderButton = nullptr;
-    QPushButton* m_openMappedFolderButton = nullptr;
-    QPushButton* m_clearMappedFolderButton = nullptr;
     
     // Grid Page Controls
     QSlider* m_opacitySlider = nullptr;

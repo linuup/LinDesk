@@ -14,7 +14,7 @@
 #include <QMenu>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QRubberBand>
+#include "desktop/SelectArea.h"
 #include "desktop/ListItem.h"
 #include <QMimeData>
 #include <QUuid>
@@ -186,7 +186,7 @@ private:
     bool m_isRefreshingLayout = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
-    QRubberBand* m_selectionBand = nullptr;
+    SelectArea* m_selectionArea = nullptr;
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;
     BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;
