@@ -1,4 +1,4 @@
-﻿#include "box/LinBox.h"
+#include "box/LinBox.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <winuser.h>
@@ -29,6 +29,8 @@
 #include "monitor/LinDirectoryMonitor.h"
 #include "SystemApi/SystemApi.h"
 #include <ShellContextMenu.h>
+#include <QtWinExtras/QtWin>
+#include <QSvgRenderer>
 
 namespace {
 
@@ -39,6 +41,19 @@ QString normalizeMappedFolderPath(const QString& path)
         normalized.chop(1);
     }
     return normalized;
+}
+
+bool isDriveRootPath(const QString& path)
+{
+    return path.length() == 2 && path[1] == ':';
+}
+
+QString mappedFolderTitleIconResourcePath(const QString& path)
+{
+    if (isDriveRootPath(path)) {
+        return QStringLiteral(":/Assets/disk.svg");
+    }
+    return QStringLiteral(":/Assets/folder-share.svg");
 }
 
 bool draggedItemsContainMappedSource(const QVector<ListItem*>& items)
@@ -208,6 +223,27 @@ QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float 
     return QPixmap::fromImage(restored);
 }
 
+QIcon buildWhiteSvgIcon(const QString& resourcePath, const QSize& iconSize)
+{
+    QSvgRenderer renderer(resourcePath);
+    if (!renderer.isValid()) {
+        return QIcon(resourcePath);
+    }
+
+    QPixmap pixmap(iconSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    renderer.render(&painter, QRect(QPoint(0, 0), iconSize));
+    painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    painter.fillRect(pixmap.rect(), Qt::white);
+    painter.end();
+
+    return QIcon(pixmap);
+}
+
 }
 
 LinBox::LinBox(QWidget* parent) : QWidget(parent) {
@@ -250,6 +286,9 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
 
     m_viewSwitchBtn = new QPushButton(m_titleBar);
     m_viewSwitchBtn->setFixedSize(24, 24);
+    m_viewSwitchBtn->setIconSize(QSize(16, 16));
+    m_viewSwitchBtn->setText(QString());
+    m_viewSwitchBtn->setIcon(buildWhiteSvgIcon(":/Assets/list.svg", m_viewSwitchBtn->iconSize()));
     
     QFont iconFont("Segoe Fluent Icons");
     bool fontLoaded = QFontInfo(iconFont).exactMatch();
@@ -266,10 +305,6 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
         fontLoaded = QFontInfo(iconFont).exactMatch();
     }
     iconFont.setPixelSize(14);
-    m_viewSwitchBtn->setFont(iconFont);
-    // Use text icons as fallback if font doesn't support Fluent Icons
-    QString viewIcon = fontLoaded ? u8"\uE8EF" : "[]";
-    m_viewSwitchBtn->setText(viewIcon);
     m_viewSwitchBtn->setStyleSheet("QPushButton { background: transparent; color: white; border: none; border-radius: 4px; } "
                                    "QPushButton:hover { background: rgba(255, 255, 255, 40); } "
                                    "QPushButton:pressed { background: rgba(255, 255, 255, 20); }");
@@ -366,26 +401,10 @@ void LinBox::showEvent(QShowEvent* event) {
 void LinBox::setShowType(BoxShowType type) {
     if (m_showType == type) return;
     m_showType = type;
-    QFont iconFont("Segoe Fluent Icons");
-    bool fontLoaded = QFontInfo(iconFont).exactMatch();
-    if (!fontLoaded) {
-        iconFont.setFamily("Segoe MDL2 Assets");
-        fontLoaded = QFontInfo(iconFont).exactMatch();
-    }
-    if (!fontLoaded) {
-        iconFont.setFamily("Segoe UI Symbol");
-        fontLoaded = QFontInfo(iconFont).exactMatch();
-    }
-    if (!fontLoaded) {
-        iconFont.setFamily("Wingdings");
-        fontLoaded = QFontInfo(iconFont).exactMatch();
-    }
-    iconFont.setPixelSize(14);
-    m_viewSwitchBtn->setFont(iconFont);
     if (m_showType == BoxShowType::Icon_ShowType) {
-        m_viewSwitchBtn->setText(fontLoaded ? u8"\uE8EF" : "[]");
+        m_viewSwitchBtn->setIcon(buildWhiteSvgIcon(":/Assets/list.svg", m_viewSwitchBtn->iconSize()));
     } else {
-        m_viewSwitchBtn->setText(fontLoaded ? u8"\uECA5" : "=");
+        m_viewSwitchBtn->setIcon(buildWhiteSvgIcon(":/Assets/grid.svg", m_viewSwitchBtn->iconSize()));
     }
     refreshLayout();
     QTimer::singleShot(0, this, [this]() {
@@ -598,8 +617,7 @@ QString LinBox::displayTitleText() const
     if (m_mappedFolderState == MappedFolderState::NoAccess) {
         return tr("[No Access] %1").arg(mappedText);
     }
-    const QString folderIcon = QString::fromWCharArray(L"\xD83D\xDCC1 ");
-    return folderIcon + mappedText;
+    return mappedText;
 }
 
 void LinBox::setMappedFolderPath(const QString& path)
@@ -635,6 +653,9 @@ void LinBox::setMappedFolderMonitor(LinDirectoryMonitor* monitor)
 }
 
 void LinBox::beginTitleEditing() {
+    if (isFolderMapped() && isDriveRootPath(m_mappedFolderPath)) {
+        return;
+    }
     m_titleEdit->setMaxLength(m_maxCustomTitleLength);
     m_titleEdit->setText(isFolderMapped() ? mappedFolderDisplayText() : m_title);
     m_titleEdit->show();
@@ -688,9 +709,43 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             // Adjust rect to avoid buttons: collapseBtn(30px) and viewSwitchBtn(right)
             // Left gap for collapse button + padding
             QRect textRect = m_titleBar->rect().adjusted(35, 0, -35, 0);
-            QFontMetrics fm(p.font());
-            QString elidedTitle = fm.elidedText(displayTitleText(), Qt::ElideRight, textRect.width());
-            p.drawText(textRect, Qt::AlignCenter, elidedTitle);
+            
+            if (isFolderMapped()) {
+                const int iconSize = 20;
+                const int iconY = (m_titleBar->height() - iconSize) / 2;
+                QFontMetrics fm(p.font());
+                const QString title = displayTitleText();
+                const int textWidth = fm.horizontalAdvance(title);
+                const int totalWidth = iconSize + 6 + textWidth;
+                int startX = (m_titleBar->width() - totalWidth) / 2;
+                startX = qMax(35, startX);
+
+                bool iconDrawn = false;
+                QSvgRenderer renderer(mappedFolderTitleIconResourcePath(m_mappedFolderPath));
+                if (renderer.isValid()) {
+                    renderer.render(&p, QRect(startX, iconY, iconSize, iconSize));
+                    iconDrawn = true;
+                } else if (isDriveRootPath(m_mappedFolderPath)) {
+                    QSvgRenderer fallbackRenderer(QStringLiteral(":/Assets/folder-share.svg"));
+                    if (fallbackRenderer.isValid()) {
+                        fallbackRenderer.render(&p, QRect(startX, iconY, iconSize, iconSize));
+                        iconDrawn = true;
+                    }
+                }
+
+                if (iconDrawn) {
+                    textRect = m_titleBar->rect().adjusted(startX + iconSize + 6, 0, -35, 0);
+                    p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, title);
+                } else {
+                    QFontMetrics fm(p.font());
+                    QString elidedTitle = fm.elidedText(displayTitleText(), Qt::ElideRight, textRect.width());
+                    p.drawText(textRect, Qt::AlignCenter, elidedTitle);
+                }
+            } else {
+                QFontMetrics fm(p.font());
+                QString elidedTitle = fm.elidedText(displayTitleText(), Qt::ElideRight, textRect.width());
+                p.drawText(textRect, Qt::AlignCenter, elidedTitle);
+            }
         }
         return false; // Let the widget continue painting its own background/hover if it has style
     }
@@ -1248,7 +1303,7 @@ void LinBox::clearReorderPreview()
     }
 }
 
-void LinBox::showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl)
+void LinBox::showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl, bool createShortcut)
 {
     if (!item) {
         if (m_dragTip) m_dragTip->hide();
@@ -1283,6 +1338,10 @@ void LinBox::showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtr
         if (isRecycleBin) {
             actionKeyword = tr("Move to");
             highlightColor = "#ff4d4d";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, item->baseName());
+        } else if (isFolder && createShortcut) {
+            actionKeyword = tr("Create shortcut in");
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, item->baseName());
         } else if (isFolder && isDraggedDiskLetter) {
@@ -1323,14 +1382,15 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     const QVector<ListItem*> draggedItems = (isInternalDrag && lv)
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
+    const bool preferShortcutForExternal = !isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths);
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
         const QString clsid = hitItem->getItemData().getCLSID();
         const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
-        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
         event->accept();
-        showDropTipForItem(hitItem, event->pos(), isCtrl);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
         return;
     }
 
@@ -1344,9 +1404,9 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
             event->ignore();
             return;
         }
-        event->setDropAction(isCtrl ? Qt::CopyAction : Qt::MoveAction);
+        event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
         event->accept();
-        updateDragTip(event->pos(), isCtrl);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
         return;
     }
 
@@ -1364,15 +1424,15 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
-    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
     event->accept();
 
     if (hitItem) {
-        showDropTipForItem(hitItem, event->pos(), isCtrl);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
     } else if (isInternalDrag) {
         if (m_dragTip) m_dragTip->hide();
     } else {
-        updateDragTip(event->pos(), isCtrl);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
     }
 }
 
@@ -1399,14 +1459,15 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     const QVector<ListItem*> draggedItems = (isInternalDrag && lv)
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
+    const bool preferShortcutForExternal = !isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths);
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
         const QString clsid = hitItem->getItemData().getCLSID();
         const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
-        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
         event->accept();
-        showDropTipForItem(hitItem, event->pos(), isCtrl);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
         return;
     }
 
@@ -1420,9 +1481,9 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
             event->ignore();
             return;
         }
-        event->setDropAction(isCtrl ? Qt::CopyAction : Qt::MoveAction);
+        event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
         event->accept();
-        updateDragTip(event->pos(), isCtrl);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
         return;
     }
 
@@ -1440,15 +1501,15 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
-    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
     event->accept();
 
     if (hitItem) {
-        showDropTipForItem(hitItem, event->pos(), isCtrl);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
     } else if (isInternalDrag) {
         if (m_dragTip) m_dragTip->hide();
     } else {
-        updateDragTip(event->pos(), isCtrl);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
     }
 }
 
@@ -1472,6 +1533,7 @@ void LinBox::dropEvent(QDropEvent* event) {
 
     const bool isInternalDrag = (event->source() != nullptr);
     const bool copyMode = (event->keyboardModifiers() & Qt::ControlModifier);
+    const bool preferShortcutForExternal = !isInternalDrag && lv->shouldCreateShortcutForExternalDrop(paths);
     ListItem* hitItem = hitItemAt(event->pos());
 
     const QVector<ListItem*> draggedItems = isInternalDrag
@@ -1480,7 +1542,7 @@ void LinBox::dropEvent(QDropEvent* event) {
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
-        if (lv->handleDroppedPathsOnItem(paths, hitItem, copyMode)) {
+        if (lv->handleDroppedPathsOnItem(paths, hitItem, copyMode, preferShortcutForExternal)) {
             event->accept();
         } else {
             event->ignore();
@@ -1503,7 +1565,9 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         bool ok = false;
-        if (copyMode) {
+        if (preferShortcutForExternal) {
+            ok = lv->createShortcutsInFolder(paths, targetFolder);
+        } else if (copyMode) {
             ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
         } else {
             ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
@@ -1535,7 +1599,7 @@ void LinBox::dropEvent(QDropEvent* event) {
             update();
             raise();
             lv->requestSaveBoxes();
-            event->setDropAction(copyMode ? Qt::CopyAction : Qt::MoveAction);
+            event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
             event->accept();
         } else {
             event->ignore();
@@ -1549,8 +1613,8 @@ void LinBox::dropEvent(QDropEvent* event) {
         clearReorderPreview();
 
         if (draggedItemsContainMappedSource(draggedItems)) {
-            if (lv->importPathsToBox(paths, this, copyMode, insertIndex)) {
-                event->setDropAction(copyMode ? Qt::CopyAction : Qt::MoveAction);
+            if (lv->importPathsToBox(paths, this, copyMode, insertIndex, preferShortcutForExternal)) {
+                event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
                 event->accept();
             } else {
                 event->ignore();
@@ -1615,7 +1679,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         return;
     }
 
-    if (lv->importPathsToBox(paths, this, copyMode)) {
+    if (lv->importPathsToBox(paths, this, copyMode, -1, preferShortcutForExternal)) {
         event->accept();
     } else {
         event->ignore();
@@ -1839,51 +1903,79 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 
     std::vector<HBITMAP> tempBitmaps;
     std::vector<ShellContextMenu::CustomMenuItem> items;
+    std::vector<ShellContextMenu::CustomMenuItem> boxItems;
 
-    // 1. Get shared actions from RightMenu and convert them
-    if (QMenu* sharedMenu = RightMenu::getInstance()->getCustomMenu()) {
-        auto sharedItems = RightMenu::convertQActionsToCustomItems(sharedMenu->actions(), tempBitmaps);
-        items.insert(items.end(), sharedItems.begin(), sharedItems.end());
-        
-        if (!items.empty()) {
-            ShellContextMenu::CustomMenuItem sep;
-            sep.isSeparator = true;
-            items.push_back(sep);
-        }
-    }
-
-    // 2. Add Box-specific context actions
+    // 1. Add Box-specific context actions
     // Rename Box
     ShellContextMenu::CustomMenuItem renameItem;
+    QIcon renameIcon(":/Assets/rename.svg");
+    HBITMAP hRenameBmp = QtWin::toHBITMAP(renameIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    renameItem.hBitmap = hRenameBmp;
+    tempBitmaps.push_back(hRenameBmp);
     renameItem.text = tr("Rename Box").toStdWString();
     renameItem.callback = [this]() { this->beginTitleEditing(); };
-    items.push_back(renameItem);
+    boxItems.push_back(renameItem);
 
     // Toggle View mode
     ShellContextMenu::CustomMenuItem viewItem;
+    QIcon viewIcon;
+    if(m_showType == BoxShowType::List_ShowType){
+        viewIcon = QIcon(":/Assets/list.svg");
+    }else{
+        viewIcon = QIcon(":/Assets/grid.svg");
+    }
+    HBITMAP hViewBmp = QtWin::toHBITMAP(viewIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    viewItem.hBitmap = hViewBmp;
+    tempBitmaps.push_back(hViewBmp);
     viewItem.text = (m_showType == BoxShowType::Icon_ShowType ? tr("List View") : tr("Icon View")).toStdWString();
     viewItem.callback = [this]() {
         this->setShowType(this->m_showType == BoxShowType::Icon_ShowType
                         ? BoxShowType::List_ShowType
                         : BoxShowType::Icon_ShowType);
     };
-    items.push_back(viewItem);
+    boxItems.push_back(viewItem);
 
     // Settings
     ShellContextMenu::CustomMenuItem settingsItem;
+    QIcon settingsIcon(":/Assets/settings.svg");
+    HBITMAP hSettingsBmp = QtWin::toHBITMAP(settingsIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    settingsItem.hBitmap = hSettingsBmp;
+    tempBitmaps.push_back(hSettingsBmp);
     settingsItem.text = tr("Box Settings").toStdWString();
     settingsItem.callback = [this]() {
         if (ListView::instance()) {
             ListView::instance()->showSettings(this);
         }
     };
-    items.push_back(settingsItem);
+    boxItems.push_back(settingsItem);
 
     // Destroy Box
     ShellContextMenu::CustomMenuItem destroyItem;
     destroyItem.text = tr("Destroy Box").toStdWString();
+    QIcon icon(":/Assets/destroy.svg");
+    HBITMAP hBmp = QtWin::toHBITMAP(icon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    destroyItem.hBitmap = hBmp;
+    tempBitmaps.push_back(hBmp);
     destroyItem.callback = [this]() { emit destroyRequested(this); };
-    items.push_back(destroyItem);
+    boxItems.push_back(destroyItem);
+
+    // 2. Get shared actions from RightMenu and convert them
+    if (QMenu* sharedMenu = RightMenu::getInstance()->getCustomMenu()) {
+        auto sharedItems = RightMenu::exportCustomMenuItems(sharedMenu, tempBitmaps, false, true);
+        if (!sharedItems.empty()) {
+            items.insert(items.end(), sharedItems.begin(), sharedItems.end());
+        }
+    }
+
+    if (!items.empty() && !boxItems.empty()) {
+        ShellContextMenu::CustomMenuItem sep;
+        sep.isSeparator = true;
+        items.push_back(sep);
+    }
+
+    for (auto& boxItem : boxItems) {
+        items.push_back(std::move(boxItem));
+    }
 
     // Set custom items and show the native menu
     scm.setCustomMenuItems(items);
@@ -1895,7 +1987,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     }
 }
 
-void LinBox::updateDragTip(const QPoint& pos, bool isCtrl) {
+void LinBox::updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut) {
     if (!m_dragTip) {
         m_dragTip = new FluentDragTip();
     }
@@ -1907,9 +1999,13 @@ void LinBox::updateDragTip(const QPoint& pos, bool isCtrl) {
         targetText = folderName;
     }
 
-    m_dragTip->setText(isCtrl
-        ? QString("<b style='color:#70a1ff'>%1</b> <span>%2</span>").arg(tr("Copy to"), targetText)
-        : QString("<b style='color:#70a1ff'>%1</b> <span>%2</span>").arg(tr("Move to"), targetText));
+    if (createShortcut) {
+        m_dragTip->setText(QString("<b style='color:#70a1ff'>%1</b> <span>%2</span>").arg(tr("Create shortcut in"), targetText));
+    } else {
+        m_dragTip->setText(isCtrl
+            ? QString("<b style='color:#70a1ff'>%1</b> <span>%2</span>").arg(tr("Copy to"), targetText)
+            : QString("<b style='color:#70a1ff'>%1</b> <span>%2</span>").arg(tr("Move to"), targetText));
+    }
 
     QPoint targetPos = pos + QPoint(24, 24);
     if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(pos.x() - m_dragTip->width() - 8);

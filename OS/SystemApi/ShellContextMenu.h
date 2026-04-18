@@ -114,7 +114,6 @@ public:
     }
 
     void ShowMenu(HWND hwnd, const POINT *pt, IUnknown* site, Flags flags = Flags::Standard);
-    bool IsBackgroundCommandEnabled(HWND hwnd, UINT commandId);
 
 
     /// <summary>	
@@ -135,11 +134,11 @@ public:
     void DisplayBoxBackgroundContextMenu();
 
     void DisplayItemContextMenu(LPITEMIDLIST pidl);
-    //为快捷方式生成右键上下文菜单
     void DisplayLinkContextMenu(const wchar_t* path);
+    void DisplayFileContextMenu(const wchar_t* path);
+    //为快捷方式生成右键上下文菜单
 
     // 为文件生成右键上下文菜单
-    void DisplayFileContextMenu(const wchar_t* path);
 
     // 为文件夹生成右键上下文菜单
     void DisplayFolderContextMenu(const wchar_t* folderPath);
@@ -148,7 +147,6 @@ public:
     void DisplaySpecialFolderContextMenu(SpecialFolders sf);
 
     // 为盘符生成右键上下文菜单
-    void DisplayDriveContextMenu(const wchar_t* driveLetter, HWND hWnd, int xPos, int yPos);
 
     //选择多个文件生成右键上下文菜单
     void DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls);
@@ -161,10 +159,6 @@ private:
     std::optional<std::string> MaybeGetFilesystemDirectory() const;		//获取执行菜单Shell时，结构体需要的路径
 
     LRESULT ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-    wil::unique_hmenu BuildViewMenu();
-    wil::unique_hmenu BuildSortMenu();
-
 
     unique_pidl_absolute m_pidlParent;
     const std::vector<unique_pidl_child> m_pidlItems;

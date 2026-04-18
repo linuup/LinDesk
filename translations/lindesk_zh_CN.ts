@@ -43,6 +43,14 @@
         <source>this Box</source>
         <translation>此盒子</translation>
     </message>
+    <message>
+        <source>[Missing] %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>[No Access] %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>LinDesktop</name>
@@ -52,7 +60,7 @@
     </message>
     <message>
         <source>Desktop Organization</source>
-        <translation>桌面整理</translation>
+        <translation type="unfinished">桌面整理</translation>
     </message>
     <message>
         <source>This appears to be the first launch. Do you want to organize the desktop now or keep the current Windows layout?</source>
@@ -68,70 +76,85 @@
     </message>
 </context>
 <context>
+    <name>ListView</name>
+    <message>
+        <source>Select Folder to Map</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This folder is already on the desktop.</source>
+        <translation type="obsolete">此文件夹已经映射在了桌面.</translation>
+    </message>
+    <message>
+        <source>This folder is already on the desktop┗( ▔, ▔ )┛</source>
+        <translation type="unfinished">此文件夹已经映射在了桌面 ┗( ▔, ▔ )┛</translation>
+    </message>
+</context>
+<context>
     <name>RightMenu</name>
     <message>
         <source>Sort by</source>
-        <translation>排序方式</translation>
+        <translation type="vanished">排序方式</translation>
     </message>
     <message>
         <source>Name</source>
-        <translation>名称</translation>
+        <translation type="vanished">名称</translation>
     </message>
     <message>
         <source>Size</source>
-        <translation>大小</translation>
+        <translation type="vanished">大小</translation>
     </message>
     <message>
         <source>Item type</source>
-        <translation>项目类型</translation>
+        <translation type="vanished">项目类型</translation>
     </message>
     <message>
         <source>Date modified</source>
-        <translation>修改日期</translation>
+        <translation type="vanished">修改日期</translation>
     </message>
     <message>
         <source>View</source>
-        <translation>查看</translation>
+        <translation type="vanished">查看</translation>
     </message>
     <message>
         <source>Large icons</source>
-        <translation>大图标</translation>
+        <translation type="vanished">大图标</translation>
     </message>
     <message>
         <source>Medium icons</source>
-        <translation>中等图标</translation>
+        <translation type="vanished">中等图标</translation>
     </message>
     <message>
         <source>Small icons</source>
-        <translation>小图标</translation>
+        <translation type="vanished">小图标</translation>
     </message>
     <message>
         <source>Auto arrange icons</source>
-        <translation>自动排列图标</translation>
+        <translation type="vanished">自动排列图标</translation>
     </message>
     <message>
         <source>Align icons to grid</source>
-        <translation>将图标与网格对齐</translation>
+        <translation type="vanished">将图标与网格对齐</translation>
     </message>
     <message>
         <source>Show desktop icons</source>
-        <translation>显示桌面图标</translation>
+        <translation type="vanished">显示桌面图标</translation>
     </message>
     <message>
         <source>Double-click to hide icons</source>
-        <translation>双击隐藏图标</translation>
+        <translation type="vanished">双击隐藏图标</translation>
     </message>
     <message>
         <source>Refresh</source>
-        <translation>刷新</translation>
+        <translation type="vanished">刷新</translation>
     </message>
     <message>
         <source>Paste</source>
-        <translation>粘贴</translation>
+        <translation type="vanished">粘贴</translation>
     </message>
     <message>
         <source>Paste shortcut</source>
-        <translation>粘贴快捷方式</translation>
+        <translation type="vanished">粘贴快捷方式</translation>
     </message>
     <message>
         <source>LinDesk</source>
@@ -152,6 +175,10 @@
     <message>
         <source>Exit LinDesk</source>
         <translation>退出 LinDesk</translation>
+    </message>
+    <message>
+        <source>Map Folder</source>
+        <translation type="unfinished">文件夹映射</translation>
     </message>
 </context>
 <context>
@@ -291,6 +318,74 @@
     <message>
         <source>Preview Box</source>
         <translation>预览盒子</translation>
+    </message>
+    <message>
+        <source>Not mapped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Map Folder</source>
+        <translation type="unfinished">文件夹映射</translation>
+    </message>
+    <message>
+        <source>Mapped Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bind this Box to a real folder and mirror its direct child items.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remap Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Clear Mapping</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mapped Folder Actions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the mapped folder, choose another folder, or clear the current mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No Box selected</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Change Folder...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The mapped folder no longer exists. Choose another folder or clear the mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinDesk cannot access this mapped folder right now.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This Box mirrors the direct child items of the selected folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The mapped path is invalid. Use Remap Folder or Clear Mapping.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The mapped path is unavailable right now. Try Open Folder or Remap Folder.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select Folder to Map</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

@@ -222,74 +222,23 @@ void RightMenu::initializeCustomMenu()
     connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
     m_customMenu->addAction(m_createBoxAction);
 
-    m_mapFolderAction = new QAction(tr("Map Folder..."), linDeskMenu);
+    m_mapFolderAction = new QAction(tr("Map Folder"), linDeskMenu);
+    m_mapFolderAction->setIcon(QIcon(":/Assets/folder-share.svg"));
     connect(m_mapFolderAction, &QAction::triggered, this, &RightMenu::onMapFolder);
     linDeskMenu->addAction(m_mapFolderAction);
 
-    // 7.5-Organize Desktop
-    QPixmap organizeDesktopPix(16, 16);
-    organizeDesktopPix.fill(Qt::transparent);
-    {
-        QPainter p(&organizeDesktopPix);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(QColor(0, 120, 212), 1.5));
-
-        // 简单网格
-        p.drawRect(2, 2, 5, 5);
-        p.drawRect(9, 2, 5, 5);
-        p.drawRect(2, 9, 5, 5);
-        p.drawRect(9, 9, 5, 5);
-
-        // 添加一个整理箭头
-        p.drawLine(7, 7, 9, 7);
-        p.drawLine(9, 7, 8, 6);
-        p.drawLine(9, 7, 8, 8);
-    }
     QAction* organizeDesktopAction = new QAction(tr("Organize Desktop"), linDeskMenu);
-    
+    organizeDesktopAction->setIcon(QIcon(":/Assets/all1.svg"));
     connect(organizeDesktopAction, &QAction::triggered, this, &RightMenu::onOrganizeDesktop);
     linDeskMenu->addAction(organizeDesktopAction);
-    organizeDesktopAction->setIcon(QIcon(organizeDesktopPix));
-    // 9.1-Setting
-    QPixmap settingPix(16, 16);
-    settingPix.fill(Qt::transparent);
-    {
-        QPainter p(&settingPix);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(QColor(0, 120, 212), 2.0));
-
-        // 简单齿轮
-        p.drawEllipse(5, 5, 6, 6);
-
-        // 四个主要齿
-        p.drawLine(8, 2, 8, 5);
-        p.drawLine(8, 11, 8, 14);
-        p.drawLine(2, 8, 5, 8);
-        p.drawLine(11, 8, 14, 8);
-    }
     m_linDeskAction = new QAction(tr("Setting"), linDeskMenu);
-    m_linDeskAction->setIcon(QIcon(settingPix));
+    m_linDeskAction->setIcon(QIcon(":/Assets/settings.svg"));
     connect(m_linDeskAction, &QAction::triggered, this, &RightMenu::onLinDesk);
     linDeskMenu->addAction(m_linDeskAction);
     
     // 8-Exit
-    QPixmap exitSimplePix(16, 16);
-    exitSimplePix.fill(Qt::transparent);
-    {
-        QPainter p(&exitSimplePix);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(QPen(QColor(0, 120, 212), 2.0));
-
-        // 门
-        p.drawRect(5, 4, 6, 8);
-
-        // 退出箭头
-        p.drawLine(12, 8, 13, 8);
-        p.drawLine(13, 8, 12, 7);
-        p.drawLine(13, 8, 12, 9);
-    }
     QAction* exitAction = new QAction(tr("Exit LinDesk"), linDeskMenu);
-    exitAction->setIcon(QIcon(exitSimplePix));
+    exitAction->setIcon(QIcon(":/Assets/exit.svg"));
     connect(exitAction, &QAction::triggered, this, &RightMenu::onQuitApp);
     linDeskMenu->addAction(exitAction);
 
@@ -468,7 +417,7 @@ std::vector<ShellContextMenu::CustomMenuItem> RightMenu::convertQActionsToCustom
 			}
 			if (!icon.isNull()) {
 				QPixmap pix = icon.pixmap(16, 16);
-				HBITMAP hBmp = QtWin::toHBITMAP(pix, QtWin::HBitmapAlpha);
+				HBITMAP hBmp = QtWin::toHBITMAP(pix, QtWin::HBitmapPremultipliedAlpha);
 				item.hBitmap = hBmp;
 				tempBitmaps.push_back(hBmp);
 			}
@@ -489,6 +438,49 @@ std::vector<ShellContextMenu::CustomMenuItem> RightMenu::convertQActionsToCustom
 		items.push_back(item);
 	}
 	return items;
+}
+
+std::vector<ShellContextMenu::CustomMenuItem> RightMenu::exportCustomMenuItems(
+    const QMenu* menu,
+    std::vector<HBITMAP>& tempBitmaps,
+    bool includeCreateBox,
+    bool includeLinDeskMenu)
+{
+    if (!menu) {
+        return {};
+    }
+
+    QList<QAction*> filteredActions;
+    for (QAction* action : menu->actions()) {
+        if (!action) {
+            continue;
+        }
+
+        if (!includeCreateBox && action->text() == QObject::tr("New Box")) {
+            continue;
+        }
+
+        if (!includeLinDeskMenu && action->menu() && action->menu()->title() == QObject::tr("LinDesk")) {
+            continue;
+        }
+
+        filteredActions.append(action);
+    }
+
+    while (!filteredActions.isEmpty() && filteredActions.first()->isSeparator()) {
+        filteredActions.removeFirst();
+    }
+    while (!filteredActions.isEmpty() && filteredActions.last()->isSeparator()) {
+        filteredActions.removeLast();
+    }
+
+    for (int i = filteredActions.size() - 1; i > 0; --i) {
+        if (filteredActions[i]->isSeparator() && filteredActions[i - 1]->isSeparator()) {
+            filteredActions.removeAt(i);
+        }
+    }
+
+    return convertQActionsToCustomItems(filteredActions, tempBitmaps);
 }
 
 void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const {

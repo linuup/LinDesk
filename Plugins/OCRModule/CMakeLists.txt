@@ -16,15 +16,22 @@ add_library(OCR_Plugin MODULE
     ScreenShot.h
     OcrResultDialog.h
     OcrSettingsDialog.h
-    ../../src/Plugins/ILinPlugin.h
-    ../../src/Fluent/FluentButton.h
-    ../../src/Fluent/FluentResultView.h
+    ../../src/plugins/ILinPlugin.h
+    ../../src/ui/Fluent/FluentButton.h
+    ../../src/ui/Fluent/FluentResultView.h
 )
 
 target_link_libraries(OCR_Plugin PRIVATE 
     Qt5::Core
     Qt5::Widgets
     Qt5::Network
+)
+
+target_include_directories(OCR_Plugin PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/ui/Fluent
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../src/plugins
 )
 
 # Plugin metadata JSON

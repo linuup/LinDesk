@@ -37,6 +37,7 @@
 class LinBox;
 class BoxManager; 
 class DesktopQuadTree;
+class FluentInfoTip;
 
 class ListView: public QWidget {
 	Q_OBJECT
@@ -192,13 +193,17 @@ public:
 	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true, int insertIndex = -1);
 	void moveItemsToBox(const QVector<ListItem*>& items, LinBox* targetBox, int insertIndex = -1, bool refresh = true);
 	QVector<ListItem*> orderedDraggedItemsForPaths(const QStringList& paths) const;
-	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex = -1);
+	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex = -1, bool preferShortcut = false);
 	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
-	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode);
+	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode, bool preferShortcut = false);
+    bool shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const;
+    bool createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const;
 	void reloadMappedFolderBox(LinBox* box);
 	void clearMappedFolderBox(LinBox* box);
 	bool isItemInAnyBox(const QString& filePath) const;
 	QString getBoxIdForItem(const QString& filePath) const;
+    LinBox* findMappedFolderBox(const QString& folderPath, const LinBox* excludeBox = nullptr) const;
+    void showTransientTip(const QString& message, int autoHideMs = 2500);
 	void saveBoxes();
 	void requestSaveBoxes(); // Move to public
 	QString dumpAllItemsJson() const;
@@ -398,6 +403,8 @@ private:
 	};
 	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
     QLabel* m_dragTip = nullptr; // 用于显示"使用某程序打开"的提示
+    FluentInfoTip* m_infoTip = nullptr;
 
 	void ensureDragTip();
+    void ensureInfoTip();
 };

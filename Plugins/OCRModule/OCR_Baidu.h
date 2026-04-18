@@ -16,7 +16,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
-#include "../../src/Plugins/ILinPlugin.h"
+#include "../../src/plugins/ILinPlugin.h"
 #include "ScreenShot.h"
 #include "OcrResultDialog.h"
 #include "OcrSettingsDialog.h"

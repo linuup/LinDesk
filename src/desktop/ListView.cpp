@@ -28,6 +28,7 @@
 #include <shobjidl.h>
 #include "../OS/SystemApi/resources.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "ui/Fluent/FluentInfoTip.h"
 #include "box/LinBox.h"
 #include "plugins/PluginManager.h"
 #include "services/HotkeyManager.h"
@@ -42,6 +43,19 @@ QString normalizeDesktopPath(const QString& path)
     QString normalized = QDir::toNativeSeparators(path);
     while (normalized.endsWith('\\') || normalized.endsWith('/')) {
         normalized.chop(1);
+    }
+    return normalized;
+}
+
+QString normalizeMappedFolderPathForLookup(const QString& path)
+{
+    QString normalized = QDir::toNativeSeparators(QDir(path).absolutePath());
+    if (normalized.length() == 2 && normalized[1] == ':') {
+        normalized += '\\';
+    } else if (normalized.length() > 3) {
+        while (normalized.endsWith('\\') || normalized.endsWith('/')) {
+            normalized.chop(1);
+        }
     }
     return normalized;
 }
@@ -401,6 +415,32 @@ bool createShellShortcut(const QString& sourcePath, const QString& shortcutPath)
     if (shouldUninit) CoUninitialize();
     return ok;
 }
+
+bool isDriveRootSourcePath(const QString& sourcePath)
+{
+    const QString normalizedPath = QDir::toNativeSeparators(QDir(sourcePath).absolutePath());
+    return normalizedPath.length() == 3 && normalizedPath[1] == ':' &&
+        (normalizedPath[2] == '\\' || normalizedPath[2] == '/');
+}
+
+bool hasSystemAttribute(const QString& sourcePath)
+{
+    const std::wstring nativePath = QDir::toNativeSeparators(sourcePath).toStdWString();
+    const DWORD attributes = GetFileAttributesW(nativePath.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        return false;
+    }
+    return (attributes & FILE_ATTRIBUTE_SYSTEM) != 0;
+}
+
+bool shouldCreateShortcutForExternalPath(const QString& sourcePath)
+{
+    if (sourcePath.isEmpty()) {
+        return false;
+    }
+
+    return isDriveRootSourcePath(sourcePath) || hasSystemAttribute(sourcePath);
+}
 }
 
 // 静态成员初始化
@@ -657,6 +697,11 @@ ListView::~ListView() {
     if (m_dragTip) {
         delete m_dragTip;
         m_dragTip = nullptr;
+    }
+
+    if (m_infoTip) {
+        delete m_infoTip;
+        m_infoTip = nullptr;
     }
     
     // Clean up ghost widgets
@@ -985,7 +1030,10 @@ void ListView::dragEnterEvent(QDragEnterEvent* event)
     RenameManager::instance()->cancelRename();
     if (event->mimeData()->hasUrls()) {
         if (event->source() != this) {
-            if (event->keyboardModifiers() & Qt::ControlModifier) {
+            const QStringList draggedPaths = draggedLocalFilePaths(event->mimeData());
+            if (shouldCreateShortcutForExternalDrop(draggedPaths)) {
+                event->setDropAction(Qt::LinkAction);
+            } else if (event->keyboardModifiers() & Qt::ControlModifier) {
                 event->setDropAction(Qt::CopyAction);
             } else {
                 event->setDropAction(Qt::MoveAction);
@@ -1014,7 +1062,11 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         if (m_dragTip) m_dragTip->hide();
         return;
     }
-    if (event->keyboardModifiers() & Qt::ControlModifier) {
+    const QStringList draggedPaths = draggedLocalFilePaths(event->mimeData());
+    const bool preferShortcutForExternal = (event->source() != this) && shouldCreateShortcutForExternalDrop(draggedPaths);
+    if (preferShortcutForExternal) {
+        event->setDropAction(Qt::LinkAction);
+    } else if (event->keyboardModifiers() & Qt::ControlModifier) {
         event->setDropAction(Qt::CopyAction);
     } else {
         event->setDropAction(Qt::MoveAction);
@@ -1088,6 +1140,10 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         if (isRecycleBin) {
             actionKeyword = "Move to";
             highlightColor = "#ff4d4d";
+            htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
+                .arg(highlightColor, actionKeyword, hitItem->baseName());
+        } else if (isFolder && preferShortcutForExternal) {
+            actionKeyword = "Create shortcut in";
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->baseName());
         } else if (isFolder && isDraggedDiskLetter) {
@@ -1164,6 +1220,7 @@ void ListView::dropEvent(QDropEvent* event)
         
         // 根据键盘修饰符判断是复制还是移动（Ctrl=复制, 无修饰符=移动）
         bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
+        const bool preferShortcutForExternal = (event->source() != this) && shouldCreateShortcutForExternalDrop(draggedPaths);
 
         if (srcPaths.empty()) return;
 
@@ -1178,6 +1235,15 @@ void ListView::dropEvent(QDropEvent* event)
                    hitItem->type() == ObjectType::SpecialFolder ||
                    hitItem->type() == ObjectType::DiskLetter) {
             // 根据键盘修饰符选择复制或移动文件到目标文件夹
+            if (preferShortcutForExternal) {
+                if (createShortcutsInFolder(draggedPaths, targetPath)) {
+                    event->setDropAction(Qt::LinkAction);
+                    event->accept();
+                } else {
+                    event->ignore();
+                }
+                return;
+            }
             if (isCopyAction) {
                 CSystemApi::CopyFiles(srcPaths, targetPath.toStdWString());
             } else {
@@ -2930,11 +2996,16 @@ void ListView::onMenuMapFolder()
         return;
     }
 
+    const QString normalizedPath = normalizeMappedFolderPathForLookup(selectedDir);
+    if (findMappedFolderBox(normalizedPath)) {
+        showTransientTip(tr("This folder is already on the desktop┗( ▔, ▔ )┛"), 2600);
+        return;
+    }
+
     BoxManager* manager = BoxManager::instance();
-    LinBox* box = manager->createBox(m_lastRightClickPos, this);
+	LinBox* box = manager->createBox(m_lastRightClickPos, this);
     manager->setupConnections(box, this);
 
-    const QString normalizedPath = QDir::toNativeSeparators(QDir(selectedDir).absolutePath());
     box->setBoxTitle(QString());
     box->setMappedFolderPath(normalizedPath);
     loadMappedFolderItemsForBox(box);
@@ -3353,6 +3424,22 @@ void ListView::ensureDragTip() {
     }
 }
 
+void ListView::ensureInfoTip()
+{
+    if (!m_infoTip) {
+        m_infoTip = new FluentInfoTip(this);
+        m_infoTip->hide();
+    }
+}
+
+void ListView::showTransientTip(const QString& message, int autoHideMs)
+{
+    ensureInfoTip();
+    m_infoTip->setText(message);
+    const QRect globalRect(mapToGlobal(QPoint(0, 0)), size());
+    m_infoTip->showCentered(globalRect, autoHideMs);
+}
+
 void ListView::onMenuDelete(bool permanently)
 {
     if (m_selectedItems.isEmpty()) return;
@@ -3469,7 +3556,15 @@ QStringList ListView::mappedFolderEntryPaths(const QString& folderPath) const {
         QDir::DirsFirst | QDir::IgnoreCase | QDir::Name);
 
     QStringList paths;
+    const QSet<QString> blockedFolderNames = {
+        QStringLiteral("$RECYCLE.BIN"),
+        QStringLiteral("System Volume Information"),
+        QStringLiteral("desktop.ini")
+    };
     for (const QFileInfo& entry : entries) {
+        if (blockedFolderNames.contains(entry.fileName())) {
+            continue;
+        }
         paths.append(QDir::toNativeSeparators(entry.absoluteFilePath()));
     }
     return paths;
@@ -3693,8 +3788,16 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
         box->setBoxId(explicitId);
     }
     
-    if (!title.isEmpty()) box->setBoxTitle(title);
-    if (!mappedFolderPath.isEmpty()) box->setMappedFolderPath(mappedFolderPath);
+    if (!mappedFolderPath.isEmpty()) {
+        if (title.isEmpty()) {
+            box->setBoxTitle(QString());
+        } else {
+            box->setBoxTitle(title);
+        }
+        box->setMappedFolderPath(mappedFolderPath);
+    } else if (!title.isEmpty()) {
+        box->setBoxTitle(title);
+    }
     
     if (color.isValid()) box->setBackgroundColor(color);
     box->setBackgroundOpacity(opacity);
@@ -3911,7 +4014,7 @@ QVector<ListItem*> ListView::orderedDraggedItemsForPaths(const QStringList& path
     return resolvedItems;
 }
 
-bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex)
+bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex, bool preferShortcut)
 {
     if (sourcePaths.isEmpty() || !targetBox) {
         return false;
@@ -3930,7 +4033,9 @@ bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBo
         const QString normalizedDestination = normalizeDesktopPath(destinationPath);
 
         bool singleOk = false;
-        if (copyMode) {
+        if (preferShortcut) {
+            singleOk = createShellShortcut(sourcePath, destinationPath);
+        } else if (copyMode) {
             singleOk = copyPathToExactDestination(sourcePath, destinationPath);
         } else {
             singleOk = movePathToExactDestination(sourcePath, destinationPath);
@@ -3955,7 +4060,7 @@ QStringList ListView::resolveDraggedLocalPaths(const QMimeData* mimeData) const
     return draggedLocalFilePaths(mimeData);
 }
 
-bool ListView::handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode)
+bool ListView::handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode, bool preferShortcut)
 {
     if (!targetItem || sourcePaths.isEmpty()) {
         return false;
@@ -3991,6 +4096,9 @@ bool ListView::handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem
     if (targetItem->type() == ObjectType::Folder_ObjectType ||
         targetItem->type() == ObjectType::SpecialFolder ||
         targetItem->type() == ObjectType::DiskLetter) {
+        if (preferShortcut) {
+            return createShortcutsInFolder(sourcePaths, targetPath);
+        }
         if (copyMode) {
             return CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetPath).toStdWString());
         }
@@ -4001,6 +4109,34 @@ bool ListView::handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem
     std::wstring wArgs = args.join(" ").toStdWString();
     HINSTANCE result = ShellExecuteW(NULL, L"open", wApp.c_str(), wArgs.c_str(), NULL, SW_SHOWNORMAL);
     return (INT_PTR)result > 32;
+}
+
+bool ListView::shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const
+{
+    for (const QString& sourcePath : sourcePaths) {
+        if (shouldCreateShortcutForExternalPath(sourcePath)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ListView::createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const
+{
+    if (sourcePaths.isEmpty() || targetFolder.isEmpty()) {
+        return false;
+    }
+
+    bool ok = true;
+    for (const QString& sourcePath : sourcePaths) {
+        if (sourcePath.isEmpty()) {
+            continue;
+        }
+        const QString shortcutPath = uniqueShortcutPathForTarget(sourcePath, targetFolder);
+        ok = createShellShortcut(sourcePath, shortcutPath) && ok;
+    }
+
+    return ok;
 }
 
 void ListView::reloadMappedFolderBox(LinBox* box)
@@ -4019,6 +4155,28 @@ bool ListView::isItemInAnyBox(const QString& filePath) const {
 
 QString ListView::getBoxIdForItem(const QString& filePath) const {
     return BoxManager::instance()->getBoxIdForItem(filePath);
+}
+
+LinBox* ListView::findMappedFolderBox(const QString& folderPath, const LinBox* excludeBox) const
+{
+    const QString normalizedTarget = normalizeMappedFolderPathForLookup(folderPath);
+    if (normalizedTarget.isEmpty()) {
+        return nullptr;
+    }
+
+    for (const QPointer<LinBox>& boxPtr : BoxManager::instance()->allBoxes()) {
+        LinBox* box = boxPtr.data();
+        if (!box || box == excludeBox || !box->isFolderMapped()) {
+            continue;
+        }
+
+        const QString mappedPath = normalizeMappedFolderPathForLookup(box->mappedFolderPath());
+        if (QString::compare(mappedPath, normalizedTarget, Qt::CaseInsensitive) == 0) {
+            return box;
+        }
+    }
+
+    return nullptr;
 }
 
 QString ListView::dumpAllItemsJson() const

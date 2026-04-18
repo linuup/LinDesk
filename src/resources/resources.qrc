@@ -2,5 +2,16 @@
     <qresource prefix="/">
         <file>Assets/BoxPreview.png</file>
         <file>Assets/icon.png</file>
+        <file>Assets/folder-share.svg</file>
+        <file>Assets/folder-share1.svg</file>
+        <file>Assets/settings.svg</file>
+        <file>Assets/all.svg</file>
+        <file>Assets/all1.svg</file>
+        <file>Assets/exit.svg</file>
+        <file>Assets/destroy.svg</file>
+        <file>Assets/rename.svg</file>
+        <file>Assets/grid.svg</file>
+        <file>Assets/list.svg</file>
+        <file>Assets/disk.svg</file>
     </qresource>
 </RCC>

@@ -35,6 +35,11 @@ public:
     void showMultObjectMenu(QPoint pos, std::vector<ListItem*> items) const;
 
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);
+    static std::vector<ShellContextMenu::CustomMenuItem> exportCustomMenuItems(
+        const QMenu* menu,
+        std::vector<HBITMAP>& tempBitmaps,
+        bool includeCreateBox = true,
+        bool includeLinDeskMenu = true);
 
     void setHWND(const HWND h) { hwnd = h; }
     void setShowType(ObjectType type) { fileType = type; }

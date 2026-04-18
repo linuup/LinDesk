@@ -511,7 +511,7 @@ QWidget* SettingUI::createGridPage() {
     m_mappedFolderPathEdit->setPlaceholderText(tr("Not mapped"));
     m_mappedFolderPathEdit->setMinimumWidth(240);
 
-    m_mapFolderButton = new FluentButton(tr("Map Folder..."), mappedFolderSide);
+    m_mapFolderButton = new FluentButton(tr("Map Folder"), mappedFolderSide);
     connect(m_mapFolderButton, &QPushButton::clicked, this, [this]() { chooseMappedFolder(); });
 
     mappedFolderLayout->addWidget(m_mappedFolderPathEdit, 1);
@@ -806,7 +806,7 @@ void SettingUI::updateMappedFolderControls()
 
     if (m_mapFolderButton) {
         m_mapFolderButton->setEnabled(hasTarget);
-        m_mapFolderButton->setText(isMapped ? tr("Change Folder...") : tr("Map Folder..."));
+        m_mapFolderButton->setText(isMapped ? tr("Change Folder...") : tr("Map Folder"));
     }
 
     if (m_openMappedFolderButton) {
@@ -1161,7 +1161,7 @@ void SettingUI::retranslateUi() {
         m_glassCard->setSubtitle(tr("Enable real-time DWM background blur for a translucent look"));
     }
     if (m_mapFolderButton) {
-        m_mapFolderButton->setText(controlSourceBox() && controlSourceBox()->isFolderMapped() ? tr("Change Folder...") : tr("Map Folder..."));
+        m_mapFolderButton->setText(controlSourceBox() && controlSourceBox()->isFolderMapped() ? tr("Change Folder...") : tr("Map Folder"));
     }
     if (m_remapFolderButton) {
         m_remapFolderButton->setText(tr("Remap Folder"));

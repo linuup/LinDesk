@@ -54,7 +54,7 @@ project("LinDesk")
 add_compile_options("/utf-8")
 
 # 查找 Qt5 库
-find_package(Qt5 COMPONENTS Widgets WinExtras Core OpenGL LinguistTools REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core OpenGL Svg LinguistTools REQUIRED)
 # 包含 Qt 的 MOC 生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -77,6 +77,7 @@ set_target_properties(LinDesk PROPERTIES
     WIN32_EXECUTABLE "$<$<NOT:$<CONFIG:Debug>>:TRUE>"
 )
 
+
 target_link_libraries(LinDesk 
     PRIVATE
         Shell32
@@ -87,6 +88,7 @@ target_link_libraries(LinDesk
         Qt5::Core
         Qt5::WinExtras
         Qt5::OpenGL
+        Qt5::Svg
         "OS"
 )
 target_include_directories(LinDesk

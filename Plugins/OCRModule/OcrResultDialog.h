@@ -1,5 +1,5 @@
 #pragma once
-#include "../../src/Fluent/FluentResultView.h"
+#include "../../src/ui/Fluent/FluentResultView.h"
 
 class OcrResultDialog : public FluentResultView {
     Q_OBJECT

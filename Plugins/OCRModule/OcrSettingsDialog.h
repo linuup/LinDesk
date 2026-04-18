@@ -9,8 +9,8 @@
 #include <QDialog>
 #include <QVBoxLayout>
 #include <functional>
-#include "../../src/Fluent/FluentBaseDialog.h"
-#include "../../src/Fluent/FluentButton.h"
+#include "../../src/ui/Fluent/FluentBaseDialog.h"
+#include "../../src/ui/Fluent/FluentButton.h"
 
 // A specialized QLineEdit that captures key combos (no Q_OBJECT to avoid moc redefinition)
 class HotkeyRecorder : public QLineEdit {

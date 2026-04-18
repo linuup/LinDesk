@@ -1,4 +1,4 @@
-
+﻿
 #include "ShellContextMenu.h"
 
 namespace {
@@ -13,26 +13,26 @@ int FindTopLevelMenuAnchor(HMENU menu)
         return exactBackgroundAnchor;
     }
 
-    const int exactCnBackgroundAnchor = MenuHelper::FindMenuItem(menu, TEXT("下一张桌面背景"));
+    const int exactCnBackgroundAnchor = MenuHelper::FindMenuItem(menu, TEXT("\x4E0B\x4E00\x5F20\x684C\x9762\x80CC\x666F"));
     if (exactCnBackgroundAnchor != -1) {
         return exactCnBackgroundAnchor;
     }
 
-    const int organizeAnchor = MenuHelper::FindMenuItem(menu, TEXT("开启桌面整理"));
+    const int organizeAnchor = MenuHelper::FindMenuItem(menu, TEXT("\x5F00\x542F\x684C\x9762\x6574\x7406"));
     if (organizeAnchor != -1) {
         return organizeAnchor;
     }
 
     const wchar_t* exactCandidates[] = {
         TEXT("&Next desktop background"),
-        TEXT("下一张桌面背景"),
+        TEXT("\x4E0B\x4E00\x5F20\x684C\x9762\x80CC\x666F"),
         TEXT("Ne&w"),
-        TEXT("新建"),
+        TEXT("\x65B0\x5EFA"),
         TEXT("Display settings"),
-        TEXT("显示设置"),
+        TEXT("\x663E\x793A\x8BBE\x7F6E"),
         TEXT("Personalize"),
-        TEXT("个性化"),
-        TEXT("开启桌面整理")
+        TEXT("\x4E2A\x6027\x5316"),
+        TEXT("\x5F00\x542F\x684C\x9762\x6574\x7406")
     };
 
     for (const auto* candidate : exactCandidates) {
@@ -50,12 +50,12 @@ int FindTopLevelMenuAnchor(HMENU menu)
         }
 
         if (text.find(L"desktop background") != std::wstring::npos ||
-            text.find(L"桌面背景") != std::wstring::npos ||
-            text == L"New" || text == L"新建" ||
+            text.find(L"妗岄潰鑳屾櫙") != std::wstring::npos ||
+            text == L"New" || text == L"鏂板缓" ||
             text.find(L"Display settings") != std::wstring::npos ||
-            text.find(L"显示设置") != std::wstring::npos ||
+            text.find(L"鏄剧ず璁剧疆") != std::wstring::npos ||
             text.find(L"Personalize") != std::wstring::npos ||
-            text.find(L"个性化") != std::wstring::npos) {
+            text.find(L"涓€у寲") != std::wstring::npos) {
             return i;
         }
     }
@@ -69,36 +69,73 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
         return;
     }
 
-    const wchar_t* newCn = L"\x65B0\x5EFA"; // 新建
-    int keepPos = -1;
-    const int count = GetMenuItemCount(menu);
-    for (int i = 0; i < count; ++i) {
-        const std::wstring text = MenuHelper::GetMenuItemString(menu, i, true);
-        if (text.empty()) {
-            continue;
+    auto normalizeMenuText = [](const std::wstring& text) {
+        std::wstring normalized;
+        normalized.reserve(text.size());
+
+        for (size_t i = 0; i < text.size(); ++i) {
+            const wchar_t ch = text[i];
+            if (ch == L'&') {
+                continue;
+            }
+            if (ch == L'(' && i + 2 < text.size() && text[i + 1] == L'&') {
+                while (i < text.size() && text[i] != L')') {
+                    ++i;
+                }
+                continue;
+            }
+            normalized.push_back(ch);
         }
 
-        if (text == L"Ne&w" || text == newCn ||
-            text.find(L"Ne&w") != std::wstring::npos ||
-            text.find(newCn) != std::wstring::npos) {
-            keepPos = i;
-            break;
-        }
-    }
-    if (keepPos == -1) {
-        return;
-    }
+        return normalized;
+    };
+
+    const wchar_t* exactCandidates[] = {
+        L"Next desktop background",
+        L"\x4E0B\x4E00\x5F20\x684C\x9762\x80CC\x666F",
+        L"Display settings",
+        L"\x663E\x793A\x8BBE\x7F6E",
+        L"Personalize",
+        L"\x4E2A\x6027\x5316",
+        L"\x5F00\x542F\x684C\x9762\x6574\x7406"
+    };
 
     for (int i = GetMenuItemCount(menu) - 1; i >= 0; --i) {
-        if (i == keepPos) {
+        const std::wstring normalizedText = normalizeMenuText(MenuHelper::GetMenuItemString(menu, i, true));
+        if (normalizedText.empty()) {
             continue;
         }
-        DeleteMenu(menu, static_cast<UINT>(i), MF_BYPOSITION);
+
+        bool shouldDelete = false;
+        for (const auto* candidate : exactCandidates) {
+            if (normalizedText == normalizeMenuText(candidate)) {
+                shouldDelete = true;
+                break;
+            }
+        }
+
+        if (shouldDelete) {
+            DeleteMenu(menu, static_cast<UINT>(i), MF_BYPOSITION);
+        }
+    }
+
+    while (GetMenuItemCount(menu) > 0) {
+        MENUITEMINFOW menuItemInfo = {};
+        menuItemInfo.cbSize = sizeof(menuItemInfo);
+        menuItemInfo.fMask = MIIM_FTYPE;
+        if (!GetMenuItemInfo(menu, 0, TRUE, &menuItemInfo)) {
+            break;
+        }
+        if (menuItemInfo.fType != MFT_SEPARATOR) {
+            break;
+        }
+        DeleteMenu(menu, 0, MF_BYPOSITION);
     }
 
     MenuHelper::RemoveAdjacentSeparators(menu);
     MenuHelper::RemoveTrailingSeparators(menu);
-    }
+}
+
 }
 
 void ShellContextMenu::DisplayDesktopContextMenu()
@@ -131,7 +168,7 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
 
 void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
     operationType = OperationType::link;
-    //获取ShellFolder接口
+    //
     m_pShellFolder = GetIshellFolderByPath(path);
     if (!m_pShellFolder) {
         return;
@@ -151,7 +188,7 @@ void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
 void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
 {
     operationType = OperationType::file;
-    //获取ShellFolder接口
+    //鑾峰彇ShellFolder鎺ュ彛
     m_pShellFolder = GetIshellFolderByPath(path);
     if (!m_pShellFolder) {
         return;
@@ -171,7 +208,7 @@ void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
 void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
 {
     operationType = OperationType::folder;
-    //获取ShellFolder接口
+    //鑾峰彇ShellFolder鎺ュ彛
     m_pShellFolder = GetIshellFolderByPath(folderPath);
     if (!m_pShellFolder) {
         return;
@@ -212,26 +249,22 @@ void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
         hr = SHGetKnownFolderIDList(FOLDERID_UsersFiles, 0, NULL, wil::out_param(pidlsf));
         break;
     }
-    //获取桌面IShellFolder接口到m_pDesktopFolder
+    //鑾峰彇妗岄潰IShellFolder鎺ュ彛鍒癿_pDesktopFolder
     GetDesktop_IshellFolder();
     wil::com_ptr_nothrow<IShellFolder> pThisPcShellFolder;
-    // 获取 IShellFolder 接口
+    // 鑾峰彇 IShellFolder 鎺ュ彛
     hr = m_pDesktopFolder->BindToObject(pidlsf.get(), nullptr, IID_IShellFolder, (void**)&pThisPcShellFolder);
     //Get object Menu interface
     m_contextMenu = IContextMenuFromIShellFolder(pidlsf.get(), pThisPcShellFolder.get());
 }
 
-void ShellContextMenu::DisplayDriveContextMenu(const wchar_t* driveLetter, HWND hWnd, int xPos, int yPos)
-{
-
-}
 void ShellContextMenu::DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls) {
     if (pidls.size()==0) {
         return;
     }
     operationType = OperationType::MultObject;
     unique_pidl_absolute pidlsf;
-    // 获取上下文菜单
+    // 鑾峰彇涓婁笅鏂囪彍鍗?
     GetDesktop_IshellFolder();
     wil::com_ptr_nothrow<IContextMenu> contextMenu;
     HRESULT hr = m_pDesktopFolder->GetUIObjectOf(nullptr, pidls.size(),
@@ -253,14 +286,14 @@ bool ShellContextMenu::GetDesktop_IshellFolder()
 // may return null.
 wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::MaybeGetShellContextMenu(HWND hwnd) const
 {
-    //1.获取桌面的PIDL
-    //2.获取绑定桌面的IShellFolder 接口
-    //3.获取IContextMenu接口*/
+    //1.鑾峰彇妗岄潰鐨凱IDL
+    //2.鑾峰彇缁戝畾妗岄潰鐨処ShellFolder 鎺ュ彛
+    //3.鑾峰彇IContextMenu鎺ュ彛*/
     unique_pidl_absolute pidlDesktop;
     HRESULT hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));
     if (SUCCEEDED(hr))
     {
-        // 获取 IShellFolder 接口
+        // 鑾峰彇 IShellFolder 鎺ュ彛
         wil::com_ptr_nothrow<IShellFolder> shellFolder;
         wil::com_ptr_nothrow<IContextMenu> contextMenu;
         hr = BindToIdl(m_pidlParent.get(), IID_PPV_ARGS(&shellFolder));
@@ -342,10 +375,10 @@ std::optional<std::string> ShellContextMenu::MaybeGetFilesystemDirectory() const
 void ShellContextMenu::RemoveTencentDeskGoMenu(HMENU hmenu)
 {
 
-    // 找到菜单项的位置
-    int menuPos = MenuHelper::FindMenuItem(hmenu, TEXT("开启桌面整理"));
+    // 鎵惧埌鑿滃崟椤圭殑浣嶇疆
+    int menuPos = MenuHelper::FindMenuItem(hmenu, TEXT("\x5F00\x542F\x684C\x9762\x6574\x7406"));
     
-    // 如果找到了，删除该菜单项
+    // 濡傛灉鎵惧埌浜嗭紝鍒犻櫎璇ヨ彍鍗曢」
     if (menuPos != -1)
     {
         bool res = DeleteMenu(hmenu, menuPos, MF_BYPOSITION);
@@ -362,7 +395,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     if (!m_contextMenu) {
         return;
     }
-    // 创建空的弹出式菜单
+    // 鍒涘缓绌虹殑寮瑰嚭寮忚彍鍗?
     wil::unique_hmenu hMenu(CreatePopupMenu());
     if (!hMenu) {
         OutputDebugString(L"Failed to create popup menu.");
@@ -375,15 +408,15 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
          objectWithSite->SetSite(site);
      }*/
 
-     //填充新建菜单
-     // 使用 std::bind 绑定 this 指针
+     //濉厖鏂板缓鑿滃崟
+     // 浣跨敤 std::bind 缁戝畾 this 鎸囬拡
     auto boundFunction = std::bind(&ShellContextMenu::ParentWindowSubclass, this, hwnd, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     // Subclass the owner window, so that menu messages can be handled.
-    // 使用 lambda 表达式绑定 this 指针
+    // 浣跨敤 lambda 琛ㄨ揪寮忕粦瀹?this 鎸囬拡
     auto handlerFunction = [this](HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
         return this->ParentWindowSubclass(hWnd, msg, wParam, lParam);
         };
-    // 创建 WindowSubclassWrapper 实例
+    // 鍒涘缓 WindowSubclassWrapper 瀹炰緥
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
     m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
@@ -395,20 +428,20 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             KeepOnlyNewMenuForBoxBackground(hMenu.get());
         }
 
-        // 将自定义菜单项插入到背景菜单顶部
+        // 灏嗚嚜瀹氫箟鑿滃崟椤规彃鍏ュ埌鑳屾櫙鑿滃崟椤堕儴
         if (!m_customItems.empty()) {
             m_customCallbackMap.clear();
             UINT nextId = CUSTOM_MENU_ID_BASE;
 
-            // 递归构建菜单的辅助函数
+            // 閫掑綊鏋勫缓鑿滃崟鐨勮緟鍔╁嚱鏁?
             std::function<void(HMENU, const std::vector<CustomMenuItem>&)> addItems = 
                 [&](HMENU hMenuTarget, const std::vector<CustomMenuItem>& items) {
-                // 先插入分隔线（如果是顶层，则在最后插入以分隔Shell菜单）
+                // 鍏堟彃鍏ュ垎闅旂嚎锛堝鏋滄槸椤跺眰锛屽垯鍦ㄦ渶鍚庢彃鍏ヤ互鍒嗛殧Shell鑿滃崟锛?
                 if (hMenuTarget == hMenu.get()) {
                      InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
                 }
 
-                // 从后往前插入到位置0，以保持 items 中的顺序
+                // 浠庡悗寰€鍓嶆彃鍏ュ埌浣嶇疆0锛屼互淇濇寔 items 涓殑椤哄簭
                 for (int i = static_cast<int>(items.size()) - 1; i >= 0; --i) {
                     const auto& item = items[i];
                     if (item.isSeparator) {
@@ -460,7 +493,127 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                 }
             };
 
-            addItems(hMenu.get(), m_customItems);
+            if (operationType == OperationType::boxBackground) {
+                std::vector<CustomMenuItem> sharedItems;
+                std::vector<CustomMenuItem> boxTailItems;
+                std::vector<CustomMenuItem> deferredItems;
+                int splitIndex = -1;
+                auto trimSeparators = [](std::vector<CustomMenuItem>& menuItems) {
+                    while (!menuItems.empty() && menuItems.front().isSeparator) {
+                        menuItems.erase(menuItems.begin());
+                    }
+                    while (!menuItems.empty() && menuItems.back().isSeparator) {
+                        menuItems.pop_back();
+                    }
+                    for (int i = static_cast<int>(menuItems.size()) - 1; i > 0; --i) {
+                        if (menuItems[i].isSeparator && menuItems[i - 1].isSeparator) {
+                            menuItems.erase(menuItems.begin() + i);
+                        }
+                    }
+                };
+
+                for (int i = 0; i < static_cast<int>(m_customItems.size()); ++i) {
+                    if (m_customItems[i].isSeparator) {
+                        splitIndex = i;
+                    }
+                }
+
+                if (splitIndex >= 0) {
+                    for (int i = 0; i < static_cast<int>(m_customItems.size()); ++i) {
+                        if (i < splitIndex) {
+                            if (m_customItems[i].text == L"LinDesk") {
+                                deferredItems.push_back(m_customItems[i]);
+                            } else {
+                                sharedItems.push_back(m_customItems[i]);
+                            }
+                        } else if (i > splitIndex) {
+                            boxTailItems.push_back(m_customItems[i]);
+                        }
+                    }
+                } else {
+                    sharedItems = m_customItems;
+                }
+
+                trimSeparators(sharedItems);
+                trimSeparators(boxTailItems);
+                trimSeparators(deferredItems);
+
+                if (!sharedItems.empty()) {
+                    addItems(hMenu.get(), sharedItems);
+                }
+
+                int anchor = FindTopLevelMenuAnchor(hMenu.get());
+                if (anchor >= 0) {
+                    UINT insertPos = static_cast<UINT>(anchor + 1);
+                    if (!boxTailItems.empty()) {
+                        InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                        ++insertPos;
+                    }
+                    for (const auto& item : boxTailItems) {
+                        if (item.isSeparator) {
+                            InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                            ++insertPos;
+                            continue;
+                        }
+
+                        HMENU hSubMenu = nullptr;
+                        if (!item.children.empty()) {
+                            hSubMenu = CreatePopupMenu();
+                            addItems(hSubMenu, item.children);
+                            InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
+                        } else {
+                            UINT id = nextId++;
+                            UINT flags = MF_BYPOSITION | MF_STRING;
+                            if (item.checked) flags |= MF_CHECKED;
+                            if (!item.enabled) flags |= MF_GRAYED;
+                            InsertMenuW(hMenu.get(), insertPos, flags, id, item.text.c_str());
+                            if (item.callback) {
+                                m_customCallbackMap[id] = item.callback;
+                            }
+                        }
+
+                        if (item.hBitmap) {
+                            MENUITEMINFOW mii = { sizeof(mii) };
+                            mii.fMask = MIIM_BITMAP;
+                            mii.hbmpItem = item.hBitmap;
+                            SetMenuItemInfoW(hMenu.get(), insertPos, TRUE, &mii);
+                        }
+
+                        ++insertPos;
+                    }
+
+                    for (const auto& item : deferredItems) {
+                        HMENU hSubMenu = nullptr;
+                        if (!item.children.empty()) {
+                            hSubMenu = CreatePopupMenu();
+                            addItems(hSubMenu, item.children);
+                            InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
+                        } else {
+                            UINT id = nextId++;
+                            UINT flags = MF_BYPOSITION | MF_STRING;
+                            if (item.checked) flags |= MF_CHECKED;
+                            if (!item.enabled) flags |= MF_GRAYED;
+                            InsertMenuW(hMenu.get(), insertPos, flags, id, item.text.c_str());
+                            if (item.callback) {
+                                m_customCallbackMap[id] = item.callback;
+                            }
+                        }
+
+                        if (item.hBitmap) {
+                            MENUITEMINFOW mii = { sizeof(mii) };
+                            mii.fMask = MIIM_BITMAP;
+                            mii.hbmpItem = item.hBitmap;
+                            SetMenuItemInfoW(hMenu.get(), insertPos, TRUE, &mii);
+                        }
+
+                        ++insertPos;
+                    }
+                } else {
+                    addItems(hMenu.get(), m_customItems);
+                }
+            } else {
+                addItems(hMenu.get(), m_customItems);
+            }
         }
     }
 
@@ -470,7 +623,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         return;
     }
 
-    // 处理自定义菜单项（包括深层子菜单项）
+    // 澶勭悊鑷畾涔夎彍鍗曢」锛堝寘鎷繁灞傚瓙鑿滃崟椤癸級
     auto it = m_customCallbackMap.find(cmd);
     if (it != m_customCallbackMap.end()) {
         if (it->second) {
@@ -488,9 +641,9 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         // Pass the menu back to the caller to give it the chance to handle it.
         if (SUCCEEDED(hr))
         {
-            // 使用安全的比较函数
+            // 浣跨敤瀹夊叏鐨勬瘮杈冨嚱鏁?
             auto compareVerb = [](const TCHAR* verb, const TCHAR* target) -> bool {
-                return _wcsicmp(verb, target) == 0;  // 不区分大小写的宽字符比较
+                return _wcsicmp(verb, target) == 0;  // 涓嶅尯鍒嗗ぇ灏忓啓鐨勫瀛楃姣旇緝
             };
 
             /*if (compareVerb(verb, L"open"))
@@ -540,48 +693,22 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     }
 }
 
-bool ShellContextMenu::IsBackgroundCommandEnabled(HWND hwnd, UINT commandId)
-{
-    operationType = OperationType::BackGround;
-    m_contextMenu = MaybeGetShellContextMenu(hwnd);
-    if (!m_contextMenu) {
-        return false;
-    }
-
-    wil::unique_hmenu hMenu(CreatePopupMenu());
-    if (!hMenu) {
-        return false;
-    }
-
-    m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
-
-    RemoveTencentDeskGoMenu(hMenu.get());
-
-    HMENU parentMenu = MenuHelper::FindParentMenu(hMenu.get(), commandId);
-    if (!parentMenu) {
-        return false;
-    }
-
-    return MenuHelper::IsMenuItemEnabled(parentMenu, commandId, false);
-}
-
 wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const wchar_t* path)
 {
     HRESULT hr = NULL;
-    //获得父节点的 IShellFolder 接口
+    //鑾峰緱鐖惰妭鐐圭殑 IShellFolder 鎺ュ彛
     if (!GetDesktop_IshellFolder()) {
         OutputDebugString(L"----------Get SHGetDesktopFolder error\n");
         return nullptr;
     }
     PathType pathType = CSystemApi::GetPathType(path);
     switch (pathType) {
-    case InvalidPath:// 处理无效路径
+    case InvalidPath:// 澶勭悊鏃犳晥璺緞
         OutputDebugString(L"Input Path error");
         return nullptr;
-    case FilePath:// 处理文件路径
+    case FilePath:// 澶勭悊鏂囦欢璺緞
         OutputDebugString(L"Process File Path");
-        // 解析文件路径以得到文件相对于桌面的 ITEMIDLIST
+        // 瑙ｆ瀽鏂囦欢璺緞浠ュ緱鍒版枃浠剁浉瀵逛簬妗岄潰鐨?ITEMIDLIST
         hr = m_pDesktopFolder->ParseDisplayName(NULL, NULL, (LPWSTR)path, NULL, wil::out_param(m_pPIDL), NULL);
         if (FAILED(hr) || !m_pPIDL)
         {
@@ -589,19 +716,19 @@ wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const
             return nullptr;
         }
         return m_pDesktopFolder;
-    case DirectoryPath://文件夹路径
+    case DirectoryPath://鏂囦欢澶硅矾寰?
         wil::com_ptr_nothrow<IShellFolder> iShellFolder;
         hr = SHParseDisplayName(path, nullptr, wil::out_param(m_pPIDL), 0, nullptr);
         if (FAILED(hr)) {
-            // 处理错误，例如路径无效
+            // 澶勭悊閿欒锛屼緥濡傝矾寰勬棤鏁?
             OutputDebugString(L"----------Get PIDL error\n");
             return iShellFolder;
         }
 
         hr = SHBindToObject(nullptr, m_pPIDL.get(), nullptr, IID_PPV_ARGS(&iShellFolder));
         if (FAILED(hr)) {
-            // 释放pidl资源
-            // 处理错误，例如文件夹接口无效
+            // 閲婃斁pidl璧勬簮
+            // 澶勭悊閿欒锛屼緥濡傛枃浠跺す鎺ュ彛鏃犳晥
             OutputDebugString(L"----------Get IShellFolder error\n");
             WCHAR szErrMsg[512];
             FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, hr, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), szErrMsg, _countof(szErrMsg), NULL);
@@ -670,16 +797,6 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
     }
 
     return DefSubclassProc(hwnd, msg, wParam, lParam);
-}
-
-wil::unique_hmenu ShellContextMenu::BuildViewMenu()
-{
-    return wil::unique_hmenu();
-}
-
-wil::unique_hmenu ShellContextMenu::BuildSortMenu()
-{
-    return wil::unique_hmenu();
 }
 
 HRESULT GetRootPidl(PIDLIST_ABSOLUTE* pidl)

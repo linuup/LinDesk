@@ -131,7 +131,7 @@ private:
     int insertionIndexForPos(const QPoint& boxPos, const QVector<ListItem*>& draggedItems, bool* alignAfterPrev = nullptr) const;
     QRect insertionIndicatorRect() const;
     void clearReorderPreview();
-    void showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl);
+    void showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl, bool createShortcut = false);
     void scheduleBlurRefresh();
     void updateBlurCache();
     QPixmap captureBackgroundPixmap() const;
@@ -179,7 +179,7 @@ private:
 
 private:
     class FluentDragTip* m_dragTip = nullptr;
-    void updateDragTip(const QPoint& pos, bool isCtrl);
+    void updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut = false);
     class QTimer* m_blurRefreshTimer = nullptr;
     QPixmap m_blurCache;
     bool m_isCapturingBackground = false;
