@@ -1,9 +1,9 @@
 #ifndef SOFTDESKTOPTEXTPREVIEW_H
 #define SOFTDESKTOPTEXTPREVIEW_H
 
+#include "ui/SoftDesktopTextRenderer.h"
+
 #include <QWidget>
-#include <QColor>
-#include <QFont>
 
 class SoftDesktopTextPreview : public QWidget
 {
@@ -15,6 +15,8 @@ public:
     void setPreviewFont(const QFont& font);
     void setTextColor(const QColor& color);
     void setGlowColor(const QColor& color);
+    void setRendererOptions(const SoftDesktopTextRenderer::Options& options);
+    const SoftDesktopTextRenderer::Options& rendererOptions() const;
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -22,8 +24,7 @@ protected:
 private:
     QString m_text;
     QFont m_font;
-    QColor m_textColor;
-    QColor m_glowColor;
+    SoftDesktopTextRenderer::Options m_options;
 };
 
 #endif

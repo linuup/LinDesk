@@ -363,6 +363,13 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
     out << enablePersistence << viewMode << sortType << iconPosMode 
         << autoArrange << gridAlignment << showDesktopIcons 
         << doubleClickHideIcons << showShortCutArrow;
+    out << iconPositions.size();
+    for (auto it = iconPositions.constBegin(); it != iconPositions.constEnd(); ++it) {
+        out << it.key()
+            << it.value().value("x").toInt()
+            << it.value().value("y").toInt()
+            << it.value().value("boxId").toString();
+    }
 #endif
     
     file.close();
@@ -477,6 +484,24 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
     in >> enablePersistence >> viewMode >> sortType >> iconPosMode 
        >> autoArrange >> gridAlignment >> showDesktopIcons 
        >> doubleClickHideIcons >> showShortCutArrow;
+
+    if (!in.atEnd()) {
+        int iconPosCount = 0;
+        in >> iconPosCount;
+        for (int i = 0; i < iconPosCount; ++i) {
+            QString path;
+            int x = 0;
+            int y = 0;
+            QString boxId;
+            in >> path >> x >> y >> boxId;
+
+            QMap<QString, QVariant> posMap;
+            posMap["x"] = x;
+            posMap["y"] = y;
+            posMap["boxId"] = boxId;
+            iconPositions[path] = posMap;
+        }
+    }
 #endif
     
     file.close();

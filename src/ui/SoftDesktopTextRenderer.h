@@ -3,6 +3,7 @@
 
 #include <QColor>
 #include <QFont>
+#include <QPoint>
 #include <QRect>
 #include <QSize>
 #include <QString>
@@ -23,6 +24,8 @@ public:
         QColor innerShadowColor = QColor(0, 0, 0, 155);
         int largeGlowRadius = 6;
         int tightGlowRadius = 2;
+        QPoint glowOffset = QPoint(0, 0);
+        QPoint innerShadowOffset = QPoint(0, 0);
         int lineSpacingAdjust = -2;
         Qt::Alignment alignment = Qt::AlignHCenter | Qt::AlignVCenter;
         Qt::TextElideMode elideMode = Qt::ElideRight;

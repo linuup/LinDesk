@@ -52,26 +52,33 @@ void SoftDesktopTextRenderer::drawText(QPainter* painter,
     }
 
     const int maxRadius = qMax(options.largeGlowRadius, options.tightGlowRadius);
+    const int maxOffset = qMax(qMax(qAbs(options.glowOffset.x()), qAbs(options.glowOffset.y())),
+                               qMax(qAbs(options.innerShadowOffset.x()), qAbs(options.innerShadowOffset.y())));
     const qreal devicePixelRatio = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
-    const QRect localTextRect(maxRadius, maxRadius, rect.width(), rect.height());
-    const QSize maskLogicalSize(rect.width() + maxRadius * 2, rect.height() + maxRadius * 2);
+    const int maskMargin = maxRadius + maxOffset;
+    const QRect localTextRect(maskMargin, maskMargin, rect.width(), rect.height());
+    const QSize maskLogicalSize(rect.width() + maskMargin * 2, rect.height() + maskMargin * 2);
     const QImage textMask = buildTextMask(maskLogicalSize, devicePixelRatio, localTextRect, elidedLines, font, options);
 
     if (!textMask.isNull()) {
         if (options.largeGlowRadius > 0) {
             const QImage glowLarge = blurAlphaImage(textMask, options.glowColor, options.largeGlowRadius);
-            painter->drawImage(QPointF(rect.left() - maxRadius, rect.top() - maxRadius), glowLarge);
+            painter->drawImage(QPointF(rect.left() - maskMargin + options.glowOffset.x(),
+                                       rect.top() - maskMargin + options.glowOffset.y()),
+                               glowLarge);
         }
 
         if (options.tightGlowRadius > 0) {
             const QImage glowTight = blurAlphaImage(textMask, options.glowColor, options.tightGlowRadius);
-            painter->drawImage(QPointF(rect.left() - maxRadius, rect.top() - maxRadius), glowTight);
+            painter->drawImage(QPointF(rect.left() - maskMargin + options.glowOffset.x(),
+                                       rect.top() - maskMargin + options.glowOffset.y()),
+                               glowTight);
         }
     }
 
     painter->setPen(options.innerShadowColor);
     for (int i = 0; i < elidedLines.size() && i < lineRects.size(); ++i) {
-        painter->drawText(lineRects[i], options.alignment, elidedLines[i]);
+        painter->drawText(lineRects[i].translated(options.innerShadowOffset), options.alignment, elidedLines[i]);
     }
 
     painter->setPen(options.textColor);

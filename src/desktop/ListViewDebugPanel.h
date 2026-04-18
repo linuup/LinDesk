@@ -19,6 +19,7 @@ public:
 
 private:
     void updateLabels();
+    void applyTextPreviewOptions();
 
     ListView* m_listView = nullptr;
 
@@ -34,4 +35,20 @@ private:
 
     // Text preview
     SoftDesktopTextPreview* m_textPreview = nullptr;
+    QSlider* m_largeGlowSlider = nullptr;
+    QSlider* m_tightGlowSlider = nullptr;
+    QSlider* m_glowAlphaSlider = nullptr;
+    QSlider* m_innerAlphaSlider = nullptr;
+    QSlider* m_glowOffsetXSlider = nullptr;
+    QSlider* m_glowOffsetYSlider = nullptr;
+    QSlider* m_innerOffsetXSlider = nullptr;
+    QSlider* m_innerOffsetYSlider = nullptr;
+    QLabel* m_largeGlowValueLabel = nullptr;
+    QLabel* m_tightGlowValueLabel = nullptr;
+    QLabel* m_glowAlphaValueLabel = nullptr;
+    QLabel* m_innerAlphaValueLabel = nullptr;
+    QLabel* m_glowOffsetXValueLabel = nullptr;
+    QLabel* m_glowOffsetYValueLabel = nullptr;
+    QLabel* m_innerOffsetXValueLabel = nullptr;
+    QLabel* m_innerOffsetYValueLabel = nullptr;
 };

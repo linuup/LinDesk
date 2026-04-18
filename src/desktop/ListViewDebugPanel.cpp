@@ -2,6 +2,7 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
 #include "ui/SoftDesktopTextPreview.h"
+#include "ui/SoftDesktopTextRenderer.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 #include "ui/Fluent/FluentCard.h"
 
@@ -134,6 +135,35 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     m_textPreview->setText("New Text Document.txt");
     root->addWidget(m_textPreview);
 
+    auto addPreviewSlider = [scrollContent, root](const QString& title,
+                                                  int minValue,
+                                                  int maxValue,
+                                                  QSlider*& sliderOut,
+                                                  QLabel*& valueLabelOut) {
+        auto* titleLabel = new QLabel(title, scrollContent);
+        titleLabel->setStyleSheet("font-size: 12px; color: #111827;");
+        root->addWidget(titleLabel);
+
+        auto* layout = new QHBoxLayout();
+        sliderOut = new QSlider(Qt::Horizontal, scrollContent);
+        sliderOut->setRange(minValue, maxValue);
+        valueLabelOut = new QLabel(scrollContent);
+        valueLabelOut->setFixedWidth(44);
+        valueLabelOut->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        layout->addWidget(sliderOut, 1);
+        layout->addWidget(valueLabelOut);
+        root->addLayout(layout);
+    };
+
+    addPreviewSlider("Large Glow Radius", 0, 16, m_largeGlowSlider, m_largeGlowValueLabel);
+    addPreviewSlider("Tight Glow Radius", 0, 12, m_tightGlowSlider, m_tightGlowValueLabel);
+    addPreviewSlider("Glow Alpha", 0, 255, m_glowAlphaSlider, m_glowAlphaValueLabel);
+    addPreviewSlider("Inner Shadow Alpha", 0, 255, m_innerAlphaSlider, m_innerAlphaValueLabel);
+    addPreviewSlider("Glow Offset X", -8, 8, m_glowOffsetXSlider, m_glowOffsetXValueLabel);
+    addPreviewSlider("Glow Offset Y", -8, 8, m_glowOffsetYSlider, m_glowOffsetYValueLabel);
+    addPreviewSlider("Inner Offset X", -8, 8, m_innerOffsetXSlider, m_innerOffsetXValueLabel);
+    addPreviewSlider("Inner Offset Y", -8, 8, m_innerOffsetYSlider, m_innerOffsetYValueLabel);
+
     root->addStretch();
 
     // --- Finish scrollable area ---
@@ -145,7 +175,16 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
         m_rowSlider->setValue(m_listView->rowSpacing());
         m_colSlider->setValue(m_listView->colSpacing());
     }
+    m_largeGlowSlider->setValue(6);
+    m_tightGlowSlider->setValue(2);
+    m_glowAlphaSlider->setValue(210);
+    m_innerAlphaSlider->setValue(155);
+    m_glowOffsetXSlider->setValue(0);
+    m_glowOffsetYSlider->setValue(1);
+    m_innerOffsetXSlider->setValue(0);
+    m_innerOffsetYSlider->setValue(1);
     updateLabels();
+    applyTextPreviewOptions();
 
     connect(m_rowSlider, &QSlider::valueChanged, this, [this](int value) {
         updateLabels();
@@ -160,6 +199,22 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
             m_listView->setDebugGridSpacing(m_rowSlider->value(), value);
         }
     });
+
+    const auto bindPreviewSlider = [this](QSlider* slider) {
+        connect(slider, &QSlider::valueChanged, this, [this](int) {
+            updateLabels();
+            applyTextPreviewOptions();
+        });
+    };
+
+    bindPreviewSlider(m_largeGlowSlider);
+    bindPreviewSlider(m_tightGlowSlider);
+    bindPreviewSlider(m_glowAlphaSlider);
+    bindPreviewSlider(m_innerAlphaSlider);
+    bindPreviewSlider(m_glowOffsetXSlider);
+    bindPreviewSlider(m_glowOffsetYSlider);
+    bindPreviewSlider(m_innerOffsetXSlider);
+    bindPreviewSlider(m_innerOffsetYSlider);
 }
 
 void ListViewDebugPanel::updateLabels()
@@ -170,4 +225,49 @@ void ListViewDebugPanel::updateLabels()
     if (m_colValueLabel) {
         m_colValueLabel->setText(QString::number(m_colSlider ? m_colSlider->value() : 0));
     }
+    if (m_largeGlowValueLabel) {
+        m_largeGlowValueLabel->setText(QString::number(m_largeGlowSlider ? m_largeGlowSlider->value() : 0));
+    }
+    if (m_tightGlowValueLabel) {
+        m_tightGlowValueLabel->setText(QString::number(m_tightGlowSlider ? m_tightGlowSlider->value() : 0));
+    }
+    if (m_glowAlphaValueLabel) {
+        m_glowAlphaValueLabel->setText(QString::number(m_glowAlphaSlider ? m_glowAlphaSlider->value() : 0));
+    }
+    if (m_innerAlphaValueLabel) {
+        m_innerAlphaValueLabel->setText(QString::number(m_innerAlphaSlider ? m_innerAlphaSlider->value() : 0));
+    }
+    if (m_glowOffsetXValueLabel) {
+        m_glowOffsetXValueLabel->setText(QString::number(m_glowOffsetXSlider ? m_glowOffsetXSlider->value() : 0));
+    }
+    if (m_glowOffsetYValueLabel) {
+        m_glowOffsetYValueLabel->setText(QString::number(m_glowOffsetYSlider ? m_glowOffsetYSlider->value() : 0));
+    }
+    if (m_innerOffsetXValueLabel) {
+        m_innerOffsetXValueLabel->setText(QString::number(m_innerOffsetXSlider ? m_innerOffsetXSlider->value() : 0));
+    }
+    if (m_innerOffsetYValueLabel) {
+        m_innerOffsetYValueLabel->setText(QString::number(m_innerOffsetYSlider ? m_innerOffsetYSlider->value() : 0));
+    }
+}
+
+void ListViewDebugPanel::applyTextPreviewOptions()
+{
+    if (!m_textPreview) {
+        return;
+    }
+
+    SoftDesktopTextRenderer::Options options = m_textPreview->rendererOptions();
+    options.textColor = QColor(255, 255, 255);
+    options.glowColor = QColor(0, 0, 0, m_glowAlphaSlider ? m_glowAlphaSlider->value() : 210);
+    options.innerShadowColor = QColor(0, 0, 0, m_innerAlphaSlider ? m_innerAlphaSlider->value() : 155);
+    options.largeGlowRadius = m_largeGlowSlider ? m_largeGlowSlider->value() : 6;
+    options.tightGlowRadius = m_tightGlowSlider ? m_tightGlowSlider->value() : 2;
+    options.glowOffset = QPoint(m_glowOffsetXSlider ? m_glowOffsetXSlider->value() : 0,
+                                m_glowOffsetYSlider ? m_glowOffsetYSlider->value() : 1);
+    options.innerShadowOffset = QPoint(m_innerOffsetXSlider ? m_innerOffsetXSlider->value() : 0,
+                                       m_innerOffsetYSlider ? m_innerOffsetYSlider->value() : 1);
+    options.lineSpacingAdjust = -2;
+    options.alignment = Qt::AlignHCenter | Qt::AlignVCenter;
+    m_textPreview->setRendererOptions(options);
 }

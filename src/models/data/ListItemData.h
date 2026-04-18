@@ -206,7 +206,7 @@ public:
 			}
 
 			// 2. 兜底方案：如果高度方案失败，尝试常规路径提取
-			if (m_icon.isNull()) {
+			if (newIcon.isNull()) {
 				SHFILEINFO sfi = { 0 };
 				std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
 				if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
@@ -218,7 +218,7 @@ public:
 			}
 
 			// 3. 硬编码补丁仅作为最后的防线
-			if (m_icon.isNull()) {
+			if (newIcon.isNull()) {
 				switch (m_specialFolderType) {
 				case SpecialFolders::ThisPc:
 					newIcon = SysInfoUtil::SysFileIconByDLL(16, s_targetIconSize, "shell32.dll");

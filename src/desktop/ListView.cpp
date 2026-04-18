@@ -475,6 +475,10 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
 
     // Set persistence path first so we can load viewMode before creating items
     setFocusPolicy(Qt::StrongFocus);
+    m_pendingShellNewTargetTimer = new QTimer(this);
+    m_pendingShellNewTargetTimer->setSingleShot(true);
+    m_pendingShellNewTargetTimer->setInterval(15000);
+    connect(m_pendingShellNewTargetTimer, &QTimer::timeout, this, &ListView::clearPendingShellNewTargetBox);
 #ifdef QT_DEBUG
     m_persistencePath = QCoreApplication::applicationDirPath() + "/data.json";
 #else
@@ -707,6 +711,49 @@ void ListView::clearCheckedItem()
                 }
             }
         }
+    }
+}
+
+void ListView::setSelectedItems(const QVector<ListItem*>& items, bool expandSingle)
+{
+    clearCheckedItem();
+
+    QVector<ListItem*> filteredItems;
+    filteredItems.reserve(items.size());
+    for (ListItem* item : items) {
+        if (!item) {
+            continue;
+        }
+        if (!filteredItems.contains(item)) {
+            filteredItems.append(item);
+        }
+    }
+
+    for (ListItem* item : filteredItems) {
+        item->setFullNameExpanded(false);
+        item->checkSelf();
+    }
+
+    if (expandSingle && filteredItems.size() == 1 && filteredItems.first()) {
+        filteredItems.first()->setFullNameExpanded(true);
+    }
+
+    m_selectedItems = filteredItems;
+}
+
+void ListView::armPendingShellNewTargetBox(LinBox* box)
+{
+    m_pendingShellNewTargetBox = box;
+    if (m_pendingShellNewTargetTimer) {
+        m_pendingShellNewTargetTimer->start();
+    }
+}
+
+void ListView::clearPendingShellNewTargetBox()
+{
+    m_pendingShellNewTargetBox.clear();
+    if (m_pendingShellNewTargetTimer) {
+        m_pendingShellNewTargetTimer->stop();
     }
 }
 
@@ -2146,6 +2193,51 @@ bool ListView::takeReservedCreatedItemPosition(const QString& filePath, QPoint& 
     return true;
 }
 
+bool ListView::handlePendingShellCreatedItem(const QString& newPath)
+{
+    if (!m_pendingShellNewTargetBox) {
+        return false;
+    }
+
+    QPointer<LinBox> targetBox = m_pendingShellNewTargetBox;
+    clearPendingShellNewTargetBox();
+    if (!targetBox) {
+        return false;
+    }
+
+    if (targetBox->isFolderMapped()) {
+        const QString mappedFolderPath = targetBox->mappedFolderPath();
+        if (mappedFolderPath.isEmpty() || targetBox->mappedFolderState() != LinBox::MappedFolderState::Normal) {
+            return false;
+        }
+
+        const QString destinationPath = uniquePasteDestinationPath(newPath, mappedFolderPath);
+        if (!movePathToExactDestination(newPath, destinationPath)) {
+            return false;
+        }
+
+        if (ListItem* createdItem = selectItemByPath(newPath)) {
+            m_hiddenIcons.removeOne(createdItem);
+            m_items.removeOne(createdItem);
+            m_allItems.removeOne(createdItem);
+            m_selectedItems.removeOne(createdItem);
+            createdItem->deleteLater();
+        }
+
+        loadMappedFolderItemsForBox(targetBox);
+        targetBox->refreshLayout();
+        targetBox->raise();
+        update();
+        return true;
+    }
+
+    moveItemToBox(newPath, targetBox, false, -1);
+    targetBox->refreshLayout();
+    targetBox->raise();
+    update();
+    return true;
+}
+
 /// <summary>
 /// 生成规则
 /// 1.unGrid模式
@@ -2705,6 +2797,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 }
             }
         }
+        else {
+            handlePendingShellCreatedItem(newPath);
+        }
         
         // 保存持久化文件，记录新文件位置
         requestSaveBoxes();
@@ -2767,6 +2862,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                     update();
                 }
             }
+        }
+        else {
+            handlePendingShellCreatedItem(newPath);
         }
         
         // 保存持久化文件，更新重命名文件记录
@@ -2837,6 +2935,7 @@ void ListView::onMenuMapFolder()
     manager->setupConnections(box, this);
 
     const QString normalizedPath = QDir::toNativeSeparators(QDir(selectedDir).absolutePath());
+    box->setBoxTitle(QString());
     box->setMappedFolderPath(normalizedPath);
     loadMappedFolderItemsForBox(box);
     box->refreshLayout();

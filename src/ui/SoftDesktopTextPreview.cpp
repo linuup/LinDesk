@@ -7,13 +7,19 @@
 
 SoftDesktopTextPreview::SoftDesktopTextPreview(QWidget* parent)
     : QWidget(parent),
-      m_text("New Text Document.txt"),
-      m_textColor(255, 255, 255),
-      m_glowColor(0, 0, 0, 210)
+      m_text("New Text Document.txt")
 {
     m_font.setFamily("Segoe UI");
     m_font.setPixelSize(36);
     m_font.setWeight(QFont::Normal);
+    m_options.textColor = QColor(255, 255, 255);
+    m_options.glowColor = QColor(0, 0, 0, 210);
+    m_options.innerShadowColor = QColor(0, 0, 0, 155);
+    m_options.largeGlowRadius = 6;
+    m_options.tightGlowRadius = 2;
+    m_options.glowOffset = QPoint(0, 1);
+    m_options.innerShadowOffset = QPoint(0, 1);
+    m_options.lineSpacingAdjust = -2;
     setMinimumHeight(220);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setAttribute(Qt::WA_OpaquePaintEvent, false);
@@ -36,14 +42,25 @@ void SoftDesktopTextPreview::setPreviewFont(const QFont& font)
 
 void SoftDesktopTextPreview::setTextColor(const QColor& color)
 {
-    m_textColor = color;
+    m_options.textColor = color;
     update();
 }
 
 void SoftDesktopTextPreview::setGlowColor(const QColor& color)
 {
-    m_glowColor = color;
+    m_options.glowColor = color;
     update();
+}
+
+void SoftDesktopTextPreview::setRendererOptions(const SoftDesktopTextRenderer::Options& options)
+{
+    m_options = options;
+    update();
+}
+
+const SoftDesktopTextRenderer::Options& SoftDesktopTextPreview::rendererOptions() const
+{
+    return m_options;
 }
 
 void SoftDesktopTextPreview::paintEvent(QPaintEvent* event)
@@ -74,17 +91,9 @@ void SoftDesktopTextPreview::paintEvent(QPaintEvent* event)
     painter.drawRoundedRect(sampleRect.adjusted(1, 1, -1, -1), 18, 18);
 
     const QRect textRect(sampleRect.adjusted(18, 34, -18, -34));
-    SoftDesktopTextRenderer::Options options;
-    options.textColor = m_textColor;
-    options.glowColor = m_glowColor;
-    options.innerShadowColor = QColor(0, 0, 0, 155);
-    options.largeGlowRadius = 6;
-    options.tightGlowRadius = 2;
-    options.lineSpacingAdjust = -2;
-
     SoftDesktopTextRenderer::drawText(&painter,
                                       textRect,
                                       QStringList{ m_text, "Preview Sample" },
                                       m_font,
-                                      options);
+                                      m_options);
 }

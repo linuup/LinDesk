@@ -4,8 +4,10 @@
 #include "desktop/ListView.h"
 #include "desktop/FilenameEditor.h"
 #include "desktop/RenameManager.h"
+#include "ui/SoftDesktopTextRenderer.h"
 #include <QFontMetrics>
 #include <QRegularExpression>
+#include <QTimer>
 #include "services/SysInfoUtil.h"
 #include <shellapi.h>
 class ListView;
@@ -26,7 +28,9 @@ QString buildIconIdentityKey(const ListItemData& data,
         return QString("dir:%1").arg(normalizedPath);
     }
 
-    if (suffix == "exe" || suffix == "lnk" || suffix == "url" || suffix == "ico" || suffix == "appref-ms") {
+    if (suffix == "exe" || suffix == "msi" || suffix == "msp" || suffix == "msu" ||
+        suffix == "dll" || suffix == "cpl" || suffix == "scr" ||
+        suffix == "lnk" || suffix == "url" || suffix == "ico" || suffix == "appref-ms") {
         return QString("path:%1").arg(normalizedPath);
     }
 
@@ -62,7 +66,70 @@ QIcon requestSystemShellFallbackIcon(const QFileInfo& fileInfo, ObjectType type)
         return SysInfoUtil::SysFileIconByDLL(4, ListItemData::s_targetIconSize, "shell32.dll");
     }
 
+    const QString nativePath = QDir::toNativeSeparators(fileInfo.absoluteFilePath());
+    if (!nativePath.isEmpty()) {
+        SHFILEINFOW sfi = { 0 };
+        const std::wstring wPath = nativePath.toStdWString();
+        if (SHGetFileInfoW(wPath.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi),
+            SHGFI_ICON | SHGFI_LARGEICON))
+        {
+            if (sfi.hIcon) {
+                QIcon icon = QtWin::fromHICON(sfi.hIcon);
+                DestroyIcon(sfi.hIcon);
+                if (!icon.isNull()) {
+                    return icon;
+                }
+            }
+        }
+    }
+
+    const QString suffix = fileInfo.suffix().toLower();
+    if (!suffix.isEmpty()) {
+        SHFILEINFOW sfi = { 0 };
+        const std::wstring pseudoPath = (L"dummy." + suffix.toStdWString());
+        if (SHGetFileInfoW(pseudoPath.c_str(), FILE_ATTRIBUTE_NORMAL, &sfi, sizeof(sfi),
+            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES))
+        {
+            if (sfi.hIcon) {
+                QIcon icon = QtWin::fromHICON(sfi.hIcon);
+                DestroyIcon(sfi.hIcon);
+                if (!icon.isNull()) {
+                    return icon;
+                }
+            }
+        }
+    }
+
     return SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll");
+}
+
+QPixmap buildCroppedRenderPixmap(const QIcon& icon, int iconSide)
+{
+    if (icon.isNull() || iconSide <= 0) {
+        return QPixmap();
+    }
+
+    const int requestSide = qMax(iconSide, 256);
+    QPixmap pix = icon.pixmap(requestSide, requestSide);
+    if (pix.isNull()) {
+        pix = icon.pixmap(iconSide, iconSide);
+    }
+    if (pix.isNull()) {
+        return QPixmap();
+    }
+
+    bool wasCropped = false;
+    const QImage croppedImage = SysInfoUtil::autoCropImage(
+        pix.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied),
+        &wasCropped);
+    if (wasCropped && !croppedImage.isNull()) {
+        pix = QPixmap::fromImage(croppedImage);
+    }
+
+    if (pix.width() != iconSide || pix.height() != iconSide) {
+        pix = pix.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    return pix;
 }
 
 bool isShortcutSuffix(const QFileInfo& fileInfo)
@@ -390,15 +457,11 @@ void ListItem::initData()
 
             const QString renderPixmapCacheKey = buildRenderPixmapCacheKey(iconIdentityKey, iconSide);
 			QPixmap rawPix = IconCacheManager::instance().getPixmap(renderPixmapCacheKey, [this, iconSide]() {
-                QPixmap pix = m_icon.pixmap(iconSide, iconSide);
-                if (pix.width() != iconSide || pix.height() != iconSide) {
-                    pix = pix.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                }
-                return pix;
+                return buildCroppedRenderPixmap(m_icon, iconSide);
             });
             if (rawPix.isNull()) {
                 QIcon fallbackIcon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
-                rawPix = fallbackIcon.pixmap(iconSide, iconSide);
+                rawPix = buildCroppedRenderPixmap(fallbackIcon, iconSide);
             }
             if (m_type == ObjectType::DiskLetter && !rawPix.isNull()) {
                 QPixmap fadedPix(rawPix.size());
@@ -491,15 +554,22 @@ void ListItem::initData()
             const int textWidth = qMax(10, baseWidth - 4);
             const QFontMetrics labelMetrics(textLabel->font());
             int textHeight = 0;
+            const bool isBoxItem = !m_boxId.isEmpty();
+            const int textTopGap = isBoxItem ? 2 : 4;
             if (m_expandFullNameOnSelect) {
                 const QString expandedText = m_expandedPreviewText.isEmpty() ? m_baseName : m_expandedPreviewText;
-                textHeight = FilenameEditor::heightForText(expandedText, textLabel->font(), textWidth);
+                if (isBoxItem) {
+                    const QStringList lines = buildDesktopLines(expandedText, labelMetrics, textWidth, 64);
+                    textHeight = qMax(1, lines.size()) * labelMetrics.lineSpacing();
+                } else {
+                    textHeight = FilenameEditor::heightForText(expandedText, textLabel->font(), textWidth);
+                }
             } else {
                 const QStringList lines = buildDesktopLines(m_baseName, labelMetrics, textWidth, 2);
                 const int lineCount = qMax(1, lines.size());
                 textHeight = lineCount * labelMetrics.lineSpacing();
             }
-            const int desiredHeight = qMax(baseHeight, iconArea.bottom() + 4 + textHeight);
+            const int desiredHeight = qMax(baseHeight, iconArea.bottom() + textTopGap + textHeight);
 
             if (m_itemSize.width() != baseWidth || m_itemSize.height() != desiredHeight) {
                 m_itemSize = QSize(baseWidth, desiredHeight);
@@ -665,25 +735,9 @@ void ListItem::refreshTextLabelPresentation()
         textLabel->hide();
         return;
     }
-
-    const QString text = displayName();
-    const QFont labelFont = textLabel->font();
-    const QFontMetrics fm(labelFont);
     const QRect labelRect = textRect();
-    const QStringList textLines = (m_layoutMode == LayoutMode::IconMode)
-        ? buildDesktopLines(text, fm, labelRect.width(), m_expandFullNameOnSelect ? 64 : 2)
-        : QStringList{ fm.elidedText(text, Qt::ElideRight, labelRect.width()) };
-
-    textLabel->show();
-    if (m_layoutMode == LayoutMode::IconMode) {
-        textLabel->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
-        textLabel->setGeometry(labelRect);
-        textLabel->setText(textLines.join("\n"));
-    } else {
-        textLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
-        textLabel->setGeometry(labelRect);
-        textLabel->setText(textLines.value(0));
-    }
+    textLabel->setGeometry(labelRect);
+    textLabel->hide();
 }
 
 QRect ListItem::iconRect() const
@@ -834,6 +888,30 @@ void ListItem::paintEvent(QPaintEvent* event) {
 		painter.setBrush(Qt::NoBrush);
 		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
 	}
+
+    if (RenameManager::instance()->activeItem() != this) {
+        const QRect labelRect = textRect();
+        if (!labelRect.isEmpty()) {
+            const QFontMetrics fm(labelFont);
+            QStringList textLines;
+            SoftDesktopTextRenderer::Options options;
+            options.textColor = QColor(255, 255, 255);
+            options.glowColor = QColor(0, 0, 0, 170);
+            options.innerShadowColor = QColor(0, 0, 0, 115);
+            options.largeGlowRadius = 1;
+            options.tightGlowRadius = 1;
+
+            if (m_layoutMode == LayoutMode::IconMode) {
+                textLines = buildDesktopLines(displayName(), fm, labelRect.width(), m_expandFullNameOnSelect ? 64 : 2);
+                options.alignment = Qt::AlignHCenter | Qt::AlignTop;
+            } else {
+                textLines << fm.elidedText(displayName(), Qt::ElideRight, labelRect.width());
+                options.alignment = Qt::AlignVCenter | Qt::AlignLeft;
+            }
+
+            SoftDesktopTextRenderer::drawText(&painter, labelRect, textLines, labelFont, options);
+        }
+    }
 
 
 }

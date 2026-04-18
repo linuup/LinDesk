@@ -220,6 +220,7 @@ public:
 	/// </summary>
 	/// <param name="rect"></param>
 	void refreshCheckedItem(QRect rect);
+	void setSelectedItems(const QVector<ListItem*>& items, bool expandSingle = false);
 	void beginBackgroundSelection(const QPoint& startPos);
 	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
 	void endBackgroundSelection();
@@ -273,6 +274,8 @@ public slots:
 	void onMenuQuitApp();
 	void onMenuLinDesk();
     void resetRenameClickState();
+    void armPendingShellNewTargetBox(LinBox* box);
+    void clearPendingShellNewTargetBox();
 
 public slots:
 	void performSort(SortOrderType order);
@@ -317,6 +320,7 @@ protected:
 	
 	void loadBoxes(bool autoUpdateState = true);
 	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", const QString& mappedFolderPath = "", bool refresh = true);
+    bool handlePendingShellCreatedItem(const QString& newPath);
 
 private:
 	explicit ListView(QWidget* parent = nullptr);
@@ -378,6 +382,8 @@ private:
 	QMap<QString, QPoint> m_pendingCreatedItemPositions;
 	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
 	QHash<QString, int> m_pendingCreatedItemInsertIndices;
+    QPointer<LinBox> m_pendingShellNewTargetBox;
+    QTimer* m_pendingShellNewTargetTimer = nullptr;
 	//Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel,Recycle Bin
 	DesktopInfoMonitor* monitor;
 	//use SHChangeNotifyRegister to monitor desktop directory changes

@@ -69,7 +69,7 @@ public:
     QRect iconRect() const;
       QRect textRect() const;
       QRect renameEditorRect() const;
-      void refreshTextLabelPresentation();
+    void refreshTextLabelPresentation();
       void setFullNameExpanded(bool expanded);
     bool isFullNameExpanded() const { return m_expandFullNameOnSelect; }
     void setExpandedPreviewText(const QString& text);
@@ -131,5 +131,7 @@ private:
      bool m_expandFullNameOnSelect = false;
      QString m_expandedPreviewText;
      QSize m_baseItemSize;
+     QString m_pendingLabelText;
+     bool m_labelRefreshScheduled = false;
 };
 #endif // LISTITEM_H

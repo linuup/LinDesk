@@ -14,6 +14,7 @@
 #include <QMenu>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QRubberBand>
 #include "desktop/ListItem.h"
 #include <QMimeData>
 #include <QUuid>
@@ -134,6 +135,11 @@ private:
     void scheduleBlurRefresh();
     void updateBlurCache();
     QPixmap captureBackgroundPixmap() const;
+    void beginItemSelection(const QPoint& contentPos);
+    void updateItemSelection(const QPoint& contentPos);
+    void finishItemSelection();
+    QString mappedFolderDisplayText() const;
+    QString sanitizedTitleText(const QString& title) const;
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<ListItem*> m_items;
@@ -162,6 +168,7 @@ private:
     int m_titleHeight = 30;
     int m_minBoxWidth = 180;
     int m_minBoxHeight = 120;
+    int m_maxCustomTitleLength = 64;
 
     QColor m_bgColor = QColor(40, 40, 40); // Standard dark gray instead of pure black
     float m_bgOpacity = 0.5f;             // Slightly higher default opacity
@@ -177,6 +184,9 @@ private:
     QPixmap m_blurCache;
     bool m_isCapturingBackground = false;
     bool m_isRefreshingLayout = false;
+    bool m_isSelectingItems = false;
+    QPoint m_selectionStartPos;
+    QRubberBand* m_selectionBand = nullptr;
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;
     BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;

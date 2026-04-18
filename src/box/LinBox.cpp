@@ -559,8 +559,8 @@ void LinBox::resizeEvent(QResizeEvent* event) {
 }
 
 void LinBox::setBoxTitle(const QString& title) {
-    m_title = title;
-    m_titleEdit->setText(title);
+    m_title = sanitizedTitleText(title);
+    m_titleEdit->setText(m_title);
     m_titleBar->update();
     emit geometryChanged(this);
 }
@@ -591,16 +591,15 @@ QString LinBox::displayTitleText() const
     if (!isFolderMapped()) {
         return m_title;
     }
-
-    const QString normalizedPath = QDir::toNativeSeparators(m_mappedFolderPath);
+    const QString mappedText = mappedFolderDisplayText();
     if (m_mappedFolderState == MappedFolderState::Missing) {
-        return tr("[Missing] %1").arg(normalizedPath);
+        return tr("[Missing] %1").arg(mappedText);
     }
     if (m_mappedFolderState == MappedFolderState::NoAccess) {
-        return tr("[No Access] %1").arg(normalizedPath);
+        return tr("[No Access] %1").arg(mappedText);
     }
     const QString folderIcon = QString::fromWCharArray(L"\xD83D\xDCC1 ");
-    return folderIcon + normalizedPath;
+    return folderIcon + mappedText;
 }
 
 void LinBox::setMappedFolderPath(const QString& path)
@@ -636,10 +635,8 @@ void LinBox::setMappedFolderMonitor(LinDirectoryMonitor* monitor)
 }
 
 void LinBox::beginTitleEditing() {
-    if (isFolderMapped()) {
-        return;
-    }
-    m_titleEdit->setText(m_title);
+    m_titleEdit->setMaxLength(m_maxCustomTitleLength);
+    m_titleEdit->setText(isFolderMapped() ? mappedFolderDisplayText() : m_title);
     m_titleEdit->show();
     m_titleEdit->setFocus();
     m_titleEdit->selectAll();
@@ -647,15 +644,37 @@ void LinBox::beginTitleEditing() {
 }
 
 void LinBox::commitTitleEditing() {
+    const QString newTitle = sanitizedTitleText(m_titleEdit->text());
     if (isFolderMapped()) {
+        m_title = newTitle;
         m_titleEdit->hide();
         m_titleBar->update();
+        emit geometryChanged(this);
         return;
     }
-    const QString newTitle = m_titleEdit->text().trimmed();
     setBoxTitle(newTitle.isEmpty() ? m_title : newTitle);
     m_titleEdit->hide();
     m_titleBar->update();
+}
+
+QString LinBox::mappedFolderDisplayText() const
+{
+    if (!m_title.trimmed().isEmpty()) {
+        return m_title.trimmed();
+    }
+    return QDir::toNativeSeparators(m_mappedFolderPath);
+}
+
+QString LinBox::sanitizedTitleText(const QString& title) const
+{
+    QString normalized = title;
+    normalized.replace('\n', ' ');
+    normalized.replace('\r', ' ');
+    normalized = normalized.simplified();
+    if (normalized.length() > m_maxCustomTitleLength) {
+        normalized = normalized.left(m_maxCustomTitleLength);
+    }
+    return normalized;
 }
 
 bool LinBox::eventFilter(QObject* watched, QEvent* event) {
@@ -690,18 +709,29 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             }
             if (mouseEvent->button() == Qt::LeftButton) {
                 BoxManager::instance()->bringToFront(this);
-                // Determine if we should drag or resize
-                // Map the child coordinate to LinBox coordinates
-                QPoint mappedPos = watched == this ? mouseEvent->pos() : ((QWidget*)watched)->mapTo(this, mouseEvent->pos());
+                const QWidget* sourceWidget = qobject_cast<QWidget*>(watched);
+                const QPoint mappedPos = watched == this
+                    ? mouseEvent->pos()
+                    : sourceWidget->mapTo(this, mouseEvent->pos());
                 m_resizeDir = getResizeDir(mappedPos);
-                
+
                 if (m_resizeDir != None && m_resizeDir != Move) {
                     m_isResizing = true;
                     m_dragStartPos = mouseEvent->globalPos();
                     m_dragStartGeometry = geometry();
                     m_geometryChangedDuringInteraction = false;
                     return true;
-                } else if (isDragArea(mappedPos)) {
+                }
+
+                if (watched == m_contentArea) {
+                    QWidget* child = m_contentArea->childAt(mouseEvent->pos());
+                    if (child == nullptr && m_resizeDir == None) {
+                        beginItemSelection(mouseEvent->pos());
+                        return true;
+                    }
+                }
+
+                if (isDragArea(mappedPos)) {
                     m_isMoving = true;
                     m_dragStartPos = mouseEvent->globalPos();
                     m_dragStartGeometry = geometry();
@@ -710,6 +740,25 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                 }
             } else if (mouseEvent->button() == Qt::RightButton) {
                 showCustomContextMenu(mouseEvent->globalPos());
+                return true;
+            }
+        } else if (event->type() == QEvent::MouseMove) {
+            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+            const QWidget* sourceWidget = qobject_cast<QWidget*>(watched);
+            const QPoint mappedPos = watched == this
+                ? mouseEvent->pos()
+                : sourceWidget->mapTo(this, mouseEvent->pos());
+
+            if (watched == m_contentArea && m_isSelectingItems) {
+                updateItemSelection(mouseEvent->pos());
+                return true;
+            }
+            if (!m_isSelectingItems && !m_isResizing && !m_isMoving) {
+                updateCursorShape(mappedPos);
+            }
+        } else if (watched == m_contentArea && event->type() == QEvent::MouseButtonRelease) {
+            if (m_isSelectingItems) {
+                finishItemSelection();
                 return true;
             }
         } else if (event->type() == QEvent::MouseButtonDblClick && watched == m_titleBar) {
@@ -793,6 +842,11 @@ void LinBox::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void LinBox::mouseReleaseEvent(QMouseEvent* event) {
+    if (m_isSelectingItems) {
+        finishItemSelection();
+        event->accept();
+        return;
+    }
     if ((m_isResizing || m_isMoving) && m_geometryChangedDuringInteraction) {
         refreshStyles();
         emit geometryChanged(this);
@@ -852,6 +906,59 @@ void LinBox::paintEvent(QPaintEvent* event) {
     }
 }
 
+void LinBox::beginItemSelection(const QPoint& contentPos)
+{
+    ListView* listView = ListView::instance();
+    if (listView) {
+        listView->clearCheckedItem();
+    }
+
+    if (!m_selectionBand) {
+        m_selectionBand = new QRubberBand(QRubberBand::Rectangle, m_contentArea);
+    }
+
+    m_isSelectingItems = true;
+    m_selectionStartPos = contentPos;
+    m_selectionBand->setGeometry(QRect(contentPos, QSize(1, 1)));
+    m_selectionBand->show();
+    updateItemSelection(contentPos);
+}
+
+void LinBox::updateItemSelection(const QPoint& contentPos)
+{
+    if (!m_isSelectingItems) {
+        return;
+    }
+
+    const QRect selectionRect = QRect(m_selectionStartPos, contentPos).normalized();
+    if (m_selectionBand) {
+        m_selectionBand->setGeometry(selectionRect);
+    }
+
+    QVector<ListItem*> selectedItems;
+    selectedItems.reserve(m_items.size());
+    for (ListItem* item : m_items) {
+        if (!item || !item->isVisible()) {
+            continue;
+        }
+        if (selectionRect.intersects(item->getChooseItemRect())) {
+            selectedItems.push_back(item);
+        }
+    }
+
+    if (ListView* listView = ListView::instance()) {
+        listView->setSelectedItems(selectedItems, false);
+    }
+}
+
+void LinBox::finishItemSelection()
+{
+    m_isSelectingItems = false;
+    if (m_selectionBand) {
+        m_selectionBand->hide();
+    }
+}
+
 void LinBox::enterEvent(QEvent* event) {
     QWidget::enterEvent(event);
 }
@@ -862,18 +969,39 @@ void LinBox::leaveEvent(QEvent* event) {
 }
 
 LinBox::ResizeDir LinBox::getResizeDir(const QPoint& pos) {
-    int x = pos.x(), y = pos.y(), w = width(), h = height();
-    int cs = qBound(30, qMin(w, h) / 8, 80);    
-    int th = qBound(8, qMin(w, h) / 20, 15);   
-    if (x >= 0 && x <= cs && y >= 0 && y <= cs) return TopLeft;
-    if (x >= w - cs && x <= w && y >= 0 && y <= cs) return TopRight;
-    if (x >= 0 && x <= cs && y >= h - cs && y <= h) return BottomLeft;
-    if (x >= w - cs && x <= w && y >= h - cs && y <= h) return BottomRight;
-    if (y >= 0 && y <= m_titleHeight && x > cs && x < w - cs) return Move;
-    if (x >= 0 && x <= th) return Left;
-    if (x >= w - th && x <= w) return Right;
-    if (y >= h - th && y <= h) return Bottom;
-    if (y >= 0 && y <= th && x > cs && x < w - cs) return Top;
+    const int x = pos.x();
+    const int y = pos.y();
+    const int w = width();
+    const int h = height();
+    const int resizeMargin = qMax(4, m_borderWidth);
+    const int cornerMargin = qMax(resizeMargin * 2, 16);
+
+    if (x < 0 || y < 0 || x >= w || y >= h) {
+        return None;
+    }
+
+    const bool nearLeft = x < resizeMargin;
+    const bool nearRight = x >= w - resizeMargin;
+    const bool nearTop = y < resizeMargin;
+    const bool nearBottom = y >= h - resizeMargin;
+
+    const bool inTopLeftCorner = x < cornerMargin && y < cornerMargin;
+    const bool inTopRightCorner = x >= w - cornerMargin && y < cornerMargin;
+    const bool inBottomLeftCorner = x < cornerMargin && y >= h - cornerMargin;
+    const bool inBottomRightCorner = x >= w - cornerMargin && y >= h - cornerMargin;
+
+    if (nearLeft && nearTop && inTopLeftCorner) return TopLeft;
+    if (nearRight && nearTop && inTopRightCorner) return TopRight;
+    if (nearLeft && nearBottom && inBottomLeftCorner) return BottomLeft;
+    if (nearRight && nearBottom && inBottomRightCorner) return BottomRight;
+    if (nearLeft) return Left;
+    if (nearRight) return Right;
+    if (nearBottom) return Bottom;
+    if (nearTop) return Top;
+
+    if (y >= resizeMargin && y <= m_titleHeight && x >= resizeMargin && x < w - resizeMargin) {
+        return Move;
+    }
     return None;
 }
 
@@ -1543,6 +1671,7 @@ void LinBox::updateCursorShape(const QPoint& pos) {
         case Left: case Right: setCursor(Qt::SizeHorCursor); break;
         case TopLeft: case BottomRight: setCursor(Qt::SizeFDiagCursor); break;
         case TopRight: case BottomLeft: setCursor(Qt::SizeBDiagCursor); break;
+        case Move: setCursor(Qt::ArrowCursor); break;
         default: setCursor(Qt::ArrowCursor); break;
     }
 }
@@ -1695,6 +1824,10 @@ void LinBox::updateBlurCache()
 }
 
 void LinBox::showCustomContextMenu(const QPoint& globalPos) {
+    if (ListView* lv = ListView::instance()) {
+        lv->armPendingShellNewTargetBox(this);
+    }
+
     ShellContextMenu scm;
     POINT p = { globalPos.x(), globalPos.y() };
     const POINT* position = &p;
