@@ -1,4 +1,4 @@
-#ifndef SETTINGUI_H
+﻿#ifndef SETTINGUI_H
 #define SETTINGUI_H
 
 #include <QWidget>
@@ -22,6 +22,7 @@ class QStackedWidget;
 class FluentToggleSwitch;
 class FluentCard;
 class FluentComboBox;
+class FluentColorWheel;
 
 class SettingUI : public FluentBaseWidget {
     Q_OBJECT
@@ -37,27 +38,25 @@ private:
     void initUI();
     void setupStyles();
     void retranslateUi();
-    
-    // Page Creation Helpers
+
     QWidget* createGeneralPage();
     QWidget* createDesktopPage();
     QWidget* createGridPage();
-
     QWidget* createPluginsPage();
     QWidget* createAboutPage();
     QWidget* wrapScrollablePage(QWidget* content);
 
     void updateControlsFromTarget();
     void updatePreviewStyle();
+    void updateDesktopSelectionPreview();
     LinBox* controlSourceBox() const;
 
     LinBox* m_targetBox;
     QVector<LinBox*> m_allBoxes;
-    
-    // UI Infrastructure
+
     QLabel* m_titleBarTitle = nullptr;
-    QListWidget* m_sidebar;
-    QStackedWidget* m_contentStack;
+    QListWidget* m_sidebar = nullptr;
+    QStackedWidget* m_contentStack = nullptr;
     QListWidgetItem* m_generalTabItem = nullptr;
     QListWidgetItem* m_desktopTabItem = nullptr;
     QListWidgetItem* m_boxTabItem = nullptr;
@@ -73,10 +72,13 @@ private:
     QLabel* m_pluginsPageTitle = nullptr;
     QLabel* m_pluginsEmptyLabel = nullptr;
     QLabel* m_previewLabel = nullptr;
+    QLabel* m_previewBackground = nullptr;
+    QLabel* m_desktopSelectionPreview = nullptr;
 
     FluentCard* m_autoStartCard = nullptr;
     FluentCard* m_trayOnlyCard = nullptr;
     FluentCard* m_languageCard = nullptr;
+    FluentCard* m_selectionColorCard = nullptr;
     FluentCard* m_shortcutArrowCard = nullptr;
     FluentCard* m_hideIconsCard = nullptr;
     FluentCard* m_colorCard = nullptr;
@@ -84,17 +86,17 @@ private:
     FluentCard* m_glassCard = nullptr;
 
     FluentComboBox* m_languageCombo = nullptr;
-    
-    // Grid Page Controls
+    FluentColorWheel* m_selectionColorWheel = nullptr;
+    QLineEdit* m_selectionColorValueEdit = nullptr;
+
     QSlider* m_opacitySlider = nullptr;
     QLabel* m_opacityLabelValue = nullptr;
     FluentToggleSwitch* m_glassToggle = nullptr;
-    QLabel* m_previewBackground = nullptr;
-    
-    // Preview sync state (directly from controls)
+
     QColor m_previewColor;
     float m_previewOpacity = 0.5f;
     bool m_previewGlass = false;
+    QColor m_selectionPreviewColor;
 };
 
 #endif // SETTINGUI_H

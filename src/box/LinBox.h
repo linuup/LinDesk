@@ -20,6 +20,7 @@
 #include <QUuid>
 #include <QPixmap>
 #include <QScopedPointer>
+#include <QtGlobal>
 
 class LinDirectoryMonitor;
 
@@ -190,6 +191,7 @@ private:
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;
     BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;
+    quint64 m_lastLayoutVisualSignature = 0;
     QVector<ListItem*> m_reorderDragItems;
     int m_reorderInsertIndex = -1;
     bool m_reorderIndicatorAfterPrev = false;

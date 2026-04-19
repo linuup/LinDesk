@@ -13,5 +13,6 @@
         <file>Assets/grid.svg</file>
         <file>Assets/list.svg</file>
         <file>Assets/disk.svg</file>
+        <file>qml/QmlTestPage.qml</file>
     </qresource>
 </RCC>

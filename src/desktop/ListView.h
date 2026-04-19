@@ -35,20 +35,22 @@
 #include "desktop/SelectArea.h"
 #include "ui/SettingUI.h"
 class LinBox;
-class BoxManager; 
+class BoxManager;
 class DesktopQuadTree;
 class FluentInfoTip;
+class ListViewSelectionController;
+class ListViewMappedBoxHelper;
 
-class ListView: public QWidget {
+class ListView : public QWidget {
 	Q_OBJECT
 
 public:
-
-	//桌面图标布局模式
+	// 枚举定义
 	enum class IconPosMode {
 		AlignIconToGrid,  // 对齐网格
 		UnAlignIconToGrid // 自由位置
 	};
+
 	/// <summary>
 	/// Windows 自然排序（Natural Sort）规则
 	/// 数字智能排序：file1, file2, file10, file20（不是 file1, file10, file2, file20）
@@ -75,27 +77,40 @@ public:
 		SortByDateModified_DESC,
 		SortByCategorized			// 自动分类排序（系统、文件夹、应用、文档）
 	};
-	// icon size show mode
+
 	enum class ViewMode {
 		LargeIcon,
 		MediumIcon,
 		SmallIcon
 	};
 
-	// ViewMode 预设尺寸
-	static constexpr int kLargeIconW  = 100, kLargeIconH  = 104;
-	static constexpr int kMediumIconW = 76,  kMediumIconH = 78;
-	static constexpr int kSmallIconW  = 62,  kSmallIconH  = 64;
-	static constexpr int kLargeSpacing  = 12;
-	static constexpr int kMediumSpacing = 10;
-	static constexpr int kSmallSpacing  = 8;
+	enum class FocusMoveDirection {
+		Left,
+		Right,
+		Up,
+		Down
+	};
 
-	// 快捷方式小图标预设尺寸 (与 ViewMode 一一对应)
-	static constexpr int kLargeArrowSize  = 42;
+	// 静态常量
+	static constexpr int kLargeIconW = 100, kLargeIconH = 104;
+	static constexpr int kMediumIconW = 76, kMediumIconH = 78;
+	static constexpr int kSmallIconW = 62, kSmallIconH = 64;
+	//
+	static constexpr int kLargeRowSpacing = 12;
+	static constexpr int kLargeColSpacing = 8;
+	//
+	static constexpr int kMediumRowSpacing = 8;
+	static constexpr int kMediumColSpacing = 4;
+	//
+	static constexpr int kSmallRowSpacing = 6;
+	static constexpr int kSmallColSpacing = 2;
+	//arrow size
+	static constexpr int kLargeArrowSize = 42;
 	static constexpr int kMediumArrowSize = 32;
-	static constexpr int kSmallArrowSize  = 24;
-	static constexpr int kListArrowSize   = 20;
-	// icon show rule
+	static constexpr int kSmallArrowSize = 24;
+	static constexpr int kListArrowSize = 20;
+
+	// 结构体定义
 	struct IconShowRule {
 		IconPosMode iconPosMode = IconPosMode::AlignIconToGrid; //图标位置模式，默认与网格对齐
 		ViewMode viewMode = ViewMode::MediumIcon;	//图标显示模式，默认中等图标
@@ -107,157 +122,175 @@ public:
 		bool showShortCutArrow = true;	//是否显示快捷方式小箭头
 	};
 
-	// 加载所有桌面图标数据
+	// 构造函数/析构函数/单例
+	explicit ListView(QWidget* parent = nullptr);
+	~ListView();
+	static ListView* instance(QWidget* parent = nullptr);
 
-	/// <summary>
-	/// Init default Data 
-	/// </summary>
+	// 初始化相关
 	void initialize();
-
-	void loadAutoLayout();
-	//
-	void loadGridLayout();
-	// load Desktop Item on UI
 	void loadIconLayer();
+	void loadAutoLayout();
+	void loadGridLayout();
+	void loadPersistentLayout();
+	void loadBoxes(bool autoUpdateState = true);
+	void loadMappedFolderItemsForBox(LinBox* box);
+	void startListeningSpecialIcon();
+	void initRightMenuConnections();
+	void syncViewModeSizes();
+	QPoint remapPositionForViewMetrics(const QPoint& pos, int oldIconWidth, int oldIconHeight, int oldRowSpacing, int oldColSpacing) const;
+	void applyViewModeMetricsChange(int oldIconWidth, int oldIconHeight, int oldRowSpacing, int oldColSpacing);
 
-	SortOrderType getOppositeDirection();
-	/// <summary>
-	/// Using m_sortType to Sort Items
-	/// </summary>
-	/// <param name="order"></param>
+	// 配置加载
+	void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
+	void applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions);
+
+	// Item管理
+	QVector<ListItem*> items() const { return m_items; }
+	QVector<ListItem*> items() { return m_items; }
+	void addItem(ListItem* item, bool refresh = true);
+	void addItemNoDelete(ListItem* item);
+	void removeItem(ListItem* item);
+	void removeItemNoDelete(ListItem* item);
+	ListItem* findItemByPath(const QString& filePath) const;
+	void setupItemConnections(ListItem* item, LinBox* box = nullptr);
+	void clearMappedFolderItemsForBox(LinBox* box);
+
+	// 排序相关
+	void performSort(SortOrderType order);
 	void sortItems(SortOrderType order);
-
-	/// <summary>
-	/// 
-	/// </summary>
-	/// <param name="ascending">
-	/// True Ascending 
-	/// False Descending
-	/// </param>
+	SortOrderType getOppositeDirection();
 	void sortByName(bool ascending = true);
 	void sortBySize(bool ascending = true);
 	void sortByType(bool ascending = true);
 	void sortByDate(bool ascending = true);
 	void sortByCategorized();
 
-	/// <summary>
-	/// 监听桌面系统文件注册表
-	/// </summary>
-	void startListeningSpecialIcon();
-	
-	QVector<ListItem*> items() {
-		return m_items;
-	}
-	// 添加一个 ListItem
-	void addItem(ListItem* item, bool refresh = true);  // Add to the desktop render collection
-    void addItemNoDelete(ListItem* item);  // Add existing item back to desktop
+	// 选择相关
+	QVector<ListItem*> selectedItems() const { return m_selectedItems; }
+	void setSelectedItems(const QVector<ListItem*>& items, bool expandSingle = false);
+	void toggleItemSelection(ListItem* item);
+	void selectRangeToItem(ListItem* item, LinBox* box);
+	void clearCheckedItem();
+	void clearSelectionState();
+	void applySelectionState(const QVector<ListItem*>& items, ListItem* focusedItem = nullptr, bool expandSingle = false);
+	ListItem* selectItemByPath(const QString path);
+	QVector<ListItem*> queryItemsInRect(const QRect& rect) const;
+	bool IsSelecting() const { return m_isSelecting; }
+	void DisableSelecting() { endBackgroundSelection(); }
 
-	void removeItem(ListItem* item);
-    void removeItemNoDelete(ListItem* item);
-    ListItem* findItemByPath(const QString& filePath) const;
+	// 焦点相关
+	ListItem* focusedItem() const { return m_focusedItem; }
+	void setFocusedItem(ListItem* item);
+	void moveFocusInHost(LinBox* box, FocusMoveDirection direction, bool extendSelection, bool focusOnly);
+	QString focusedItemPath() const;
+	QString anchorItemPath() const;
 
-	// 设置选中的项
-	// 获取当前选中的项
+	// 拖放相关
+	QVector<ListItem*> orderedDraggedItemsForPaths(const QStringList& paths) const;
+	void createDragGhosts(const QPoint& clickPos);
+	bool shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const;
+	bool createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const;
+	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
+	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode, bool preferShortcut = false);
+
+	// Box管理
+	QVector<LinBox*> boxes() const;
+	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true, int insertIndex = -1);
+	void moveItemsToBox(const QVector<ListItem*>& items, LinBox* targetBox, int insertIndex = -1, bool refresh = true);
+	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex = -1, bool preferShortcut = false);
+	void reloadMappedFolderBox(LinBox* box);
+	void clearMappedFolderBox(LinBox* box);
+	void saveBoxes();
+	void requestSaveBoxes();
+	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", const QString& mappedFolderPath = "", bool refresh = true);
+
+	// 路径映射
+	bool isItemInAnyBox(const QString& filePath) const;
+	QString getBoxIdForItem(const QString& filePath) const;
+	LinBox* findMappedFolderBox(const QString& folderPath, const LinBox* excludeBox = nullptr) const;
+	QStringList mappedFolderEntryPaths(const QString& folderPath) const;
+
+	// 位置管理
+	QPoint generateItemPosition();
+	QPoint resolveCreatePosition(const QPoint& requestedPos) const;
+	void reserveCreatedItemPosition(const QString& filePath, const QPoint& requestedPos);
+	bool takeReservedCreatedItemPosition(const QString& filePath, QPoint& posOut);
+
+	// 剪贴板操作
+	void writeSelectionToClipboard(bool cutOperation);
+	void clearCutMarks();
+	void applyCutMarks(const QVector<ListItem*>& items);
+
+	// 右键菜单
+	void requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems);
+	void updateRightMenuState();
+
+	// 状态管理
+	void restoreSelectionStateByPaths(const QStringList& selectedPaths, const QString& focusedPath, const QString& anchorPath, bool expandSingle = false);
+
+	// 杂项功能
 	bool persistenceEnabled() const { return m_enablePersistence; }
 	void setPersistenceEnabled(bool enabled);
 	void setShortcutArrowVisible(bool visible);
 	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
-    void setDoubleClickHideIconsEnabled(bool enabled);
-    	bool isDoubleClickHideIconsEnabled() const;
+	void setDoubleClickHideIconsEnabled(bool enabled);
+	bool isDoubleClickHideIconsEnabled() const;
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
 	int rowSpacing() const { return m_rowSpacing; }
 	int colSpacing() const { return m_colSpacing; }
 	void setDebugGridSpacing(int rowSpacing, int colSpacing);
 	ListItem* draggedItem() const { return m_draggedItem; }
-	void loadPersistentLayout();
-	void updateRightMenuState();
-
-	/// <summary>
-	/// 生成Item的坐标
-	/// </summary>
-	/// <returns></returns>
-	QPoint generateItemPosition();
-	// 清除所有选中的项
-	// 检查一个项是否被选中
-	// 获取所有选中的项（支持多选）
-	QVector<LinBox*> boxes() const;
-    
-	// 获取是否启用多选
-	bool IsSelecting() const {
-		return m_isSelecting;
-	}
-
+	QVector<ListItem*> selectableItemsForHost(LinBox* box) const;
+	QStringList selectedItemPaths() const;
+	void rebuildSpatialIndex();
+	void refreshCheckedItem(QRect rect);
 	void showSettings(LinBox* target = nullptr);
-	static ListView* instance(QWidget* parent = nullptr);
-	void moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh = true, int insertIndex = -1);
-	void moveItemsToBox(const QVector<ListItem*>& items, LinBox* targetBox, int insertIndex = -1, bool refresh = true);
-	QVector<ListItem*> orderedDraggedItemsForPaths(const QStringList& paths) const;
-	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex = -1, bool preferShortcut = false);
-	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
-	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode, bool preferShortcut = false);
-    bool shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const;
-    bool createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const;
-	void reloadMappedFolderBox(LinBox* box);
-	void clearMappedFolderBox(LinBox* box);
-	bool isItemInAnyBox(const QString& filePath) const;
-	QString getBoxIdForItem(const QString& filePath) const;
-    LinBox* findMappedFolderBox(const QString& folderPath, const LinBox* excludeBox = nullptr) const;
-    void showTransientTip(const QString& message, int autoHideMs = 2500);
-	void saveBoxes();
-	void requestSaveBoxes(); // Move to public
+	void showTransientTip(const QString& message, int autoHideMs = 2500);
+
+	// 调试工具
 	QString dumpAllItemsJson() const;
 	QString dumpVisibleItemsJson() const;
 	QString dumpHiddenItemsJson() const;
-	void DisableSelecting() {
-		endBackgroundSelection();
-	}
 
-	/// <summary>
-	/// 请求系统右键菜单
-	/// </summary>
-	/// <param name="objType"></param>
-	/// <param name="point">相对屏幕的坐标</param>
-	/// <param name="checkedItems">选中项目列表</param>
-	void requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems);
-	/// <summary>
-	/// update 
-	/// </summary>
-	/// <param name="rect"></param>
-	void refreshCheckedItem(QRect rect);
-	void setSelectedItems(const QVector<ListItem*>& items, bool expandSingle = false);
+	// 拖拽选择
 	void beginBackgroundSelection(const QPoint& startPos);
 	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
 	void endBackgroundSelection();
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
-	/// <summary>
-	/// 
-	/// </summary>
-	/// <param name="path"></param>
-	/// <returns></returns>
-	ListItem* selectItemByPath(const QString path);
-	void clearCheckedItem();
-    void rebuildSpatialIndex();
-    QVector<ListItem*> queryItemsInRect(const QRect& rect) const;
 
-private slots:
+	// 事件处理
+protected:
+	void paintEvent(QPaintEvent* event) override;
+	void contextMenuEvent(QContextMenuEvent* event) override;
+	void mousePressEvent(QMouseEvent* event) override;
+	void mouseMoveEvent(QMouseEvent* event) override;
+	void mouseReleaseEvent(QMouseEvent* event) override;
+	void mouseDoubleClickEvent(QMouseEvent* event) override;
+	void keyPressEvent(QKeyEvent* event) override;
+	void dragEnterEvent(QDragEnterEvent* event) override;
+	void dragMoveEvent(QDragMoveEvent* event) override;
+	void dragLeaveEvent(QDragLeaveEvent* event) override;
+	void dropEvent(QDropEvent* event) override;
+	void enterEvent(QEvent* event) override;
+	bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
+	void handleHotkey(int id);
 
+private:
+	// 工具函数
+	void ensureDragTip();
+	void ensureInfoTip();
+	bool handlePendingShellCreatedItem(const QString& newPath);
 
-	void onDirectoryChanged(const QString& path) {
-		qDebug() << "[DirectoryMonitor]-Directory Changed:" << path;
-
-	}
-	void updateSystemIconVisibility(const QString& clsid, bool hidden);
-	
-
-	void onError(const QString& error) {
-		qDebug() << "Error DirectoryMonitor:" << error;
-	}
-	
+public slots:
+	// 目录监控
+	void onDirectoryChanged(const QString& path) { qDebug() << "[DirectoryMonitor]-Directory Changed:" << path; }
 	void onFileSystemChanged(const FileSystemEventInfo& eventInfo);
-	
-	// RightMenu Slot handles
+	void onError(const QString& error) { qDebug() << "Error DirectoryMonitor:" << error; }
+
+	// 右键菜单
 	void onMenuLargeIcons();
 	void onMenuMediumIcons();
 	void onMenuSmallIcons();
@@ -265,146 +298,112 @@ private slots:
 	void onMenuAlignIconsToGrid();
 	void onMenuShowDesktopIcons();
 	void onMenuDoubleClickHideIcons();
-	
 	void onMenuSortByName();
 	void onMenuSortBySize();
 	void onMenuSortByType();
 	void onMenuSortByDate();
-	
-public slots:
 	void onMenuDelete(bool permanently = false);
 	void onMenuRefresh();
 	void onMenuCreateBox();
 	void onMenuMapFolder();
 	void onMenuQuitApp();
 	void onMenuLinDesk();
-    void resetRenameClickState();
-    void armPendingShellNewTargetBox(LinBox* box);
-    void clearPendingShellNewTargetBox();
-
-public slots:
-	void performSort(SortOrderType order);
 	void onMenuPaste();
 	void onMenuPasteShortcut();
+	void onMenuDestroyBox(LinBox* box);
+	void onMenuCustomBox(LinBox* box);
+
+	// Item代理
 	void onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent* event);
 	void onItemRelayContextMenuRequested(LinBox* box, ListItem* item, const QPoint& globalPos);
-	void onMenuDestroyBox(LinBox* box);
-	void onMenuCustomBox(LinBox* box);
 
-protected:
-	void paintEvent(QPaintEvent* event) override;  // 重写绘制事件来绘制背景
-	void contextMenuEvent(QContextMenuEvent* event) override; //右键菜单事件
-	void mousePressEvent(QMouseEvent* event) override;
-	void mouseMoveEvent(QMouseEvent* event) override;
-	void mouseReleaseEvent(QMouseEvent* event) override;
-	void mouseDoubleClickEvent(QMouseEvent* event) override;
-    void keyPressEvent(QKeyEvent* event) override;
-    void dragEnterEvent(QDragEnterEvent* event) override;
-    void dragMoveEvent(QDragMoveEvent* event) override;
-    void dragLeaveEvent(QDragLeaveEvent* event) override;
-    void dropEvent(QDropEvent* event) override;
-	void enterEvent(QEvent* event) override;
-
-    // Platform-specific event handling (for Global Hotkeys)
-    bool nativeEvent(const QByteArray &eventType, void *message, long *result) override;
-    void handleHotkey(int id);
-	
-	void createDragGhosts(const QPoint& clickPos);
-    void setupItemConnections(ListItem* item, LinBox* box = nullptr);
-    void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
-    void applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions);
-    QStringList mappedFolderEntryPaths(const QString& folderPath) const;
-    void loadMappedFolderItemsForBox(LinBox* box);
-    void clearMappedFolderItemsForBox(LinBox* box);
-	QPoint resolveCreatePosition(const QPoint& requestedPos) const;
-	void reserveCreatedItemPosition(const QString& filePath, const QPoint& requestedPos);
-	bool takeReservedCreatedItemPosition(const QString& filePath, QPoint& posOut);
-	
-	void loadBoxes(bool autoUpdateState = true);
-	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", const QString& mappedFolderPath = "", bool refresh = true);
-    bool handlePendingShellCreatedItem(const QString& newPath);
+	// 系统图标
+	void updateSystemIconVisibility(const QString& clsid, bool hidden);
+	void resetRenameClickState();
+	void armPendingShellNewTargetBox(LinBox* box);
+	void clearPendingShellNewTargetBox();
 
 private:
-	explicit ListView(QWidget* parent = nullptr);
-	~ListView();
-	
-	// 初始化右键菜单信号连接
-	void initRightMenuConnections();
-	void syncViewModeSizes();
+	// 友元声明
+	friend class ListViewSelectionController;
+	friend class ListViewMappedBoxHelper;
 
-	static ListView* m_instance;	//图标视图
-	RightMenu* rightMenu;
-	IconShowRule m_iconShowRule;	// icon show rule
-	QString m_persistencePath;
-	QPointer<SettingUI> m_settingsWindow;
-	bool m_enablePersistence = true;
-    bool m_isLoadingPersistence = false;
-    bool m_forceConfigLayout = false;
-    bool m_hasLoadedConfigLayout = false;
-	QMap<QString, PersistentIconInfo> m_savedIconPositions;
-    std::unique_ptr<DesktopQuadTree> m_spatialIndex;
-
-	// 网格布局变量（可随 ViewMode 动态改变）
-    QString m_desktopDir; // 存储桌面物理路径
-	int m_iconWidth   = kMediumIconW;
-	int m_iconHeight  = kMediumIconH;
-	int m_rowSpacing  = kMediumSpacing;
-	int m_colSpacing  = kMediumSpacing;
-	int m_bottomPadding = 32; // 自定义底部缓冲高度
-	const int m_marginTop  = 6;
-	const int m_marginLeft = 2;
-
-	QVector<ListItem*> m_allItems;             // 存储所有 ListItem 对象
-	QVector<ListItem*> m_items;             // 存储当前桌面渲染体系维护的文件对象（含 Box 内对象）
-	QVector<ListItem*> m_hiddenIcons;             // 存储桌面系统图标状态
-    QMap<QString, QStringList> m_mappedBoxFilePaths; // boxId -> direct child paths of mapped folder
-	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;             // 存储桌面系统图标状态
-
-
-	//store selected items
-	QVector<ListItem*> m_selectedItems;
-	// is enable multi selection
-	bool m_isMultiSelection;            
-	
-	bool m_isDragging = false;  // 是否正在拖动
-	bool m_isSelecting = false;  // 是否正在拖拽选择
-	QPoint m_dragOffset;	//拖拽偏移量
-	QPoint m_originalPos; // 记录原始位置，用于取消拖动s
-	QPoint m_lastRightClickPos; // 记录最后一次右键点击的位置
-	QPoint m_startPos;     // 鼠标点击开始时的位置
-    
-    // Rename timing
-    QElapsedTimer m_clickTimer;
-    ListItem* m_lastClickedItem = nullptr;
-    bool m_wasSelectedBeforeClick = false;
-
-	QPoint m_selectionStart;     // 鼠标点击开始时的位置
-	QRect m_selectionRect;
-	ListItem* m_draggedItem = nullptr; // 当前被拖动的 ListItem
-	QMap<QString, QPoint> m_pendingCreatedItemPositions;
-	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
-	QHash<QString, int> m_pendingCreatedItemInsertIndices;
-    QPointer<LinBox> m_pendingShellNewTargetBox;
-    QTimer* m_pendingShellNewTargetTimer = nullptr;
-	//Monitor Desktop System Default Icon:Mycomputer,NetWork,Control Panel,Recycle Bin
-	DesktopInfoMonitor* monitor;
-	//use SHChangeNotifyRegister to monitor desktop directory changes
-	//DirectoryMonitor* m_deskMonitor;
-	//use readirectorychangesw to monitor directory changes
-	LinDirectoryMonitor* m_linMonitor;  // Lin目录监控器
-	
 	struct GhostInfo {
 		QLabel* widget;
 		ListItem* item;
-		QPoint offset; // 距离鼠标点击位置的偏移量
+		QPoint offset;
 	};
-	QVector<GhostInfo> m_ghosts; // 用于多选虚拟拖拽的半透明图标列表
-    QLabel* m_dragTip = nullptr; // 用于显示"使用某程序打开"的提示
-    FluentInfoTip* m_infoTip = nullptr;
 
-	void ensureDragTip();
-    void ensureInfoTip();
+private:
+	// 静态成员
+	static ListView* m_instance;
+
+	// UI组件
+	RightMenu* rightMenu;
+	QPointer<SettingUI> m_settingsWindow;
+	QLabel* m_dragTip = nullptr;
+	FluentInfoTip* m_infoTip = nullptr;
+
+	// 配置和状态
+	IconShowRule m_iconShowRule;
+	QString m_persistencePath;
+	QString m_desktopDir;
+	bool m_enablePersistence = true;
+	bool m_isLoadingPersistence = false;
+	bool m_forceConfigLayout = false;
+	bool m_hasLoadedConfigLayout = false;
+	int m_iconWidth = kMediumIconW;
+	int m_iconHeight = kMediumIconH;
+	int m_rowSpacing = kMediumRowSpacing;
+	int m_colSpacing = kMediumColSpacing;
+
+	int m_bottomPadding = 26;
+	const int m_marginTop = 6;
+	const int m_marginLeft = 2;
+
+	// 数据存储
+	QVector<ListItem*> m_allItems;
+	QVector<ListItem*> m_items;
+	QVector<ListItem*> m_hiddenIcons;
+	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;
+	QVector<ListItem*> m_selectedItems;
+	QVector<GhostInfo> m_ghosts;
+
+	// 映射和索引
+	QMap<QString, QStringList> m_mappedBoxFilePaths;
+	QMap<QString, PersistentIconInfo> m_savedIconPositions;
+	QMap<QString, QPoint> m_pendingCreatedItemPositions;
+	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
+	QHash<QString, int> m_pendingCreatedItemInsertIndices;
+	std::unique_ptr<DesktopQuadTree> m_spatialIndex;
+
+	// 指针和引用
+	QPointer<ListItem> m_focusedItem;
+	QPointer<ListItem> m_anchorItem;
+	QPointer<LinBox> m_pendingShellNewTargetBox;
+	ListItem* m_lastClickedItem = nullptr;
+	ListItem* m_draggedItem = nullptr;
+	DesktopInfoMonitor* monitor;
+	LinDirectoryMonitor* m_linMonitor;
+
+	// 计时器
+	QTimer* m_pendingShellNewTargetTimer = nullptr;
+	QElapsedTimer m_clickTimer;
+
+	// 状态标志
+	bool m_isMultiSelection = false;
+	bool m_isDragging = false;
+	bool m_isSelecting = false;
+	bool m_wasSelectedBeforeClick = false;
+
+	// 坐标和区域
+	QPoint m_dragOffset;
+	QPoint m_originalPos;
+	QPoint m_lastRightClickPos;
+	QPoint m_startPos;
+	QPoint m_selectionStart;
+	QRect m_selectionRect;
 };

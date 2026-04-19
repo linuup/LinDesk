@@ -1,4 +1,4 @@
-#include "ui/SettingUI.h"
+﻿#include "ui/SettingUI.h"
 #include "box/LinBox.h"
 #include "box/BoxManager.h"
 #include "desktop/ListView.h"
@@ -130,6 +130,34 @@ public:
     }
 };
 
+namespace {
+QString settingsConfigPath()
+{
+    return QCoreApplication::applicationDirPath() + "/config.ini";
+}
+
+QColor readDesktopSelectionColor()
+{
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const QColor color(settings.value("Desktop/SelectionRectangleColor", QStringLiteral("#64A0F0")).toString());
+    return color.isValid() ? color : QColor(100, 160, 240);
+}
+
+QColor desktopSelectionFillColor(const QColor& baseColor)
+{
+    QColor fill = baseColor;
+    fill.setAlpha(70);
+    return fill;
+}
+
+QColor desktopSelectionBorderColor(const QColor& baseColor)
+{
+    QColor border = baseColor.darker(110);
+    border.setAlpha(180);
+    return border;
+}
+}
+
 SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidget* parent)
     : FluentBaseWidget(parent), m_targetBox(targetBox), m_allBoxes(allBoxes)
 {
@@ -147,6 +175,8 @@ SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidge
         "margin-left: 8px; margin-right: 20px;"
     );
     addTitleBarWidget(m_titleBarTitle);
+
+    m_selectionPreviewColor = readDesktopSelectionColor();
 
     initUI();
     setupStyles();
@@ -328,15 +358,87 @@ QWidget* SettingUI::createDesktopPage() {
     m_desktopPageTitle->setObjectName("pageTitle");
     layout->addWidget(m_desktopPageTitle);
 
-    // Shortcut Arrow Toggle
+    QWidget* previewContainer = new QWidget(page);
+    previewContainer->setFixedHeight(138);
+    previewContainer->setStyleSheet("background: #f8f9fa; border-radius: 8px;");
+
+    QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
+    previewLayout->setContentsMargins(16, 12, 16, 12);
+    previewLayout->setSpacing(8);
+
+    QLabel* previewTitle = new QLabel(tr("Preview"), previewContainer);
+    previewTitle->setStyleSheet("font-size: 12px; font-weight: 600; color: #6b7280;");
+    previewLayout->addWidget(previewTitle);
+
+    m_desktopSelectionPreview = new QLabel(previewContainer);
+    m_desktopSelectionPreview->setMinimumHeight(88);
+    m_desktopSelectionPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_desktopSelectionPreview->setAlignment(Qt::AlignCenter);
+    m_desktopSelectionPreview->setStyleSheet("border-radius: 10px; background: transparent;");
+    previewLayout->addWidget(m_desktopSelectionPreview);
+
+    layout->addWidget(previewContainer);
+
+    QWidget* selectionActionSide = new QWidget(page);
+    QHBoxLayout* selectionActionLayout = new QHBoxLayout(selectionActionSide);
+    selectionActionLayout->setContentsMargins(0, 0, 0, 0);
+    selectionActionLayout->setSpacing(16);
+
+    m_selectionColorWheel = new FluentColorWheel(selectionActionSide);
+    m_selectionColorWheel->setColor(m_selectionPreviewColor);
+
+    m_selectionColorValueEdit = new QLineEdit(selectionActionSide);
+    m_selectionColorValueEdit->setReadOnly(true);
+    m_selectionColorValueEdit->setAlignment(Qt::AlignCenter);
+    m_selectionColorValueEdit->setFixedWidth(112);
+    m_selectionColorValueEdit->setFixedHeight(34);
+    m_selectionColorValueEdit->setText(m_selectionPreviewColor.name().toUpper());
+    m_selectionColorValueEdit->setStyleSheet(
+        "QLineEdit {"
+        " background: #ffffff;"
+        " border: 1px solid rgba(0, 0, 0, 0.14);"
+        " border-radius: 8px;"
+        " color: #374151;"
+        " font-family: 'Segoe UI Mono', 'Consolas';"
+        " font-size: 13px;"
+        " padding: 0 10px;"
+        "}"
+    );
+
+    QVBoxLayout* selectionValueLayout = new QVBoxLayout();
+    selectionValueLayout->setContentsMargins(0, 0, 0, 0);
+    selectionValueLayout->setSpacing(0);
+    selectionValueLayout->addStretch();
+    selectionValueLayout->addWidget(m_selectionColorValueEdit, 0, Qt::AlignVCenter);
+    selectionValueLayout->addStretch();
+
+    selectionActionLayout->addWidget(m_selectionColorWheel);
+    selectionActionLayout->addLayout(selectionValueLayout);
+    selectionActionLayout->addStretch();
+
+    connect(m_selectionColorWheel, &FluentColorWheel::colorChanged, this, [this](const QColor& color){
+        m_selectionPreviewColor = color;
+        if (m_selectionColorValueEdit) {
+            m_selectionColorValueEdit->setText(color.name().toUpper());
+        }
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleColor", color.name());
+        settings.sync();
+        updateDesktopSelectionPreview();
+    });
+
+    m_selectionColorCard = new FluentCard(u8"\uE790", tr("Selection Rectangle Color"), tr("Adjust the drag selection color and preview the result in real time"), selectionActionSide, page);
+    m_selectionColorCard->setFixedHeight(120);
+    layout->addWidget(m_selectionColorCard);
+    updateDesktopSelectionPreview();
+
     FluentToggleSwitch* arrowToggle = new FluentToggleSwitch(page);
-    
-    // Simplification: Always use the instance state as the source of truth
+
     ListView* lv = ListView::instance();
     bool showArrow = lv ? lv->shortcutArrowVisible() : true;
-    
+
     arrowToggle->setChecked(showArrow);
-    
+
     connect(arrowToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
         ListView* lv = ListView::instance();
         if (lv) lv->setShortcutArrowVisible(checked);
@@ -345,7 +447,6 @@ QWidget* SettingUI::createDesktopPage() {
     m_shortcutArrowCard = new FluentCard(u8"\uE724", tr("Shortcut Arrows"), tr("Toggle visibility of the small arrow on desktop shortcut icons"), arrowToggle, page);
     layout->addWidget(m_shortcutArrowCard);
 
-    // Double Click to Hide Icons
     FluentToggleSwitch* hideToggle = new FluentToggleSwitch(page);
     bool doubleClickHide = lv ? lv->isDoubleClickHideIconsEnabled() : true;
     hideToggle->setChecked(doubleClickHide);
@@ -744,6 +845,48 @@ LinBox* SettingUI::controlSourceBox() const {
     return nullptr;
 }
 
+void SettingUI::updateDesktopSelectionPreview()
+{
+    if (!m_desktopSelectionPreview) {
+        return;
+    }
+
+    const QSize previewSize = m_desktopSelectionPreview->size().expandedTo(QSize(220, 88));
+    QPixmap canvas(previewSize);
+    canvas.fill(Qt::transparent);
+
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    QLinearGradient background(0, 0, previewSize.width(), previewSize.height());
+    background.setColorAt(0.0, QColor(245, 248, 252));
+    background.setColorAt(1.0, QColor(233, 239, 247));
+    painter.fillRect(canvas.rect(), background);
+
+    const QVector<QRect> iconRects = {
+        QRect(24, 18, 26, 26),
+        QRect(68, 24, 26, 26),
+        QRect(122, 16, 26, 26),
+        QRect(164, 28, 26, 26)
+    };
+    painter.setPen(Qt::NoPen);
+    for (const QRect& iconRect : iconRects) {
+        painter.setBrush(QColor(255, 255, 255, 145));
+        painter.drawRoundedRect(iconRect, 7, 7);
+    }
+
+    const QColor fillColor = desktopSelectionFillColor(m_selectionPreviewColor);
+    const QColor borderColor = desktopSelectionBorderColor(m_selectionPreviewColor);
+    const QRect selectionRect(52, 14, 110, 54);
+    painter.fillRect(selectionRect, fillColor);
+    painter.setPen(QPen(borderColor, 1));
+    painter.drawRect(selectionRect.adjusted(0, 0, -1, -1));
+
+    painter.end();
+    m_desktopSelectionPreview->setPixmap(canvas);
+}
+
 void SettingUI::updatePreviewStyle() {
     if (!m_previewBackground) return;
 
@@ -968,6 +1111,10 @@ void SettingUI::retranslateUi() {
         m_languageCard->setTitle(tr("Display Language"));
         m_languageCard->setSubtitle(tr("Choose which language is used in the interface. Restart LinDesk to apply changes."));
     }
+    if (m_selectionColorCard) {
+        m_selectionColorCard->setTitle(tr("Selection Rectangle Color"));
+        m_selectionColorCard->setSubtitle(tr("Adjust the drag selection color and preview the result in real time"));
+    }
     if (m_shortcutArrowCard) {
         m_shortcutArrowCard->setTitle(tr("Shortcut Arrows"));
         m_shortcutArrowCard->setSubtitle(tr("Toggle visibility of the small arrow on desktop shortcut icons"));
@@ -1007,3 +1154,9 @@ void SettingUI::retranslateUi() {
 // Legacy paint event removed - handled by FluentBaseWidget
 
 // NativeEvent has been gracefully moved to FluentBaseWidget
+
+
+
+
+
+

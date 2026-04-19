@@ -1,4 +1,6 @@
-#include "desktop/SelectArea.h"
+﻿#include "desktop/SelectArea.h"
+#include <QCoreApplication>
+#include <QSettings>
 
 SelectArea::SelectArea(QWidget* parent)
     : QWidget(parent)
@@ -35,9 +37,16 @@ void SelectArea::paintEvent(QPaintEvent* event)
         return;
     }
 
+    QSettings settings(QCoreApplication::applicationDirPath() + "/config.ini", QSettings::IniFormat);
+    const QColor baseColor(settings.value("Desktop/SelectionRectangleColor", QStringLiteral("#64A0F0")).toString());
+    QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
+    QColor borderColor = fillColor.darker(110);
+    fillColor.setAlpha(70);
+    borderColor.setAlpha(180);
+
     QPainter painter(this);
-    painter.setPen(QPen(QColor(80, 140, 230, 180), 1));
-    painter.fillRect(m_rect, QColor(100, 160, 240, 70));
+    painter.setPen(QPen(borderColor, 1));
+    painter.fillRect(m_rect, fillColor);
     painter.drawRect(m_rect.adjusted(0, 0, -1, -1));
 }
 

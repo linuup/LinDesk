@@ -1,6 +1,7 @@
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
+#include "ui/QmlTestWindow.h"
 #include "ui/SoftDesktopTextPreview.h"
 #include "ui/SoftDesktopTextRenderer.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
@@ -56,7 +57,20 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     });
     root->addWidget(new FluentCard(u8"\uE71D", "Desktop Icon Settings", "Access the native Windows dialog to control which system icons appear on your desktop", deskIconBtn, scrollContent));
 
-    // ========== 2. Embedded Desktop Mode ==========
+    // ========== 2. Open QML Test ==========
+    QPushButton* qmlTestBtn = new QPushButton("Open QML Test", scrollContent);
+    qmlTestBtn->setFixedSize(140, 32);
+    qmlTestBtn->setCursor(Qt::PointingHandCursor);
+    qmlTestBtn->setStyleSheet("background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-weight: 500; color: #0078d4;");
+    connect(qmlTestBtn, &QPushButton::clicked, this, []() {
+        auto* window = new QmlTestWindow();
+        window->show();
+        window->raise();
+        window->activateWindow();
+    });
+    root->addWidget(new FluentCard(u8"\uE943", "QML Test Page", "Open a small Qt Quick test window to verify QML is available inside the project", qmlTestBtn, scrollContent));
+
+    // ========== 3. Embedded Desktop Mode ==========
     LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
 
     m_embedToggle = new FluentToggleSwitch(scrollContent);
@@ -72,7 +86,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
 
     root->addWidget(new FluentCard(u8"\uE7F4", "Embedded Desktop Mode", "Attach window to the Windows worker window layer", m_embedToggle, scrollContent));
 
-    // ========== 3. Refresh Desktop ==========
+    // ========== 4. Refresh Desktop ==========
     QPushButton* refreshBtn = new QPushButton("Refresh", scrollContent);
     refreshBtn->setFixedSize(80, 32);
     refreshBtn->setCursor(Qt::PointingHandCursor);
@@ -85,7 +99,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
 
     root->addWidget(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render the desktop icon layout", refreshBtn, scrollContent));
 
-    // ========== 4. Persistence Toggle ==========
+    // ========== 5. Persistence Toggle ==========
     m_persistToggle = new FluentToggleSwitch(scrollContent);
     m_persistToggle->setCursor(Qt::PointingHandCursor);
     m_persistToggle->setChecked(m_listView ? m_listView->persistenceEnabled() : true, false);
@@ -95,7 +109,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     });
     root->addWidget(new FluentCard(u8"\uE71B", "Data Persistence", "Automatically load and save box and icon info from storage", m_persistToggle, scrollContent));
 
-    // ========== 5. Row Spacing Slider ==========
+    // ========== 6. Row Spacing Slider ==========
     root->addSpacing(6);
     root->addWidget(new QLabel("Row Spacing", scrollContent));
     auto* rowLayout = new QHBoxLayout();
@@ -107,7 +121,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     rowLayout->addWidget(m_rowValueLabel);
     root->addLayout(rowLayout);
 
-    // ========== 6. Column Spacing Slider ==========
+    // ========== 7. Column Spacing Slider ==========
     root->addWidget(new QLabel("Column Spacing", scrollContent));
     auto* colLayout = new QHBoxLayout();
     m_colSlider = new QSlider(Qt::Horizontal, scrollContent);
@@ -118,7 +132,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     colLayout->addWidget(m_colValueLabel);
     root->addLayout(colLayout);
 
-    // ========== 7. Desktop Text Blend Test ==========
+    // ========== 8. Desktop Text Blend Test ==========
     auto* previewTitle = new QLabel("Desktop Text Blend Test", scrollContent);
     previewTitle->setStyleSheet("font-size: 14px; font-weight: 600; color: #111827; margin-top: 6px;");
     root->addWidget(previewTitle);

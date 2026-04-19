@@ -56,7 +56,8 @@ private:
     static QVector<QRect> buildLineRects(const QRect& rect,
                                          const QFontMetrics& metrics,
                                          int lineCount,
-                                         int lineSpacingAdjust);
+                                         int lineSpacingAdjust,
+                                         Qt::Alignment alignment);
     static QStringList elideLines(const QStringList& lines,
                                   const QFontMetrics& metrics,
                                   int width,

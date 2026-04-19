@@ -18,6 +18,8 @@ public:
         ListMode
     };
 
+    static constexpr int kIconTextGap = 8;
+
     explicit ListItem(QWidget* parent = nullptr);
 
     // 有参构造函数 - 通过 ListItemData 初始化
@@ -64,13 +66,17 @@ public:
     void updateLocationInfo(QPoint pos);
     void checkSelf();
     void unCheckSelf();
+    void setFocused(bool focused);
+    void setCutMarked(bool cutMarked);
     void openItem();
     void refreshIcon(); // Refresh icon from system
     QRect iconRect() const;
-      QRect textRect() const;
-      QRect renameEditorRect() const;
+    QRect textRect() const;
+    QRect renameEditorRect() const;
+    int visibleTextHeight() const;
+    QRect selectionContentRect() const;
     void refreshTextLabelPresentation();
-      void setFullNameExpanded(bool expanded);
+    void setFullNameExpanded(bool expanded);
     bool isFullNameExpanded() const { return m_expandFullNameOnSelect; }
     void setExpandedPreviewText(const QString& text);
 
@@ -85,6 +91,7 @@ public:
     bool isReady = false;
     bool isSelected = false; // 是否被选中
     bool isHovered = false;  // 是否被鼠标悬浮
+    bool isFocused = false;  // 是否为当前焦点项
 
 
 signals:
@@ -131,7 +138,12 @@ private:
      bool m_expandFullNameOnSelect = false;
      QString m_expandedPreviewText;
      QSize m_baseItemSize;
+     int m_visibleTextHeight = 0;
      QString m_pendingLabelText;
      bool m_labelRefreshScheduled = false;
+
+     int desiredIconModeHeight() const;
+     void applyEffectiveGeometry();
+     void requestOwningBoxLayoutRefresh();
 };
 #endif // LISTITEM_H

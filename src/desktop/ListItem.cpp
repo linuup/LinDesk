@@ -4,6 +4,7 @@
 #include "desktop/ListView.h"
 #include "desktop/FilenameEditor.h"
 #include "desktop/RenameManager.h"
+#include "box/LinBox.h"
 #include "ui/SoftDesktopTextRenderer.h"
 #include <QFontMetrics>
 #include <QRegularExpression>
@@ -170,26 +171,19 @@ QString buildVisibleDisplayName(const ListItemData& data,
     return data.fullName();
 }
 
-int fixedIconSideForMode(ListItem::LayoutMode layoutMode)
+int fixedIconSideForMode(ListItem::LayoutMode layoutMode, int itemWidth)
 {
     if (layoutMode == ListItem::LayoutMode::ListMode) {
         return 20;
     }
 
-    ListView* listView = ListView::instance();
-    if (!listView) {
-        return 48;
-    }
-
-    switch (listView->viewMode()) {
-    case ListView::ViewMode::LargeIcon:
+    if (itemWidth >= ListView::kLargeIconW) {
         return 96;
-    case ListView::ViewMode::SmallIcon:
-        return 32;
-    case ListView::ViewMode::MediumIcon:
-    default:
-        return 48;
     }
+    if (itemWidth <= ListView::kSmallIconW) {
+        return 32;
+    }
+    return 48;
 }
 
 QSize baseItemSizeForMode(ListItem::LayoutMode layoutMode)
@@ -280,6 +274,12 @@ QStringList buildDesktopLines(const QString& text, const QFontMetrics& metrics, 
     return lines;
 }
 
+int computeDesktopTextHeight(const QString& text, const QFontMetrics& metrics, int width, int maxLines)
+{
+    const QStringList lines = buildDesktopLines(text, metrics, width, maxLines);
+    return qMax(1, lines.size()) * metrics.lineSpacing();
+}
+
 }
 
 ListItem::ListItem(QWidget* parent)
@@ -291,19 +291,19 @@ ListItem::ListItem(QWidget* parent)
 	setAttribute(Qt::WA_TranslucentBackground);
 	setStyleSheet("background: transparent;");
 
-	// 设置透明并允许透过窗口看到后面的内容
-	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
+	// Keep the item transparent so only icon and text are painted.
+	//setAttribute(Qt::WA_TransparentForMouseEvents);
+	//setAttribute(Qt::WA_OpaquePaintEvent);
 	//setStyleSheet("background-color:rgb(25,255,255);");
 	//setAttribute(Qt::WA_TransparentForMouseEvents);
 
 
-	// 创建阴影滤镜实现描边效果
+	// Add a subtle shadow so white desktop text stays readable.
 	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
 	
-	shadowEffect->setBlurRadius(5);           // 增加模糊半径，让效果更柔和
-	shadowEffect->setColor(QColor(0, 0, 0, 200)); // 使用更深的黑色，增加不透明度
-	shadowEffect->setOffset(-1, 1);              // 增加偏移量，让描边更明显
+	shadowEffect->setBlurRadius(5);
+	shadowEffect->setColor(QColor(0, 0, 0, 200));
+	shadowEffect->setOffset(-1, 1);
 
 
 
@@ -311,7 +311,7 @@ ListItem::ListItem(QWidget* parent)
 	textLabel->setGraphicsEffect(shadowEffect);
 
 
-	// 设置微软雅黑字体
+	// Match the desktop label font.
 	QFont yaheiFont;
 	yaheiFont.setFamily("Microsoft YaHei UI");
 	yaheiFont.setPointSize(9);
@@ -343,18 +343,18 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 	setAttribute(Qt::WA_TranslucentBackground);
 	setStyleSheet("background: transparent;");
 
-	// 设置透明并允许透过窗口看到后面的内容
-	//setAttribute(Qt::WA_TransparentForMouseEvents); // 允许点击透过窗口
-	//setAttribute(Qt::WA_OpaquePaintEvent);  // 启用背景透明化
+	// Keep the item transparent so only icon and text are painted.
+	//setAttribute(Qt::WA_TransparentForMouseEvents);
+	//setAttribute(Qt::WA_OpaquePaintEvent);
 	//setStyleSheet("background-color:rgb(25,255,255);");
 	//setAttribute(Qt::WA_TransparentForMouseEvents);
 
-	// 创建阴影滤镜实现描边效果
+	// Add a subtle shadow so white desktop text stays readable.
 	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
 
-	shadowEffect->setBlurRadius(5);           // 增加模糊半径，让效果更柔和
-	shadowEffect->setColor(QColor(0, 0, 0, 200)); // 使用更深的黑色，增加不透明度
-	shadowEffect->setOffset(-1, 1);              // 增加偏移量，让描边更明显
+	shadowEffect->setBlurRadius(5);
+	shadowEffect->setColor(QColor(0, 0, 0, 200));
+	shadowEffect->setOffset(-1, 1);
 
 
 
@@ -362,7 +362,7 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 	textLabel->setGraphicsEffect(shadowEffect);
 
 
-	// 设置微软雅黑字体
+	// Match the desktop label font.
 	QFont yaheiFont;
 	yaheiFont.setFamily("Microsoft YaHei UI");
 	yaheiFont.setPointSize(9);
@@ -385,7 +385,7 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 ListItem::~ListItem()
 {
 	this->isReady = false;
-    // 子控件 (m_iconWidget, textLabel) 会被 Qt 自动删除，无需手动 delete
+    // Qt destroys child widgets automatically.
 }
 
 
@@ -444,13 +444,13 @@ void ListItem::initData()
 			int leftMargin;
 			
 			if (m_layoutMode == LayoutMode::IconMode) {
-				iconSide = qBound(16, fixedIconSideForMode(m_layoutMode), 128);
+				iconSide = qBound(16, fixedIconSideForMode(m_layoutMode, m_itemSize.width()), 128);
 				iconSide = qMin(iconSide, m_itemSize.width() - 4);
-				topMargin = 2;
+				topMargin = 4;
 				leftMargin = (m_itemSize.width() - iconSide) / 2;
 			} else {
 				// List Mode: standard list icon size (20px in 30px row)
-				iconSide = fixedIconSideForMode(m_layoutMode);
+				iconSide = fixedIconSideForMode(m_layoutMode, m_itemSize.width());
 				topMargin = (m_itemSize.height() - iconSide) / 2;
 				leftMargin = 8;
 			}
@@ -548,36 +548,21 @@ void ListItem::initData()
         if (m_layoutMode == LayoutMode::IconMode) {
             const QSize fallbackBaseSize = baseItemSizeForMode(m_layoutMode);
             const int baseWidth = m_baseItemSize.width() > 0 ? m_baseItemSize.width() : fallbackBaseSize.width();
-            const int baseHeight = m_baseItemSize.height() > 0 ? m_baseItemSize.height() : fallbackBaseSize.height();
-            const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode), 128), baseWidth - 4);
-            const QRect iconArea((baseWidth - iconSide) / 2, 2, iconSide, iconSide);
             const int textWidth = qMax(10, baseWidth - 4);
             const QFontMetrics labelMetrics(textLabel->font());
             int textHeight = 0;
-            const bool isBoxItem = !m_boxId.isEmpty();
-            const int textTopGap = isBoxItem ? 2 : 4;
             if (m_expandFullNameOnSelect) {
                 const QString expandedText = m_expandedPreviewText.isEmpty() ? m_baseName : m_expandedPreviewText;
-                if (isBoxItem) {
-                    const QStringList lines = buildDesktopLines(expandedText, labelMetrics, textWidth, 64);
-                    textHeight = qMax(1, lines.size()) * labelMetrics.lineSpacing();
-                } else {
-                    textHeight = FilenameEditor::heightForText(expandedText, textLabel->font(), textWidth);
-                }
+                textHeight = computeDesktopTextHeight(expandedText, labelMetrics, textWidth, 64);
             } else {
-                const QStringList lines = buildDesktopLines(m_baseName, labelMetrics, textWidth, 2);
-                const int lineCount = qMax(1, lines.size());
-                textHeight = lineCount * labelMetrics.lineSpacing();
+                textHeight = computeDesktopTextHeight(m_baseName, labelMetrics, textWidth, 2);
             }
-            const int desiredHeight = qMax(baseHeight, iconArea.bottom() + textTopGap + textHeight);
-
-            if (m_itemSize.width() != baseWidth || m_itemSize.height() != desiredHeight) {
-                m_itemSize = QSize(baseWidth, desiredHeight);
-                resize(m_itemSize);
-                updateLocationInfo(m_itemPos);
-            }
+            m_visibleTextHeight = textHeight;
+        } else if (textLabel) {
+            m_visibleTextHeight = QFontMetrics(textLabel->font()).lineSpacing();
         }
 
+        applyEffectiveGeometry();
         refreshTextLabelPresentation();
 
         if (isSelected || m_expandFullNameOnSelect) {
@@ -637,14 +622,12 @@ void ListItem::updateLocationInfo(QPoint pos)
 	this->setItemPos(pos);
 	this->move(pos);
 	m_itemRect = QRect(pos, m_itemSize);
-	
-	// Shrink less in ListMode to allow easier clicking and dragging on thin rows
-	int shrinkSize = (m_layoutMode == LayoutMode::IconMode) ? 15 : 2; 
-	m_chooseRect = m_itemRect.adjusted(shrinkSize, shrinkSize, -shrinkSize, -shrinkSize);
+
+    const QRect chooseRectLocal = selectionContentRect();
+	m_chooseRect = QRect(pos + chooseRectLocal.topLeft(), chooseRectLocal.size());
 }
 
-// resetPersistentRenderState 和 applyPersistentRenderState 已移除
-// 现在统一使用 m_itemPos 和 m_boxId，通过 updateLocationInfo 和 setBoxId 管理
+// Persistent render state is tracked with m_itemPos and m_boxId.
 
 void ListItem::checkSelf()
 {
@@ -658,9 +641,28 @@ void ListItem::unCheckSelf()
     m_expandFullNameOnSelect = false;
     m_expandedPreviewText.clear();
     initData();
+    requestOwningBoxLayoutRefresh();
 	if (this->isReady == true) {
 		update();
 	}
+}
+
+void ListItem::setFocused(bool focused)
+{
+    if (isFocused == focused) {
+        return;
+    }
+    isFocused = focused;
+    update();
+}
+
+void ListItem::setCutMarked(bool cutMarked)
+{
+    if (property("cutMarked").toBool() == cutMarked) {
+        return;
+    }
+    setProperty("cutMarked", cutMarked);
+    update();
 }
 
 void ListItem::openItem()
@@ -712,6 +714,7 @@ void ListItem::setFullNameExpanded(bool expanded)
         m_expandedPreviewText.clear();
     }
     initData();
+    requestOwningBoxLayoutRefresh();
     update();
 }
 
@@ -722,6 +725,7 @@ void ListItem::setExpandedPreviewText(const QString& text)
     }
     m_expandedPreviewText = text;
     initData();
+    requestOwningBoxLayoutRefresh();
     update();
 }
 
@@ -740,17 +744,39 @@ void ListItem::refreshTextLabelPresentation()
     textLabel->hide();
 }
 
+int ListItem::visibleTextHeight() const
+{
+    return m_visibleTextHeight;
+}
+
+QRect ListItem::selectionContentRect() const
+{
+    if (m_layoutMode != LayoutMode::IconMode) {
+        return rect().adjusted(2, 2, -2, -2);
+    }
+
+    const QRect iconArea = iconRect();
+    const QRect textArea = textRect();
+    const int textHeight = qMax(1, m_visibleTextHeight);
+    const QRect visibleTextRect(
+        textArea.left(),
+        textArea.top(),
+        textArea.width(),
+        qMin(textHeight, textArea.height()));
+    return iconArea.united(visibleTextRect);
+}
+
 QRect ListItem::iconRect() const
 {
     if (m_layoutMode == LayoutMode::ListMode) {
-        const int iconSide = fixedIconSideForMode(m_layoutMode);
+        const int iconSide = fixedIconSideForMode(m_layoutMode, width());
         const int topMargin = (height() - iconSide) / 2;
         return QRect(8, topMargin, iconSide, iconSide);
     }
 
-    const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode), 128), width() - 4);
+    const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode, width()), 128), width() - 4);
     const int leftMargin = (width() - iconSide) / 2;
-    return QRect(leftMargin, 2, iconSide, iconSide);
+    return QRect(leftMargin, 1, iconSide, iconSide);
 }
 
 QRect ListItem::textRect() const
@@ -760,7 +786,7 @@ QRect ListItem::textRect() const
     }
 
     const QRect iconArea = iconRect();
-    const int top = iconArea.bottom() + 4;
+    const int top = iconArea.bottom() + ListItem::kIconTextGap;
     return QRect(2, top, qMax(10, width() - 4), qMax(18, height() - top));
 }
 
@@ -769,6 +795,48 @@ QRect ListItem::renameEditorRect() const
     QRect rect = textRect();
     rect.setHeight(qMax(22, rect.height()));
     return rect;
+}
+
+int ListItem::desiredIconModeHeight() const
+{
+    if (m_layoutMode != LayoutMode::IconMode) {
+        return m_baseItemSize.height();
+    }
+
+    const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode, m_baseItemSize.width()), 128), m_baseItemSize.width() - 4);
+    const int textTop = 1 + iconSide + ListItem::kIconTextGap;
+    const int lineHeight = textLabel ? QFontMetrics(textLabel->font()).lineSpacing() : fontMetrics().lineSpacing();
+    const int textHeight = qMax(m_visibleTextHeight, lineHeight);
+    return textTop + textHeight + 2;
+}
+
+void ListItem::applyEffectiveGeometry()
+{
+    QSize effectiveSize = m_baseItemSize;
+    if (m_layoutMode == LayoutMode::IconMode) {
+        effectiveSize.setHeight(desiredIconModeHeight());
+    }
+
+    m_itemSize = effectiveSize;
+    if (QWidget::size() != effectiveSize) {
+        resize(effectiveSize);
+    }
+
+    if (parentWidget()) {
+        updateLocationInfo(m_itemPos);
+    }
+}
+
+void ListItem::requestOwningBoxLayoutRefresh()
+{
+    QWidget* ancestor = parentWidget();
+    while (ancestor) {
+        if (LinBox* box = qobject_cast<LinBox*>(ancestor)) {
+            box->refreshLayout();
+            break;
+        }
+        ancestor = ancestor->parentWidget();
+    }
 }
 
 void ListItem::mousePressEvent(QMouseEvent* event)
@@ -813,81 +881,71 @@ void ListItem::leaveEvent(QEvent* event) {
 }
 
 void ListItem::paintEvent(QPaintEvent* event) {
-    // 如果item不可见或未准备好，直接返回，不进行绘制
+    // Skip painting until the item has valid data.
     if (!this->isVisible() || !this->isReady) {
         return;
     }
 	//if (!event->region().intersects(rect())) {
-	//    return; // 跳过无关绘制
+	//    return;
 	//}
 	//qDebug() << "ListItem painted";
 	QPainter painter(this);
-	painter.setRenderHint(QPainter::Antialiasing);  // 启用抗锯齿
-	QRect rect = this->rect();
+	painter.setRenderHint(QPainter::Antialiasing);
+    const QRect rect = this->rect();
 	QPoint pos = this->pos();
 	QSize size = this->size();
-	// 计算文字宽度并居中
+    const QRect contentBounds = selectionContentRect();
+    const QRect outerHighlightRect = contentBounds.adjusted(-3, -3, 3, 3);
+    const QRect innerHighlightRect = contentBounds.adjusted(1, 1, -1, -1);
 
-	// 准备文字绘制变量
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 80, 80, 32));
+    //painter.drawRoundedRect(rect.adjusted(0, 0, -1, -1), 4, 4);
+	// Prepare label painting.
 	QFont labelFont = textLabel ? textLabel->font() : font();
 	painter.setFont(labelFont);
+    const bool isCutMarked = property("cutMarked").toBool();
+    if (isCutMarked) {
+        painter.setOpacity(0.55);
+    }
 	
 	
 
-	//给itemRect画个高亮
+	// Paint selection and hover around the real icon and text bounds.
 	if (isSelected) {
-		// Windows桌面图标选中效果通常包括：
-		// 1. 半透明蓝色背景
-		// 2. 浅蓝色边框
-		// 3. 圆角效果
-		// 4. 周围高亮
-
-		// 方法1：现代Windows效果（半透明蓝色背景 + 边框）
-
-
-		// 设置填充颜色为半透明蓝色
-		int width = m_itemSize.width();
-		int height = m_itemSize.height();
-
-		// 第一层：外发光（最大范围）
 		painter.setPen(Qt::NoPen);
 		painter.setBrush(QColor(100, 150, 255, 30));
-		painter.drawRoundedRect(-3, -3, width + 6, height + 6, 8, 8);
+		painter.drawRoundedRect(outerHighlightRect, 8, 8);
 
-		// 第二层：中发光
 		/*painter.setBrush(QColor(80, 140, 255, 60));
 		painter.drawRoundedRect(-1, -1, width + 2, height + 2, 6, 6);*/
 
-		// 第三层：内发光（主背景）
 		painter.setBrush(QColor(255, 255, 255, 90));
-		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, 2, 2);
 
-		// 第四层：高亮边框
 		painter.setPen(QPen(QColor(255, 255, 255, 150), 0.7));
 		painter.setBrush(Qt::NoBrush);
-		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, 2, 2);
 	}
-	else if (isHovered) {
-		// 鼠标悬浮效果（参照选中，但更浅，且增加白色细虚线边框）
-		int width = m_itemSize.width();
-		int height = m_itemSize.height();
-
-		// 背景：一层极浅的背景
+	if (isHovered) {
 		painter.setPen(Qt::NoPen);
-		painter.setBrush(QColor(255, 255, 255, 25)); // 保持极淡背景
-		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+		painter.setBrush(QColor(255, 255, 255, 25));
+		painter.drawRoundedRect(innerHighlightRect, 2, 2);
 
-		// 边框：特别细的白色点线
-		QPen dashPen(QColor(255, 255, 255, 100)); // 略微增加不透明度以便看清虚线
-		dashPen.setWidthF(0.8);                  // 特别细
-		dashPen.setStyle(Qt::DotLine);          // 点线风格
-		dashPen.setDashPattern(QVector<qreal>({1.0, 1.0})); // 设置点线模式
-		dashPen.setCapStyle(Qt::FlatCap);        // 点线端点平整
+		QPen dashPen(QColor(255, 255, 255, 100));
+		dashPen.setWidthF(0.8);
+		dashPen.setStyle(Qt::DotLine);
+		dashPen.setDashPattern(QVector<qreal>({1.0, 1.0}));
+		dashPen.setCapStyle(Qt::FlatCap);
 		
 		painter.setPen(dashPen);
 		painter.setBrush(Qt::NoBrush);
-		painter.drawRoundedRect(1, 1, width - 2, height - 2, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, 2, 2);
 	}
+
+    if (isCutMarked) {
+        painter.setOpacity(1.0);
+    }
 
     if (RenameManager::instance()->activeItem() != this) {
         const QRect labelRect = textRect();
@@ -915,3 +973,4 @@ void ListItem::paintEvent(QPaintEvent* event) {
 
 
 }
+

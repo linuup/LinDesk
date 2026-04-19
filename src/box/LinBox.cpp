@@ -15,6 +15,8 @@
 #include <QWindow>
 #include <QStyleFactory>
 #include <QFileInfo>
+#include <QClipboard>
+#include <QMimeData>
 #include <QtMath>
 #include <limits>
 #include <climits>
@@ -80,6 +82,45 @@ bool draggedItemsContainMappedSource(const QVector<ListItem*>& items)
         }
     }
     return false;
+}
+
+constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
+
+QStringList clipboardLocalFilePathsForBox()
+{
+    QStringList filePaths;
+    if (const QClipboard* clipboard = QGuiApplication::clipboard()) {
+        if (const QMimeData* mimeData = clipboard->mimeData()) {
+            if (mimeData->hasUrls()) {
+                for (const QUrl& url : mimeData->urls()) {
+                    if (url.isLocalFile()) {
+                        filePaths.append(QDir::toNativeSeparators(url.toLocalFile()));
+                    }
+                }
+            }
+        }
+    }
+    return filePaths;
+}
+
+bool clipboardContainsCutItemsForBox()
+{
+    const UINT format = RegisterClipboardFormatW(L"Preferred DropEffect");
+    if (!format || !IsClipboardFormatAvailable(format) || !OpenClipboard(nullptr)) {
+        return false;
+    }
+
+    bool isCutOperation = false;
+    if (const HANDLE clipboardData = GetClipboardData(format)) {
+        if (const void* locked = GlobalLock(clipboardData)) {
+            const DWORD effect = *static_cast<const DWORD*>(locked);
+            isCutOperation = (effect & kClipboardPreferredDropEffectMove) != 0;
+            GlobalUnlock(clipboardData);
+        }
+    }
+
+    CloseClipboard();
+    return isCutOperation;
 }
 
 std::vector<std::wstring> toNativeWStringPaths(const QStringList& paths)
@@ -485,10 +526,17 @@ void LinBox::refreshLayout() {
     const int viewportW = (m_scrollArea && m_scrollArea->viewport()) ? m_scrollArea->viewport()->width() : 0;
     const int fallbackContentW = qMax(1, width() - (m_borderWidth * 2));
     const int contentW = qMax(1, viewportW > 0 ? viewportW : fallbackContentW);
+    quint64 visualSignature = 1469598103934665603ULL;
+    for (const ListItem* item : m_items) {
+        const quint64 textHeight = static_cast<quint64>(qMax(0, item ? item->visibleTextHeight() : 0));
+        const quint64 expanded = (item && item->isFullNameExpanded()) ? 0x9e3779b97f4a7c15ULL : 0ULL;
+        visualSignature ^= textHeight + expanded + 0x9e3779b97f4a7c15ULL + (visualSignature << 6) + (visualSignature >> 2);
+    }
     const bool layoutUnchanged =
         m_lastLayoutContentWidth == contentW &&
         m_lastLayoutItemCount == m_items.size() &&
-        m_lastLayoutShowType == m_showType;
+        m_lastLayoutShowType == m_showType &&
+        m_lastLayoutVisualSignature == visualSignature;
 
     if (layoutUnchanged) {
         return;
@@ -497,24 +545,36 @@ void LinBox::refreshLayout() {
     m_isRefreshingLayout = true;
 
     if (m_showType == BoxShowType::Icon_ShowType) {
-        int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
+        const int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
+        const int rows = (m_items.size() + cols - 1) / cols;
+        QVector<int> rowHeights(rows, itemH);
+
         for (int i = 0; i < m_items.size(); ++i) {
-            int row = i / cols;
-            int col = i % cols;
-            const int x = marginLeft + col * (itemW + colSpacing);
-            const int y = marginTop + row * (itemH + rowSpacing);
-            const QPoint targetPos(x, y);
+            const int row = i / cols;
             ListItem* item = m_items[i];
             item->setLayoutMode(ListItem::LayoutMode::IconMode);
-            if (item->size() != QSize(itemW, itemH)) {
-                item->setItemSize(itemW, itemH);
-            }
+            item->setItemSize(itemW, itemH);
+            rowHeights[row] = qMax(rowHeights[row], item->size().height());
+            item->show();
+            item->raise();
+        }
+
+        QVector<int> rowTops(rows, marginTop);
+        for (int row = 1; row < rows; ++row) {
+            rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + rowSpacing;
+        }
+
+        for (int i = 0; i < m_items.size(); ++i) {
+            const int row = i / cols;
+            const int col = i % cols;
+            const int x = marginLeft + col * (itemW + colSpacing);
+            const int y = rowTops[row];
+            const QPoint targetPos(x, y);
+            ListItem* item = m_items[i];
             if (item->pos() != targetPos) {
                 item->move(targetPos);
                 item->updateLocationInfo(targetPos);
             }
-            item->show();
-            item->raise();
         }
     } else {
         int listItemH = 30; 
@@ -546,9 +606,18 @@ void LinBox::refreshLayout() {
     // Update content area height to enable scroll area
     int totalHeight = 0;
     if (m_showType == BoxShowType::Icon_ShowType) {
-        int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
-        int rows = (m_items.size() + cols - 1) / cols;
-        totalHeight = marginTop + rows * (itemH + rowSpacing) + 10;
+        const int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
+        int rowHeightSum = 0;
+        for (int rowStart = 0; rowStart < m_items.size(); rowStart += cols) {
+            int rowMaxHeight = itemH;
+            const int rowEnd = qMin(rowStart + cols, m_items.size());
+            for (int i = rowStart; i < rowEnd; ++i) {
+                rowMaxHeight = qMax(rowMaxHeight, m_items[i]->size().height());
+            }
+            rowHeightSum += rowMaxHeight;
+        }
+        const int rows = (m_items.size() + cols - 1) / cols;
+        totalHeight = marginTop + rowHeightSum + qMax(0, rows - 1) * rowSpacing + 10;
     } else {
         totalHeight = marginTop + m_items.size() * (30 + 2) + 10;
     }
@@ -559,6 +628,7 @@ void LinBox::refreshLayout() {
     m_lastLayoutContentWidth = contentW;
     m_lastLayoutItemCount = m_items.size();
     m_lastLayoutShowType = m_showType;
+    m_lastLayoutVisualSignature = visualSignature;
     m_isRefreshingLayout = false;
     
     // Ensure structural layout changes are persisted
@@ -1704,8 +1774,150 @@ void LinBox::dropEvent(QDropEvent* event) {
 }
 
 void LinBox::keyPressEvent(QKeyEvent* event) {
+    ListView* lv = ListView::instance();
+    if (lv) {
+        const bool extendSelection = event->modifiers() & Qt::ShiftModifier;
+        const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
+        const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
+        if (event->matches(QKeySequence::SelectAll)) {
+            lv->applySelectionState(lv->selectableItemsForHost(this), nullptr, false);
+            event->accept();
+            return;
+        }
+        if (event->matches(QKeySequence::Copy)) {
+            lv->writeSelectionToClipboard(false);
+            event->accept();
+            return;
+        }
+        if (event->matches(QKeySequence::Cut)) {
+            lv->writeSelectionToClipboard(true);
+            event->accept();
+            return;
+        }
+        if (event->matches(QKeySequence::Paste)) {
+            lv->clearCutMarks();
+            const QStringList filePaths = clipboardLocalFilePathsForBox();
+            if (filePaths.isEmpty()) {
+                event->accept();
+                return;
+            }
+
+            const bool isCutOperation = clipboardContainsCutItemsForBox();
+            const bool preferShortcut = lv->shouldCreateShortcutForExternalDrop(filePaths);
+            bool ok = false;
+
+            if (isFolderMapped()) {
+                const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
+                const std::vector<std::wstring> srcPaths = toNativeWStringPaths(filePaths);
+                if (preferShortcut) {
+                    ok = lv->createShortcutsInFolder(filePaths, targetFolder);
+                } else if (isCutOperation) {
+                    ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
+                } else {
+                    ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
+                }
+                if (ok) {
+                    lv->reloadMappedFolderBox(this);
+                    refreshLayout();
+                    update();
+                }
+            } else {
+                ok = lv->importPathsToBox(filePaths, this, !isCutOperation, -1, preferShortcut);
+                if (ok) {
+                    refreshLayout();
+                    update();
+                    raise();
+                }
+            }
+
+            if (ok && isCutOperation) {
+                QGuiApplication::clipboard()->clear();
+            }
+            event->accept();
+            return;
+        }
+        if (shortcutPaste) {
+            lv->clearCutMarks();
+            const QStringList filePaths = clipboardLocalFilePathsForBox();
+            if (filePaths.isEmpty()) {
+                event->accept();
+                return;
+            }
+
+            bool ok = false;
+            if (isFolderMapped()) {
+                const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
+                ok = lv->createShortcutsInFolder(filePaths, targetFolder);
+                if (ok) {
+                    lv->reloadMappedFolderBox(this);
+                    refreshLayout();
+                    update();
+                }
+            } else {
+                ok = lv->importPathsToBox(filePaths, this, true, -1, true);
+                if (ok) {
+                    refreshLayout();
+                    update();
+                    raise();
+                }
+            }
+
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Escape) {
+            lv->clearSelectionState();
+            RenameManager::instance()->cancelRename();
+            event->accept();
+            return;
+        }
+        if ((event->modifiers() & Qt::AltModifier) && event->key() == Qt::Key_Return) {
+            ListItem* target = lv->focusedItem() ? lv->focusedItem() : (lv->selectedItems().isEmpty() ? nullptr : lv->selectedItems().first());
+            if (target && !target->filePath().isEmpty()) {
+                CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(QDir::toNativeSeparators(target->filePath()).utf16()), Z_PROPERTIES);
+                event->accept();
+                return;
+            }
+        }
+        if (ctrlPressed && event->key() == Qt::Key_Space) {
+            if (lv->focusedItem()) {
+                lv->toggleItemSelection(lv->focusedItem());
+            }
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            ListItem* target = lv->focusedItem() ? lv->focusedItem() : (lv->selectedItems().isEmpty() ? nullptr : lv->selectedItems().first());
+            if (target) {
+                lv->clearCutMarks();
+                target->openItem();
+                event->accept();
+                return;
+            }
+        }
+        if (event->key() == Qt::Key_Left || event->key() == Qt::Key_Up) {
+            lv->moveFocusInHost(this,
+                event->key() == Qt::Key_Left ? ListView::FocusMoveDirection::Left : ListView::FocusMoveDirection::Up,
+                extendSelection,
+                ctrlPressed);
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Right || event->key() == Qt::Key_Down) {
+            lv->moveFocusInHost(this,
+                event->key() == Qt::Key_Right ? ListView::FocusMoveDirection::Right : ListView::FocusMoveDirection::Down,
+                extendSelection,
+                ctrlPressed);
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_F2 && lv->selectedItems().size() == 1) {
+            RenameManager::instance()->startRename(lv->selectedItems().first());
+            event->accept();
+            return;
+        }
+    }
     if (event->key() == Qt::Key_Delete) {
-        ListView* lv = ListView::instance();
         if (lv) {
             bool shiftPressed = event->modifiers() & Qt::ShiftModifier;
             lv->onMenuDelete(shiftPressed);

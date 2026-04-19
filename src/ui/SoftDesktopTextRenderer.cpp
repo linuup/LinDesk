@@ -45,7 +45,7 @@ void SoftDesktopTextRenderer::drawText(QPainter* painter,
 
     const QFontMetrics metrics(font);
     const QStringList elidedLines = elideLines(filteredLines, metrics, rect.width(), options.elideMode);
-    const QVector<QRect> lineRects = buildLineRects(rect, metrics, elidedLines.size(), options.lineSpacingAdjust);
+    const QVector<QRect> lineRects = buildLineRects(rect, metrics, elidedLines.size(), options.lineSpacingAdjust, options.alignment);
     if (lineRects.isEmpty()) {
         painter->restore();
         return;
@@ -113,7 +113,7 @@ QImage SoftDesktopTextRenderer::buildTextMask(const QSize& logicalSize,
     maskPainter.setPen(Qt::white);
 
     const QFontMetrics metrics(font);
-    const QVector<QRect> localLineRects = buildLineRects(localTextRect, metrics, lines.size(), options.lineSpacingAdjust);
+    const QVector<QRect> localLineRects = buildLineRects(localTextRect, metrics, lines.size(), options.lineSpacingAdjust, options.alignment);
     for (int i = 0; i < lines.size() && i < localLineRects.size(); ++i) {
         maskPainter.drawText(localLineRects[i], options.alignment, lines[i]);
     }
@@ -196,7 +196,8 @@ void SoftDesktopTextRenderer::blurVertical(const QImage& source, QImage& target,
 QVector<QRect> SoftDesktopTextRenderer::buildLineRects(const QRect& rect,
                                                        const QFontMetrics& metrics,
                                                        int lineCount,
-                                                       int lineSpacingAdjust)
+                                                       int lineSpacingAdjust,
+                                                       Qt::Alignment alignment)
 {
     QVector<QRect> lineRects;
     if (rect.isEmpty() || lineCount <= 0) {
@@ -206,7 +207,12 @@ QVector<QRect> SoftDesktopTextRenderer::buildLineRects(const QRect& rect,
     const int lineHeight = metrics.lineSpacing();
     const int visualLineStep = qMax(1, lineHeight + lineSpacingAdjust);
     const int totalHeight = lineHeight + qMax(0, lineCount - 1) * visualLineStep;
-    const int startY = rect.top() + qMax(0, (rect.height() - totalHeight) / 2);
+    int startY = rect.top();
+    if (alignment & Qt::AlignBottom) {
+        startY = rect.bottom() - totalHeight + 1;
+    } else if (alignment & Qt::AlignVCenter) {
+        startY = rect.top() + qMax(0, (rect.height() - totalHeight) / 2);
+    }
 
     lineRects.reserve(lineCount);
     for (int i = 0; i < lineCount; ++i) {
