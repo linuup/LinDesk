@@ -427,9 +427,30 @@ QWidget* SettingUI::createDesktopPage() {
         updateDesktopSelectionPreview();
     });
 
-    m_selectionColorCard = new FluentCard(u8"\uE790", tr("Selection Rectangle Color"), tr("Adjust the drag selection color and preview the result in real time"), selectionActionSide, page);
-    m_selectionColorCard->setFixedHeight(120);
-    layout->addWidget(m_selectionColorCard);
+    QWidget* selectionColorSection = new QWidget(page);
+    QVBoxLayout* selectionColorSectionLayout = new QVBoxLayout(selectionColorSection);
+    selectionColorSectionLayout->setContentsMargins(8, 4, 8, 4);
+    selectionColorSectionLayout->setSpacing(8);
+
+    m_selectionColorSectionTitle = new QLabel(tr("Selection Rectangle Color"), selectionColorSection);
+    m_selectionColorSectionTitle->setStyleSheet(
+        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-size: 14px;"
+        "font-weight: 600;"
+        "color: #1f2937;"
+    );
+    selectionColorSectionLayout->addWidget(m_selectionColorSectionTitle);
+
+    m_selectionColorSectionSubtitle = new QLabel(tr("Adjust the drag selection color and preview the result in real time"), selectionColorSection);
+    m_selectionColorSectionSubtitle->setWordWrap(true);
+    m_selectionColorSectionSubtitle->setStyleSheet(
+        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-size: 12px;"
+        "color: #616161;"
+    );
+    selectionColorSectionLayout->addWidget(m_selectionColorSectionSubtitle);
+    selectionColorSectionLayout->addWidget(selectionActionSide);
+    layout->addWidget(selectionColorSection);
     updateDesktopSelectionPreview();
 
     FluentToggleSwitch* arrowToggle = new FluentToggleSwitch(page);
@@ -547,10 +568,31 @@ QWidget* SettingUI::createGridPage() {
 
     colorActionLayout->addWidget(colorWheel);
     colorActionLayout->addLayout(colorValueLayout);
-    
-    m_colorCard = new FluentCard(u8"\uE790", tr("Accent Color"), tr("Define the primary theme color for your desktop boxes"), colorActionSide, page);
-    m_colorCard->setFixedHeight(220);
-    layout->addWidget(m_colorCard);
+
+    QWidget* boxColorSection = new QWidget(page);
+    QVBoxLayout* boxColorSectionLayout = new QVBoxLayout(boxColorSection);
+    boxColorSectionLayout->setContentsMargins(8, 4, 8, 4);
+    boxColorSectionLayout->setSpacing(8);
+
+    m_boxColorSectionTitle = new QLabel(tr("Accent Color"), boxColorSection);
+    m_boxColorSectionTitle->setStyleSheet(
+        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-size: 14px;"
+        "font-weight: 600;"
+        "color: #1f2937;"
+    );
+    boxColorSectionLayout->addWidget(m_boxColorSectionTitle);
+
+    m_boxColorSectionSubtitle = new QLabel(tr("Define the primary theme color for your desktop boxes"), boxColorSection);
+    m_boxColorSectionSubtitle->setWordWrap(true);
+    m_boxColorSectionSubtitle->setStyleSheet(
+        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-size: 12px;"
+        "color: #616161;"
+    );
+    boxColorSectionLayout->addWidget(m_boxColorSectionSubtitle);
+    boxColorSectionLayout->addWidget(colorActionSide);
+    layout->addWidget(boxColorSection);
 
     // 2. Transparency Slider (create first for preview connections)
     m_opacitySlider = new QSlider(Qt::Horizontal, page);
@@ -1111,10 +1153,8 @@ void SettingUI::retranslateUi() {
         m_languageCard->setTitle(tr("Display Language"));
         m_languageCard->setSubtitle(tr("Choose which language is used in the interface. Restart LinDesk to apply changes."));
     }
-    if (m_selectionColorCard) {
-        m_selectionColorCard->setTitle(tr("Selection Rectangle Color"));
-        m_selectionColorCard->setSubtitle(tr("Adjust the drag selection color and preview the result in real time"));
-    }
+    if (m_selectionColorSectionTitle) m_selectionColorSectionTitle->setText(tr("Selection Rectangle Color"));
+    if (m_selectionColorSectionSubtitle) m_selectionColorSectionSubtitle->setText(tr("Adjust the drag selection color and preview the result in real time"));
     if (m_shortcutArrowCard) {
         m_shortcutArrowCard->setTitle(tr("Shortcut Arrows"));
         m_shortcutArrowCard->setSubtitle(tr("Toggle visibility of the small arrow on desktop shortcut icons"));
@@ -1123,10 +1163,8 @@ void SettingUI::retranslateUi() {
         m_hideIconsCard->setTitle(tr("Double Click to Hide"));
         m_hideIconsCard->setSubtitle(tr("Quickly show or hide all desktop icons by double-clicking on empty spaces"));
     }
-    if (m_colorCard) {
-        m_colorCard->setTitle(tr("Accent Color"));
-        m_colorCard->setSubtitle(tr("Define the primary theme color for your desktop boxes"));
-    }
+    if (m_boxColorSectionTitle) m_boxColorSectionTitle->setText(tr("Accent Color"));
+    if (m_boxColorSectionSubtitle) m_boxColorSectionSubtitle->setText(tr("Define the primary theme color for your desktop boxes"));
     if (m_opacityCard) {
         m_opacityCard->setTitle(tr("Background Opacity"));
         m_opacityCard->setSubtitle(tr("Adjust the semi-transparency level of the grid surface"));

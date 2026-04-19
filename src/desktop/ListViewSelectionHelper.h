@@ -1,5 +1,6 @@
 #pragma once
 
+#include <climits>
 #include <QVector>
 
 #include "desktop/ListView.h"
@@ -68,8 +69,8 @@ public:
         }
 
         const QPoint currentCenter = focusedItem->geometry().center();
+        qint64 bestDistanceSquared = LLONG_MAX;
         int bestPrimaryDistance = INT_MAX;
-        int bestSecondaryDistance = INT_MAX;
         ListItem* targetItem = nullptr;
 
         for (ListItem* candidate : orderedItems) {
@@ -82,34 +83,30 @@ public:
             const int dy = candidateCenter.y() - currentCenter.y();
 
             int primaryDistance = INT_MAX;
-            int secondaryDistance = INT_MAX;
             switch (direction) {
             case ListView::FocusMoveDirection::Left:
                 if (dx >= 0) continue;
                 primaryDistance = -dx;
-                secondaryDistance = qAbs(dy);
                 break;
             case ListView::FocusMoveDirection::Right:
                 if (dx <= 0) continue;
                 primaryDistance = dx;
-                secondaryDistance = qAbs(dy);
                 break;
             case ListView::FocusMoveDirection::Up:
                 if (dy >= 0) continue;
                 primaryDistance = -dy;
-                secondaryDistance = qAbs(dx);
                 break;
             case ListView::FocusMoveDirection::Down:
                 if (dy <= 0) continue;
                 primaryDistance = dy;
-                secondaryDistance = qAbs(dx);
                 break;
             }
 
-            if (primaryDistance < bestPrimaryDistance ||
-                (primaryDistance == bestPrimaryDistance && secondaryDistance < bestSecondaryDistance)) {
+            const qint64 distanceSquared = static_cast<qint64>(dx) * dx + static_cast<qint64>(dy) * dy;
+            if (distanceSquared < bestDistanceSquared ||
+                (distanceSquared == bestDistanceSquared && primaryDistance < bestPrimaryDistance)) {
+                bestDistanceSquared = distanceSquared;
                 bestPrimaryDistance = primaryDistance;
-                bestSecondaryDistance = secondaryDistance;
                 targetItem = candidate;
             }
         }

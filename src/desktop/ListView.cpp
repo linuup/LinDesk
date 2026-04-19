@@ -28,6 +28,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFileDialog>
+#include <QEventLoop>
 #include <QFont>
 #include <QFontMetrics>
 #include <shobjidl.h>
@@ -75,6 +76,20 @@ int iconCellHeightForTwoTextLines(int iconSide)
     const QFontMetrics metrics(labelFont);
     const int twoLineTextHeight = metrics.lineSpacing();
     return iconSide + twoLineTextHeight;
+}
+
+float normalizedSavedBoxOpacity(const QVariant& value)
+{
+    const double rawOpacity = value.toDouble();
+    if (rawOpacity <= 0.0) {
+        return 0.45f;
+    }
+
+    if (rawOpacity > 1.0) {
+        return static_cast<float>(qBound(0.0, rawOpacity / 100.0, 1.0));
+    }
+
+    return static_cast<float>(qBound(0.0, rawOpacity, 1.0));
 }
 
 quint64 packGridCell(int gridX, int gridY)
@@ -1077,11 +1092,34 @@ void ListView::dropEvent(QDropEvent* event)
 
         if (srcPaths.empty()) return;
 
+        const bool shouldPreHideDraggedItems = (event->source() == this);
+        const QVector<ListItem*> draggedItems = shouldPreHideDraggedItems
+            ? orderedDraggedItemsForPaths(draggedPaths)
+            : QVector<ListItem*>();
         bool isRecycleBin = (hitItem->getItemData().getCLSID() == APP_RECYCLE_BIN_CLS);
 
         if (isRecycleBin) {
-            // Move to Recycle Bin
-            CSystemApi::DeleteFiles(srcPaths, true, true); // true = recycle, true = confirm
+            if (shouldPreHideDraggedItems && !draggedItems.isEmpty()) {
+                setItemsTransientHidden(draggedItems, true);
+                QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            }
+
+            const bool deleteOk = CSystemApi::DeleteFiles(srcPaths, true, true);
+            if (!deleteOk) {
+                if (shouldPreHideDraggedItems && !draggedItems.isEmpty()) {
+                    setItemsTransientHidden(draggedItems, false);
+                    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+                }
+                event->ignore();
+                return;
+            }
+
+            if (shouldPreHideDraggedItems && !draggedItems.isEmpty()) {
+                trackPendingExternalRemovals(draggedItems);
+                removeItemsBatch(draggedItems);
+                requestSaveBoxes();
+            }
+
             event->accept();
             return;
         } else if (hitItem->type() == ObjectType::Folder_ObjectType ||
@@ -1097,11 +1135,33 @@ void ListView::dropEvent(QDropEvent* event)
                 }
                 return;
             }
-            if (isCopyAction) {
-                CSystemApi::CopyFiles(srcPaths, targetPath.toStdWString());
-            } else {
-                CSystemApi::MoveFiles(srcPaths, targetPath.toStdWString());
+            if (!isCopyAction && shouldPreHideDraggedItems && !draggedItems.isEmpty()) {
+                setItemsTransientHidden(draggedItems, true);
+                QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
             }
+
+            bool moveOk = false;
+            if (isCopyAction) {
+                moveOk = CSystemApi::CopyFiles(srcPaths, targetPath.toStdWString());
+            } else {
+                moveOk = CSystemApi::MoveFiles(srcPaths, targetPath.toStdWString());
+            }
+
+            if (!moveOk) {
+                if (!isCopyAction && shouldPreHideDraggedItems && !draggedItems.isEmpty()) {
+                    setItemsTransientHidden(draggedItems, false);
+                    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+                }
+                event->ignore();
+                return;
+            }
+
+            if (!isCopyAction && shouldPreHideDraggedItems && !draggedItems.isEmpty()) {
+                trackPendingExternalRemovals(draggedItems);
+                removeItemsBatch(draggedItems);
+                requestSaveBoxes();
+            }
+
             event->accept();
             return;
         } else {
@@ -1427,7 +1487,8 @@ void ListView::keyPressEvent(QKeyEvent* event)
         }
     }
     if (event->key() == Qt::Key_Delete) {
-        bool permanently = (event->modifiers() & Qt::ShiftModifier);
+       const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
+        bool permanently = (modifiers & Qt::ShiftModifier);
         onMenuDelete(permanently);
         event->accept();
         return;
@@ -1597,13 +1658,13 @@ void ListView::initialize()
 void ListView::loadIconLayer()
 {
     qDebug() << "[ListView] Starting reload. Master list size:" << m_allItems.size();
-    const bool useConfigState = m_forceConfigLayout || m_hasLoadedConfigLayout;
+    const bool shouldRestorePersistedLayout = m_isLoadingPersistence || m_forceConfigLayout;
     qDebug() << "[ListView] After render filtering, item count in m_items:" << m_items.size();
-    if (m_iconShowRule.autoArrange && !useConfigState) {
+    if (m_iconShowRule.autoArrange && !shouldRestorePersistedLayout) {
         qDebug() << "[ListView] Applying auto-layout (Stable Categorized).";
         this->performSort(m_iconShowRule.sortType); // Use non-toggling version for stability
         loadAutoLayout();
-    }else if (m_enablePersistence || useConfigState) { // Prefer config-loaded positions when a config layout exists
+    } else if (shouldRestorePersistedLayout) {
         qDebug() << "[ListView] Applying persistent layout.";
         loadPersistentLayout();
     } else if (m_iconShowRule.gridAlignment) {
@@ -2073,6 +2134,131 @@ void ListView::removeItemNoDelete(ListItem* item)
     rebuildSpatialIndex();
     update();
     repaint();
+}
+
+void ListView::removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidgets)
+{
+    if (items.isEmpty()) {
+        return;
+    }
+
+    QSet<ListItem*> seenItems;
+    QSet<LinBox*> sourceBoxes;
+    bool removedAny = false;
+
+    for (ListItem* item : items) {
+        if (!item || !item->isReady || seenItems.contains(item)) {
+            continue;
+        }
+        seenItems.insert(item);
+        removedAny = true;
+
+        m_items.removeOne(item);
+        m_allItems.removeOne(item);
+        m_selectedItems.removeOne(item);
+        m_hiddenIcons.removeOne(item);
+
+        if (m_focusedItem == item) {
+            m_focusedItem = nullptr;
+        }
+        if (m_anchorItem == item) {
+            m_anchorItem = nullptr;
+        }
+
+        if (!item->boxId().isEmpty()) {
+            if (LinBox* box = BoxManager::instance()->findBoxById(item->boxId())) {
+                box->removeListItem(item, false);
+                sourceBoxes.insert(box);
+            }
+        }
+
+        item->setVisible(false);
+        item->hide();
+
+        if (deleteWidgets) {
+            item->setParent(nullptr);
+            item->isReady = false;
+            item->deleteLater();
+        }
+    }
+
+    if (!removedAny) {
+        return;
+    }
+
+    for (LinBox* box : sourceBoxes) {
+        if (!box) {
+            continue;
+        }
+        box->refreshLayout();
+        box->update();
+    }
+
+    rebuildSpatialIndex();
+    update();
+    repaint();
+}
+
+void ListView::setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden)
+{
+    if (items.isEmpty()) {
+        return;
+    }
+
+    QSet<LinBox*> sourceBoxes;
+    for (ListItem* item : items) {
+        if (!item || !item->isReady) {
+            continue;
+        }
+
+        if (!item->boxId().isEmpty()) {
+            if (LinBox* sourceBox = BoxManager::instance()->findBoxById(item->boxId())) {
+                sourceBoxes.insert(sourceBox);
+            }
+        }
+
+        if (hidden) {
+            item->setVisible(false);
+            item->hide();
+        } else {
+            item->setVisible(true);
+            item->show();
+        }
+    }
+
+    for (LinBox* sourceBox : sourceBoxes) {
+        if (!sourceBox) {
+            continue;
+        }
+        sourceBox->update();
+        sourceBox->repaint();
+    }
+
+    update();
+    repaint();
+}
+
+void ListView::trackPendingExternalRemovals(const QVector<ListItem*>& items)
+{
+    for (ListItem* item : items) {
+        if (!item) {
+            continue;
+        }
+
+        const QString normalizedPath = normalizeDesktopPath(item->filePath());
+        if (!normalizedPath.isEmpty()) {
+            m_pendingExternalRemovalPaths.insert(normalizedPath);
+        }
+    }
+}
+
+bool ListView::consumePendingExternalRemoval(const QString& path)
+{
+    const QString normalizedPath = normalizeDesktopPath(path);
+    if (normalizedPath.isEmpty()) {
+        return false;
+    }
+    return m_pendingExternalRemovalPaths.remove(normalizedPath);
 }
 
 ListItem* ListView::findItemByPath(const QString& filePath) const {
@@ -2916,6 +3102,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     {
         const QString& deletePath = !oldPath.isEmpty() ? oldPath : newPath;
         if (deletePath.isEmpty()) break;
+        if (consumePendingExternalRemoval(deletePath)) break;
         
         ListItem* item = selectItemByPath(deletePath);
         if (item) {
@@ -2930,6 +3117,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     case FileSystemEvent::DirectoryRenamed:
     {
         if (oldPath.isEmpty() || newPath.isEmpty()) break;
+        if (consumePendingExternalRemoval(oldPath)) break;
 
         ListItem* item = selectItemByPath(oldPath);
         if (item) {
@@ -3477,15 +3665,33 @@ void ListView::onMenuDelete(bool permanently)
     if (m_selectedItems.isEmpty()) return;
 
     std::vector<std::wstring> paths;
+    QVector<ListItem*> itemsToDelete;
     for (auto* item : m_selectedItems) {
         if (item->type() == ObjectType::SpecialFolder) continue;
+        itemsToDelete.push_back(item);
         paths.push_back(QDir::toNativeSeparators(item->filePath()).toStdWString());
     }
 
     if (paths.empty()) return;
 
-    // SHFileOperation will show confirmation window
-    CSystemApi::DeleteFiles(paths, !permanently, true);
+    const bool shouldPreHide = !permanently;
+    if (shouldPreHide) {
+        setItemsTransientHidden(itemsToDelete, true);
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    }
+
+    const bool deleteOk = CSystemApi::DeleteFiles(paths, !permanently, true);
+    if (!deleteOk) {
+        if (shouldPreHide) {
+            setItemsTransientHidden(itemsToDelete, false);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        }
+        return;
+    }
+
+    trackPendingExternalRemovals(itemsToDelete);
+    removeItemsBatch(itemsToDelete);
+    requestSaveBoxes();
 }
 
 void ListView::saveBoxes() {
@@ -3676,7 +3882,7 @@ void ListView::loadBoxes(bool autoUpdateState) {
             data.value("showType").toInt(),
             data.value("files").toStringList(),
             QColor(data.value("color").toString()),
-            data.value("opacity").toDouble() / 100.0f,
+            normalizedSavedBoxOpacity(data.value("opacity")),
             data.value("glass").toBool(),
             data.value("id").toString(),
             data.value("mappedFolderPath").toString(),
@@ -4008,7 +4214,26 @@ bool ListView::handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem
 
     const bool isRecycleBin = (clsid == APP_RECYCLE_BIN_CLS);
     if (isRecycleBin) {
-        CSystemApi::DeleteFiles(srcPaths, true, true);
+        const QVector<ListItem*> draggedItems = orderedDraggedItemsForPaths(sourcePaths);
+        if (!draggedItems.isEmpty()) {
+            setItemsTransientHidden(draggedItems, true);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        }
+
+        const bool deleteOk = CSystemApi::DeleteFiles(srcPaths, true, true);
+        if (!deleteOk) {
+            if (!draggedItems.isEmpty()) {
+                setItemsTransientHidden(draggedItems, false);
+                QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            }
+            return false;
+        }
+
+        if (!draggedItems.isEmpty()) {
+            trackPendingExternalRemovals(draggedItems);
+            removeItemsBatch(draggedItems);
+            requestSaveBoxes();
+        }
         return true;
     }
 
@@ -4110,7 +4335,7 @@ void ListView::setShortcutArrowVisible(bool visible) {
 }
 
 void ListView::loadPersistentLayout() {
-    const bool useConfigLayout = m_forceConfigLayout || m_hasLoadedConfigLayout;
+    const bool useConfigLayout = m_isLoadingPersistence || m_forceConfigLayout;
     QVector<ListItem*> allItemsSnapshot = m_items;
     QSet<LinBox*> boxesToRefresh;
 

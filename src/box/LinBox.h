@@ -172,7 +172,7 @@ private:
     int m_maxCustomTitleLength = 64;
 
     QColor m_bgColor = QColor(40, 40, 40); // Standard dark gray instead of pure black
-    float m_bgOpacity = 0.5f;             // Slightly higher default opacity
+    float m_bgOpacity = 0.45f;            // Default opacity
     bool m_glassEffect = false;
     QString m_id; 
     QString m_mappedFolderPath;

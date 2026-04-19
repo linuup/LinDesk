@@ -324,11 +324,13 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleBar->setFixedHeight(m_titleHeight);
     m_titleBar->setObjectName("titleBar");
     m_titleBar->setAttribute(Qt::WA_StyledBackground); 
+    m_titleBar->setMouseTracking(true);
     
     QHBoxLayout* titleLayout = new QHBoxLayout(m_titleBar);
     titleLayout->setContentsMargins(10, 0, 5, 0);
 
     m_titleEdit = new QLineEdit(m_titleBar);
+    m_titleEdit->setMouseTracking(true);
     m_titleEdit->setVisible(false);
     m_titleEdit->setText(m_title);
     m_titleEdit->setAlignment(Qt::AlignCenter);
@@ -337,6 +339,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleEdit->setStyleSheet("background: white; color: black; border-radius: 4px; padding: 2px;");
 
     m_viewSwitchBtn = new QPushButton(m_titleBar);
+    m_viewSwitchBtn->setMouseTracking(true);
     m_viewSwitchBtn->setFixedSize(24, 24);
     m_viewSwitchBtn->setIconSize(QSize(16, 16));
     m_viewSwitchBtn->setText(QString());
@@ -362,6 +365,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
                                    "QPushButton:pressed { background: rgba(255, 255, 255, 20); }");
 
     m_collapseBtn = new QPushButton(m_titleBar);
+    m_collapseBtn->setMouseTracking(true);
     m_collapseBtn->setFixedSize(24, 24);
     m_collapseBtn->setFont(iconFont);
     // Use text icons as fallback if font doesn't support Fluent Icons
@@ -379,6 +383,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     // Content Area inside Scroll Area
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setObjectName("scrollArea");
+    m_scrollArea->setMouseTracking(true);
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setFrameShape(QFrame::NoFrame);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -393,7 +398,11 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_contentArea = new QWidget(m_scrollArea);
     m_contentArea->setObjectName("contentArea");
     m_contentArea->setAttribute(Qt::WA_StyledBackground);
+    m_contentArea->setMouseTracking(true);
     m_scrollArea->setWidget(m_contentArea);
+    if (m_scrollArea->viewport()) {
+        m_scrollArea->viewport()->setMouseTracking(true);
+    }
 
     m_mainLayout->addWidget(m_titleBar);
     m_mainLayout->addWidget(m_scrollArea);
@@ -422,6 +431,13 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     });
 
     m_titleBar->installEventFilter(this);
+    m_titleEdit->installEventFilter(this);
+    m_viewSwitchBtn->installEventFilter(this);
+    m_collapseBtn->installEventFilter(this);
+    m_scrollArea->installEventFilter(this);
+    if (m_scrollArea->viewport()) {
+        m_scrollArea->viewport()->installEventFilter(this);
+    }
     m_contentArea->installEventFilter(this);
     raise(); 
 }
@@ -471,6 +487,8 @@ void LinBox::addListItem(ListItem* item, bool refresh) {
     m_items.append(item);
     item->setParent(m_contentArea);
     item->setBoxId(m_id); // Ensure item knows it's in this box
+    item->setMouseTracking(true);
+    item->installEventFilter(this);
     item->show();
     item->raise();
     if (refresh) {
@@ -486,6 +504,8 @@ void LinBox::insertListItem(ListItem* item, int index, bool refresh) {
     m_items.insert(clampedIndex, item);
     item->setParent(m_contentArea);
     item->setBoxId(m_id);
+    item->setMouseTracking(true);
+    item->installEventFilter(this);
     item->show();
     item->raise();
     m_lastLayoutItemCount = -1;
@@ -499,6 +519,7 @@ void LinBox::removeListItem(ListItem* item, bool refresh) {
     if (!item) return;
     m_items.removeAll(item);
     item->setBoxId(""); // Item is no longer in this box
+    item->removeEventFilter(this);
     // Note: Do NOT change parent here. Caller is responsible for reparenting.
     item->hide();
     if (refresh) {
@@ -780,6 +801,17 @@ QString LinBox::sanitizedTitleText(const QString& title) const
 }
 
 bool LinBox::eventFilter(QObject* watched, QEvent* event) {
+    QWidget* watchedWidget = qobject_cast<QWidget*>(watched);
+    const bool isTrackedCursorWidget =
+        watched == m_titleBar ||
+        watched == m_titleEdit ||
+        watched == m_viewSwitchBtn ||
+        watched == m_collapseBtn ||
+        watched == m_scrollArea ||
+        watched == m_contentArea ||
+        (m_scrollArea && watched == m_scrollArea->viewport()) ||
+        qobject_cast<ListItem*>(watchedWidget) != nullptr;
+
     if (watched == m_titleBar && event->type() == QEvent::Paint) {
         if (!m_titleEdit->isVisible()) {
             QPainter p(m_titleBar);
@@ -829,6 +861,13 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             }
         }
         return false; // Let the widget continue painting its own background/hover if it has style
+    }
+
+    if (isTrackedCursorWidget && (event->type() == QEvent::Enter || event->type() == QEvent::MouseMove)) {
+        if (!m_isSelectingItems && !m_isResizing && !m_isMoving) {
+            const QPoint mappedPos = mapFromGlobal(QCursor::pos());
+            updateCursorShape(mappedPos);
+        }
     }
 
     if (watched == m_titleBar || watched == m_contentArea) {
@@ -1148,6 +1187,18 @@ LinBox::ResizeDir LinBox::getResizeDir(const QPoint& pos) {
 
 bool LinBox::nativeEvent(const QByteArray& eventType, void* message, long* result) {
     MSG* msg = static_cast<MSG*>(message);
+    if ((msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) && msg->wParam == VK_DELETE) {
+        if (ListView* lv = ListView::instance()) {
+            if (!RenameManager::instance()->isRenaming()) {
+                const bool shiftPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                lv->onMenuDelete(shiftPressed);
+                if (result) {
+                    *result = 0;
+                }
+                return true;
+            }
+        }
+    }
     if (msg->message == WM_NCHITTEST) {
         if (m_glassEffect) {
             int x = GET_X_LPARAM(msg->lParam);
@@ -1919,7 +1970,8 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
     }
     if (event->key() == Qt::Key_Delete) {
         if (lv) {
-            bool shiftPressed = event->modifiers() & Qt::ShiftModifier;
+            const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
+            bool shiftPressed = modifiers & Qt::ShiftModifier;
             lv->onMenuDelete(shiftPressed);
             event->accept();
             return;

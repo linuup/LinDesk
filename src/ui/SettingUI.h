@@ -74,6 +74,10 @@ private:
     QLabel* m_previewLabel = nullptr;
     QLabel* m_previewBackground = nullptr;
     QLabel* m_desktopSelectionPreview = nullptr;
+    QLabel* m_selectionColorSectionTitle = nullptr;
+    QLabel* m_selectionColorSectionSubtitle = nullptr;
+    QLabel* m_boxColorSectionTitle = nullptr;
+    QLabel* m_boxColorSectionSubtitle = nullptr;
 
     FluentCard* m_autoStartCard = nullptr;
     FluentCard* m_trayOnlyCard = nullptr;
@@ -94,7 +98,7 @@ private:
     FluentToggleSwitch* m_glassToggle = nullptr;
 
     QColor m_previewColor;
-    float m_previewOpacity = 0.5f;
+    float m_previewOpacity = 0.45f;
     bool m_previewGlass = false;
     QColor m_selectionPreviewColor;
 };

@@ -17,10 +17,11 @@ public:
           m_currentColor(0, 120, 212),
           m_hue(m_currentColor.hueF() >= 0.0 ? m_currentColor.hueF() : 0.0),
           m_sat(m_currentColor.saturationF()),
-          m_val(m_currentColor.valueF()),
+          m_val(0.5),
           m_activePart(None)
     {
-        setFixedSize(222, 184);
+        m_currentColor = QColor::fromHsvF(m_hue, m_sat, m_val);
+        setFixedSize(184, 220);
         setMouseTracking(true);
     }
 
@@ -48,7 +49,7 @@ protected:
         p.setPen(Qt::NoPen);
 
         const QRectF wheelRect = hueWheelRect();
-        const QRectF valueRect = valueSliderRect();
+        const QRectF brightnessRect = brightnessSliderRect();
         const QPointF center = wheelRect.center();
         const qreal radius = wheelRect.width() / 2.0;
 
@@ -79,14 +80,6 @@ protected:
         QColor hueOnly = QColor::fromHsvF(m_hue, 1.0, 1.0);
         Q_UNUSED(hueOnly);
 
-        // Vertical value slider.
-        QLinearGradient valueGradient(valueRect.topLeft(), valueRect.bottomLeft());
-        valueGradient.setColorAt(0.0, QColor::fromHsvF(m_hue, m_sat, 1.0));
-        valueGradient.setColorAt(1.0, QColor(24, 33, 41));
-        p.setBrush(valueGradient);
-        p.setPen(QPen(QColor(0, 0, 0, 18), 1));
-        p.drawRoundedRect(valueRect, 5, 5);
-
         // Wheel selector.
         const qreal selectorRadius = radius * m_sat * 0.92;
         const qreal selectorAngle = m_hue * 2.0 * M_PI;
@@ -94,12 +87,18 @@ protected:
                                center.y() - qSin(selectorAngle) * selectorRadius);
         drawHandle(p, selector, QColor::fromHsvF(m_hue, m_sat, qMax(0.7, m_val)));
 
-        // Value selector.
-        const qreal valueY = valueRect.bottom() - (m_val * valueRect.height());
-        QRectF valueKnob(valueRect.left() - 3, valueY - 6, valueRect.width() + 6, 12);
+        QLinearGradient brightnessGradient(brightnessRect.topLeft(), brightnessRect.topRight());
+        brightnessGradient.setColorAt(0.0, QColor(16, 18, 22));
+        brightnessGradient.setColorAt(1.0, QColor::fromHsvF(m_hue, m_sat, 1.0));
+        p.setBrush(brightnessGradient);
+        p.setPen(QPen(QColor(0, 0, 0, 22), 1));
+        p.drawRoundedRect(brightnessRect, 7, 7);
+
+        const qreal brightnessX = brightnessRect.left() + (m_val * brightnessRect.width());
+        QRectF brightnessKnob(brightnessX - 6, brightnessRect.top() - 3, 12, brightnessRect.height() + 6);
         p.setPen(QPen(QColor(255, 255, 255, 235), 2));
-        p.setBrush(Qt::NoBrush);
-        p.drawRoundedRect(valueKnob, 6, 6);
+        p.setBrush(QColor(255, 255, 255, 50));
+        p.drawRoundedRect(brightnessKnob, 6, 6);
     }
 
     void mousePressEvent(QMouseEvent* event) override {
@@ -121,24 +120,24 @@ private:
     enum ActivePart {
         None,
         Wheel,
-        ValueSlider
+        BrightnessSlider
     };
 
     QRectF hueWheelRect() const {
-        return QRectF(10, 12, 156, 156);
+        return QRectF(14, 14, 156, 156);
     }
 
-    QRectF valueSliderRect() const {
-        return QRectF(180, 18, 28, 146);
+    QRectF brightnessSliderRect() const {
+        return QRectF(24, 186, 136, 16);
     }
 
     void updateFromPosition(const QPoint& pos, bool determinePart) {
         const QRectF wheel = hueWheelRect();
-        const QRectF value = valueSliderRect();
+        const QRectF brightness = brightnessSliderRect();
 
         if (determinePart) {
-            if (value.adjusted(-8, -8, 8, 8).contains(pos)) {
-                m_activePart = ValueSlider;
+            if (brightness.adjusted(-6, -8, 6, 8).contains(pos)) {
+                m_activePart = BrightnessSlider;
             } else if (pointInsideWheel(pos)) {
                 m_activePart = Wheel;
             } else {
@@ -162,9 +161,9 @@ private:
             m_hue = angle / (2.0 * M_PI);
             m_sat = qBound(0.0, dist / (maxRadius * 0.92), 1.0);
             changed = true;
-        } else if (m_activePart == ValueSlider) {
-            const qreal valuePos = 1.0 - ((pos.y() - value.top()) / value.height());
-            m_val = qBound(0.0, valuePos, 1.0);
+        } else if (m_activePart == BrightnessSlider) {
+            const qreal brightnessPos = (pos.x() - brightness.left()) / brightness.width();
+            m_val = qBound(0.0, brightnessPos, 1.0);
             changed = true;
         }
 

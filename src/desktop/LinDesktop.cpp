@@ -1,4 +1,5 @@
 #include "desktop/LinDesktop.h"
+#include "desktop/RenameManager.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "app/LanguageManager.h"
 #include <QCoreApplication>
@@ -16,6 +17,7 @@ LinDesktop::LinDesktop(QWidget* parent)
     setWindowTitle(tr("LinDesk"));
     setObjectName("LinDesk");
     setGeometry(QApplication::primaryScreen()->geometry());
+    setFocusPolicy(Qt::StrongFocus);
 
     setAttribute(Qt::WA_TranslucentBackground);
 
@@ -178,7 +180,20 @@ void LinDesktop::mousePressEvent(QMouseEvent* event)
         listView->beginBackgroundSelection(event->pos());
         m_lastSelectRect = QRect();
     }
+    setFocus();
     QWidget::mousePressEvent(event);
+}
+
+void LinDesktop::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_Delete && listView && !RenameManager::instance()->isRenaming()) {
+        const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
+        const bool permanently = (modifiers & Qt::ShiftModifier);
+        listView->onMenuDelete(permanently);
+        event->accept();
+        return;
+    }
+    QWidget::keyPressEvent(event);
 }
 
 void LinDesktop::mouseMoveEvent(QMouseEvent* event)
@@ -254,5 +269,16 @@ void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
+    MSG* msg = static_cast<MSG*>(message);
+    if ((msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) && msg->wParam == VK_DELETE) {
+        if (listView && !RenameManager::instance()->isRenaming()) {
+            const bool shiftPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+            listView->onMenuDelete(shiftPressed);
+            if (result) {
+                *result = 0;
+            }
+            return true;
+        }
+    }
     return QWidget::nativeEvent(eventType, message, result);
 }

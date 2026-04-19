@@ -814,16 +814,17 @@ bool CSystemApi::DeleteFiles(const std::vector<std::wstring>& filePaths, bool to
     pathsBuffer.push_back(0); // 双 null 结尾
 
     SHFILEOPSTRUCTW fileOp = { 0 };
-    fileOp.hwnd = NULL; 
+    fileOp.hwnd = GetForegroundWindow();
     fileOp.wFunc = FO_DELETE;
     fileOp.pFrom = pathsBuffer.data();
     
     fileOp.fFlags = 0;
     if (toRecycleBin) fileOp.fFlags |= FOF_ALLOWUNDO;
+    if (!toRecycleBin) fileOp.fFlags |= FOF_WANTNUKEWARNING;
     if (!confirm) fileOp.fFlags |= FOF_NOCONFIRMATION;
 
     int result = SHFileOperationW(&fileOp);
-    return (result == 0);
+    return (result == 0) && !fileOp.fAnyOperationsAborted;
 }
 
 bool CSystemApi::CopyFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir)
@@ -854,26 +855,80 @@ bool CSystemApi::CopyFiles(const std::vector<std::wstring>& filePaths, const std
 bool CSystemApi::MoveFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir)
 {
     if (filePaths.empty()) return true;
+    if (destDir.empty()) return false;
 
-    std::vector<wchar_t> srcBuffer;
-    for (const auto& path : filePaths) {
-        for (wchar_t c : path) srcBuffer.push_back(c);
-        srcBuffer.push_back(0);
+    const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(initHr) && initHr != RPC_E_CHANGED_MODE) {
+        return false;
     }
-    srcBuffer.push_back(0);
+    const bool shouldUninitialize = SUCCEEDED(initHr);
 
-    std::vector<wchar_t> destBuffer;
-    for (wchar_t c : destDir) destBuffer.push_back(c);
-    destBuffer.push_back(0);
-    destBuffer.push_back(0);
+    wil::com_ptr_nothrow<IFileOperation> fileOperation;
+    HRESULT hr = CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_INPROC_SERVER,
+                                  IID_PPV_ARGS(&fileOperation));
+    if (FAILED(hr) || !fileOperation) {
+        if (shouldUninitialize) {
+            CoUninitialize();
+        }
+        return false;
+    }
 
-    SHFILEOPSTRUCTW fileOp = { 0 };
-    fileOp.wFunc = FO_MOVE;
-    fileOp.pFrom = srcBuffer.data();
-    fileOp.pTo = destBuffer.data();
-    fileOp.fFlags = FOF_ALLOWUNDO;
+    hr = fileOperation->SetOperationFlags(FOF_ALLOWUNDO | FOF_NOCONFIRMMKDIR);
+    if (FAILED(hr)) {
+        if (shouldUninitialize) {
+            CoUninitialize();
+        }
+        return false;
+    }
 
-    return (SHFileOperationW(&fileOp) == 0);
+    wil::com_ptr_nothrow<IShellItem> destinationItem;
+    hr = SHCreateItemFromParsingName(destDir.c_str(), nullptr, IID_PPV_ARGS(&destinationItem));
+    if (FAILED(hr) || !destinationItem) {
+        if (shouldUninitialize) {
+            CoUninitialize();
+        }
+        return false;
+    }
+
+    for (const auto& path : filePaths) {
+        if (path.empty()) {
+            continue;
+        }
+
+        wil::com_ptr_nothrow<IShellItem> sourceItem;
+        hr = SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&sourceItem));
+        if (FAILED(hr) || !sourceItem) {
+            if (shouldUninitialize) {
+                CoUninitialize();
+            }
+            return false;
+        }
+
+        hr = fileOperation->MoveItem(sourceItem.get(), destinationItem.get(), nullptr, nullptr);
+        if (FAILED(hr)) {
+            if (shouldUninitialize) {
+                CoUninitialize();
+            }
+            return false;
+        }
+    }
+
+    hr = fileOperation->PerformOperations();
+    if (FAILED(hr)) {
+        if (shouldUninitialize) {
+            CoUninitialize();
+        }
+        return false;
+    }
+
+    BOOL operationsAborted = FALSE;
+    hr = fileOperation->GetAnyOperationsAborted(&operationsAborted);
+
+    if (shouldUninitialize) {
+        CoUninitialize();
+    }
+
+    return SUCCEEDED(hr) && !operationsAborted;
 }
 
 bool CSystemApi::DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm)

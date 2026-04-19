@@ -18,6 +18,7 @@
 #include <QSharedPointer>
 #include <QPointer>
 #include <QMap>
+#include <QSet>
 #include <memory>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
@@ -283,6 +284,10 @@ private:
 	void ensureDragTip();
 	void ensureInfoTip();
 	bool handlePendingShellCreatedItem(const QString& newPath);
+	void removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidgets = true);
+	void setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden);
+	void trackPendingExternalRemovals(const QVector<ListItem*>& items);
+	bool consumePendingExternalRemoval(const QString& path);
 
 public slots:
 	// 目录监控
@@ -376,6 +381,7 @@ private:
 	QMap<QString, QStringList> m_mappedBoxFilePaths;
 	QMap<QString, PersistentIconInfo> m_savedIconPositions;
 	QMap<QString, QPoint> m_pendingCreatedItemPositions;
+	QSet<QString> m_pendingExternalRemovalPaths;
 	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
 	QHash<QString, int> m_pendingCreatedItemInsertIndices;
 	std::unique_ptr<DesktopQuadTree> m_spatialIndex;

@@ -82,6 +82,8 @@ target_link_libraries(LinDesk
     PRIVATE
         Shell32
         Shlwapi
+        Ole32
+        Uuid
         Comctl32
         dwmapi
         Qt5::Widgets

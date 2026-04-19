@@ -531,7 +531,7 @@ void BoxManager::loadAll(bool autoUpdateState) {
         QRect geom(b["x"].toInt(), b["y"].toInt(), b["w"].toInt(), b["h"].toInt());
         QColor color = QColor(b["color"].toString());
         float opacity = b["opacity"].toDouble() / 100.0f;
-        if (opacity <= 0) opacity = 0.4f;
+        if (opacity <= 0) opacity = 0.45f;
         bool glass = b.contains("glass") ? b["glass"].toBool() : true;
         QString mappedFolderPath = b["mappedFolderPath"].toString();
         QString boxId = b.contains("id") ? b["id"].toString() : QUuid::createUuid().toString();
