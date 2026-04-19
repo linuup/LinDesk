@@ -105,6 +105,37 @@ int maxGridRowsForHeight(int viewHeight, int marginTop, int bottomPadding, int i
     return qMax(1, rows);
 }
 
+int maxGridColsForWidth(int viewWidth, int marginLeft, int iconWidth, int strideX)
+{
+    int cols = 0;
+    int gridX = 0;
+    while (marginLeft + gridX * strideX <= viewWidth - iconWidth) {
+        ++cols;
+        ++gridX;
+    }
+    return qMax(1, cols);
+}
+
+QPoint gridIndexToCell(int linearIndex, int maxRows)
+{
+    const int safeRows = qMax(1, maxRows);
+    return QPoint(linearIndex / safeRows, linearIndex % safeRows);
+}
+
+int pointToGridLinearIndex(const QPoint& pos, int marginLeft, int marginTop, int strideX, int strideY, int maxRows)
+{
+    const int safeStrideX = qMax(1, strideX);
+    const int safeStrideY = qMax(1, strideY);
+    const int safeRows = qMax(1, maxRows);
+
+    int gridX = qMax(0, qFloor(static_cast<double>(pos.x() - marginLeft) / safeStrideX));
+    int gridY = qMax(0, qFloor(static_cast<double>(pos.y() - marginTop) / safeStrideY));
+
+    gridX += gridY / safeRows;
+    gridY %= safeRows;
+    return gridX * safeRows + gridY;
+}
+
 bool isItemFromMappedBox(ListItem* item)
 {
     if (!item || item->boxId().isEmpty()) {
@@ -1572,7 +1603,7 @@ void ListView::loadIconLayer()
         qDebug() << "[ListView] Applying auto-layout (Stable Categorized).";
         this->performSort(m_iconShowRule.sortType); // Use non-toggling version for stability
         loadAutoLayout();
-    } else if (m_enablePersistence || useConfigState) { // Prefer config-loaded positions when a config layout exists
+    }else if (m_enablePersistence || useConfigState) { // Prefer config-loaded positions when a config layout exists
         qDebug() << "[ListView] Applying persistent layout.";
         loadPersistentLayout();
     } else if (m_iconShowRule.gridAlignment) {
@@ -1637,7 +1668,10 @@ void ListView::loadGridLayout()
     const int strideX = m_iconWidth + m_colSpacing;
     const int strideY = m_iconHeight + m_rowSpacing;
     const int maxRows = maxGridRowsForHeight(height(), m_marginTop, m_bottomPadding, m_iconHeight, strideY);
+    const int maxCols = maxGridColsForWidth(width(), m_marginLeft, m_iconWidth, strideX);
+    const int visibleCapacity = qMax(1, maxCols * maxRows);
     QSet<quint64> occupiedSlots;
+    int overflowIndex = 0;
 
     for (auto* item : m_items) {
         item->setItemSize(m_iconWidth, m_iconHeight);
@@ -1650,25 +1684,32 @@ void ListView::loadGridLayout()
         }
 
         if (m_iconShowRule.gridAlignment) {
-            const QPoint gridCell = pointToGridCell(p, m_marginLeft, m_marginTop, strideX, strideY);
-            int gridX = gridCell.x();
-            int gridY = gridCell.y();
+            const int requestedIndex = pointToGridLinearIndex(p, m_marginLeft, m_marginTop, strideX, strideY, maxRows);
+            int gridX = 0;
+            int gridY = 0;
 
-            while (occupiedSlots.contains(packGridCell(gridX, gridY))) {
-                ++gridY;
-                if (gridY >= maxRows) {
-                    gridY = 0;
-                    ++gridX;
+            if (occupiedSlots.size() < visibleCapacity) {
+                for (int step = 0; step < visibleCapacity; ++step) {
+                    const int linearIndex = (requestedIndex + step) % visibleCapacity;
+                    const QPoint candidateCell = gridIndexToCell(linearIndex, maxRows);
+                    const quint64 slotKey = packGridCell(candidateCell.x(), candidateCell.y());
+                    if (!occupiedSlots.contains(slotKey)) {
+                        gridX = candidateCell.x();
+                        gridY = candidateCell.y();
+                        occupiedSlots.insert(slotKey);
+                        break;
+                    }
                 }
+            } else {
+                const QPoint overflowCell = gridIndexToCell(overflowIndex % visibleCapacity, maxRows);
+                gridX = overflowCell.x();
+                gridY = overflowCell.y();
+                ++overflowIndex;
             }
-            occupiedSlots.insert(packGridCell(gridX, gridY));
 
             const QPoint snappedPoint = gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
-            int snappedX = snappedPoint.x();
-            int snappedY = snappedPoint.y();
-
-            snappedX = qMax(m_marginLeft, qMin(snappedX, width() - m_iconWidth));
-            snappedY = qMax(m_marginTop, qMin(snappedY, height() - m_bottomPadding - m_iconHeight));
+            const int snappedX = snappedPoint.x();
+            const int snappedY = snappedPoint.y();
 
             if (item->pos() != QPoint(snappedX, snappedY)) {
                 item->updateLocationInfo(QPoint(snappedX, snappedY));
@@ -2062,41 +2103,53 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
         const int strideX = m_iconWidth + m_colSpacing;
         const int strideY = m_iconHeight + m_rowSpacing;
         const int maxRows = maxGridRowsForHeight(height(), m_marginTop, m_bottomPadding, m_iconHeight, strideY);
-        const QPoint requestedCell = pointToGridCell(pos, m_marginLeft, m_marginTop, strideX, strideY);
-        int gridX = requestedCell.x();
-        int gridY = qBound(0, requestedCell.y(), maxRows - 1);
+        const int maxCols = maxGridColsForWidth(width(), m_marginLeft, m_iconWidth, strideX);
+        const int visibleCapacity = qMax(1, maxCols * maxRows);
+        const int requestedIndex = pointToGridLinearIndex(pos, m_marginLeft, m_marginTop, strideX, strideY, maxRows);
+        int gridX = 0;
+        int gridY = 0;
 
         QSet<quint64> occupiedSlots;
+        int desktopItemCount = 0;
         for (auto* item : m_items) {
             if (!item || !item->boxId().isEmpty()) continue;
+            ++desktopItemCount;
             const QPoint gridCell = pointToGridCell(item->pos(), m_marginLeft, m_marginTop, strideX, strideY);
-            occupiedSlots.insert(packGridCell(gridCell.x(), qBound(0, gridCell.y(), maxRows - 1)));
+            occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
         }
         for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
+            ++desktopItemCount;
             const QPoint gridCell = pointToGridCell(it.value(), m_marginLeft, m_marginTop, strideX, strideY);
-            occupiedSlots.insert(packGridCell(gridCell.x(), qBound(0, gridCell.y(), maxRows - 1)));
+            occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
         }
 
-        while (true) {
-            const quint64 slotKey = packGridCell(gridX, gridY);
-            if (!occupiedSlots.contains(slotKey)) {
-                QPoint candidate = gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
-                candidate.setX(qMax(m_marginLeft, qMin(candidate.x(), width() - m_iconWidth)));
-                candidate.setY(qMax(m_marginTop, qMin(candidate.y(), height() - m_bottomPadding - m_iconHeight)));
-                return candidate;
-            }
-
-            occupiedSlots.insert(slotKey);
-            ++gridY;
-            if (gridY >= maxRows) {
-                gridY = 0;
-                ++gridX;
+        if (occupiedSlots.size() < visibleCapacity) {
+            for (int offset = 0; offset < visibleCapacity; ++offset) {
+                const int cellIndex = (requestedIndex + offset) % visibleCapacity;
+                const QPoint visibleCell = gridIndexToCell(cellIndex, maxRows);
+                const quint64 slotKey = packGridCell(visibleCell.x(), visibleCell.y());
+                if (occupiedSlots.contains(slotKey)) {
+                    continue;
+                }
+                gridX = visibleCell.x();
+                gridY = visibleCell.y();
+                return gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
             }
         }
+
+        const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
+        return gridCellToPoint(overflowCell.x(), overflowCell.y(), m_marginLeft, m_marginTop, strideX, strideY);
     }
 
     pos.setX(qMax(m_marginLeft, qMin(pos.x(), width() - m_iconWidth)));
     pos.setY(qMax(m_marginTop, qMin(pos.y(), height() - m_bottomPadding - m_iconHeight)));
+
+    const int step = 16;
+    const int minX = m_marginLeft;
+    const int minY = m_marginTop;
+    const int maxX = qMax(minX, width() - m_iconWidth);
+    const int maxY = qMax(minY, height() - m_bottomPadding - m_iconHeight);
+    QSet<quint64> visitedPositions;
 
     while (true) {
         QRect candidateRect(pos, QSize(m_iconWidth, m_iconHeight));
@@ -2124,9 +2177,23 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
             return pos;
         }
 
-        pos += QPoint(16, 16);
-        pos.setX(qMax(m_marginLeft, qMin(pos.x(), width() - m_iconWidth)));
-        pos.setY(qMax(m_marginTop, qMin(pos.y(), height() - m_bottomPadding - m_iconHeight)));
+        const quint64 visitKey = packGridCell(pos.x(), pos.y());
+        if (visitedPositions.contains(visitKey)) {
+            return pos;
+        }
+        visitedPositions.insert(visitKey);
+
+        int nextX = pos.x();
+        int nextY = pos.y() + step;
+        if (nextY > maxY) {
+            nextY = minY;
+            nextX += step;
+        }
+        if (nextX > maxX) {
+            nextX = minX;
+            nextY = minY;
+        }
+        pos = QPoint(nextX, nextY);
     }
 }
 
@@ -2223,31 +2290,38 @@ QPoint ListView::generateItemPosition()
     const int strideX = m_iconWidth + m_colSpacing;
     const int strideY = m_iconHeight + m_rowSpacing;
     const int maxRows = maxGridRowsForHeight(height(), m_marginTop, m_bottomPadding, m_iconHeight, strideY);
+    const int maxCols = maxGridColsForWidth(width(), m_marginLeft, m_iconWidth, strideX);
+    const int visibleCapacity = qMax(1, maxCols * maxRows);
     QSet<quint64> occupiedSlots;
+    int desktopItemCount = 0;
 
     for (auto* item : m_items) {
         if (item && item->boxId().isEmpty() && (item->pos().x() > 0 || item->pos().y() > 0)) {
+            ++desktopItemCount;
             const QPoint gridCell = pointToGridCell(item->pos(), m_marginLeft, m_marginTop, strideX, strideY);
-            occupiedSlots.insert(packGridCell(gridCell.x(), qBound(0, gridCell.y(), maxRows - 1)));
+            occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
         }
     }
     for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
+        ++desktopItemCount;
         const QPoint gridCell = pointToGridCell(it.value(), m_marginLeft, m_marginTop, strideX, strideY);
-        occupiedSlots.insert(packGridCell(gridCell.x(), qBound(0, gridCell.y(), maxRows - 1)));
+        occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
     }
 
-    for (int gridX = 0; ; ++gridX) {
-        for (int gridY = 0; gridY < maxRows; ++gridY) {
-            if (occupiedSlots.contains(packGridCell(gridX, gridY))) {
-                continue;
-            }
+    if (occupiedSlots.size() < visibleCapacity) {
+        for (int gridX = 0; gridX < maxCols; ++gridX) {
+            for (int gridY = 0; gridY < maxRows; ++gridY) {
+                if (occupiedSlots.contains(packGridCell(gridX, gridY))) {
+                    continue;
+                }
 
-            QPoint candidate = gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
-            candidate.setX(qMax(m_marginLeft, qMin(candidate.x(), width() - m_iconWidth)));
-            candidate.setY(qMax(m_marginTop, qMin(candidate.y(), height() - m_bottomPadding - m_iconHeight)));
-            return candidate;
+                return gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
+            }
         }
     }
+
+    const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
+    return gridCellToPoint(overflowCell.x(), overflowCell.y(), m_marginLeft, m_marginTop, strideX, strideY);
 
     return QPoint(0, 0); // 鍏滃簳杩斿洖
 }

@@ -96,8 +96,8 @@ public:
 	static constexpr int kMediumIconW = 76, kMediumIconH = 78;
 	static constexpr int kSmallIconW = 62, kSmallIconH = 64;
 	//
-	static constexpr int kLargeRowSpacing = 12;
-	static constexpr int kLargeColSpacing = 8;
+	static constexpr int kLargeRowSpacing = 16;
+	static constexpr int kLargeColSpacing = 10;
 	//
 	static constexpr int kMediumRowSpacing = 8;
 	static constexpr int kMediumColSpacing = 4;
