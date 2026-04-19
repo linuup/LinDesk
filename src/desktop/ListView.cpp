@@ -2876,106 +2876,127 @@ void ListView::onMenuRefresh() {
     this->hide();
 
     // 2. Delay the actual logical refresh
-    QTimer::singleShot(10, this, [this]() {
-        this->show(); // Bring desktop back
-        
-        // --- Original Refresh Logic ---
-        if (m_enablePersistence) {
-            for (auto* item : m_allItems) {
-                if (!item || item->filePath().isEmpty()) continue;
-                QString normPath = QDir::toNativeSeparators(item->filePath());
-                while (normPath.endsWith('\\')) normPath.chop(1);
-                if (item->pos() != QPoint(0, 0)) {
-                    m_savedIconPositions[normPath] = { item->x(), item->y(), item->boxId() };
+    QTimer::singleShot(80, this, [this]() {
+        this->show();
+        this->raise();
+        this->update();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
+        QTimer::singleShot(0, this, [this]() {
+            const QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
+            this->setUpdatesEnabled(false);
+            for (const auto& box : allBoxes) {
+                if (box) {
+                    box->setUpdatesEnabled(false);
                 }
             }
-        }
 
-        qDebug() << "Comprehensive State Sync (Mirroring Initialize)...";
-        
-        if (monitor) {
-            monitor->refreshIconsState();
-            sysIconRegisterInfo = monitor->getCurrentIcons();
-        }
-
-        QVector<ListItem*> desktopVisible;
-        m_hiddenIcons.clear(); 
-
-        for (auto* item : m_allItems) {
-            if (!item || item->filePath().isEmpty()) continue;
-            
-            // Refresh icon for each item
-            item->refreshIcon();
-            
-            QString boxId = getBoxIdForItem(item->filePath());
-            item->setBoxId(boxId);
-
-            bool isVisibleSpecial = false;
-            bool isSpecial = (item->getItemData().type() == ObjectType::SpecialFolder ||
-                              SystemFolderCLSIDs.contains(item->getItemData().getCLSID()) ||
-                              item->getItemData().fullName() == "desktop.ini" ||
-                              item->filePath().startsWith("::"));
-            
-            bool isOsHidden = item->fileInfo().isHidden();
-            const bool isAppHiddenShellFolder = DesktopItemLoader::shouldTreatAsHiddenShellFolder(item->getItemData());
-
-            if (isSpecial) {
-                QString itemClsid = item->getItemData().getCLSID();
-                itemClsid.replace("::", "").replace("{", "").replace("}", "");
-                bool systemSaysVisible = false;
-                bool foundInRegistry = false;
-
-                for (const auto& info : sysIconRegisterInfo) {
-                    QString sysClsidStr = info.clsid;
-                    sysClsidStr.replace("{", "").replace("}", "");
-                    if (sysClsidStr.toLower() == itemClsid.toLower()) {
-                        foundInRegistry = true;
-                        if (!info.isHidden) {
-                            systemSaysVisible = true;
-                        }
-                        break;
+            // --- Original Refresh Logic ---
+            if (m_enablePersistence) {
+                for (auto* item : m_allItems) {
+                    if (!item || item->filePath().isEmpty()) continue;
+                    QString normPath = QDir::toNativeSeparators(item->filePath());
+                    while (normPath.endsWith('\\')) normPath.chop(1);
+                    if (item->pos() != QPoint(0, 0)) {
+                        m_savedIconPositions[normPath] = { item->x(), item->y(), item->boxId() };
                     }
                 }
-                isVisibleSpecial = systemSaysVisible;
             }
 
-            if (isAppHiddenShellFolder) {
-                item->hide();
-                m_hiddenIcons.push_back(item);
-            } else if (!boxId.isEmpty()) {
-                if (item->parent() == this) item->hide();
-                m_hiddenIcons.push_back(item);
-            } else if (isOsHidden && !isSpecial) {
-                item->hide();
-                m_hiddenIcons.push_back(item);
-            } else if (isSpecial) {
-                if (isVisibleSpecial) {
-                    desktopVisible.push_back(item);
-                    if (m_iconShowRule.showDesktopIcons) item->show();
-                } else {
+            qDebug() << "Comprehensive State Sync (Mirroring Initialize)...";
+            
+            if (monitor) {
+                monitor->refreshIconsState();
+                sysIconRegisterInfo = monitor->getCurrentIcons();
+            }
+
+            QVector<ListItem*> desktopVisible;
+            m_hiddenIcons.clear(); 
+
+            for (auto* item : m_allItems) {
+                if (!item || item->filePath().isEmpty()) continue;
+                
+                // Refresh icon for each item
+                item->refreshIcon();
+                
+                QString boxId = getBoxIdForItem(item->filePath());
+                item->setBoxId(boxId);
+
+                bool isVisibleSpecial = false;
+                bool isSpecial = (item->getItemData().type() == ObjectType::SpecialFolder ||
+                                  SystemFolderCLSIDs.contains(item->getItemData().getCLSID()) ||
+                                  item->getItemData().fullName() == "desktop.ini" ||
+                                  item->filePath().startsWith("::"));
+                
+                bool isOsHidden = item->fileInfo().isHidden();
+                const bool isAppHiddenShellFolder = DesktopItemLoader::shouldTreatAsHiddenShellFolder(item->getItemData());
+
+                if (isSpecial) {
+                    QString itemClsid = item->getItemData().getCLSID();
+                    itemClsid.replace("::", "").replace("{", "").replace("}", "");
+                    bool systemSaysVisible = false;
+                    bool foundInRegistry = false;
+
+                    for (const auto& info : sysIconRegisterInfo) {
+                        QString sysClsidStr = info.clsid;
+                        sysClsidStr.replace("{", "").replace("}", "");
+                        if (sysClsidStr.toLower() == itemClsid.toLower()) {
+                            foundInRegistry = true;
+                            if (!info.isHidden) {
+                                systemSaysVisible = true;
+                            }
+                            break;
+                        }
+                    }
+                    isVisibleSpecial = systemSaysVisible;
+                }
+
+                if (isAppHiddenShellFolder) {
                     item->hide();
                     m_hiddenIcons.push_back(item);
+                } else if (!boxId.isEmpty()) {
+                    if (item->parent() == this) item->hide();
+                    m_hiddenIcons.push_back(item);
+                } else if (isOsHidden && !isSpecial) {
+                    item->hide();
+                    m_hiddenIcons.push_back(item);
+                } else if (isSpecial) {
+                    if (isVisibleSpecial) {
+                        desktopVisible.push_back(item);
+                        if (m_iconShowRule.showDesktopIcons) item->show();
+                    } else {
+                        item->hide();
+                        m_hiddenIcons.push_back(item);
+                    }
+                } else {
+                    desktopVisible.push_back(item);
+                    if (m_iconShowRule.showDesktopIcons) item->show();
                 }
-            } else {
-                desktopVisible.push_back(item);
-                if (m_iconShowRule.showDesktopIcons) item->show();
             }
-        }
 
-        m_items = desktopVisible;
-        update();
+            m_items = desktopVisible;
 
-        // Refresh icons for items in boxes and ensure boxes are re-shown
-        for (const auto& box : BoxManager::instance()->allBoxes()) {
-            if (box) {
-                for (auto* item : box->items()) {
-                    if (item) item->refreshIcon();
+            // Refresh icons for items in boxes and ensure boxes are re-shown
+            for (const auto& box : allBoxes) {
+                if (box) {
+                    for (auto* item : box->items()) {
+                        if (item) item->refreshIcon();
+                    }
+                    box->refreshLayout();
+                    box->show();
+                    box->raise();
                 }
-                box->refreshLayout();
-                box->show();
-                box->raise();
             }
-        }
+
+            for (const auto& box : allBoxes) {
+                if (box) {
+                    box->setUpdatesEnabled(true);
+                    box->update();
+                }
+            }
+            this->setUpdatesEnabled(true);
+            this->update();
+        });
     });
 }
 
