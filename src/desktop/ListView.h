@@ -191,6 +191,7 @@ public:
 	QVector<ListItem*> orderedDraggedItemsForPaths(const QStringList& paths) const;
 	void createDragGhosts(const QPoint& clickPos);
 	bool shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const;
+	bool shouldPreferShortcutForDrop(const QStringList& sourcePaths, Qt::KeyboardModifiers modifiers, bool isExternalSource) const;
 	bool createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const;
 	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
 	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode, bool preferShortcut = false);

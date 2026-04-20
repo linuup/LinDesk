@@ -6,6 +6,21 @@
 #include <QString>
 #include <QStringList>
 #include <QUrl>
+#include <Windows.h>
+#include <shlobj.h>
+
+class WindowsDragMimeData : public QMimeData
+{
+public:
+    static WindowsDragMimeData* fromMimeData(const QMimeData* mimeData);
+    void setDropDescription(DROPIMAGETYPE type, const QString& message, const QString& insert);
+    void setDropDescriptionForAction(Qt::DropAction action, const QString& insertText);
+    void setInvalidDropDescription(const QString& insertText);
+    void refreshDragWindow() const;
+
+private:
+    static QString windowsMimeType(const char* value);
+};
 
 class ListViewFileOpsHelper
 {
@@ -24,4 +39,6 @@ public:
     static bool copyFilesToDirectoryWithRule(const QStringList& sourcePaths, const QString& targetDir);
     static bool createShellShortcut(const QString& sourcePath, const QString& shortcutPath);
     static bool shouldCreateShortcutForExternalPath(const QString& sourcePath);
+    static void updateInternalDragDescriptionCustom(const QMimeData* mimeData, DROPIMAGETYPE type, const QString& message, const QString& insertText);
+    static void updateInternalDragDescription(const QMimeData* mimeData, Qt::DropAction action, const QString& insertText, bool forbidden = false);
 };

@@ -905,23 +905,33 @@ void ListView::dragEnterEvent(QDragEnterEvent* event)
 {
     RenameManager::instance()->cancelRename();
     if (event->mimeData()->hasUrls()) {
+        const QStringList draggedPaths = ListViewFileOpsHelper::draggedLocalFilePaths(event->mimeData());
         if (event->source() != this) {
-            const QStringList draggedPaths = ListViewFileOpsHelper::draggedLocalFilePaths(event->mimeData());
-            if (shouldCreateShortcutForExternalDrop(draggedPaths)) {
+            if (shouldPreferShortcutForDrop(draggedPaths, event->keyboardModifiers(), true)) {
                 event->setDropAction(Qt::LinkAction);
             } else if (event->keyboardModifiers() & Qt::ControlModifier) {
                 event->setDropAction(Qt::CopyAction);
             } else {
                 event->setDropAction(Qt::MoveAction);
             }
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                event->dropAction(),
+                QCoreApplication::translate("ListView", "Desktop"));
             event->accept();
             return;
         }
-        if (event->keyboardModifiers() & Qt::ControlModifier) {
+        if (shouldPreferShortcutForDrop(draggedPaths, event->keyboardModifiers(), false)) {
+            event->setDropAction(Qt::LinkAction);
+        } else if (event->keyboardModifiers() & Qt::ControlModifier) {
             event->setDropAction(Qt::CopyAction);
         } else {
             event->setDropAction(Qt::MoveAction);
         }
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            event->dropAction(),
+            QCoreApplication::translate("ListView", "Desktop"));
         event->accept();
     }
 }
@@ -939,8 +949,9 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         return;
     }
     const QStringList draggedPaths = ListViewFileOpsHelper::draggedLocalFilePaths(event->mimeData());
-    const bool preferShortcutForExternal = (event->source() != this) && shouldCreateShortcutForExternalDrop(draggedPaths);
-    if (preferShortcutForExternal) {
+    const bool preferShortcutForDrop = shouldPreferShortcutForDrop(
+        draggedPaths, event->keyboardModifiers(), event->source() != this);
+    if (preferShortcutForDrop) {
         event->setDropAction(Qt::LinkAction);
     } else if (event->keyboardModifiers() & Qt::ControlModifier) {
         event->setDropAction(Qt::CopyAction);
@@ -974,6 +985,11 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             bool isDraggedSystemIcon = isDraggedPC || isDraggedNetwork || isDraggedControlPanel || isDraggedControlPanel1 || isDraggedRecycleBin || isLinux;
 
             if (isDraggedSystemIcon) {
+                ListViewFileOpsHelper::updateInternalDragDescription(
+                    event->mimeData(),
+                    Qt::IgnoreAction,
+                    hitItem->baseName(),
+                    true);
                 ensureDragTip();
                 m_dragTip->setText("<b style='color:#ff4d4d'>Operation Forbidden</b>");
                 m_dragTip->adjustSize();
@@ -998,6 +1014,11 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
                          hitItem->type() == ObjectType::DiskLetter);
 
         if (isPC || isNetwork || isControlPanel) {
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                Qt::IgnoreAction,
+                hitItem->baseName(),
+                true);
             m_dragTip->setText("<b style='color:#ff4d4d'>Operation Forbidden</b>");
             m_dragTip->adjustSize();
             m_dragTip->move(event->pos() + QPoint(24, 24));
@@ -1018,7 +1039,7 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             highlightColor = "#ff4d4d";
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->baseName());
-        } else if (isFolder && preferShortcutForExternal) {
+        } else if (isFolder && preferShortcutForDrop) {
             actionKeyword = "Create shortcut in";
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->baseName());
@@ -1034,6 +1055,30 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->baseName());
         }
+        if (isRecycleBin) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_MOVE,
+                QCoreApplication::translate("ListView", "Move to %1"),
+                hitItem->baseName());
+        } else if (isFolder && preferShortcutForDrop) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_LINK,
+                QCoreApplication::translate("ListView", "Create shortcut in %1"),
+                hitItem->baseName());
+        } else if (!isFolder) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_LABEL,
+                QCoreApplication::translate("ListView", "Open with %1"),
+                hitItem->baseName());
+        } else {
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                event->dropAction(),
+                hitItem->baseName());
+        }
 
         m_dragTip->setText(htmlText);
         m_dragTip->adjustSize();
@@ -1042,7 +1087,19 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
         m_dragTip->raise();
         event->accept();
     } else {
-        if (isCtrl) {
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            event->dropAction(),
+            QCoreApplication::translate("ListView", "Desktop"));
+        if (preferShortcutForDrop) {
+            ensureDragTip();
+            const QString htmlText = QString("<b style='color:#70a1ff'>Create shortcut in</b> <span>Desktop</span>");
+            m_dragTip->setText(htmlText);
+            m_dragTip->adjustSize();
+            m_dragTip->move(event->pos() + QPoint(24, 24));
+            m_dragTip->show();
+            m_dragTip->raise();
+        } else if (isCtrl) {
             ensureDragTip();
             const QString htmlText = QString("<b style='color:#70a1ff'>Copy to</b> <span>Desktop</span>");
             m_dragTip->setText(htmlText);
@@ -1096,7 +1153,8 @@ void ListView::dropEvent(QDropEvent* event)
         
         // 鏍规嵁閿洏淇グ绗﹀垽鏂槸澶嶅埗杩樻槸绉诲姩锛圕trl=澶嶅埗, 鏃犱慨楗扮=绉诲姩锛?
         bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
-        const bool preferShortcutForExternal = (event->source() != this) && shouldCreateShortcutForExternalDrop(draggedPaths);
+        const bool preferShortcutForDrop = shouldPreferShortcutForDrop(
+            draggedPaths, event->keyboardModifiers(), event->source() != this);
 
         if (srcPaths.empty()) return;
 
@@ -1134,7 +1192,7 @@ void ListView::dropEvent(QDropEvent* event)
                    hitItem->type() == ObjectType::SpecialFolder ||
                    hitItem->type() == ObjectType::DiskLetter) {
             // 鏍规嵁閿洏淇グ绗﹂€夋嫨澶嶅埗鎴栫Щ鍔ㄦ枃浠跺埌鐩爣鏂囦欢澶?
-            if (preferShortcutForExternal) {
+            if (preferShortcutForDrop) {
                 if (createShortcutsInFolder(draggedPaths, targetPath)) {
                     event->setDropAction(Qt::LinkAction);
                     event->accept();
@@ -1194,13 +1252,17 @@ void ListView::dropEvent(QDropEvent* event)
         bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
         
         // 澶栭儴鎷栨斁鎴栧己鍒跺鍒?
-        if (event->source() != this || isCopyAction) {
+        const bool preferShortcutForDrop = shouldPreferShortcutForDrop(
+            draggedPaths, event->keyboardModifiers(), event->source() != this);
+        if (event->source() != this || isCopyAction || preferShortcutForDrop) {
             if (!m_iconShowRule.autoArrange) {
                 for (const QString& localPath : draggedPaths) {
                     if (localPath.isEmpty()) {
                         continue;
                     }
-                    const QString reservedPath = ListViewFileOpsHelper::uniquePasteDestinationPath(localPath, m_desktopDir);
+                    const QString reservedPath = preferShortcutForDrop
+                        ? ListViewFileOpsHelper::uniqueShortcutPathForTarget(localPath, m_desktopDir)
+                        : ListViewFileOpsHelper::uniquePasteDestinationPath(localPath, m_desktopDir);
                     reserveCreatedItemPosition(reservedPath, event->pos());
                 }
             }
@@ -1213,7 +1275,9 @@ void ListView::dropEvent(QDropEvent* event)
             if (!srcPaths.empty()) {
                 // 鏍规嵁閿洏淇グ绗﹂€夋嫨澶嶅埗鎴栫Щ鍔?
                 bool result;
-                if (isCopyAction) {
+                if (preferShortcutForDrop) {
+                    result = createShortcutsInFolder(draggedPaths, m_desktopDir);
+                } else if (isCopyAction) {
                     result = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
                 } else {
                     result = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
@@ -3459,7 +3523,7 @@ void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
             }
 
             // 鍑嗗鎷栧嚭鏁版嵁
-            QMimeData* mimeData = new QMimeData();
+            WindowsDragMimeData* mimeData = new WindowsDragMimeData();
             QList<QUrl> urls;
             for (auto* it : m_selectedItems) {
                 urls << QUrl::fromLocalFile(it->filePath());
@@ -3516,7 +3580,7 @@ void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
             }
             
             // 鎵ц鎷栨嫿 (杩欎細闃诲鐩村埌閲婃斁)
-            Qt::DropAction dropAction = drag->exec(Qt::CopyAction | Qt::MoveAction);
+            Qt::DropAction dropAction = drag->exec(Qt::CopyAction | Qt::MoveAction | Qt::LinkAction);
             
             // 鎷栨嫿缁撴潫鍚庣殑娓呯悊
             m_isDragging = false;
@@ -4270,7 +4334,9 @@ bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBo
             continue;
         }
 
-        const QString destinationPath = ListViewFileOpsHelper::uniquePasteDestinationPath(sourcePath, m_desktopDir);
+        const QString destinationPath = preferShortcut
+            ? ListViewFileOpsHelper::uniqueShortcutPathForTarget(sourcePath, m_desktopDir)
+            : ListViewFileOpsHelper::uniquePasteDestinationPath(sourcePath, m_desktopDir);
         const QString normalizedDestination = normalizeDesktopPath(destinationPath);
 
         bool singleOk = false;
@@ -4379,6 +4445,21 @@ bool ListView::shouldCreateShortcutForExternalDrop(const QStringList& sourcePath
         }
     }
     return false;
+}
+
+bool ListView::shouldPreferShortcutForDrop(const QStringList& sourcePaths,
+                                           Qt::KeyboardModifiers modifiers,
+                                           bool isExternalSource) const
+{
+    if (modifiers & Qt::AltModifier) {
+        return true;
+    }
+
+    if (!isExternalSource) {
+        return false;
+    }
+
+    return shouldCreateShortcutForExternalDrop(sourcePaths);
 }
 
 bool ListView::createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const

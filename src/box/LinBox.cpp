@@ -24,6 +24,7 @@
 #include "ui/SettingUI.h"
 #include "desktop/ListView.h"
 #include "desktop/ListItem.h"
+#include "desktop/ListViewFileOpsHelper.h"
 #include "box/BoxManager.h"
 #include "desktop/RightMenu.h"
 #include "services/WinBlurHelper.h"
@@ -96,8 +97,13 @@ bool isRealSystemIconItem(ListItem* item)
 bool shouldCreateShortcutForMappedFolderDrop(ListView* lv,
                                              bool isInternalDrag,
                                              const QVector<ListItem*>& draggedItems,
-                                             const QStringList& paths)
+                                             const QStringList& paths,
+                                             Qt::KeyboardModifiers modifiers)
 {
+    if (modifiers & Qt::AltModifier) {
+        return true;
+    }
+
     if (isInternalDrag) {
         for (ListItem* item : draggedItems) {
             if (isRealSystemIconItem(item)) {
@@ -108,7 +114,29 @@ bool shouldCreateShortcutForMappedFolderDrop(ListView* lv,
         return lv && isRealSystemIconItem(lv->draggedItem());
     }
 
-    return lv && lv->shouldCreateShortcutForExternalDrop(paths);
+    return lv && lv->shouldPreferShortcutForDrop(paths, modifiers, true);
+}
+
+bool areAllPathsDirectChildrenOfFolder(const QStringList& paths, const QString& folderPath)
+{
+    const QString normalizedFolder = QDir::cleanPath(QDir::fromNativeSeparators(folderPath));
+    if (normalizedFolder.isEmpty() || paths.isEmpty()) {
+        return false;
+    }
+
+    for (const QString& path : paths) {
+        if (path.isEmpty()) {
+            return false;
+        }
+
+        const QFileInfo info(path);
+        const QString parentFolder = QDir::cleanPath(QDir::fromNativeSeparators(info.absolutePath()));
+        if (parentFolder.compare(normalizedFolder, Qt::CaseInsensitive) != 0) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
@@ -1568,14 +1596,51 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
     const bool preferShortcutForDrop = (isFolderMapped() && lv)
-        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths)
-        : (!isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths));
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths, event->keyboardModifiers())
+        : (lv && lv->shouldPreferShortcutForDrop(paths, event->keyboardModifiers(), !isInternalDrag));
+    const QString dropTargetText = isFolderMapped()
+        ? mappedFolderDisplayText()
+        : boxTitle();
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
         const QString clsid = hitItem->getItemData().getCLSID();
         const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
         event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+        const bool isFolderTarget = (hitItem->type() == ObjectType::Folder_ObjectType ||
+                                     hitItem->type() == ObjectType::SpecialFolder ||
+                                     hitItem->type() == ObjectType::DiskLetter);
+        const bool isRecycleBinTarget = (clsid == APP_RECYCLE_BIN_CLS);
+        if (isForbiddenTarget) {
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                event->dropAction(),
+                hitItem->baseName(),
+                true);
+        } else if (isRecycleBinTarget) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_MOVE,
+                QCoreApplication::translate("LinBox", "Move to %1"),
+                hitItem->baseName());
+        } else if (isFolderTarget && preferShortcutForDrop) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_LINK,
+                QCoreApplication::translate("LinBox", "Create shortcut in %1"),
+                hitItem->baseName());
+        } else if (!isFolderTarget) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_LABEL,
+                QCoreApplication::translate("LinBox", "Open with %1"),
+                hitItem->baseName());
+        } else {
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                event->dropAction(),
+                hitItem->baseName());
+        }
         event->accept();
         showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
         return;
@@ -1591,18 +1656,37 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
             event->ignore();
             return;
         }
+        const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
+        const bool isInternalSameFolderMove =
+            isInternalDrag &&
+            !isCtrl &&
+            !preferShortcutForDrop &&
+            areAllPathsDirectChildrenOfFolder(paths, targetFolder);
+        if (isInternalSameFolderMove) {
+            if (m_dragTip) m_dragTip->hide();
+            event->ignore();
+            return;
+        }
         event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            event->dropAction(),
+            dropTargetText);
         event->accept();
         updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
         return;
     }
 
-    if (!draggedItems.isEmpty()) {
+    if (!draggedItems.isEmpty() && !preferShortcutForDrop) {
         lv->resetRenameClickState();
         m_reorderDragItems = draggedItems;
         m_reorderInsertIndex = insertionIndexForPos(event->pos(), draggedItems, &m_reorderIndicatorAfterPrev);
         if (m_dragTip) m_dragTip->hide();
         event->setDropAction(Qt::MoveAction);
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            event->dropAction(),
+            dropTargetText);
         event->accept();
         update();
         return;
@@ -1612,11 +1696,16 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
     event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+    ListViewFileOpsHelper::updateInternalDragDescription(
+        event->mimeData(),
+        event->dropAction(),
+        dropTargetText,
+        isForbiddenTarget);
     event->accept();
 
     if (hitItem) {
         showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
-    } else if (isInternalDrag) {
+    } else if (isInternalDrag && !preferShortcutForDrop) {
         if (m_dragTip) m_dragTip->hide();
     } else {
         updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
@@ -1647,14 +1736,51 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
     const bool preferShortcutForDrop = (isFolderMapped() && lv)
-        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths)
-        : (!isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths));
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths, event->keyboardModifiers())
+        : (lv && lv->shouldPreferShortcutForDrop(paths, event->keyboardModifiers(), !isInternalDrag));
+    const QString dropTargetText = isFolderMapped()
+        ? mappedFolderDisplayText()
+        : boxTitle();
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
         const QString clsid = hitItem->getItemData().getCLSID();
         const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
         event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+        const bool isFolderTarget = (hitItem->type() == ObjectType::Folder_ObjectType ||
+                                     hitItem->type() == ObjectType::SpecialFolder ||
+                                     hitItem->type() == ObjectType::DiskLetter);
+        const bool isRecycleBinTarget = (clsid == APP_RECYCLE_BIN_CLS);
+        if (isForbiddenTarget) {
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                event->dropAction(),
+                hitItem->baseName(),
+                true);
+        } else if (isRecycleBinTarget) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_MOVE,
+                QCoreApplication::translate("LinBox", "Move to %1"),
+                hitItem->baseName());
+        } else if (isFolderTarget && preferShortcutForDrop) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_LINK,
+                QCoreApplication::translate("LinBox", "Create shortcut in %1"),
+                hitItem->baseName());
+        } else if (!isFolderTarget) {
+            ListViewFileOpsHelper::updateInternalDragDescriptionCustom(
+                event->mimeData(),
+                DROPIMAGE_LABEL,
+                QCoreApplication::translate("LinBox", "Open with %1"),
+                hitItem->baseName());
+        } else {
+            ListViewFileOpsHelper::updateInternalDragDescription(
+                event->mimeData(),
+                event->dropAction(),
+                hitItem->baseName());
+        }
         event->accept();
         showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
         return;
@@ -1670,18 +1796,37 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
             event->ignore();
             return;
         }
+        const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
+        const bool isInternalSameFolderMove =
+            isInternalDrag &&
+            !isCtrl &&
+            !preferShortcutForDrop &&
+            areAllPathsDirectChildrenOfFolder(paths, targetFolder);
+        if (isInternalSameFolderMove) {
+            if (m_dragTip) m_dragTip->hide();
+            event->ignore();
+            return;
+        }
         event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            event->dropAction(),
+            dropTargetText);
         event->accept();
         updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
         return;
     }
 
-    if (!draggedItems.isEmpty()) {
+    if (!draggedItems.isEmpty() && !preferShortcutForDrop) {
         lv->resetRenameClickState();
         m_reorderDragItems = draggedItems;
         m_reorderInsertIndex = insertionIndexForPos(event->pos(), draggedItems, &m_reorderIndicatorAfterPrev);
         if (m_dragTip) m_dragTip->hide();
         event->setDropAction(Qt::MoveAction);
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            event->dropAction(),
+            dropTargetText);
         event->accept();
         update();
         return;
@@ -1691,11 +1836,16 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
     event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+    ListViewFileOpsHelper::updateInternalDragDescription(
+        event->mimeData(),
+        event->dropAction(),
+        dropTargetText,
+        isForbiddenTarget);
     event->accept();
 
     if (hitItem) {
         showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
-    } else if (isInternalDrag) {
+    } else if (isInternalDrag && !preferShortcutForDrop) {
         if (m_dragTip) m_dragTip->hide();
     } else {
         updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
@@ -1726,8 +1876,8 @@ void LinBox::dropEvent(QDropEvent* event) {
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
     const bool preferShortcutForDrop = isFolderMapped()
-        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths)
-        : (!isInternalDrag && lv->shouldCreateShortcutForExternalDrop(paths));
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths, event->keyboardModifiers())
+        : lv->shouldPreferShortcutForDrop(paths, event->keyboardModifiers(), !isInternalDrag);
     ListItem* hitItem = hitItemAt(event->pos());
 
     if (hitItem && !draggedItems.contains(hitItem)) {
@@ -1748,6 +1898,15 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
+        const bool isInternalSameFolderMove =
+            (event->source() != nullptr) &&
+            !copyMode &&
+            !preferShortcutForDrop &&
+            areAllPathsDirectChildrenOfFolder(paths, targetFolder);
+        if (isInternalSameFolderMove) {
+            event->ignore();
+            return;
+        }
         const std::vector<std::wstring> srcPaths = toNativeWStringPaths(paths);
         if (targetFolder.isEmpty() || srcPaths.empty()) {
             event->ignore();
@@ -1802,6 +1961,16 @@ void LinBox::dropEvent(QDropEvent* event) {
         const int insertIndex = insertionIndexForPos(event->pos(), draggedItems, &m_reorderIndicatorAfterPrev);
         clearReorderPreview();
 
+        if (preferShortcutForDrop) {
+            if (lv->importPathsToBox(paths, this, true, insertIndex, true)) {
+                event->setDropAction(Qt::LinkAction);
+                event->accept();
+            } else {
+                event->ignore();
+            }
+            return;
+        }
+
         if (draggedItemsContainMappedSource(draggedItems)) {
             if (lv->importPathsToBox(paths, this, copyMode, insertIndex, preferShortcutForDrop)) {
                 event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
@@ -1850,6 +2019,17 @@ void LinBox::dropEvent(QDropEvent* event) {
     }
 
     if (isInternalDrag) {
+        if (preferShortcutForDrop) {
+            if (lv->importPathsToBox(paths, this, true, -1, true)) {
+                event->setDropAction(Qt::LinkAction);
+                event->accept();
+            } else {
+                event->ignore();
+            }
+            clearReorderPreview();
+            return;
+        }
+
         for (const QString& filePath : paths) {
             lv->moveItemToBox(filePath, this, false);
         }

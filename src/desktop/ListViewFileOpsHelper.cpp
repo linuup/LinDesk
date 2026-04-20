@@ -8,6 +8,7 @@
 #include <QGuiApplication>
 #include <QMimeData>
 #include <QUrl>
+#include <cstring>
 #include <Windows.h>
 #include <shlobj.h>
 #include <shobjidl.h>
@@ -16,6 +17,7 @@
 namespace {
 constexpr DWORD kClipboardPreferredDropEffectCopy = 0x00000001;
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
+constexpr UINT kDdwmUpdateWindow = WM_USER + 3;
 
 QString normalizeDesktopPathValue(const QString& path)
 {
@@ -64,6 +66,99 @@ QString shortcutBaseNameForSource(const QString& sourcePath)
     }
     return baseName;
 }
+
+QString translatedDropDescriptionMessage(Qt::DropAction action)
+{
+    switch (action) {
+    case Qt::CopyAction:
+        return QCoreApplication::translate("ListView", "Copy to %1");
+    case Qt::LinkAction:
+        return QCoreApplication::translate("ListView", "Create shortcut in %1");
+    case Qt::MoveAction:
+        return QCoreApplication::translate("ListView", "Move to %1");
+    default:
+        break;
+    }
+
+    return QCoreApplication::translate("ListView", "Move to %1");
+}
+}
+
+WindowsDragMimeData* WindowsDragMimeData::fromMimeData(const QMimeData* mimeData)
+{
+    return const_cast<WindowsDragMimeData*>(dynamic_cast<const WindowsDragMimeData*>(mimeData));
+}
+
+QString WindowsDragMimeData::windowsMimeType(const char* value)
+{
+    return QStringLiteral("application/x-qt-windows-mime;value=\"%1\"").arg(QString::fromLatin1(value));
+}
+
+void WindowsDragMimeData::setDropDescription(DROPIMAGETYPE type, const QString& message, const QString& insert)
+{
+    DROPDESCRIPTION description = {};
+    description.type = type;
+
+    const QString safeMessage = message.left(MAX_PATH - 1);
+    const QString safeInsert = insert.left(MAX_PATH - 1);
+    safeMessage.toWCharArray(description.szMessage);
+    description.szMessage[safeMessage.size()] = L'\0';
+    safeInsert.toWCharArray(description.szInsert);
+    description.szInsert[safeInsert.size()] = L'\0';
+
+    setData(windowsMimeType("DropDescription"),
+            QByteArray(reinterpret_cast<const char*>(&description), sizeof(description)));
+}
+
+void WindowsDragMimeData::setDropDescriptionForAction(Qt::DropAction action, const QString& insertText)
+{
+    DROPIMAGETYPE imageType = DROPIMAGE_MOVE;
+    switch (action) {
+    case Qt::CopyAction:
+        imageType = DROPIMAGE_COPY;
+        break;
+    case Qt::LinkAction:
+        imageType = DROPIMAGE_LINK;
+        break;
+    case Qt::MoveAction:
+        imageType = DROPIMAGE_MOVE;
+        break;
+    default:
+        imageType = DROPIMAGE_MOVE;
+        break;
+    }
+
+    setDropDescription(imageType, translatedDropDescriptionMessage(action), insertText);
+}
+
+void WindowsDragMimeData::setInvalidDropDescription(const QString& insertText)
+{
+    setDropDescription(DROPIMAGE_INVALID,
+                       QCoreApplication::translate("ListView", "Cannot drop in %1"),
+                       insertText);
+}
+
+void WindowsDragMimeData::refreshDragWindow() const
+{
+    const QByteArray raw = data(windowsMimeType("DragWindow"));
+    if (raw.isEmpty()) {
+        return;
+    }
+
+    HWND dragWindow = nullptr;
+    if (raw.size() >= static_cast<int>(sizeof(quintptr))) {
+        quintptr value = 0;
+        memcpy(&value, raw.constData(), sizeof(quintptr));
+        dragWindow = reinterpret_cast<HWND>(value);
+    } else if (raw.size() >= static_cast<int>(sizeof(DWORD))) {
+        DWORD value = 0;
+        memcpy(&value, raw.constData(), sizeof(DWORD));
+        dragWindow = reinterpret_cast<HWND>(ULongToHandle(value));
+    }
+
+    if (dragWindow) {
+        SendMessageW(dragWindow, kDdwmUpdateWindow, 0, 0);
+    }
 }
 
 QStringList ListViewFileOpsHelper::extractLocalPathsFromWindowsMimePayload(const QByteArray& payload, bool utf16)
@@ -451,4 +546,36 @@ bool ListViewFileOpsHelper::shouldCreateShortcutForExternalPath(const QString& s
     }
 
     return isDriveRootSourcePath(sourcePath) || hasSystemAttribute(sourcePath);
+}
+
+void ListViewFileOpsHelper::updateInternalDragDescription(const QMimeData* mimeData,
+                                                          Qt::DropAction action,
+                                                          const QString& insertText,
+                                                          bool forbidden)
+{
+    WindowsDragMimeData* windowsMimeData = WindowsDragMimeData::fromMimeData(mimeData);
+    if (!windowsMimeData) {
+        return;
+    }
+
+    if (forbidden) {
+        windowsMimeData->setInvalidDropDescription(insertText);
+    } else {
+        windowsMimeData->setDropDescriptionForAction(action, insertText);
+    }
+    windowsMimeData->refreshDragWindow();
+}
+
+void ListViewFileOpsHelper::updateInternalDragDescriptionCustom(const QMimeData* mimeData,
+                                                                DROPIMAGETYPE type,
+                                                                const QString& message,
+                                                                const QString& insertText)
+{
+    WindowsDragMimeData* windowsMimeData = WindowsDragMimeData::fromMimeData(mimeData);
+    if (!windowsMimeData) {
+        return;
+    }
+
+    windowsMimeData->setDropDescription(type, message, insertText);
+    windowsMimeData->refreshDragWindow();
 }
