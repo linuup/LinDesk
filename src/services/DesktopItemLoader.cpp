@@ -26,6 +26,31 @@ QString objectTypeToString(ObjectType type)
     }
 }
 
+QString fileFormToString(FileForm form)
+{
+    switch (form) {
+    case FileForm::Unknown: return "Unknown";
+    case FileForm::RegularFile: return "RegularFile";
+    case FileForm::Directory: return "Directory";
+    case FileForm::ShortcutFile: return "ShortcutFile";
+    case FileForm::DriveRoot: return "DriveRoot";
+    case FileForm::VirtualShellItem: return "VirtualShellItem";
+    default: return "Unknown";
+    }
+}
+
+QString targetKindToString(TargetKind kind)
+{
+    switch (kind) {
+    case TargetKind::Unknown: return "Unknown";
+    case TargetKind::RegularFile: return "RegularFile";
+    case TargetKind::Folder: return "Folder";
+    case TargetKind::DriveRoot: return "DriveRoot";
+    case TargetKind::SpecialFolder: return "SpecialFolder";
+    default: return "Unknown";
+    }
+}
+
 QJsonObject toJsonObject(const ListItemData& data)
 {
     const QFileInfo fileInfo = data.fileInfo();
@@ -35,6 +60,10 @@ QJsonObject toJsonObject(const ListItemData& data)
     obj["clsid"] = data.getCLSID();
     obj["type"] = objectTypeToString(data.type());
     obj["typeValue"] = static_cast<int>(data.type());
+    obj["fileForm"] = fileFormToString(data.fileForm());
+    obj["fileFormValue"] = static_cast<int>(data.fileForm());
+    obj["targetKind"] = targetKindToString(data.targetKind());
+    obj["targetKindValue"] = static_cast<int>(data.targetKind());
     obj["specialFolderType"] = static_cast<int>(data.specialFolderType());
     obj["exists"] = fileInfo.exists();
     obj["isDir"] = fileInfo.isDir();
@@ -60,6 +89,10 @@ QJsonObject toJsonObject(const ListItem* item)
     obj["clsid"] = data.getCLSID();
     obj["type"] = objectTypeToString(item->type());
     obj["typeValue"] = static_cast<int>(item->type());
+    obj["fileForm"] = fileFormToString(data.fileForm());
+    obj["fileFormValue"] = static_cast<int>(data.fileForm());
+    obj["targetKind"] = targetKindToString(data.targetKind());
+    obj["targetKindValue"] = static_cast<int>(data.targetKind());
     obj["boxId"] = item->boxId();
     obj["visible"] = item->isVisible();
     obj["selected"] = item->isSelected;

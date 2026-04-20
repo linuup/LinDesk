@@ -9,6 +9,75 @@ namespace {
 constexpr size_t kShellLinkHeaderSize = 0x4C;
 constexpr DWORD kHasLinkTargetIDListFlag = 0x00000001;
 
+std::wstring NormalizeShellPath(std::wstring path)
+{
+    if (path.empty()) {
+        return path;
+    }
+
+    for (wchar_t& ch : path) {
+        if (ch == L'/') {
+            ch = L'\\';
+        } else {
+            ch = static_cast<wchar_t>(towlower(ch));
+        }
+    }
+
+    while (path.length() > 3 && (path.back() == L'\\' || path.back() == L'/')) {
+        path.pop_back();
+    }
+
+    return path;
+}
+
+std::wstring CurrentUserProfilePath()
+{
+    wchar_t username[256] = { 0 };
+    DWORD usernameLength = static_cast<DWORD>(sizeof(username) / sizeof(username[0]));
+    std::wstring currentUsername;
+    if (GetUserNameW(username, &usernameLength) && username[0] != L'\0') {
+        currentUsername.assign(username);
+    }
+
+    wil::unique_cotaskmem_string profilePath;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Profile, 0, nullptr, wil::out_param(profilePath))) && profilePath) {
+        std::wstring resolvedProfilePath = profilePath.get();
+        if (!currentUsername.empty()) {
+            const size_t lastSlash = resolvedProfilePath.find_last_of(L"\\/");
+            const std::wstring leafName = (lastSlash == std::wstring::npos)
+                ? resolvedProfilePath
+                : resolvedProfilePath.substr(lastSlash + 1);
+            if (_wcsicmp(leafName.c_str(), currentUsername.c_str()) == 0) {
+                return NormalizeShellPath(resolvedProfilePath);
+            }
+        }
+        return NormalizeShellPath(resolvedProfilePath);
+    }
+
+    if (!currentUsername.empty()) {
+        wchar_t systemDrive[MAX_PATH] = { 0 };
+        DWORD driveLength = GetEnvironmentVariableW(L"SystemDrive", systemDrive, MAX_PATH);
+        std::wstring baseDrive = (driveLength > 0 && systemDrive[0] != L'\0') ? systemDrive : L"C:";
+        return NormalizeShellPath(baseDrive + L"\\Users\\" + currentUsername);
+    }
+
+    return std::wstring();
+}
+
+bool IsCurrentUserFolderPath(const wchar_t* name)
+{
+    if (!name || name[0] == L'\0') {
+        return false;
+    }
+
+    static const std::wstring kCurrentUserProfilePath = CurrentUserProfilePath();
+    if (kCurrentUserProfilePath.empty()) {
+        return false;
+    }
+
+    return NormalizeShellPath(name) == kCurrentUserProfilePath;
+}
+
 bool FillTargetNamesFromPidl(PCIDLIST_ABSOLUTE pidl, std::wstring& targetParsingPath,
                              std::wstring& targetDisplayName)
 {
@@ -117,7 +186,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         return false;
     }
     
-    // 检查扩展名（支持大小写）
+    // 检查扩展名（支持大小写�?
     std::wstring pathStr(shortcutPath);
     std::wstring extension;
     size_t dotPos = pathStr.find_last_of(L"./\\");
@@ -217,7 +286,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
 }
 }
 
-// 静态成员变量定义（必须在类外部进行）
+// 静态成员变量定义（必须在类外部进行�?
 HWND CSystemApi::global_SysListView32 = nullptr;
 HWND CSystemApi::global_realDesktop = nullptr;
 //reference
@@ -260,12 +329,12 @@ std::string WideToUtf8(const wchar_t* wideStr)
 {
     if (!wideStr) return std::string();
 
-    // 计算 UTF-8 缓冲区大小
+    // 计算 UTF-8 缓冲区大�?
     int utf8_length = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0, nullptr, nullptr);
     if (utf8_length == 0) return std::string();
 
-    // 创建 std::string 并分配空间
-    std::string utf8_string(utf8_length - 1, 0); // 不需要末尾 \0
+    // 创建 std::string 并分配空�?
+    std::string utf8_string(utf8_length - 1, 0); // 不需要末�?\0
 
     // 执行转换
     WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8_string.data(), utf8_length, nullptr, nullptr);
@@ -312,7 +381,6 @@ SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
     else if (wcsstr(name, L_NETWORK)) {
         return SpecialFolders::Network;
     }
-
     else if (wcsstr(name, L"OneDrive") != nullptr ||
         wcsstr(name, L"Microsoft OneDrive") != nullptr ||
         wcsstr(name, L"ONEDRIVE") != nullptr ||
@@ -325,9 +393,7 @@ SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
         (wcsstr(name, L"\\用户\\") != nullptr && wcsstr(name, L"\\桌面") != nullptr)) {
         return SpecialFolders::UnknownFolder;
     }
-    else if (wcsstr(name, L"\\Users\\") != nullptr ||
-        wcsstr(name, L"C:\\Users") != nullptr ||
-        wcsstr(name, L"用户") != nullptr) {
+    else if (wcsstr(name, L_USER_FOLDER) || IsCurrentUserFolderPath(name)) {
         return SpecialFolders::UserFolder;
     }
     else if (wcsstr(name, L_LIARIES)) {
@@ -337,7 +403,7 @@ SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
         return SpecialFolders::Linux;
     }
 
-    return SpecialFolders::UnknownFolder;  // 如果没有匹配到任何特殊文件夹，返回未知
+    return SpecialFolders::UnknownFolder;
 }
 
 IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
@@ -474,13 +540,13 @@ vector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
         //获取图标名称
         GetSpecifyItemString(hProcess, sysListView32, i, 0, Object, sizeof(Object));
 
-        // 这里直接把 TCHAR 当成 wchar_t 处理
+        // 这里直接�?TCHAR 当成 wchar_t 处理
         const wchar_t* wideStr = Object;
         std::string utf8_string = WideToUtf8(wideStr);
 
         // 去掉末尾的NULL字符
         //size_t length = wcslen(Object);
-        // 分配足够的空间来存储 UTF-8 字符串
+        // 分配足够的空间来存储 UTF-8 字符�?
         //int utf8_length = WideCharToMultiByte(CP_UTF8, 0, Object, -1, nullptr, 0, nullptr, nullptr);
         //char* utf8_buffer = new char[utf8_length];
         // 执行转换
@@ -495,10 +561,10 @@ vector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
         
         //清理末尾的所有\0
         std::string cleanedString;
-        // 查找第一个\0的位置
+        // 查找第一个\0的位�?
         size_t nullPos = utf8_string.find('\0');
 
-        // 如果找到了\0，则截取第一个\0之前的部分
+        // 如果找到了\0，则截取第一个\0之前的部�?
         if (nullPos != std::string::npos) {
             cleanedString = utf8_string.substr(0, nullPos).c_str();
         }
@@ -525,13 +591,13 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 	//vector<IconItem>* iconItems = new vector<IconItem>();
 	vector <IconItem> iconItems;
     
-    // 提前抓取可视坐标 (通过远线程注入提取 SysListView32)
+    // 提前抓取可视坐标 (通过远线程注入提�?SysListView32)
     HWND sysListView32 = FindSysListView32();
     std::unordered_map<std::string, POINT> posMap;
     if (sysListView32) {
         vector<IconItem> visualItems = GetDesktopIconsItems(sysListView32);
         for (const auto& vi : visualItems) {
-            // 存储为小写且去空格的名字，用于模糊匹配
+            // 存储为小写且去空格的名字，用于模糊匹�?
             std::string normalizedName = vi.name;
             while(!normalizedName.empty() && (normalizedName.back() == ' ' || normalizedName.back() == '\0')) normalizedName.pop_back();
             while(!normalizedName.empty() && (normalizedName.front() == ' ')) normalizedName.erase(0, 1);
@@ -585,7 +651,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         return iconItems;
     }
 
-    // 枚举每个文件项
+    // 枚举每个文件�?
     LPITEMIDLIST pidlItem = nullptr;  // 临时存储PIDL
 
     while (enumIDList->Next(1, &pidlItem, NULL) == S_OK) {
@@ -596,7 +662,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         wchar_t szName[MAX_PATH];
         wchar_t szParsingPath[MAX_PATH];
         
-        // 获取名称（SHGDN_NORMAL）
+        // 获取名称（SHGDN_NORMAL�?
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szName, MAX_PATH);
@@ -607,7 +673,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             _tprintf(_T("Failed to get name: %d\n"), error);
         }
 
-        // 获取解析路径（SHGDN_FORPARSING）
+        // 获取解析路径（SHGDN_FORPARSING�?
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szParsingPath, MAX_PATH);
@@ -621,7 +687,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             DWORD error = GetLastError();
         }
 
-        // 获取实际文件系统路径（用于判断是否为 .lnk 文件）
+        // 获取实际文件系统路径（用于判断是否为 .lnk 文件�?
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL | SHGDN_INFOLDER, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szPath, MAX_PATH);
@@ -629,7 +695,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 
         std::wstring shortcutTargetPath;
         std::wstring shortcutTargetDisplayName;
-        // 使用 szParsingPath（.lnk 文件的绝对路径）来解析快捷方式目标
+        // 使用 szParsingPath�?lnk 文件的绝对路径）来解析快捷方式目�?
         if (ResolveShortcutTarget(szParsingPath, shortcutTargetPath, shortcutTargetDisplayName)) {
             i.shortcutTargetPath = Tool::WstrToStr(shortcutTargetPath.c_str());
             i.shortcutTargetDisplayName = Tool::WstrToStr(shortcutTargetDisplayName.c_str());
@@ -639,13 +705,13 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             i.shortcutTargetSpecialFolder = getFolderTypeFromName(targetSpecialSource);
         }
 
-		// 创建绝对 PIDL 以支持高质量图标提取和其他 Shell 操作
+		// 创建绝对 PIDL 以支持高质量图标提取和其�?Shell 操作
         if (rootPidl) {
             i.pidl_p = ILCombine(rootPidl.get(), pidlItem);
         } else {
             i.pidl_p = ILClone(pidlItem);
         }
-        ILFree(pidlItem); // 释放 EnumIDList 返回的相对 PIDL
+        ILFree(pidlItem); // 释放 EnumIDList 返回的相�?PIDL
 
         if (i.pidl_p && Tool::WstrToStr(szName) != Tool::getWindowsUsername()) {
             std::wstring resolvedItemPath;
@@ -657,7 +723,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 
 		i.specialFolder = getFolderTypeFromName(szParsingPath);
         
-        // 尝试从可视抓取数组中匹配坐标 (同样进行归一化处理)
+        // 尝试从可视抓取数组中匹配坐标 (同样进行归一化处�?
         std::string searchName = i.name;
         while(!searchName.empty() && (searchName.back() == ' ' || searchName.back() == '\0')) searchName.pop_back();
         while(!searchName.empty() && (searchName.front() == ' ')) searchName.erase(0, 1);
@@ -673,7 +739,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 #endif
         
     }
-    // 释放枚举器
+    // 释放枚举�?
     return iconItems;
 }
 
@@ -738,11 +804,11 @@ const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
         return nullptr;
     }
 
-    // 使用 LoadString 从 DLL 中加载指定索引的字符串资源
+    // 使用 LoadString �?DLL 中加载指定索引的字符串资�?
     char* strBuffer = new char[MAX_PATH]; // 假设 MAX_LOADSTRING 是足够大的缓冲区大小
     int result = LoadStringA(hModule, index, strBuffer, MAX_PATH);
     if (result == 0) {
-        // 如果加载字符串失败，打印错误信息，释放 DLL，并返回 nullptr
+        // 如果加载字符串失败，打印错误信息，释�?DLL，并返回 nullptr
         DWORD error = GetLastError();
         _tprintf(_T("Failed to load string from DLL: Error %d\n"), error);
         FreeLibrary(hModule);
@@ -750,7 +816,7 @@ const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
         return nullptr;
     }
 
-    // 字符串加载成功，确保字符串以 null 结尾（LoadString 可能未填充整个缓冲区）
+    // 字符串加载成功，确保字符串以 null 结尾（LoadString 可能未填充整个缓冲区�?
     strBuffer[result] = '\0';
 
     // 释放 DLL，并返回加载的字符串
@@ -775,7 +841,7 @@ bool CSystemApi::IsLinkFile(const wchar_t* filePath)
     if (attributes != INVALID_FILE_ATTRIBUTES &&
         (attributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
         !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-        //std::cout << "该路径可能是快捷方式。" << std::endl;
+        //std::cout << "该路径可能是快捷方式�? << std::endl;
         return true;
     }
     return false;
@@ -805,13 +871,13 @@ bool CSystemApi::DeleteFiles(const std::vector<std::wstring>& filePaths, bool to
 {
     if (filePaths.empty()) return true;
 
-    // SHFileOperation 的 pFrom 要求以双 null 结尾，内部各路径以单 null 分隔
+    // SHFileOperation �?pFrom 要求以双 null 结尾，内部各路径以单 null 分隔
     std::vector<wchar_t> pathsBuffer;
     for (const auto& path : filePaths) {
         for (wchar_t c : path) pathsBuffer.push_back(c);
-        pathsBuffer.push_back(0); // 单 null 分隔
+        pathsBuffer.push_back(0); // �?null 分隔
     }
-    pathsBuffer.push_back(0); // 双 null 结尾
+    pathsBuffer.push_back(0); // �?null 结尾
 
     SHFILEOPSTRUCTW fileOp = { 0 };
     fileOp.hwnd = GetForegroundWindow();
@@ -935,16 +1001,16 @@ bool CSystemApi::DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm)
 {
     SHFILEOPSTRUCTW fileOp = { 0 };
     fileOp.hwnd = NULL; // 可以指定一个窗口句柄用于显示进度或错误信息
-    fileOp.wFunc = FO_DELETE; // 指定操作类型为删除
-    fileOp.pFrom = filePath; // 指向待删除文件的路径，路径字符串必须以双null字符结尾（L"...\0\0"）
+    fileOp.wFunc = FO_DELETE; // 指定操作类型为删�?
+    fileOp.pFrom = filePath; // 指向待删除文件的路径，路径字符串必须以双null字符结尾（L"...\0\0"�?
 
-    //启用确认对话框
+    //启用确认对话�?
     if (comfirm)
     {
         fileOp.fFlags = FOF_ALLOWUNDO;
     }
     else {
-        fileOp.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION; // 允许放入回收站并禁用确认对话框
+        fileOp.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION; // 允许放入回收站并禁用确认对话�?
     }
     // 执行文件操作
     int result = SHFileOperationW(&fileOp);
@@ -987,13 +1053,13 @@ PathType CSystemApi::GetPathType(const wchar_t* filePath)
 }
 
 /**
-lpVerb 参数与 ShellExecute 的 lpOperation 参数一致：
-edit 用编辑器打开 lpFile 指定的文档，如果 lpFile 不是文档，则会失败
+lpVerb 参数�?ShellExecute �?lpOperation 参数一致：
+edit 用编辑器打开 lpFile 指定的文档，如果 lpFile 不是文档，则会失�?
 explore 浏览 lpFile 指定的文件夹
-find 搜索 lpDirectory 指定的目录
-open 打开 lpFile 文件，lpFile 可以是文件或文件夹
-print 打印 lpFile，如果 lpFile 不是文档，则函数失败
-properties 显示属性
+find 搜索 lpDirectory 指定的目�?
+open 打开 lpFile 文件，lpFile 可以是文件或文件�?
+print 打印 lpFile，如�?lpFile 不是文档，则函数失败
+properties 显示属�?
 runas 请求以管理员权限运行，比如以管理员权限运行某个exe
 NULL 执行默认"open"动作
 **/
@@ -1064,7 +1130,7 @@ HBITMAP CSystemApi::GetShellThumbnail(const wchar_t* path, int width, int height
 }
 int OpenCLSID(const wchar_t* clsidStr)
 {
-    // 替换下面的 CLSID_String 字符串为你想要打开的 CLSID 对应的程序的 CLSID 字符串
+    // 替换下面�?CLSID_String 字符串为你想要打开�?CLSID 对应的程序的 CLSID 字符�?
     LPCWSTR CLSID_String = clsidStr;
 
     SHELLEXECUTEINFO sei = { sizeof(sei) };
@@ -1100,7 +1166,7 @@ void WriteLocalFile(const vector<IconItem>* items) {
             //std::cout << item.name << std::endl;
             outputFile << item.name << std::endl;
         }
-        // 关闭文件流
+        // 关闭文件�?
         outputFile.close();
         std::cout << "List content has been written to 'items_content.txt'." << std::endl;
     }

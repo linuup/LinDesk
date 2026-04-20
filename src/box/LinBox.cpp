@@ -84,6 +84,33 @@ bool draggedItemsContainMappedSource(const QVector<ListItem*>& items)
     return false;
 }
 
+bool isRealSystemIconItem(ListItem* item)
+{
+    if (!item) {
+        return false;
+    }
+
+    return item->getItemData().isRealSpecialFolderIcon();
+}
+
+bool shouldCreateShortcutForMappedFolderDrop(ListView* lv,
+                                             bool isInternalDrag,
+                                             const QVector<ListItem*>& draggedItems,
+                                             const QStringList& paths)
+{
+    if (isInternalDrag) {
+        for (ListItem* item : draggedItems) {
+            if (isRealSystemIconItem(item)) {
+                return true;
+            }
+        }
+
+        return lv && isRealSystemIconItem(lv->draggedItem());
+    }
+
+    return lv && lv->shouldCreateShortcutForExternalDrop(paths);
+}
+
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
 
 QStringList clipboardLocalFilePathsForBox()
@@ -1540,15 +1567,17 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     const QVector<ListItem*> draggedItems = (isInternalDrag && lv)
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
-    const bool preferShortcutForExternal = !isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths);
+    const bool preferShortcutForDrop = (isFolderMapped() && lv)
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths)
+        : (!isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths));
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
         const QString clsid = hitItem->getItemData().getCLSID();
         const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
-        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
         event->accept();
-        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
         return;
     }
 
@@ -1562,9 +1591,9 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
             event->ignore();
             return;
         }
-        event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
         event->accept();
-        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
         return;
     }
 
@@ -1582,15 +1611,15 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
-    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
     event->accept();
 
     if (hitItem) {
-        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
     } else if (isInternalDrag) {
         if (m_dragTip) m_dragTip->hide();
     } else {
-        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
     }
 }
 
@@ -1617,15 +1646,17 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     const QVector<ListItem*> draggedItems = (isInternalDrag && lv)
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
-    const bool preferShortcutForExternal = !isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths);
+    const bool preferShortcutForDrop = (isFolderMapped() && lv)
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths)
+        : (!isInternalDrag && lv && lv->shouldCreateShortcutForExternalDrop(paths));
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
         const QString clsid = hitItem->getItemData().getCLSID();
         const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
-        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+        event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
         event->accept();
-        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
         return;
     }
 
@@ -1639,9 +1670,9 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
             event->ignore();
             return;
         }
-        event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
+        event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
         event->accept();
-        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
         return;
     }
 
@@ -1659,15 +1690,15 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     const QString clsid = hitItem ? hitItem->getItemData().getCLSID() : QString();
     const bool isForbiddenTarget = (clsid == APP_MY_COMPUTER_CLS || clsid == APP_NETWORK_CLS || clsid == APP_CONTROL_PANEL_CLS);
 
-    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForExternal ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
+    event->setDropAction(isForbiddenTarget ? Qt::IgnoreAction : (preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction)));
     event->accept();
 
     if (hitItem) {
-        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForExternal);
+        showDropTipForItem(hitItem, event->pos(), isCtrl, preferShortcutForDrop);
     } else if (isInternalDrag) {
         if (m_dragTip) m_dragTip->hide();
     } else {
-        updateDragTip(event->pos(), isCtrl, preferShortcutForExternal);
+        updateDragTip(event->pos(), isCtrl, preferShortcutForDrop);
     }
 }
 
@@ -1691,16 +1722,17 @@ void LinBox::dropEvent(QDropEvent* event) {
 
     const bool isInternalDrag = (event->source() != nullptr);
     const bool copyMode = (event->keyboardModifiers() & Qt::ControlModifier);
-    const bool preferShortcutForExternal = !isInternalDrag && lv->shouldCreateShortcutForExternalDrop(paths);
-    ListItem* hitItem = hitItemAt(event->pos());
-
     const QVector<ListItem*> draggedItems = isInternalDrag
         ? lv->orderedDraggedItemsForPaths(paths)
         : QVector<ListItem*>();
+    const bool preferShortcutForDrop = isFolderMapped()
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, draggedItems, paths)
+        : (!isInternalDrag && lv->shouldCreateShortcutForExternalDrop(paths));
+    ListItem* hitItem = hitItemAt(event->pos());
 
     if (hitItem && !draggedItems.contains(hitItem)) {
         clearReorderPreview();
-        if (lv->handleDroppedPathsOnItem(paths, hitItem, copyMode, preferShortcutForExternal)) {
+        if (lv->handleDroppedPathsOnItem(paths, hitItem, copyMode, preferShortcutForDrop)) {
             event->accept();
         } else {
             event->ignore();
@@ -1723,7 +1755,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         bool ok = false;
-        if (preferShortcutForExternal) {
+        if (preferShortcutForDrop) {
             ok = lv->createShortcutsInFolder(paths, targetFolder);
         } else if (copyMode) {
             ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
@@ -1757,7 +1789,7 @@ void LinBox::dropEvent(QDropEvent* event) {
             update();
             raise();
             lv->requestSaveBoxes();
-            event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
+            event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
             event->accept();
         } else {
             event->ignore();
@@ -1771,8 +1803,8 @@ void LinBox::dropEvent(QDropEvent* event) {
         clearReorderPreview();
 
         if (draggedItemsContainMappedSource(draggedItems)) {
-            if (lv->importPathsToBox(paths, this, copyMode, insertIndex, preferShortcutForExternal)) {
-                event->setDropAction(preferShortcutForExternal ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
+            if (lv->importPathsToBox(paths, this, copyMode, insertIndex, preferShortcutForDrop)) {
+                event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
                 event->accept();
             } else {
                 event->ignore();
@@ -1837,7 +1869,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         return;
     }
 
-    if (lv->importPathsToBox(paths, this, copyMode, -1, preferShortcutForExternal)) {
+    if (lv->importPathsToBox(paths, this, copyMode, -1, preferShortcutForDrop)) {
         event->accept();
     } else {
         event->ignore();
@@ -1848,10 +1880,22 @@ void LinBox::dropEvent(QDropEvent* event) {
 void LinBox::keyPressEvent(QKeyEvent* event) {
     ListView* lv = ListView::instance();
     if (lv) {
+        const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
         const bool extendSelection = event->modifiers() & Qt::ShiftModifier;
         const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
         const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
         const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
+        const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
+        qDebug() << "Use GetAsyncKeyState check: Shift =" << shiftPressed
+            << ", Delete =" << (event->key() == Qt::Key_Delete)
+            << ", permanentDelete =" << permanentDelete;
+        //first judge if it's a Shift+Delete for permanent delete, if not, then handle regular Delete key
+        if (permanentDelete) {
+            lv->onMenuDelete(true);
+            event->accept();
+            qDebug() << "[Box]-Permanent Delete triggered";
+            return;
+        }
         if (event->matches(QKeySequence::SelectAll)) {
             lv->applySelectionState(lv->selectableItemsForHost(this), nullptr, false);
             event->accept();
@@ -2001,6 +2045,7 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             bool shiftPressed = modifiers & Qt::ShiftModifier;
             lv->onMenuDelete(shiftPressed);
             event->accept();
+            qDebug() << "[Box]-Delete triggered, Shift pressed:" << shiftPressed;
             return;
         }
     }

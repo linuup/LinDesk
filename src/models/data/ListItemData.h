@@ -2,6 +2,7 @@
 #include <QString>
 #include <QIcon>
 #include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
 #include <QPixmap>
 #include <QImage>
@@ -40,6 +41,23 @@ const QSet<QString> SystemFolderCLSIDs = {
 	"::{018D5C66-4533-4307-9B53-224DE2ED1FE6}"   // OneDrive
 };
 
+enum class FileForm {
+	Unknown,
+	RegularFile,
+	Directory,
+	ShortcutFile,
+	DriveRoot,
+	VirtualShellItem
+};
+
+enum class TargetKind {
+	Unknown,
+	RegularFile,
+	Folder,
+	DriveRoot,
+	SpecialFolder
+};
+
 class ListItemData {
 public:
 	static int s_targetIconSize;
@@ -55,6 +73,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 
 	ListItemData(IconItem item) {
 		setIconItem(item);
+		m_fileInfo = QFileInfo(QString(item.path.c_str()).replace("LNK", "lnk"));
 		setPIDL(item.pidl_p);
 		const SpecialFolders resolvedType =
 			(item.shortcutTargetSpecialFolder != SpecialFolders::Empty &&
@@ -63,7 +82,6 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 				: item.specialFolder;
 		setItemDateType(resolvedType);
 		m_fullName = QString::fromStdString(item.name.c_str());
-		m_fileInfo = QFileInfo(QString(item.path.c_str()).replace("LNK", "lnk"));
 		if (item.shortcutTargetSpecialFolder != SpecialFolders::Empty && item.shortcutTargetSpecialFolder != SpecialFolders::UnknownFolder && !item.shortcutTargetPath.empty()) {
 			m_clsid = QString::fromStdString(item.shortcutTargetPath.c_str());
 		} else {
@@ -103,36 +121,98 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 		const UINT driveType = GetDriveTypeW(wPath.c_str());
 		return driveType != DRIVE_NO_ROOT_DIR && driveType != DRIVE_UNKNOWN;
 	}
-	void setItemDateType(const SpecialFolders type) {
-		auto pathTmp = m_iconItem.path.c_str();
-		QFileInfo tmp(pathTmp);
-		tmp = tmp.exists() ? tmp : QFileInfo();
-		const QString rawPath = QString::fromStdString(m_iconItem.path);
+	bool isVirtualShellPath(const QString& rawPath) const {
+		return rawPath.startsWith("::");
+	}
+	bool isShortcutPath(const QString& rawPath) const {
+		const QString suffix = QFileInfo(rawPath).suffix().toLower();
+		return (suffix == "lnk" || suffix == "url" || suffix == "appref-ms");
+	}
+	FileForm resolveFileForm(const QString& rawPath) const {
+		if (rawPath.isEmpty()) {
+			return FileForm::Unknown;
+		}
 
-		// Correctly identify special folders excluding Empty and Unknown types
+		if (isVirtualShellPath(rawPath)) {
+			return FileForm::VirtualShellItem;
+		}
+
+		if (isDriveRootPath(rawPath)) {
+			return FileForm::DriveRoot;
+		}
+
+		if (isShortcutPath(rawPath)) {
+			return FileForm::ShortcutFile;
+		}
+
+		if (m_fileInfo.isDir()) {
+			return FileForm::Directory;
+		}
+
+		if (m_fileInfo.isFile()) {
+			return FileForm::RegularFile;
+		}
+
+		const QString suffix = QFileInfo(rawPath).suffix().toLower();
+		if (!suffix.isEmpty() && (suffix == "ico")) {
+			return FileForm::RegularFile;
+		}
+
+		return FileForm::Unknown;
+	}
+	TargetKind resolveTargetKind(const QString& rawPath, SpecialFolders type) const {
+		if (type != SpecialFolders::UnknownFolder && type != SpecialFolders::Empty) {
+			return TargetKind::SpecialFolder;
+		}
+
+		if (isDriveRootPath(rawPath)) {
+			return TargetKind::DriveRoot;
+		}
+
+		if (m_fileInfo.isDir()) {
+			return TargetKind::Folder;
+		}
+
+		if (m_fileInfo.isFile()) {
+			return TargetKind::RegularFile;
+		}
+
+		if (isShortcutPath(rawPath)) {
+			return TargetKind::RegularFile;
+		}
+
+		return TargetKind::Unknown;
+	}
+	void applyLegacyObjectType() {
+		switch (m_targetKind) {
+		case TargetKind::SpecialFolder:
+			m_type = ObjectType::SpecialFolder;
+			break;
+		case TargetKind::DriveRoot:
+			m_type = ObjectType::DiskLetter;
+			break;
+		case TargetKind::Folder:
+			m_type = ObjectType::Folder_ObjectType;
+			break;
+		case TargetKind::RegularFile:
+			m_type = ObjectType::File;
+			break;
+		default:
+			m_type = ObjectType::Empty_ObjectType;
+			break;
+		}
+	}
+	void setItemDateType(const SpecialFolders type) {
+		const QString rawPath = QString::fromStdString(m_iconItem.path);
+		m_specialFolderType = SpecialFolders::Empty;
+		m_fileForm = resolveFileForm(rawPath);
+		m_targetKind = resolveTargetKind(rawPath, type);
+
 		if (type != SpecialFolders::UnknownFolder && type != SpecialFolders::Empty) {
 			m_specialFolderType = type;
-			m_type = ObjectType::SpecialFolder;
 		}
-		else {
-			//?????????
-			if (isDriveRootPath(rawPath)) {
-				m_type = ObjectType::DiskLetter;
-			}
-			else if (tmp.isFile()) {
-				m_type = ObjectType::File;
-				//m_type = ObjectType::Link;
-			}
-			else if (tmp.isDir()) {
-				m_type = ObjectType::Folder_ObjectType;
-			}
-            else {
-                const QString suffix = QFileInfo(rawPath).suffix().toLower();
-                if (!rawPath.isEmpty() && (suffix == "lnk" || suffix == "url" || suffix == "appref-ms" || suffix == "ico")) {
-                    m_type = ObjectType::File;
-                }
-            }
-		}
+
+		applyLegacyObjectType();
 	}
 	//移动构造函数，禁止复制
 /*ListItemData(ListItemData&&) noexcept = default;
@@ -151,11 +231,21 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 	// QDateTime lastModified() const { return m_lastModified; }
 	const ObjectType type() const { return m_type; }
 	const SpecialFolders specialFolderType() const { return m_specialFolderType; }
+	const FileForm fileForm() const { return m_fileForm; }
+	const TargetKind targetKind() const { return m_targetKind; }
 	LPITEMIDLIST pidl() const { return m_pidl; }
 
 	bool isShortcutType() const {
-		QString ext = m_fileInfo.suffix().toLower();
-		return (ext == "lnk" || ext == "url" || ext == "appref-ms");
+		return m_fileForm == FileForm::ShortcutFile;
+	}
+	bool pointsToSpecialFolder() const {
+		return m_targetKind == TargetKind::SpecialFolder;
+	}
+	bool isRealSpecialFolderIcon() const {
+		return pointsToSpecialFolder() && m_fileForm != FileForm::ShortcutFile;
+	}
+	bool isShortcutToSpecialFolder() const {
+		return pointsToSpecialFolder() && m_fileForm == FileForm::ShortcutFile;
 	}
 
 	QString displayNameForRename() const {
@@ -361,5 +451,7 @@ public:
 	QString m_shellPath;    //Shell需要的路径 ：C:\\Users\\a\\Desktop
 	ObjectType m_type = ObjectType::Empty_ObjectType;  //数据对象类型
 	SpecialFolders m_specialFolderType = SpecialFolders::Empty;  //特殊文件夹类型
+	FileForm m_fileForm = FileForm::Unknown;
+	TargetKind m_targetKind = TargetKind::Unknown;
 	LPITEMIDLIST m_pidl = nullptr;       // PIDL (Safe initialization)
 };

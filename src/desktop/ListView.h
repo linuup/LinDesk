@@ -277,7 +277,7 @@ protected:
 	void dragLeaveEvent(QDragLeaveEvent* event) override;
 	void dropEvent(QDropEvent* event) override;
 	void enterEvent(QEvent* event) override;
-	bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
+	//bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
 	void handleHotkey(int id);
 
 private:

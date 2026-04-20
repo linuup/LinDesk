@@ -1,23 +1,9 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/RenameManager.h"
-#include "box/BoxManager.h"
-#include "box/LinBox.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "app/LanguageManager.h"
 #include <QCoreApplication>
 #include <QSettings>
-
-namespace {
-bool focusBelongsToWidgetOrChild(const QWidget* root, QWidget* candidate)
-{
-    for (QWidget* current = candidate; current; current = current->parentWidget()) {
-        if (current == root) {
-            return true;
-        }
-    }
-    return false;
-}
-}
 
 LinDesktop::LinDesktop(QWidget* parent)
     : QWidget(parent)
@@ -277,49 +263,5 @@ void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
-    MSG* msg = static_cast<MSG*>(message);
-
-    // 只在没有焦点或焦点不在 ListView 时处理
-    if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
-        QWidget* focusWidget = QApplication::focusWidget();
-        const bool focusInListView = listView && focusBelongsToWidgetOrChild(listView, focusWidget);
-
-        // 如果正在重命名或有焦点，不处理
-        if (!listView || RenameManager::instance()->isRenaming() || focusInListView) {
-            return QWidget::nativeEvent(eventType, message, result);
-        }
-
-        // 获取键盘状态
-        const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
-        const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
-        const bool altPressed = GetAsyncKeyState(VK_MENU) & 0x8000;
-
-        switch (msg->wParam) {
-        case 'N':  // Ctrl+Shift+N
-            if (ctrlPressed && shiftPressed && !altPressed) {
-                listView->createNewFolderInHost();
-                if (result) *result = 0;
-                return true;
-            }
-            break;
-
-        case VK_DELETE:  // Delete 或 Shift+Delete
-            if (!ctrlPressed && !altPressed) {  // 纯 Delete 或 Shift+Delete
-                listView->onMenuDelete(shiftPressed);
-                if (result) *result = 0;
-                return true;
-            }
-            break;
-
-        case VK_F2:  // 重命名
-            if (!ctrlPressed && !shiftPressed && !altPressed) {
-                // 触发重命名
-                if (result) *result = 0;
-                return true;
-            }
-            break;
-        }
-    }
-
     return QWidget::nativeEvent(eventType, message, result);
 }

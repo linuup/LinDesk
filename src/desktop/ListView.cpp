@@ -397,31 +397,31 @@ void ListView::startListeningSpecialIcon()
         this, &ListView::updateSystemIconVisibility);
 }
 
-bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* result) {
-    MSG* msg = static_cast<MSG*>(message);
-    if (msg->message == WM_HOTKEY) {
-        handleHotkey(static_cast<int>(msg->wParam));
-        return true; // We handled it
-    }
-    if (msg->wParam == VK_SHIFT &&
-        (GetKeyState(VK_DELETE) & 0x8000) != 0) {
-        this->onMenuDelete(true);
-        if (result) {
-            *result = 0;
-        }
-        return true;
-    }
-    if (msg->message == WM_LINDESK_START_INLINE_RENAME) {
-        if (m_selectedItems.size() == 1 && m_selectedItems.first()) {
-            RenameManager::instance()->startRename(m_selectedItems.first());
-            if (result) {
-                *result = 0;
-            }
-            return true;
-        }
-    }
-    return QWidget::nativeEvent(eventType, message, result);
-}
+//bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* result) {
+//    MSG* msg = static_cast<MSG*>(message);
+//    if (msg->message == WM_HOTKEY) {
+//        handleHotkey(static_cast<int>(msg->wParam));
+//        return true; // We handled it
+//    }
+//    if (msg->wParam == VK_SHIFT &&
+//        (GetKeyState(VK_DELETE) & 0x8000) != 0) {
+//        this->onMenuDelete(true);
+//        if (result) {
+//            *result = 0;
+//        }
+//        return true;
+//    }
+//    if (msg->message == WM_LINDESK_START_INLINE_RENAME) {
+//        if (m_selectedItems.size() == 1 && m_selectedItems.first()) {
+//            RenameManager::instance()->startRename(m_selectedItems.first());
+//            if (result) {
+//                *result = 0;
+//            }
+//            return true;
+//        }
+//    }
+//    return QWidget::nativeEvent(eventType, message, result);
+//}
 
 void ListView::handleHotkey(int id) {
     QString actionId = HotkeyManager::instance()->getActionId(id);
@@ -1409,46 +1409,69 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
-    const bool extendSelection = event->modifiers() & Qt::ShiftModifier;
-    const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
-    const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
-    const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
+    // 获取实时的键盘状态
+    const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
+    const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
 
+    const bool extendSelection = (event->modifiers() & Qt::ShiftModifier) || shiftPressed;
+    const bool shortcutPaste = ctrlPressed && (event->key() == Qt::Key_V);
+    const bool shortcutNewFolder = ctrlPressed && extendSelection && (event->key() == Qt::Key_N);
+    const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
+
+    qDebug() << "Use GetAsyncKeyState check: Shift =" << shiftPressed
+        << ", Delete =" << (event->key() == Qt::Key_Delete)
+        << ", permanentDelete =" << permanentDelete;
+    
     if (event->matches(QKeySequence::SelectAll)) {
         applySelectionState(selectableItemsForHost(nullptr), m_focusedItem, false);
         event->accept();
+        qDebug() << "Select All triggered";
         return;
     }
     if (event->matches(QKeySequence::Copy)) {
         writeSelectionToClipboard(false);
         event->accept();
+        qDebug() << "Copy triggered";
+        return;
+    }
+    //first judge if it's a Shift+Delete for permanent delete, if not, then handle regular Delete key
+    if (permanentDelete) {
+        onMenuDelete(true);
+        event->accept();
+        qDebug() << "Permanent Delete triggered";
         return;
     }
     if (event->matches(QKeySequence::Cut)) {
         writeSelectionToClipboard(true);
         event->accept();
+        qDebug() << "Cut triggered";
         return;
     }
     if (event->matches(QKeySequence::Paste)) {
         clearCutMarks();
         onMenuPaste();
         event->accept();
+        qDebug() << "Paste triggered";
         return;
     }
+    
     if (shortcutPaste) {
         onMenuPasteShortcut();
         event->accept();
+        qDebug() << "Paste Shortcut triggered";
         return;
     }
     if (shortcutNewFolder) {
         createNewFolderInHost();
         event->accept();
+        qDebug() << "New Folder triggered";
         return;
     }
     if (event->key() == Qt::Key_Escape) {
         clearSelectionState();
         RenameManager::instance()->cancelRename();
         event->accept();
+        qDebug() << "Escape triggered: Cleared selection and canceled rename";
         return;
     }
     if ((event->modifiers() & Qt::AltModifier) && event->key() == Qt::Key_Return) {
@@ -1456,6 +1479,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
         if (target && !target->filePath().isEmpty()) {
             CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(QDir::toNativeSeparators(target->filePath()).utf16()), Z_PROPERTIES);
             event->accept();
+            qDebug() << "Alt+Enter triggered: Opened properties for" << target->baseName();
             return;
         }
     }
@@ -1467,6 +1491,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
             }
         }
         event->accept();
+        qDebug() << "Ctrl+Space triggered: Toggled selection for focused item";
         return;
     }
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
@@ -1475,6 +1500,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
             clearCutMarks();
             target->openItem();
             event->accept();
+            qDebug() << "Enter triggered: Opened" << target->baseName();
             return;
         }
     }
@@ -1484,6 +1510,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
             extendSelection,
             ctrlPressed);
         event->accept();
+        qDebug() << (event->key() == Qt::Key_Left ? "Left" : "Up") << "arrow triggered: Moved focus";
         return;
     }
     if (event->key() == Qt::Key_Right || event->key() == Qt::Key_Down) {
@@ -1492,21 +1519,25 @@ void ListView::keyPressEvent(QKeyEvent* event)
             extendSelection,
             ctrlPressed);
         event->accept();
+        qDebug() << (event->key() == Qt::Key_Right ? "Right" : "Down") << "arrow triggered: Moved focus";
         return;
     }
     if (event->key() == Qt::Key_F2) {
         if (m_selectedItems.size() == 1) {
             RenameManager::instance()->startRename(m_selectedItems.first());
+            qDebug() << "F2 triggered: Started rename for" << m_selectedItems.first()->baseName();
             return;
         }
     }
     if (event->key() == Qt::Key_Delete) {
-        const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
-        bool permanently = (modifiers & Qt::ShiftModifier);
-        onMenuDelete(permanently);
+        /*const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
+        bool permanently = (modifiers & Qt::ShiftModifier);*/
+        onMenuDelete(false);
         event->accept();
+        qDebug() << "Delete triggered: Deleted selected items";
         return;
     }
+    
     QWidget::keyPressEvent(event);
 }
 
@@ -3759,11 +3790,10 @@ bool ListView::createNewFolderInHost(LinBox* targetBox)
 
 void ListView::onMenuDelete(bool permanently)
 {
-
     std::vector<std::wstring> paths;
     QVector<ListItem*> itemsToDelete;
     for (auto* item : m_selectedItems) {
-        if (item->type() == ObjectType::SpecialFolder) continue;
+        if (item && item->getItemData().isRealSpecialFolderIcon()) continue;
         itemsToDelete.push_back(item);
         paths.push_back(QDir::toNativeSeparators(item->filePath()).toStdWString());
     }

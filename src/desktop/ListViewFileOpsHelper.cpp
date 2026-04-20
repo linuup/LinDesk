@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <SystemApi.h>
 
 namespace {
 constexpr DWORD kClipboardPreferredDropEffectCopy = 0x00000001;
@@ -40,6 +41,28 @@ bool hasSystemAttribute(const QString& sourcePath)
         return false;
     }
     return (attributes & FILE_ATTRIBUTE_SYSTEM) != 0;
+}
+
+QString shortcutBaseNameForSource(const QString& sourcePath)
+{
+    const QString normalizedSourcePath = QDir::toNativeSeparators(sourcePath);
+    if (normalizedSourcePath.startsWith("::")) {
+        const IconItem item = CSystemApi::CreateIconItem(normalizedSourcePath.toStdWString().c_str());
+        const QString shellDisplayName = QString::fromStdString(item.name);
+        if (!shellDisplayName.trimmed().isEmpty()) {
+            return shellDisplayName.trimmed();
+        }
+    }
+
+    const QFileInfo sourceInfo(normalizedSourcePath);
+    QString baseName = sourceInfo.fileName();
+    if (baseName.isEmpty()) {
+        baseName = sourceInfo.completeBaseName();
+    }
+    if (baseName.isEmpty()) {
+        baseName = QCoreApplication::translate("ListView", "New Shortcut");
+    }
+    return baseName;
 }
 }
 
@@ -265,14 +288,7 @@ QString ListViewFileOpsHelper::uniqueNewFolderPath(const QString& targetDir, con
 
 QString ListViewFileOpsHelper::uniqueShortcutPathForTarget(const QString& sourcePath, const QString& targetDir)
 {
-    const QFileInfo sourceInfo(sourcePath);
-    QString baseName = sourceInfo.fileName();
-    if (baseName.isEmpty()) {
-        baseName = sourceInfo.completeBaseName();
-    }
-    if (baseName.isEmpty()) {
-        baseName = "New Shortcut";
-    }
+    const QString baseName = shortcutBaseNameForSource(sourcePath);
 
     QDir dir(targetDir);
     QString candidate = dir.filePath(baseName + " - Shortcut.lnk");
