@@ -403,6 +403,14 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         handleHotkey(static_cast<int>(msg->wParam));
         return true; // We handled it
     }
+    if (msg->wParam == VK_SHIFT &&
+        (GetKeyState(VK_DELETE) & 0x8000) != 0) {
+        this->onMenuDelete(true);
+        if (result) {
+            *result = 0;
+        }
+        return true;
+    }
     if (msg->message == WM_LINDESK_START_INLINE_RENAME) {
         if (m_selectedItems.size() == 1 && m_selectedItems.first()) {
             RenameManager::instance()->startRename(m_selectedItems.first());
@@ -1404,6 +1412,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
     const bool extendSelection = event->modifiers() & Qt::ShiftModifier;
     const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
     const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
+    const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
 
     if (event->matches(QKeySequence::SelectAll)) {
         applySelectionState(selectableItemsForHost(nullptr), m_focusedItem, false);
@@ -1428,6 +1437,11 @@ void ListView::keyPressEvent(QKeyEvent* event)
     }
     if (shortcutPaste) {
         onMenuPasteShortcut();
+        event->accept();
+        return;
+    }
+    if (shortcutNewFolder) {
+        createNewFolderInHost();
         event->accept();
         return;
     }
@@ -1487,7 +1501,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
         }
     }
     if (event->key() == Qt::Key_Delete) {
-       const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
+        const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
         bool permanently = (modifiers & Qt::ShiftModifier);
         onMenuDelete(permanently);
         event->accept();
@@ -3315,8 +3329,14 @@ void ListView::onItemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* even
 
 	if (event->button() == Qt::LeftButton) {
 		// Ensure focus is on the correct window to receive Delete shortcuts
-		if (box) box->setFocus();
-		else this->setFocus();
+		if (box) {
+            box->raise();
+            box->activateWindow();
+            box->setFocus(Qt::MouseFocusReason);
+        } else {
+            this->activateWindow();
+            this->setFocus(Qt::MouseFocusReason);
+        }
 
 		Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
 		
@@ -3681,9 +3701,64 @@ void ListView::showTransientTip(const QString& message, int autoHideMs)
     m_infoTip->showCentered(globalRect, autoHideMs);
 }
 
+bool ListView::createNewFolderInHost(LinBox* targetBox)
+{
+    if (RenameManager::instance()->isRenaming()) {
+        return false;
+    }
+
+    const bool createInMappedFolder = targetBox && targetBox->isFolderMapped();
+    if (createInMappedFolder && targetBox->mappedFolderState() != LinBox::MappedFolderState::Normal) {
+        return false;
+    }
+
+    const QString targetDirectory = createInMappedFolder
+        ? normalizeMappedFolderPathForLookup(targetBox->mappedFolderPath())
+        : normalizeDesktopPath(m_desktopDir);
+    if (targetDirectory.isEmpty()) {
+        return false;
+    }
+
+    const QString newFolderPath = ListViewFileOpsHelper::uniqueNewFolderPath(targetDirectory);
+    if (newFolderPath.isEmpty()) {
+        return false;
+    }
+
+    const bool reserveDesktopPosition = !targetBox;
+    if (targetBox && !createInMappedFolder) {
+        m_pendingCreatedItemBoxes[newFolderPath] = targetBox;
+        m_pendingCreatedItemInsertIndices.remove(newFolderPath);
+    } else if (reserveDesktopPosition) {
+        const QPoint requestedPos = m_focusedItem ? m_focusedItem->getLocationInfo() : generateItemPosition();
+        reserveCreatedItemPosition(newFolderPath, requestedPos);
+    }
+
+    if (!ListViewFileOpsHelper::createDirectoryPath(newFolderPath)) {
+        m_pendingCreatedItemBoxes.remove(newFolderPath);
+        m_pendingCreatedItemInsertIndices.remove(newFolderPath);
+        if (reserveDesktopPosition) {
+            m_pendingCreatedItemPositions.remove(normalizeDesktopPath(newFolderPath));
+        }
+        return false;
+    }
+
+    if (createInMappedFolder && targetBox) {
+        QTimer::singleShot(0, this, [this, targetBox]() {
+            if (!targetBox) {
+                return;
+            }
+            reloadMappedFolderBox(targetBox);
+            targetBox->refreshLayout();
+            targetBox->raise();
+            update();
+        });
+    }
+
+    return true;
+}
+
 void ListView::onMenuDelete(bool permanently)
 {
-    if (m_selectedItems.isEmpty()) return;
 
     std::vector<std::wstring> paths;
     QVector<ListItem*> itemsToDelete;
@@ -3695,18 +3770,8 @@ void ListView::onMenuDelete(bool permanently)
 
     if (paths.empty()) return;
 
-    const bool shouldPreHide = !permanently;
-    if (shouldPreHide) {
-        setItemsTransientHidden(itemsToDelete, true);
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    }
-
     const bool deleteOk = CSystemApi::DeleteFiles(paths, !permanently, true);
     if (!deleteOk) {
-        if (shouldPreHide) {
-            setItemsTransientHidden(itemsToDelete, false);
-            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        }
         return;
     }
 

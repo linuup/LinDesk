@@ -139,6 +139,7 @@ private:
     void beginItemSelection(const QPoint& contentPos);
     void updateItemSelection(const QPoint& contentPos);
     void finishItemSelection();
+    void activateForKeyboardFocus();
     QString mappedFolderDisplayText() const;
     QString sanitizedTitleText(const QString& title) const;
 

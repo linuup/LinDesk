@@ -222,6 +222,7 @@ public:
 	void writeSelectionToClipboard(bool cutOperation);
 	void clearCutMarks();
 	void applyCutMarks(const QVector<ListItem*>& items);
+	bool createNewFolderInHost(LinBox* targetBox = nullptr);
 
 	// 右键菜单
 	void requestSystemRightMenu(ObjectType objType, QPoint point, const QVector<ListItem*> checkedItems);

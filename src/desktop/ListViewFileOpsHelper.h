@@ -16,7 +16,9 @@ public:
     static bool clipboardContainsCutItems();
     static void writeUrlsToClipboard(const QList<QUrl>& urls, bool cutOperation);
     static QString uniquePasteDestinationPath(const QString& sourcePath, const QString& destDir);
+    static QString uniqueNewFolderPath(const QString& targetDir, const QString& baseName = QString());
     static QString uniqueShortcutPathForTarget(const QString& sourcePath, const QString& targetDir);
+    static bool createDirectoryPath(const QString& targetPath);
     static bool copyPathToExactDestination(const QString& sourcePath, const QString& destinationPath);
     static bool movePathToExactDestination(const QString& sourcePath, const QString& destinationPath);
     static bool copyFilesToDirectoryWithRule(const QStringList& sourcePaths, const QString& targetDir);

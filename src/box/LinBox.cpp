@@ -882,8 +882,11 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                     commitTitleEditing();
                 }
             }
-            if (mouseEvent->button() == Qt::LeftButton) {
+            if (mouseEvent->button() == Qt::LeftButton || mouseEvent->button() == Qt::RightButton) {
                 BoxManager::instance()->bringToFront(this);
+                activateForKeyboardFocus();
+            }
+            if (mouseEvent->button() == Qt::LeftButton) {
                 const QWidget* sourceWidget = qobject_cast<QWidget*>(watched);
                 const QPoint mappedPos = watched == this
                     ? mouseEvent->pos()
@@ -955,10 +958,10 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
             commitTitleEditing();
         }
     }
-    if (event->button() == Qt::LeftButton) {
+    if (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) {
         BoxManager::instance()->bringToFront(this);
+        activateForKeyboardFocus();
     }
-    setFocus();
     if (event->button() == Qt::LeftButton) {
         m_resizeDir = getResizeDir(event->pos());
         if (isDragArea(event->pos())) {
@@ -981,6 +984,13 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
             showCustomContextMenu(event->globalPos());
         }
     }
+}
+
+void LinBox::activateForKeyboardFocus()
+{
+    raise();
+    activateWindow();
+    setFocus(Qt::MouseFocusReason);
 }
 
 void LinBox::mouseMoveEvent(QMouseEvent* event) {
@@ -1187,9 +1197,20 @@ LinBox::ResizeDir LinBox::getResizeDir(const QPoint& pos) {
 
 bool LinBox::nativeEvent(const QByteArray& eventType, void* message, long* result) {
     MSG* msg = static_cast<MSG*>(message);
-    if ((msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) && msg->wParam == VK_DELETE) {
+    if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
         if (ListView* lv = ListView::instance()) {
-            if (!RenameManager::instance()->isRenaming()) {
+            if (msg->wParam == 'N' &&
+                !RenameManager::instance()->isRenaming() &&
+                (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
+                (GetKeyState(VK_SHIFT) & 0x8000) != 0) {
+                lv->createNewFolderInHost(this);
+                if (result) {
+                    *result = 0;
+                }
+                return true;
+            }
+
+            if (msg->wParam == VK_DELETE && !RenameManager::instance()->isRenaming()) {
                 const bool shiftPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
                 lv->onMenuDelete(shiftPressed);
                 if (result) {
@@ -1830,6 +1851,7 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
         const bool extendSelection = event->modifiers() & Qt::ShiftModifier;
         const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
         const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
+        const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
         if (event->matches(QKeySequence::SelectAll)) {
             lv->applySelectionState(lv->selectableItemsForHost(this), nullptr, false);
             event->accept();
@@ -1913,6 +1935,11 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
                 }
             }
 
+            event->accept();
+            return;
+        }
+        if (shortcutNewFolder) {
+            lv->createNewFolderInHost(this);
             event->accept();
             return;
         }

@@ -1,6 +1,7 @@
 #include "desktop/ListViewFileOpsHelper.h"
 
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -238,6 +239,30 @@ QString ListViewFileOpsHelper::uniquePasteDestinationPath(const QString& sourceP
     return QDir::toNativeSeparators(candidate);
 }
 
+QString ListViewFileOpsHelper::uniqueNewFolderPath(const QString& targetDir, const QString& baseName)
+{
+    const QString effectiveBaseName = baseName.isEmpty()
+        ? QCoreApplication::translate("ListView", "New Folder")
+        : baseName;
+    QDir dir(targetDir);
+    if (!dir.exists()) {
+        return QString();
+    }
+
+    QString candidate = dir.filePath(effectiveBaseName);
+    if (!QFileInfo::exists(candidate)) {
+        return QDir::toNativeSeparators(candidate);
+    }
+
+    int suffix = 2;
+    do {
+        candidate = dir.filePath(QString("%1 (%2)").arg(effectiveBaseName).arg(suffix));
+        ++suffix;
+    } while (QFileInfo::exists(candidate));
+
+    return QDir::toNativeSeparators(candidate);
+}
+
 QString ListViewFileOpsHelper::uniqueShortcutPathForTarget(const QString& sourcePath, const QString& targetDir)
 {
     const QFileInfo sourceInfo(sourcePath);
@@ -257,6 +282,20 @@ QString ListViewFileOpsHelper::uniqueShortcutPathForTarget(const QString& source
         ++suffix;
     }
     return QDir::toNativeSeparators(candidate);
+}
+
+bool ListViewFileOpsHelper::createDirectoryPath(const QString& targetPath)
+{
+    if (targetPath.isEmpty()) {
+        return false;
+    }
+
+    QDir parentDir = QFileInfo(targetPath).dir();
+    if (!parentDir.exists() && !parentDir.mkpath(".")) {
+        return false;
+    }
+
+    return QDir().mkdir(targetPath);
 }
 
 bool ListViewFileOpsHelper::copyPathToExactDestination(const QString& sourcePath, const QString& destinationPath)

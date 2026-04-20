@@ -70,7 +70,14 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 # 添加可执行文件
-add_executable(LinDesk ${SOURCES})
+set(WIN32_RESOURCES)
+if(WIN32)
+    list(APPEND WIN32_RESOURCES
+        "src/app/LinDesk.rc"
+    )
+endif()
+
+add_executable(LinDesk ${SOURCES} ${WIN32_RESOURCES})
 
 # Debug 显示控制台，Release 等版本隐藏控制台
 set_target_properties(LinDesk PROPERTIES
