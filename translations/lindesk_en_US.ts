@@ -336,7 +336,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Remap Folder</source>
+        <source>Change Mapped Folder</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -376,11 +376,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The mapped path is invalid. Use Remap Folder or Clear Mapping.</source>
+        <source>The mapped path is invalid. Use Change Mapped Folder or Clear Mapping.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>The mapped path is unavailable right now. Try Open Folder or Remap Folder.</source>
+        <source>The mapped path is unavailable right now. Try Open Folder or Change Mapped Folder.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

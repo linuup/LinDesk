@@ -142,6 +142,13 @@ private:
     void activateForKeyboardFocus();
     QString mappedFolderDisplayText() const;
     QString sanitizedTitleText(const QString& title) const;
+    QRect mappedTitleIconRect() const;
+    QRect mappedTitleTextRect() const;
+    bool openMappedFolderInExplorer();
+    QRect mappedPlaceholderRect() const;
+    bool tryRefreshMappedFolderFromPlaceholderClick(const QPoint& boxPos);
+    bool remapMappedFolderInteractively();
+    void checkMappedFolderStateAndRefresh();
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<ListItem*> m_items;
@@ -183,6 +190,7 @@ private:
     class FluentDragTip* m_dragTip = nullptr;
     void updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut = false);
     class QTimer* m_blurRefreshTimer = nullptr;
+    class QTimer* m_mappedFolderStateTimer = nullptr;
     QPixmap m_blurCache;
     bool m_isCapturingBackground = false;
     bool m_isRefreshingLayout = false;

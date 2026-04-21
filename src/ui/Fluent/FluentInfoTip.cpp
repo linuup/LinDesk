@@ -1,4 +1,5 @@
 #include "ui/Fluent/FluentInfoTip.h"
+#include "app/AppFonts.h"
 
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
@@ -25,7 +26,7 @@ FluentInfoTip::FluentInfoTip(QWidget* parent)
     m_panel = new QWidget(this);
     m_panel->setObjectName("infoPanel");
     m_panel->setAttribute(Qt::WA_StyledBackground, true);
-    m_panel->setStyleSheet(
+    m_panel->setStyleSheet(QStringLiteral(
         "QWidget#infoPanel {"
         "  background-color: rgba(248, 250, 255, 248);"
         "  border: 1px solid rgba(0, 120, 212, 70);"
@@ -37,16 +38,16 @@ FluentInfoTip::FluentInfoTip(QWidget* parent)
         "  border-radius: 12px;"
         "  font-size: 14px;"
         "  font-weight: 700;"
-        "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+        "  font-family: %1;"
         "}"
         "QLabel#infoText {"
         "  background: transparent;"
         "  color: #1f1f1f;"
         "  font-size: 13px;"
         "  font-weight: 500;"
-        "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+        "  font-family: %1;"
         "}"
-    );
+    ).arg(AppFonts::uiCssFamily()));
 
     QHBoxLayout* panelLayout = new QHBoxLayout(m_panel);
     panelLayout->setContentsMargins(14, 12, 16, 12);

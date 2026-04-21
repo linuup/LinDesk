@@ -1,4 +1,5 @@
 #include "ui/Fluent/FluentDialog.h"
+#include "app/AppFonts.h"
 #include <QPainterPath>
 #include <QEvent>
 #include <QApplication>
@@ -11,11 +12,7 @@ FluentDialog::FluentDialog(QWidget* parent) : QDialog(parent) {
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setAttribute(Qt::WA_TranslucentBackground);
     
-    // Smooth font (Segoe UI Variable is best on Win11)
-    QFont font("Segoe UI Variable Display", 10);
-    if (font.family() == "MS Shell Dlg 2") {
-        font.setFamily("Segoe UI"); // Fallback for Win10
-    }
+    QFont font = AppFonts::uiFont(10);
     setFont(font);
 
     setupUi();

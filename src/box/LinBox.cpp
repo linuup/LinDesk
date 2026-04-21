@@ -17,6 +17,9 @@
 #include <QFileInfo>
 #include <QClipboard>
 #include <QMimeData>
+#include <QFileDialog>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QtMath>
 #include <limits>
 #include <climits>
@@ -24,9 +27,11 @@
 #include "ui/SettingUI.h"
 #include "desktop/ListView.h"
 #include "desktop/ListItem.h"
+#include "app/AppFonts.h"
 #include "desktop/ListViewFileOpsHelper.h"
 #include "box/BoxManager.h"
 #include "desktop/RightMenu.h"
+#include "ui/Fluent/FluentDialog.h"
 #include "services/WinBlurHelper.h"
 #include "ui/Fluent/FluentDragTip.h"
 #include "monitor/LinDirectoryMonitor.h"
@@ -68,6 +73,17 @@ QString mappedFolderTitleIconResourcePath(const QString& path)
         return QStringLiteral(":/Assets/disk.svg");
     }
     return QStringLiteral(":/Assets/folder-share.svg");
+}
+
+QString mappedFolderPlaceholderResourcePath(LinBox::MappedFolderState state, bool isEmpty)
+{
+    if (state == LinBox::MappedFolderState::Missing || state == LinBox::MappedFolderState::NoAccess) {
+        return QStringLiteral(":/Assets/accessDeny-Cat.svg");
+    }
+    if (isEmpty) {
+        return QStringLiteral(":/Assets/empty_Cat.svg");
+    }
+    return QString();
 }
 
 bool draggedItemsContainMappedSource(const QVector<ListItem*>& items)
@@ -305,27 +321,70 @@ QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float 
         return QPixmap();
     }
 
+    constexpr int kBaseDownsample = 5;
+    constexpr int kWideDownsample = 8;
+    constexpr int kBaseBlurRadius = 9;
+    constexpr int kWideBlurRadius = 14;
+    constexpr qreal kBaseBlendOpacity = 0.84;
+    constexpr qreal kWideBlendOpacity = 0.24;
+    constexpr int kExclusionAlpha = 10;
+    constexpr int kScreenAlpha = 32;
+    constexpr int kNoiseAlpha = 20;
+
     const QSize originalSize = source.size();
-    const QSize sampleSize(qMax(1, originalSize.width() / 3), qMax(1, originalSize.height() / 3));
-    QImage sampled = source.toImage().scaled(sampleSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    sampled = gaussianBlurImage(sampled, 5);
-    QImage restored = sampled.scaled(originalSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    const QImage sourceImage = source.toImage();
+
+    // Acrylic recipe from Microsoft guidance:
+    // background, blur, exclusion blend, tint overlay, noise.
+    // This local fallback keeps that ordering and adds a very light brightening pass
+    // to approximate the transient Desktop Acrylic look.
+    const QSize baseSampleSize(qMax(1, originalSize.width() / kBaseDownsample),
+                               qMax(1, originalSize.height() / kBaseDownsample));
+    QImage baseSample = sourceImage.scaled(baseSampleSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    baseSample = gaussianBlurImage(baseSample, kBaseBlurRadius);
+    const QImage baseRestored = baseSample.scaled(originalSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    const QSize wideSampleSize(qMax(1, originalSize.width() / kWideDownsample),
+                               qMax(1, originalSize.height() / kWideDownsample));
+    QImage wideSample = sourceImage.scaled(wideSampleSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    wideSample = gaussianBlurImage(wideSample, kWideBlurRadius);
+    QImage restored = wideSample.scaled(originalSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    QPainter blurBlendPainter(&restored);
+    blurBlendPainter.setRenderHint(QPainter::SmoothPixmapTransform);
+    blurBlendPainter.setOpacity(kBaseBlendOpacity);
+    blurBlendPainter.drawImage(QPoint(0, 0), baseRestored);
+    blurBlendPainter.setOpacity(kWideBlendOpacity);
+    blurBlendPainter.drawImage(QPoint(0, 0), restored);
+    blurBlendPainter.setCompositionMode(QPainter::CompositionMode_Screen);
+    blurBlendPainter.setOpacity(0.18);
+    blurBlendPainter.fillRect(restored.rect(), QColor(255, 255, 255, 20));
+    blurBlendPainter.end();
 
     QPainter overlayPainter(&restored);
     overlayPainter.setRenderHint(QPainter::Antialiasing);
 
-    // Approximate the official Acrylic recipe:
-    // backdrop + blur + exclusion-style light pass + tint overlay + subtle noise.
     overlayPainter.setCompositionMode(QPainter::CompositionMode_Exclusion);
-    overlayPainter.fillRect(restored.rect(), QColor(245, 245, 245, 10));
+    overlayPainter.fillRect(restored.rect(), QColor(244, 244, 244, kExclusionAlpha));
+
+    overlayPainter.setCompositionMode(QPainter::CompositionMode_Screen);
+    overlayPainter.fillRect(restored.rect(), QColor(255, 255, 255, kScreenAlpha));
+
+    // Inference from the transient Desktop Acrylic appearance:
+    // a subtle cool highlight keeps the material bright and translucent.
+    QLinearGradient acrylicSheen(0, 0, 0, restored.height());
+    acrylicSheen.setColorAt(0.0, QColor(236, 246, 255, 34));
+    acrylicSheen.setColorAt(0.30, QColor(244, 249, 255, 16));
+    acrylicSheen.setColorAt(1.0, QColor(255, 255, 255, 6));
+    overlayPainter.fillRect(restored.rect(), acrylicSheen);
 
     overlayPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    const QColor softenedTint = blendTowardWhite(tintColor, 0.25);
-    const int tintAlpha = qBound(0, qRound(qBound(0.0f, tintOpacity, 1.0f) * 90.0f), 90);
+    const QColor softenedTint = blendTowardWhite(tintColor, 0.18);
+    const int tintAlpha = qBound(0, qRound(qBound(0.0f, tintOpacity, 1.0f) * 56.0f), 56);
     overlayPainter.fillRect(restored.rect(), QColor(softenedTint.red(), softenedTint.green(), softenedTint.blue(), tintAlpha));
     overlayPainter.end();
 
-    applyNoiseLayer(restored, 18);
+    applyNoiseLayer(restored, kNoiseAlpha);
 
     return QPixmap::fromImage(restored);
 }
@@ -369,6 +428,10 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_blurRefreshTimer->setSingleShot(true);
     m_blurRefreshTimer->setInterval(16);
     connect(m_blurRefreshTimer, &QTimer::timeout, this, &LinBox::updateBlurCache);
+    m_mappedFolderStateTimer = new QTimer(this);
+    m_mappedFolderStateTimer->setInterval(1200);
+    connect(m_mappedFolderStateTimer, &QTimer::timeout, this, &LinBox::checkMappedFolderStateAndRefresh);
+    m_mappedFolderStateTimer->start();
 
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setContentsMargins(m_borderWidth, m_borderWidth, m_borderWidth, m_borderWidth);
@@ -656,7 +719,7 @@ void LinBox::refreshLayout() {
         int listItemH = 30; 
         for (int i = 0; i < m_items.size(); ++i) {
             ListItem* item = m_items[i];
-            const QFont textFont("Microsoft YaHei UI", 9);
+            const QFont textFont = AppFonts::uiFont(9);
             const QFontMetrics fm(textFont);
             const int iconAreaW = 8 + 20 + 8; // left padding + icon + gap
             const int textW = qMax(24, fm.horizontalAdvance(item->displayName()));
@@ -787,6 +850,10 @@ void LinBox::setMappedFolderPath(const QString& path)
     if (m_titleBar) {
         m_titleBar->update();
     }
+    update();
+    if (m_contentArea) {
+        m_contentArea->update();
+    }
     emit geometryChanged(this);
 }
 
@@ -800,6 +867,10 @@ void LinBox::clearMappedFolderPath()
     }
     if (m_titleBar) {
         m_titleBar->update();
+    }
+    update();
+    if (m_contentArea) {
+        m_contentArea->update();
     }
     emit geometryChanged(this);
 }
@@ -855,6 +926,232 @@ QString LinBox::sanitizedTitleText(const QString& title) const
     return normalized;
 }
 
+QRect LinBox::mappedTitleIconRect() const
+{
+    if (!isFolderMapped() || !m_titleBar) {
+        return QRect();
+    }
+
+    const int iconSize = 20;
+    const int iconY = (m_titleBar->height() - iconSize) / 2;
+    const QFont titleFont = AppFonts::uiFont(9, QFont::Bold);
+    const QFontMetrics fm(titleFont);
+    const QString title = displayTitleText();
+    const int textWidth = fm.horizontalAdvance(title);
+    const int totalWidth = iconSize + 6 + textWidth;
+    int startX = (m_titleBar->width() - totalWidth) / 2;
+    startX = qMax(35, startX);
+    return QRect(startX, iconY, iconSize, iconSize);
+}
+
+QRect LinBox::mappedTitleTextRect() const
+{
+    if (!m_titleBar) {
+        return QRect();
+    }
+
+    QRect textRect = m_titleBar->rect().adjusted(35, 0, -35, 0);
+    if (!isFolderMapped()) {
+        return textRect;
+    }
+
+    const QRect iconRect = mappedTitleIconRect();
+    if (!iconRect.isNull()) {
+        textRect = m_titleBar->rect().adjusted(iconRect.right() + 7, 0, -35, 0);
+    }
+    return textRect;
+}
+
+bool LinBox::openMappedFolderInExplorer()
+{
+    if (!isFolderMapped() || m_mappedFolderPath.isEmpty()) {
+        return false;
+    }
+
+    const QFileInfo mappedInfo(m_mappedFolderPath);
+    if (!mappedInfo.exists() || !mappedInfo.isDir()) {
+        return false;
+    }
+
+    return QDesktopServices::openUrl(QUrl::fromLocalFile(mappedInfo.absoluteFilePath()));
+}
+
+QRect LinBox::mappedPlaceholderRect() const
+{
+    const bool shouldDrawMappedPlaceholder =
+        isFolderMapped() &&
+        !m_isCollapsed &&
+        m_scrollArea &&
+        m_scrollArea->isVisible() &&
+        (mappedFolderState() != MappedFolderState::Normal || m_items.isEmpty());
+    if (!shouldDrawMappedPlaceholder) {
+        return QRect();
+    }
+
+    const QString resourcePath = mappedFolderPlaceholderResourcePath(mappedFolderState(), m_items.isEmpty());
+    if (resourcePath.isEmpty()) {
+        return QRect();
+    }
+
+    QWidget* viewport = m_scrollArea->viewport();
+    const QPoint topLeft = viewport ? viewport->mapTo(const_cast<LinBox*>(this), QPoint(0, 0)) : m_scrollArea->geometry().topLeft();
+    const QSize areaSize = viewport ? viewport->size() : m_scrollArea->size();
+    QRect placeholderArea(topLeft, areaSize);
+    placeholderArea = placeholderArea.adjusted(16, 16, -16, -16);
+    if (placeholderArea.width() <= 0 || placeholderArea.height() <= 0) {
+        return QRect();
+    }
+
+    QSvgRenderer renderer(resourcePath);
+    if (!renderer.isValid()) {
+        return QRect();
+    }
+
+    QSize targetSize = renderer.defaultSize();
+    if (!targetSize.isValid()) {
+        targetSize = QSize(220, 220);
+    }
+
+    const int maxWidth = qMax(96, qRound(placeholderArea.width() * 0.58));
+    const int maxHeight = qMax(96, qRound(placeholderArea.height() * 0.58));
+    targetSize.scale(maxWidth, maxHeight, Qt::KeepAspectRatio);
+    return QRect(
+        placeholderArea.center().x() - targetSize.width() / 2,
+        placeholderArea.center().y() - targetSize.height() / 2,
+        targetSize.width(),
+        targetSize.height());
+}
+
+bool LinBox::tryRefreshMappedFolderFromPlaceholderClick(const QPoint& boxPos)
+{
+    const QRect placeholderRect = mappedPlaceholderRect();
+    if (!placeholderRect.contains(boxPos)) {
+        return false;
+    }
+
+    if (mappedFolderState() == MappedFolderState::Normal) {
+        return false;
+    }
+
+    ListView* lv = ListView::instance();
+    if (!lv) {
+        return false;
+    }
+
+    lv->reloadMappedFolderBox(this);
+    refreshLayout();
+    raise();
+    update();
+
+    const QString currentMappedPath = mappedFolderDisplayText();
+    if (mappedFolderState() == MappedFolderState::Missing) {
+        bool shouldRemap = false;
+        FluentDialog dlg(this);
+        dlg.setDialogTitle(tr("Mapped Folder Missing"));
+        dlg.setMessage(tr("The mapped folder \"%1\" is still missing.\n\nDo you want to re map this box to another folder?").arg(currentMappedPath));
+        dlg.addActionButton(tr("ReMap Folder"), FluentDialog::ActionType::Primary, [&shouldRemap]() {
+            shouldRemap = true;
+        });
+        dlg.addActionButton(tr("Cancel"), FluentDialog::ActionType::Close);
+        dlg.exec();
+        if (shouldRemap) {
+            remapMappedFolderInteractively();
+        }
+    } else if (mappedFolderState() == MappedFolderState::NoAccess) {
+        bool shouldRemap = false;
+        FluentDialog dlg(this);
+        dlg.setDialogTitle(tr("Mapped Folder Unavailable"));
+        dlg.setMessage(tr("The mapped folder \"%1\" is still unavailable because access is denied.\n\nDo you want to re map this box to another folder?").arg(currentMappedPath));
+        dlg.addActionButton(tr("ReMap Folder"), FluentDialog::ActionType::Primary, [&shouldRemap]() {
+            shouldRemap = true;
+        });
+        dlg.addActionButton(tr("Cancel"), FluentDialog::ActionType::Close);
+        dlg.exec();
+        if (shouldRemap) {
+            remapMappedFolderInteractively();
+        }
+    }
+
+    return true;
+}
+
+bool LinBox::remapMappedFolderInteractively()
+{
+    if (!isFolderMapped()) {
+        return false;
+    }
+
+    ListView* lv = ListView::instance();
+    const QString initialDir = QFileInfo(m_mappedFolderPath).isDir() ? m_mappedFolderPath : QDir::homePath();
+    const QString selectedDir = QFileDialog::getExistingDirectory(
+        this,
+        tr("Select Folder to Map"),
+        initialDir,
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+
+    if (selectedDir.isEmpty()) {
+        return false;
+    }
+
+    const QString normalizedPath = normalizeMappedFolderPath(selectedDir);
+    if (normalizedPath.isEmpty() ||
+        QString::compare(normalizedPath, normalizeMappedFolderPath(m_mappedFolderPath), Qt::CaseInsensitive) == 0) {
+        return false;
+    }
+
+    if (lv && lv->findMappedFolderBox(normalizedPath, this)) {
+        lv->showTransientTip(tr("This folder is already on the desktop."), 2600);
+        return false;
+    }
+
+    setMappedFolderPath(normalizedPath);
+    if (lv) {
+        lv->reloadMappedFolderBox(this);
+        lv->requestSaveBoxes();
+    }
+    refreshLayout();
+    raise();
+    update();
+    return true;
+}
+
+void LinBox::checkMappedFolderStateAndRefresh()
+{
+    if (!isFolderMapped()) {
+        return;
+    }
+
+    if (m_mappedFolderState != MappedFolderState::Normal) {
+        return;
+    }
+
+    const MappedFolderState previousState = m_mappedFolderState;
+    refreshMappedFolderState();
+    const MappedFolderState currentState = m_mappedFolderState;
+
+    const bool stateChanged = currentState != previousState;
+    const bool invalidStateWithStaleItems =
+        currentState != MappedFolderState::Normal &&
+        !m_items.isEmpty();
+    const bool recoveredWithoutMonitor =
+        currentState == MappedFolderState::Normal &&
+        !mappedFolderMonitor();
+
+    if (!stateChanged && !invalidStateWithStaleItems && !recoveredWithoutMonitor) {
+        return;
+    }
+
+    if (ListView* lv = ListView::instance()) {
+        lv->reloadMappedFolderBox(this);
+        refreshLayout();
+        raise();
+        update();
+    } else {
+        refreshLayout();
+        update();
+    }
+}
+
 bool LinBox::eventFilter(QObject* watched, QEvent* event) {
     QWidget* watchedWidget = qobject_cast<QWidget*>(watched);
     const bool isTrackedCursorWidget =
@@ -872,37 +1169,29 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             QPainter p(m_titleBar);
             p.setRenderHint(QPainter::Antialiasing);
             p.setPen(Qt::white);
-            p.setFont(QFont("Microsoft YaHei UI", 9, QFont::Bold));
+            p.setFont(AppFonts::uiFont(9, QFont::Bold));
             
             // Adjust rect to avoid buttons: collapseBtn(30px) and viewSwitchBtn(right)
             // Left gap for collapse button + padding
-            QRect textRect = m_titleBar->rect().adjusted(35, 0, -35, 0);
+            QRect textRect = mappedTitleTextRect();
             
             if (isFolderMapped()) {
-                const int iconSize = 20;
-                const int iconY = (m_titleBar->height() - iconSize) / 2;
-                QFontMetrics fm(p.font());
+                const QRect iconRect = mappedTitleIconRect();
                 const QString title = displayTitleText();
-                const int textWidth = fm.horizontalAdvance(title);
-                const int totalWidth = iconSize + 6 + textWidth;
-                int startX = (m_titleBar->width() - totalWidth) / 2;
-                startX = qMax(35, startX);
-
                 bool iconDrawn = false;
                 QSvgRenderer renderer(mappedFolderTitleIconResourcePath(m_mappedFolderPath));
                 if (renderer.isValid()) {
-                    renderer.render(&p, QRect(startX, iconY, iconSize, iconSize));
+                    renderer.render(&p, iconRect);
                     iconDrawn = true;
                 } else if (isDriveRootPath(m_mappedFolderPath)) {
                     QSvgRenderer fallbackRenderer(QStringLiteral(":/Assets/folder-share.svg"));
                     if (fallbackRenderer.isValid()) {
-                        fallbackRenderer.render(&p, QRect(startX, iconY, iconSize, iconSize));
+                        fallbackRenderer.render(&p, iconRect);
                         iconDrawn = true;
                     }
                 }
 
                 if (iconDrawn) {
-                    textRect = m_titleBar->rect().adjusted(startX + iconSize + 6, 0, -35, 0);
                     p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, title);
                 } else {
                     QFontMetrics fm(p.font());
@@ -946,6 +1235,9 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                 const QPoint mappedPos = watched == this
                     ? mouseEvent->pos()
                     : sourceWidget->mapTo(this, mouseEvent->pos());
+                if (tryRefreshMappedFolderFromPlaceholderClick(mappedPos)) {
+                    return true;
+                }
                 m_resizeDir = getResizeDir(mappedPos);
 
                 if (m_resizeDir != None && m_resizeDir != Move) {
@@ -996,8 +1288,11 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             }
         } else if (event->type() == QEvent::MouseButtonDblClick && watched == m_titleBar) {
             QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
-            // Only trigger rename if we clicked in the title area, not on buttons
-            if (isDragArea(mouseEvent->pos())) {
+            if (isFolderMapped() && mappedTitleIconRect().contains(mouseEvent->pos())) {
+                openMappedFolderInExplorer();
+                return true;
+            }
+            if (mappedTitleTextRect().contains(mouseEvent->pos())) {
                 beginTitleEditing();
                 return true;
             }
@@ -1018,6 +1313,10 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
         activateForKeyboardFocus();
     }
     if (event->button() == Qt::LeftButton) {
+        if (tryRefreshMappedFolderFromPlaceholderClick(event->pos())) {
+            event->accept();
+            return;
+        }
         m_resizeDir = getResizeDir(event->pos());
         if (isDragArea(event->pos())) {
             m_isMoving = true;
@@ -1142,6 +1441,17 @@ void LinBox::paintEvent(QPaintEvent* event) {
         } else {
             p.setBrush(QColor(0, 255, 255, 230));
             p.drawRect(indicatorRect);
+        }
+    }
+
+    const QRect placeholderRect = mappedPlaceholderRect();
+    if (!placeholderRect.isNull()) {
+        const QString resourcePath = mappedFolderPlaceholderResourcePath(mappedFolderState(), m_items.isEmpty());
+        if (!resourcePath.isEmpty()) {
+            QSvgRenderer renderer(resourcePath);
+            if (renderer.isValid()) {
+                renderer.render(&p, placeholderRect);
+            }
         }
     }
 
@@ -2261,6 +2571,17 @@ bool LinBox::isDragArea(const QPoint& pos) {
 }
 
 void LinBox::updateCursorShape(const QPoint& pos) {
+    if (mappedPlaceholderRect().contains(pos)) {
+        setCursor(Qt::PointingHandCursor);
+        return;
+    }
+    if (m_titleBar && isFolderMapped() && m_titleBar->geometry().contains(pos)) {
+        const QPoint titlePos = m_titleBar->mapFrom(this, pos);
+        if (mappedTitleIconRect().contains(titlePos)) {
+            setCursor(Qt::PointingHandCursor);
+            return;
+        }
+    }
     ResizeDir dir = getResizeDir(pos);
     switch (dir) {
         case Top: case Bottom: setCursor(Qt::SizeVerCursor); break;
@@ -2453,6 +2774,19 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     renameItem.text = tr("Rename Box").toStdWString();
     renameItem.callback = [this]() { this->beginTitleEditing(); };
     boxItems.push_back(renameItem);
+
+    if (isFolderMapped()) {
+        ShellContextMenu::CustomMenuItem remapItem;
+        QIcon remapIcon(":/Assets/change_Mapped_Folder.svg");
+        HBITMAP hRemapBmp = QtWin::toHBITMAP(remapIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+        remapItem.hBitmap = hRemapBmp;
+        tempBitmaps.push_back(hRemapBmp);
+        remapItem.text = tr("Change Mapped Folder").toStdWString();
+        remapItem.callback = [this]() {
+            remapMappedFolderInteractively();
+        };
+        boxItems.push_back(remapItem);
+    }
 
     // Toggle View mode
     ShellContextMenu::CustomMenuItem viewItem;

@@ -1,4 +1,5 @@
 #include "ui/Fluent/FluentDragTip.h"
+#include "app/AppFonts.h"
 
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
@@ -21,7 +22,7 @@ FluentDragTip::FluentDragTip(QWidget* parent)
     m_label = new QLabel(this);
     m_label->setTextFormat(Qt::RichText);
     m_label->setAttribute(Qt::WA_StyledBackground, true);
-    m_label->setStyleSheet(
+    m_label->setStyleSheet(QStringLiteral(
         "QLabel {"
         "  background-color: rgba(255, 255, 255, 235);"
         "  color: #202020;"
@@ -29,9 +30,9 @@ FluentDragTip::FluentDragTip(QWidget* parent)
         "  border-radius: 8px;"
         "  padding: 10px 16px;"
         "  font-size: 13px;"
-        "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+        "  font-family: %1;"
         "}"
-    );
+    ).arg(AppFonts::uiCssFamily()));
 
     QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_label);
     shadow->setBlurRadius(20);

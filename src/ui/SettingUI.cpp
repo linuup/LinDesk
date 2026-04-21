@@ -25,6 +25,7 @@
 #include "ui/Fluent/FluentComboBox.h"
 #include "ui/Fluent/FluentCard.h"
 #include "ui/Fluent/FluentColorWheel.h"
+#include "app/AppFonts.h"
 #include "app/LanguageManager.h"
 #include "services/SysInfoUtil.h" // For ShortcutArrowManager
 #include <QJsonDocument>
@@ -117,7 +118,7 @@ public:
         painter->setPen(isSelected ? accentColor : (isHovered ? textPrimary : textSecondary));
         
         QFont font = painter->font();
-        font.setFamily("Segoe UI Variable Text");
+        font.setFamily(AppFonts::uiFamily());
         font.setPixelSize(14);
         font.setWeight(isSelected ? QFont::Weight::Medium : QFont::Weight::Normal);
         painter->setFont(font);
@@ -170,7 +171,7 @@ SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidge
     // Add title bar text (left side of title bar) - Fluent Design Title
     m_titleBarTitle = new QLabel(tr("LinDesk"), this);
     m_titleBarTitle->setStyleSheet(
-        "font-family: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+        "font-family: 'Microsoft YaHei UI'; "
         "font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: #1f2937; "
         "margin-left: 8px; margin-right: 20px;"
     );
@@ -434,7 +435,7 @@ QWidget* SettingUI::createDesktopPage() {
 
     m_selectionColorSectionTitle = new QLabel(tr("Selection Rectangle Color"), selectionColorSection);
     m_selectionColorSectionTitle->setStyleSheet(
-        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-family: 'Microsoft YaHei UI';"
         "font-size: 14px;"
         "font-weight: 600;"
         "color: #1f2937;"
@@ -444,7 +445,7 @@ QWidget* SettingUI::createDesktopPage() {
     m_selectionColorSectionSubtitle = new QLabel(tr("Adjust the drag selection color and preview the result in real time"), selectionColorSection);
     m_selectionColorSectionSubtitle->setWordWrap(true);
     m_selectionColorSectionSubtitle->setStyleSheet(
-        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-family: 'Microsoft YaHei UI';"
         "font-size: 12px;"
         "color: #616161;"
     );
@@ -576,7 +577,7 @@ QWidget* SettingUI::createGridPage() {
 
     m_boxColorSectionTitle = new QLabel(tr("Accent Color"), boxColorSection);
     m_boxColorSectionTitle->setStyleSheet(
-        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-family: 'Microsoft YaHei UI';"
         "font-size: 14px;"
         "font-weight: 600;"
         "color: #1f2937;"
@@ -586,7 +587,7 @@ QWidget* SettingUI::createGridPage() {
     m_boxColorSectionSubtitle = new QLabel(tr("Define the primary theme color for your desktop boxes"), boxColorSection);
     m_boxColorSectionSubtitle->setWordWrap(true);
     m_boxColorSectionSubtitle->setStyleSheet(
-        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;"
+        "font-family: 'Microsoft YaHei UI';"
         "font-size: 12px;"
         "color: #616161;"
     );
@@ -677,7 +678,7 @@ QWidget* SettingUI::createAboutPage() {
 
     m_aboutNameLabel = new QLabel(tr("LinDesk"), page);
     m_aboutNameLabel->setStyleSheet(
-        "font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; "
+        "font-family: 'Microsoft YaHei UI'; "
         "font-size: 28px; "
         "font-weight: 600; "
         "color: #1f2937; "
@@ -687,7 +688,7 @@ QWidget* SettingUI::createAboutPage() {
 
     m_aboutVersionLabel = new QLabel(tr("Version 1.0.0 Stable"), page);
     m_aboutVersionLabel->setStyleSheet(
-        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+        "font-family: 'Microsoft YaHei UI'; "
         "font-size: 13px; "
         "color: #6b7280;"
     );
@@ -697,7 +698,7 @@ QWidget* SettingUI::createAboutPage() {
     
     m_aboutTaglineLabel = new QLabel(tr("Powered by Antigravity Design System"), page);
     m_aboutTaglineLabel->setStyleSheet(
-        "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+        "font-family: 'Microsoft YaHei UI'; "
         "font-size: 12px; "
         "color: #9ca3af;"
     );
@@ -774,7 +775,7 @@ void SettingUI::setupStyles() {
         "   background-color: transparent; "
         "   border: none; "
         "   color: #1f2937; "
-        "   font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+        "   font-family: 'Microsoft YaHei UI'; "
         "} "
         "QWidget#fluentBaseContainer { "
         "   background-color: transparent; "
@@ -818,7 +819,7 @@ void SettingUI::setupStyles() {
         "} "
         "QScrollBar::handle:vertical:hover { background: rgba(0, 0, 0, 0.2); } "
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; } "
-        "QLabel#pageTitle { font-family: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', sans-serif; font-size: 28px; font-weight: 600; color: #1f2937; margin-bottom: 4px; letter-spacing: -0.01em; } "
+        "QLabel#pageTitle { font-family: 'Microsoft YaHei UI'; font-size: 28px; font-weight: 600; color: #1f2937; margin-bottom: 4px; letter-spacing: -0.01em; } "
         "QLabel#cardLabel { font-size: 13px; font-weight: 500; color: #1f2937; } "
         "QWidget#settingCard { "
         "   background: #ffffff; "
@@ -1064,7 +1065,7 @@ void SettingUI::updatePreviewStyle() {
     
     // Title text
     painter.setPen(Qt::white);
-    QFont titleFont("Segoe UI", 9, QFont::Bold);
+    QFont titleFont(AppFonts::uiFamily(), 9, QFont::Bold);
     painter.setFont(titleFont);
     QFontMetrics fm(titleFont);
     QString title = tr("Preview Box");

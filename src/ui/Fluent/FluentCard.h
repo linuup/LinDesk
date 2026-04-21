@@ -3,6 +3,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
+#include "app/AppFonts.h"
 
 class FluentCard : public QWidget {
     Q_OBJECT
@@ -47,24 +48,24 @@ public:
         vText->setAlignment(Qt::AlignVCenter);
 
         m_mainText = new QLabel(title, this);
-        m_mainText->setStyleSheet(
-            "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+        m_mainText->setStyleSheet(QStringLiteral(
+            "font-family: %1; "
             "font-weight: 500; "
             "font-size: 14px; "
             "color: #1f2937; "
             "border: none; "
             "background: transparent;"
-        );
+        ).arg(AppFonts::uiCssFamily()));
 
         m_subText = new QLabel(sub, this);
         m_subText->setWordWrap(true);
-        m_subText->setStyleSheet(
-            "font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+        m_subText->setStyleSheet(QStringLiteral(
+            "font-family: %1; "
             "font-size: 12px; "
             "color: #616161; "
             "border: none; "
             "background: transparent;"
-        );
+        ).arg(AppFonts::uiCssFamily()));
 
         vText->addWidget(m_mainText);
         vText->addWidget(m_subText);

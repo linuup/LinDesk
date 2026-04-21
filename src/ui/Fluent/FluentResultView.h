@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/Fluent/FluentBaseWidget.h"
+#include "app/AppFonts.h"
 #include <QTextEdit>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -42,12 +43,12 @@ public:
         // 3. Text Area
         m_textEdit = new QTextEdit(container());
         m_textEdit->setPlaceholderText("No result data...");
-        m_textEdit->setStyleSheet(
+        m_textEdit->setStyleSheet(QStringLiteral(
             "QTextEdit { "
             "   background: rgba(0, 0, 0, 0.03); "
             "   border: 1px solid rgba(0, 0, 0, 0.06); "
             "   border-radius: 8px; "
-            "   font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+            "   font-family: %1; "
             "   font-size: 14px; "
             "   line-height: 1.6; "
             "   color: #1f2937; "
@@ -55,7 +56,7 @@ public:
             "} "
             "QScrollBar:vertical { border: none; background: transparent; width: 4px; } "
             "QScrollBar::handle:vertical { background: rgba(0, 0, 0, 0.1); border-radius: 2px; } "
-        );
+        ).arg(AppFonts::uiCssFamily()));
         layout->addWidget(m_textEdit, 1);
 
         // 4. Divider

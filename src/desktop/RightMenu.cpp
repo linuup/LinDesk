@@ -1,5 +1,6 @@
 #pragma once
 #include "desktop/RightMenu.h"
+#include "app/AppFonts.h"
 #include "ui/Fluent/FluentDialog.h"
 #include <QMenu>
 #include <QDebug>
@@ -245,7 +246,7 @@ void RightMenu::initializeCustomMenu()
     m_customMenu->addMenu(linDeskMenu);
 
     m_customMenu->setFixedWidth(150);
-    m_customMenu->setStyleSheet("QMenu { font-weight: bold; font-family: 'Segoe UI', sans-serif; }");
+    m_customMenu->setStyleSheet(QStringLiteral("QMenu { font-weight: bold; font-family: %1; }").arg(AppFonts::uiCssFamily()));
 }
 
 void RightMenu::onLargeIcons() { m_largeIconsAction->setChecked(true); emit LargeIconsTriggered(); }

@@ -1,4 +1,5 @@
 #include "ui/QmlTestWindow.h"
+#include "app/AppFonts.h"
 
 #include <QLabel>
 #include <QQuickWidget>
@@ -17,12 +18,12 @@ QmlTestWindow::QmlTestWindow(QWidget* parent)
     layout->setSpacing(10);
 
     auto* title = new QLabel(tr("Qt Quick Test Page"), this);
-    title->setStyleSheet(
-        "font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+    title->setStyleSheet(QStringLiteral(
+        "font-family: %1;"
         "font-size: 22px;"
         "font-weight: 600;"
         "color: #1f2937;"
-    );
+    ).arg(AppFonts::uiCssFamily()));
     layout->addWidget(title);
 
     m_quickWidget = new QQuickWidget(this);

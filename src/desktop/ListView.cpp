@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include "desktop/ListView.h"
+#include "app/AppFonts.h"
 #include "desktop/ListViewSelectionController.h"
 #include "desktop/ListViewSelectionHelper.h"
 #include "desktop/ListViewMappedBoxHelper.h"
@@ -68,10 +69,7 @@ QString normalizeMappedFolderPathForLookup(const QString& path)
 
 int iconCellHeightForTwoTextLines(int iconSide)
 {
-    QFont labelFont;
-    labelFont.setFamily("Microsoft YaHei UI");
-    labelFont.setPointSize(9);
-    labelFont.setWeight(QFont::Normal);
+    QFont labelFont = AppFonts::uiFont(9);
 
     const QFontMetrics metrics(labelFont);
     const int twoLineTextHeight = metrics.lineSpacing();
@@ -3759,7 +3757,7 @@ void ListView::ensureDragTip() {
     if (!m_dragTip) {
         m_dragTip = new QLabel(this);
         m_dragTip->setTextFormat(Qt::RichText);
-        m_dragTip->setStyleSheet(
+        m_dragTip->setStyleSheet(QStringLiteral(
             "QLabel {"
             "  background-color: rgba(255, 255, 255, 235);"
             "  color: #202020;"
@@ -3767,9 +3765,9 @@ void ListView::ensureDragTip() {
             "  border-radius: 8px;"
             "  padding: 10px 16px;"
             "  font-size: 13px;"
-            "  font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;"
+            "  font-family: %1;"
             "}"
-        );
+        ).arg(AppFonts::uiCssFamily()));
         m_dragTip->setAttribute(Qt::WA_TransparentForMouseEvents);
         QGraphicsDropShadowEffect* shadow = new QGraphicsDropShadowEffect(m_dragTip);
         shadow->setBlurRadius(20);

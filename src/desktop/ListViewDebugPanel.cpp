@@ -1,4 +1,5 @@
 #include "desktop/ListViewDebugPanel.h"
+#include "app/AppFonts.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
 #include "ui/QmlTestWindow.h"
@@ -41,10 +42,10 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
 
     // --- Page Title ---
     auto* title = new QLabel("UI Tests & Benchmarks", scrollContent);
-    title->setStyleSheet(
-        "font-family: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', sans-serif; "
+    title->setStyleSheet(QStringLiteral(
+        "font-family: %1; "
         "font-size: 28px; font-weight: 600; color: #1f2937; margin-bottom: 4px; letter-spacing: -0.01em;"
-    );
+    ).arg(AppFonts::uiCssFamily()));
     root->addWidget(title);
 
     // ========== 1. Open Windows Desktop Icon Settings ==========

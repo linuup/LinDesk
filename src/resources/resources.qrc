@@ -13,6 +13,9 @@
         <file>Assets/grid.svg</file>
         <file>Assets/list.svg</file>
         <file>Assets/disk.svg</file>
+        <file>Assets/change_Mapped_Folder.svg</file>
+        <file>Assets/accessDeny-Cat.svg</file>
+        <file>Assets/empty_Cat.svg</file>
         <file>qml/QmlTestPage.qml</file>
     </qresource>
 </RCC>

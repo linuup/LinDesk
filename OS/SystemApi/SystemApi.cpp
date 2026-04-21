@@ -19,7 +19,7 @@ std::wstring NormalizeShellPath(std::wstring path)
         if (ch == L'/') {
             ch = L'\\';
         } else {
-            ch = static_cast<wchar_t>(towlower(ch));
+            ch = static_cast<wchar_t>(ch);
         }
     }
 
@@ -30,38 +30,89 @@ std::wstring NormalizeShellPath(std::wstring path)
     return path;
 }
 
-std::wstring CurrentUserProfilePath()
+std::wstring ResolveKnownFolderPath(REFKNOWNFOLDERID folderId)
 {
-    wchar_t username[256] = { 0 };
-    DWORD usernameLength = static_cast<DWORD>(sizeof(username) / sizeof(username[0]));
-    std::wstring currentUsername;
-    if (GetUserNameW(username, &usernameLength) && username[0] != L'\0') {
-        currentUsername.assign(username);
-    }
-
-    wil::unique_cotaskmem_string profilePath;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Profile, 0, nullptr, wil::out_param(profilePath))) && profilePath) {
-        std::wstring resolvedProfilePath = profilePath.get();
-        if (!currentUsername.empty()) {
-            const size_t lastSlash = resolvedProfilePath.find_last_of(L"\\/");
-            const std::wstring leafName = (lastSlash == std::wstring::npos)
-                ? resolvedProfilePath
-                : resolvedProfilePath.substr(lastSlash + 1);
-            if (_wcsicmp(leafName.c_str(), currentUsername.c_str()) == 0) {
-                return NormalizeShellPath(resolvedProfilePath);
-            }
-        }
-        return NormalizeShellPath(resolvedProfilePath);
-    }
-
-    if (!currentUsername.empty()) {
-        wchar_t systemDrive[MAX_PATH] = { 0 };
-        DWORD driveLength = GetEnvironmentVariableW(L"SystemDrive", systemDrive, MAX_PATH);
-        std::wstring baseDrive = (driveLength > 0 && systemDrive[0] != L'\0') ? systemDrive : L"C:";
-        return NormalizeShellPath(baseDrive + L"\\Users\\" + currentUsername);
+    wil::unique_cotaskmem_string knownFolderPath;
+    if (SUCCEEDED(SHGetKnownFolderPath(folderId, 0, nullptr, wil::out_param(knownFolderPath))) && knownFolderPath) {
+        return NormalizeShellPath(knownFolderPath.get());
     }
 
     return std::wstring();
+}
+
+std::vector<std::wstring> CurrentUserFolderPaths()
+{
+    std::vector<std::wstring> paths;
+
+    const std::wstring usersFilesPath = ResolveKnownFolderPath(FOLDERID_UsersFiles);
+    if (!usersFilesPath.empty()) {
+        paths.push_back(usersFilesPath);
+    }
+
+    const std::wstring profilePath = ResolveKnownFolderPath(FOLDERID_Profile);
+    bool hasProfilePath = false;
+    for (const std::wstring& existing : paths) {
+        if (_wcsicmp(existing.c_str(), profilePath.c_str()) == 0) {
+            hasProfilePath = true;
+            break;
+        }
+    }
+    if (!profilePath.empty() && !hasProfilePath) {
+        paths.push_back(profilePath);
+    }
+
+    wchar_t userProfileValue[MAX_PATH] = { 0 };
+    const DWORD userProfileLength = GetEnvironmentVariableW(L"USERPROFILE", userProfileValue, MAX_PATH);
+    const std::wstring userProfilePath = (userProfileLength > 0 && userProfileLength < MAX_PATH && userProfileValue[0] != L'\0')
+        ? NormalizeShellPath(userProfileValue)
+        : std::wstring();
+    bool hasUserProfilePath = false;
+    for (const std::wstring& existing : paths) {
+        if (_wcsicmp(existing.c_str(), userProfilePath.c_str()) == 0) {
+            hasUserProfilePath = true;
+            break;
+        }
+    }
+    if (!userProfilePath.empty() && !hasUserProfilePath) {
+        paths.push_back(userProfilePath);
+    }
+
+    if (paths.empty()) {
+        wchar_t homeDriveValue[MAX_PATH] = { 0 };
+        wchar_t homePathValue[MAX_PATH] = { 0 };
+        const DWORD homeDriveLength = GetEnvironmentVariableW(L"HOMEDRIVE", homeDriveValue, MAX_PATH);
+        const DWORD homePathLength = GetEnvironmentVariableW(L"HOMEPATH", homePathValue, MAX_PATH);
+        if (homeDriveLength > 0 && homeDriveLength < MAX_PATH && homePathLength > 0 && homePathLength < MAX_PATH &&
+            homeDriveValue[0] != L'\0' && homePathValue[0] != L'\0') {
+            paths.push_back(NormalizeShellPath(std::wstring(homeDriveValue) + homePathValue));
+        }
+    }
+
+    return paths;
+}
+
+std::wstring ResolveComparableShellPath(const wchar_t* name)
+{
+    if (!name || name[0] == L'\0') {
+        return std::wstring();
+    }
+
+    GUID parsedGuid{};
+    if (SUCCEEDED(CLSIDFromString(const_cast<LPOLESTR>(name), &parsedGuid)) ||
+        wcsncmp(name, L"::", 2) == 0 ||
+        _wcsnicmp(name, L"shell:", 6) == 0) {
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        if (SUCCEEDED(SHParseDisplayName(name, nullptr, &pidl, 0, nullptr)) && pidl) {
+            wil::unique_cotaskmem_string fileSystemPath;
+            if (SUCCEEDED(SHGetNameFromIDList(pidl, SIGDN_FILESYSPATH, wil::out_param(fileSystemPath))) && fileSystemPath) {
+                CoTaskMemFree(pidl);
+                return NormalizeShellPath(fileSystemPath.get());
+            }
+            CoTaskMemFree(pidl);
+        }
+    }
+
+    return NormalizeShellPath(name);
 }
 
 bool IsCurrentUserFolderPath(const wchar_t* name)
@@ -70,12 +121,19 @@ bool IsCurrentUserFolderPath(const wchar_t* name)
         return false;
     }
 
-    static const std::wstring kCurrentUserProfilePath = CurrentUserProfilePath();
-    if (kCurrentUserProfilePath.empty()) {
+    const std::vector<std::wstring> currentUserFolderPaths = CurrentUserFolderPaths();
+    if (currentUserFolderPaths.empty()) {
         return false;
     }
 
-    return NormalizeShellPath(name) == kCurrentUserProfilePath;
+    const std::wstring normalizedPath = ResolveComparableShellPath(name);
+    for (const std::wstring& candidatePath : currentUserFolderPaths) {
+        if (_wcsicmp(normalizedPath.c_str(), candidatePath.c_str()) == 0) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool FillTargetNamesFromPidl(PCIDLIST_ABSOLUTE pidl, std::wstring& targetParsingPath,
@@ -186,7 +244,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         return false;
     }
     
-    // 检查扩展名（支持大小写�?
+    // 濡偓閺屻儲澧跨仦鏇炴倳閿涘牊鏁幐浣搞亣鐏忓繐鍟撻敍?
     std::wstring pathStr(shortcutPath);
     std::wstring extension;
     size_t dotPos = pathStr.find_last_of(L"./\\");
@@ -237,7 +295,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         return false;
     }
 
-    // 方法1: 通过 PIDL 获取目标
+    // 閺傝纭?: 闁俺绻?PIDL 閼惧嘲褰囬惄顔界垼
     hr = shellLink->GetIDList(wil::out_param(targetPidl));
     if (SUCCEEDED(hr) && targetPidl) {
         resolved = FillTargetNamesFromPidl(targetPidl.get(), targetParsingPath, targetDisplayName);
@@ -248,7 +306,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
 #endif
     }
 
-    // 方法2: 直接获取路径
+    // 閺傝纭?: 閻╁瓨甯撮懢宄板絿鐠侯垰绶?
     if (!resolved) {
         WIN32_FIND_DATAW findData{};
         wchar_t resolvedPath[MAX_PATH] = { 0 };
@@ -263,7 +321,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         }
     }
 
-    // 方法3: 直接读取文件
+    // 閺傝纭?: 閻╁瓨甯寸拠璇插絿閺傚洣娆?
     if (!resolved) {
         resolved = TryReadShortcutTargetFromFile(shortcutPath, targetParsingPath, targetDisplayName);
 #ifndef NDEBUG
@@ -286,7 +344,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
 }
 }
 
-// 静态成员变量定义（必须在类外部进行�?
+// 闂堟瑦鈧焦鍨氶崨妯哄綁闁插繐鐣炬稊澶涚礄韫囧懘銆忛崷銊ц婢舵牠鍎存潻娑滎攽閿?
 HWND CSystemApi::global_SysListView32 = nullptr;
 HWND CSystemApi::global_realDesktop = nullptr;
 //reference
@@ -329,14 +387,14 @@ std::string WideToUtf8(const wchar_t* wideStr)
 {
     if (!wideStr) return std::string();
 
-    // 计算 UTF-8 缓冲区大�?
+    // 鐠侊紕鐣?UTF-8 缂傛挸鍟块崠鍝勩亣鐏?
     int utf8_length = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, nullptr, 0, nullptr, nullptr);
     if (utf8_length == 0) return std::string();
 
-    // 创建 std::string 并分配空�?
-    std::string utf8_string(utf8_length - 1, 0); // 不需要末�?\0
+    // 閸掓稑缂?std::string 楠炶泛鍨庨柊宥団敄闂?
+    std::string utf8_string(utf8_length - 1, 0); // 娑撳秹娓剁憰浣规汞鐏?\0
 
-    // 执行转换
+    // 閹笛嗩攽鏉烆剚宕?
     WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8_string.data(), utf8_length, nullptr, nullptr);
 
     return utf8_string;
@@ -362,45 +420,83 @@ const wchar_t* L_USER_FOLDER(TEXT(USER_FOLDER_CLS));
 const wchar_t* L_LIARIES(TEXT(LIBRARIES_CLS));
 const wchar_t* L_LINUX(TEXT(LINUX_CLS));
 const wchar_t* L_ONE_DRIVE(TEXT(ONE_DRIVE_CLS));
-SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
+bool TryExtractShellGuid(const wchar_t* name, GUID& guid)
 {
-    if (!name) return SpecialFolders::Empty;
+    if (!name || name[0] == L'\0') {
+        return false;
+    }
 
-    if (wcsstr(name, L_MY_COMPUTER)) {
-        return SpecialFolders::ThisPc;
+    const wchar_t* guidStart = wcschr(name, L'{');
+    if (!guidStart) {
+        return false;
     }
-    else if (wcsstr(name, L_RECYCLE_BIN)) {
-        return SpecialFolders::RecycleBin;
+
+    const wchar_t* guidEnd = wcschr(guidStart, L'}');
+    if (!guidEnd || guidEnd <= guidStart) {
+        return false;
     }
-    else if (wcsstr(name, L_CONTROL_PANEL)) {
-        return SpecialFolders::ControlPanel;
+
+    std::wstring guidText(guidStart, guidEnd - guidStart + 1);
+    return SUCCEEDED(CLSIDFromString(const_cast<LPOLESTR>(guidText.c_str()), &guid));
+}
+
+SpecialFolders ResolveShellSpecialFolderType(const wchar_t* name)
+{
+    GUID parsedGuid{};
+    if (TryExtractShellGuid(name, parsedGuid)) {
+        if (IsEqualGUID(parsedGuid, MyComputerGUID)) {
+            return SpecialFolders::ThisPc;
+        }
+        if (IsEqualGUID(parsedGuid, RecycleBinGUID)) {
+            return SpecialFolders::RecycleBin;
+        }
+        if (IsEqualGUID(parsedGuid, ControlPanelGUID)) {
+            return SpecialFolders::ControlPanel;
+        }
+        if (IsEqualGUID(parsedGuid, ControlPanel2GUID)) {
+            return SpecialFolders::ControlPanel2;
+        }
+        if (IsEqualGUID(parsedGuid, NetworkGUID)) {
+            return SpecialFolders::Network;
+        }
+        if (IsEqualGUID(parsedGuid, UserFolderGUID)) {
+            return SpecialFolders::UserFolder;
+        }
+        if (IsEqualGUID(parsedGuid, LibrariesGUID)) {
+            return SpecialFolders::Libraries;
+        }
+        if (IsEqualGUID(parsedGuid, LinuxGUID)) {
+            return SpecialFolders::Linux;
+        }
     }
-    else if (wcsstr(name, L_CONTROL_PANEL2)) {
-        return SpecialFolders::ControlPanel2;
-    }
-    else if (wcsstr(name, L_NETWORK)) {
-        return SpecialFolders::Network;
-    }
-    else if (wcsstr(name, L"OneDrive") != nullptr ||
+
+    if (wcsstr(name, L"OneDrive") != nullptr ||
         wcsstr(name, L"Microsoft OneDrive") != nullptr ||
         wcsstr(name, L"ONEDRIVE") != nullptr ||
         wcsstr(name, L_ONE_DRIVE)) {
         return SpecialFolders::OneDrive;
     }
-    else if (wcsstr(name, L"\\Desktop\\") != nullptr ||
-        wcsstr(name, L"\\桌面\\") != nullptr ||
-        (wcsstr(name, L"\\Users\\") != nullptr && wcsstr(name, L"\\Desktop") != nullptr) ||
-        (wcsstr(name, L"\\用户\\") != nullptr && wcsstr(name, L"\\桌面") != nullptr)) {
-        return SpecialFolders::UnknownFolder;
-    }
-    else if (wcsstr(name, L_USER_FOLDER) || IsCurrentUserFolderPath(name)) {
+
+    if (IsCurrentUserFolderPath(name)) {
         return SpecialFolders::UserFolder;
     }
-    else if (wcsstr(name, L_LIARIES)) {
-        return SpecialFolders::Libraries;
+
+    return SpecialFolders::UnknownFolder;
+}
+
+SpecialFolders CSystemApi::getFolderTypeFromName(const wchar_t* name)
+{
+    if (!name) {
+        return SpecialFolders::Empty;
     }
-    else if (wcsstr(name, L_LINUX)) {
-        return SpecialFolders::Linux;
+
+    GUID parsedGuid{};
+    if (TryExtractShellGuid(name, parsedGuid) || _wcsnicmp(name, L"shell:", 6) == 0) {
+        return ResolveShellSpecialFolderType(name);
+    }
+
+    if (IsCurrentUserFolderPath(name)) {
+        return SpecialFolders::UserFolder;
     }
 
     return SpecialFolders::UnknownFolder;
@@ -438,7 +534,7 @@ IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
     }
 
     item.specialFolder = getFolderTypeFromName(filePath);
-
+    
     std::wstring shortcutTargetPath;
     std::wstring shortcutTargetDisplayName;
     if (ResolveShortcutTarget(filePath, shortcutTargetPath, shortcutTargetDisplayName)) {
@@ -452,7 +548,7 @@ IconItem CSystemApi::CreateIconItem(const wchar_t* filePath)
 
     return item;
 }
-//寻找桌面图标窗口
+//鐎电粯澹樺宀勬桨閸ョ偓鐖ｇ粣妤€褰?
 BOOL CALLBACK CSystemApi::FindSysListView32Internal(HWND hwnd, LPARAM lparam)
 {
     TCHAR name[255];
@@ -466,7 +562,7 @@ BOOL CALLBACK CSystemApi::FindSysListView32Internal(HWND hwnd, LPARAM lparam)
     return TRUE;
 }
 
-//寻找桌面窗口
+//鐎电粯澹樺宀勬桨缁愭褰?
 BOOL CALLBACK CSystemApi::FindRealDesktopInternal(HWND hwnd, LPARAM lparam)
 {
     TCHAR name[255];
@@ -486,7 +582,7 @@ HWND CSystemApi::FindSysListView32()
     SendMessageTimeout(hparent, 0x52c, 0, 0, 0, 100, 0);
     HWND hshelldll_defview = ::FindWindowEx(hparent, NULL, _T("shelldll_defview"), NULL);
     HWND syslistview32 = ::FindWindowEx(hshelldll_defview, NULL, _T("syslistview32"), _T("folderview"));
-    //寻找第二个workerw
+    //鐎电粯澹樼粭顑跨癌娑撶崄orkerw
     if (syslistview32 == 0)
     {
         EnumWindows(FindSysListView32Internal, 0);
@@ -504,7 +600,7 @@ HWND CSystemApi::FindRealDesktop()
     HWND hparent = ::FindWindow(_T("progman"), _T("program manager"));
     SendMessageTimeout(hparent, 0x52c, 0, 0, 0, 100, 0);
     HWND hshelldll_defview = ::FindWindowEx(hparent, NULL, _T("shelldll_defview"), NULL);
-    //寻找第二个workerw
+    //鐎电粯澹樼粭顑跨癌娑撶崄orkerw
     if (hshelldll_defview == 0)
     {
         EnumWindows(FindRealDesktopInternal, 0);
@@ -532,44 +628,44 @@ vector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
     POINT point = {};
     for (int i = 0; i < ListView_GetItemCount(sysListView32); i++)
     {
-        //图标名称
+        //閸ョ偓鐖ｉ崥宥囆?
         TCHAR Object[512];
-        //图标位置
+        //閸ョ偓鐖ｆ担宥囩枂
         ListView_GetItemPosition(sysListView32, i, ori);
         ReadProcessMemory(hProcess, ori, &point, sizeof(POINT), NULL);
-        //获取图标名称
+        //閼惧嘲褰囬崶鐐垼閸氬秶袨
         GetSpecifyItemString(hProcess, sysListView32, i, 0, Object, sizeof(Object));
 
-        // 这里直接�?TCHAR 当成 wchar_t 处理
+        // 鏉╂瑩鍣烽惄瀛樺复閹?TCHAR 瑜版挻鍨?wchar_t 婢跺嫮鎮?
         const wchar_t* wideStr = Object;
         std::string utf8_string = WideToUtf8(wideStr);
 
-        // 去掉末尾的NULL字符
+        // 閸樼粯甯€閺堫偄鐔惃鍑琔LL鐎涙顑?
         //size_t length = wcslen(Object);
-        // 分配足够的空间来存储 UTF-8 字符�?
+        // 閸掑棝鍘ょ搾鍐差檮閻ㄥ嫮鈹栭梻瀛樻降鐎涙ê鍋?UTF-8 鐎涙顑佹稉?
         //int utf8_length = WideCharToMultiByte(CP_UTF8, 0, Object, -1, nullptr, 0, nullptr, nullptr);
         //char* utf8_buffer = new char[utf8_length];
-        // 执行转换
+        // 閹笛嗩攽鏉烆剚宕?
         //WideCharToMultiByte(CP_UTF8, 0, Object, -1, utf8_buffer, utf8_length, nullptr, nullptr);
         //std::string utf8_string(utf8_buffer);
-        // 转换
+        // 鏉烆剚宕?
         //WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8_string.data(), utf8_length, nullptr, nullptr);
         //std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-        ////TCHAR类型转为为std::wstring
-        //std::wstring utf16_string((wchar_t*)Object, sizeof(Object) / sizeof(wchar_t) - 1); // 去掉末尾的NULL字符
+        ////TCHAR缁鐎锋潪顑胯礋娑撶皧td::wstring
+        //std::wstring utf16_string((wchar_t*)Object, sizeof(Object) / sizeof(wchar_t) - 1); // 閸樼粯甯€閺堫偄鐔惃鍑琔LL鐎涙顑?
         //std::string utf8_string = converter.to_bytes(utf16_string);
         
-        //清理末尾的所有\0
+        //濞撳懐鎮婇張顐㈢啲閻ㄥ嫭澧嶉張濉?
         std::string cleanedString;
-        // 查找第一个\0的位�?
+        // 閺屻儲澹樼粭顑跨娑撶審0閻ㄥ嫪缍呯純?
         size_t nullPos = utf8_string.find('\0');
 
-        // 如果找到了\0，则截取第一个\0之前的部�?
+        // 婵″倹鐏夐幍鎯у煂娴滃摫0閿涘苯鍨幋顏勫絿缁楊兛绔存稉鐚?娑斿澧犻惃鍕劥閸?
         if (nullPos != std::string::npos) {
             cleanedString = utf8_string.substr(0, nullPos).c_str();
         }
         else {
-            // 如果没有找到\0，则原字符串不变
+            // 婵″倹鐏夊▽鈩冩箒閹垫儳鍩孿0閿涘苯鍨崢鐔风摟缁楋缚瑕嗘稉宥呭綁
             cleanedString = utf8_string;
         }
         IconItem iItem;
@@ -591,13 +687,13 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 	//vector<IconItem>* iconItems = new vector<IconItem>();
 	vector <IconItem> iconItems;
     
-    // 提前抓取可视坐标 (通过远线程注入提�?SysListView32)
+    // 閹绘劕澧犻幎鎾冲絿閸欘垵顫嬮崸鎰垼 (闁俺绻冩潻婊呭殠缁嬪鏁為崗銉﹀絹閸?SysListView32)
     HWND sysListView32 = FindSysListView32();
     std::unordered_map<std::string, POINT> posMap;
     if (sysListView32) {
         vector<IconItem> visualItems = GetDesktopIconsItems(sysListView32);
         for (const auto& vi : visualItems) {
-            // 存储为小写且去空格的名字，用于模糊匹�?
+            // 鐎涙ê鍋嶆稉鍝勭毈閸愭瑤绗栭崢鑽も敄閺嶈偐娈戦崥宥呯摟閿涘瞼鏁ゆ禍搴⒛佺化濠傚爱闁?
             std::string normalizedName = vi.name;
             while(!normalizedName.empty() && (normalizedName.back() == ' ' || normalizedName.back() == '\0')) normalizedName.pop_back();
             while(!normalizedName.empty() && (normalizedName.front() == ' ')) normalizedName.erase(0, 1);
@@ -607,19 +703,19 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         }
     }
 
-    // 获取桌面文件夹的 PIDL
+    // 閼惧嘲褰囧宀勬桨閺傚洣娆㈡径鍦畱 PIDL
     unique_pidl_absolute pidl = Tool::GetRootPidl();
 
-    // 获取桌面文件夹的 ShellFolder
+    // 閼惧嘲褰囧宀勬桨閺傚洣娆㈡径鍦畱 ShellFolder
     wil::com_ptr_nothrow<IShellFolder> deskISF;
     HRESULT hr = SHGetDesktopFolder(&deskISF);
     if (FAILED(hr)) {
-        // 如果加载失败，打印错误信息并返回 nullptr
+        // 婵″倹鐏夐崝鐘烘祰婢惰精瑙﹂敍灞惧ⅵ閸椾即鏁婄拠顖欎繆閹垰鑻熸潻鏂挎礀 nullptr
         DWORD error = GetLastError();
         _tprintf(_T("Failed to get desktop folder interface: Error %d\n"), error);
         return iconItems;
     }
-    // 创建枚举器以枚举桌面上的所有项
+    // 閸掓稑缂撻弸姘閸ｃ劋浜掗弸姘濡楀矂娼版稉濠勬畱閹碘偓閺堝銆?
     wil::com_ptr_nothrow<IEnumIDList> enumIDList;
     /*SHCONTF_CHECKING_FOR_CHILDREN |
         SHCONTF_FOLDERS |
@@ -651,18 +747,18 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         return iconItems;
     }
 
-    // 枚举每个文件�?
-    LPITEMIDLIST pidlItem = nullptr;  // 临时存储PIDL
+    // 閺嬫矮濡囧В蹇庨嚋閺傚洣娆㈡い?
+    LPITEMIDLIST pidlItem = nullptr;  // 娑撳瓨妞傜€涙ê鍋峆IDL
 
     while (enumIDList->Next(1, &pidlItem, NULL) == S_OK) {
-        // 通过智能指针使用 pidlItem
+        // 闁俺绻冮弲楦垮厴閹稿洭鎷℃担璺ㄦ暏 pidlItem
         STRRET strret;
         IconItem i;
         wchar_t szPath[MAX_PATH];
         wchar_t szName[MAX_PATH];
         wchar_t szParsingPath[MAX_PATH];
         
-        // 获取名称（SHGDN_NORMAL�?
+        // 閼惧嘲褰囬崥宥囆為敍鍦獺GDN_NORMAL閿?
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szName, MAX_PATH);
@@ -673,7 +769,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             _tprintf(_T("Failed to get name: %d\n"), error);
         }
 
-        // 获取解析路径（SHGDN_FORPARSING�?
+        // 閼惧嘲褰囩憴锝嗙€界捄顖氱窞閿涘湯HGDN_FORPARSING閿?
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_FORPARSING, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szParsingPath, MAX_PATH);
@@ -687,7 +783,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             DWORD error = GetLastError();
         }
 
-        // 获取实际文件系统路径（用于判断是否为 .lnk 文件�?
+        // 閼惧嘲褰囩€圭偤妾弬鍥︽缁崵绮虹捄顖氱窞閿涘牏鏁ゆ禍搴″灲閺傤厽妲搁崥锔胯礋 .lnk 閺傚洣娆㈤敍?
         hr = deskISF->GetDisplayNameOf(pidlItem, SHGDN_NORMAL | SHGDN_INFOLDER, &strret);
         if (SUCCEEDED(hr)) {
             StrRetToBufW(&strret, pidlItem, szPath, MAX_PATH);
@@ -695,7 +791,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 
         std::wstring shortcutTargetPath;
         std::wstring shortcutTargetDisplayName;
-        // 使用 szParsingPath�?lnk 文件的绝对路径）来解析快捷方式目�?
+        // 娴ｈ法鏁?szParsingPath閿?lnk 閺傚洣娆㈤惃鍕卜鐎电鐭惧鍕剁礆閺夈儴袙閺嬫劕鎻╅幑閿嬫煙瀵繒娲伴弽?
         if (ResolveShortcutTarget(szParsingPath, shortcutTargetPath, shortcutTargetDisplayName)) {
             i.shortcutTargetPath = Tool::WstrToStr(shortcutTargetPath.c_str());
             i.shortcutTargetDisplayName = Tool::WstrToStr(shortcutTargetDisplayName.c_str());
@@ -705,13 +801,13 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             i.shortcutTargetSpecialFolder = getFolderTypeFromName(targetSpecialSource);
         }
 
-		// 创建绝对 PIDL 以支持高质量图标提取和其�?Shell 操作
+		// 閸掓稑缂撶紒婵嗩嚠 PIDL 娴犮儲鏁幐渚€鐝拹銊╁櫤閸ョ偓鐖ｉ幓鎰絿閸滃苯鍙炬禒?Shell 閹垮秳缍?
         if (rootPidl) {
             i.pidl_p = ILCombine(rootPidl.get(), pidlItem);
         } else {
             i.pidl_p = ILClone(pidlItem);
         }
-        ILFree(pidlItem); // 释放 EnumIDList 返回的相�?PIDL
+        ILFree(pidlItem); // 闁插﹥鏂?EnumIDList 鏉╂柨娲栭惃鍕祲鐎?PIDL
 
         if (i.pidl_p && Tool::WstrToStr(szName) != Tool::getWindowsUsername()) {
             std::wstring resolvedItemPath;
@@ -721,9 +817,9 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
             }
         }
 
-		i.specialFolder = getFolderTypeFromName(szParsingPath);
+		i.specialFolder = getFolderTypeFromName(IsCurrentUserFolderPath(szParsingPath) ? L_USER_FOLDER : szParsingPath);
         
-        // 尝试从可视抓取数组中匹配坐标 (同样进行归一化处�?
+        // 鐏忔繆鐦禒搴″讲鐟欏棙濮勯崣鏍ㄦ殶缂佸嫪鑵戦崠褰掑帳閸ф劖鐖?(閸氬本鐗辨潻娑滎攽瑜版帊绔撮崠鏍ь槱閻?
         std::string searchName = i.name;
         while(!searchName.empty() && (searchName.back() == ' ' || searchName.back() == '\0')) searchName.pop_back();
         while(!searchName.empty() && (searchName.front() == ' ')) searchName.erase(0, 1);
@@ -739,7 +835,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 #endif
         
     }
-    // 释放枚举�?
+    // 闁插﹥鏂侀弸姘閸?
     return iconItems;
 }
 
@@ -795,20 +891,20 @@ void CSystemApi::GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid
 
 const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
 {
-    // 加载 DLL 文件
+    // 閸旂姾娴?DLL 閺傚洣娆?
     HMODULE hModule = LoadLibraryA(filePath);
     if (hModule == NULL) {
-        // 如果加载失败，打印错误信息并返回 nullptr
+        // 婵″倹鐏夐崝鐘烘祰婢惰精瑙﹂敍灞惧ⅵ閸椾即鏁婄拠顖欎繆閹垰鑻熸潻鏂挎礀 nullptr
         DWORD error = GetLastError();
         _tprintf(_T("Failed to load DLL: Error %d\n"), error);
         return nullptr;
     }
 
-    // 使用 LoadString �?DLL 中加载指定索引的字符串资�?
-    char* strBuffer = new char[MAX_PATH]; // 假设 MAX_LOADSTRING 是足够大的缓冲区大小
+    // 娴ｈ法鏁?LoadString 娴?DLL 娑擃厼濮炴潪鑺ュ瘹鐎规氨鍌ㄥ鏇犳畱鐎涙顑佹稉鑼剁カ濠?
+    char* strBuffer = new char[MAX_PATH]; // 閸嬪洩顔?MAX_LOADSTRING 閺勵垵鍐绘径鐔枫亣閻ㄥ嫮绱﹂崘鎻掑隘婢堆冪毈
     int result = LoadStringA(hModule, index, strBuffer, MAX_PATH);
     if (result == 0) {
-        // 如果加载字符串失败，打印错误信息，释�?DLL，并返回 nullptr
+        // 婵″倹鐏夐崝鐘烘祰鐎涙顑佹稉鎻掋亼鐠愩儻绱濋幍鎾冲祪闁挎瑨顕ゆ穱鈩冧紖閿涘矂鍣撮弨?DLL閿涘苯鑻熸潻鏂挎礀 nullptr
         DWORD error = GetLastError();
         _tprintf(_T("Failed to load string from DLL: Error %d\n"), error);
         FreeLibrary(hModule);
@@ -816,10 +912,10 @@ const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
         return nullptr;
     }
 
-    // 字符串加载成功，确保字符串以 null 结尾（LoadString 可能未填充整个缓冲区�?
+    // 鐎涙顑佹稉鎻掑鏉炶姤鍨氶崝鐕傜礉绾喕绻氱€涙顑佹稉韫簰 null 缂佹挸鐔敍鍦爋adString 閸欘垵鍏橀張顏勶綖閸忓懏鏆ｆ稉顏嗙处閸愭彃灏敍?
     strBuffer[result] = '\0';
 
-    // 释放 DLL，并返回加载的字符串
+    // 闁插﹥鏂?DLL閿涘苯鑻熸潻鏂挎礀閸旂姾娴囬惃鍕摟缁楋缚瑕?
     FreeLibrary(hModule);
     return strBuffer;
 }
@@ -841,27 +937,27 @@ bool CSystemApi::IsLinkFile(const wchar_t* filePath)
     if (attributes != INVALID_FILE_ATTRIBUTES &&
         (attributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
         !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-        //std::cout << "该路径可能是快捷方式�? << std::endl;
+        //std::cout << "鐠囥儴鐭惧鍕讲閼宠姤妲歌箛顐ｅ祹閺傜懓绱￠妴? << std::endl;
         return true;
     }
     return false;
 }
 
 /**
- * 删除文件的原生API函数
+ * 閸掔娀娅庨弬鍥︽閻ㄥ嫬甯悽鐑漃I閸戣姤鏆?
 */
 bool CSystemApi::DeleteFileNative(const wchar_t* filePath)
 {
     if (::DeleteFile(filePath) == TRUE)
     {
-        // 文件删除成功
+        // 閺傚洣娆㈤崚鐘绘珟閹存劕濮?
         return true;
     }
     else
     {
-        // 获取错误代码
+        // 閼惧嘲褰囬柨娆掝嚖娴狅絿鐖?
         DWORD error = GetLastError();
-        // 处理错误，例如输出错误信息到调试器或日志
+        // 婢跺嫮鎮婇柨娆掝嚖閿涘奔绶ユ俊鍌濈翻閸戞椽鏁婄拠顖欎繆閹垰鍩岀拫鍐槸閸ｃ劍鍨ㄩ弮銉ョ箶
         SetLastError(error);
         return false;
     }
@@ -871,13 +967,13 @@ bool CSystemApi::DeleteFiles(const std::vector<std::wstring>& filePaths, bool to
 {
     if (filePaths.empty()) return true;
 
-    // SHFileOperation �?pFrom 要求以双 null 结尾，内部各路径以单 null 分隔
+    // SHFileOperation 閻?pFrom 鐟曚焦鐪版禒銉ュ蓟 null 缂佹挸鐔敍灞藉敶闁劌鎮囩捄顖氱窞娴犮儱宕?null 閸掑棝娈?
     std::vector<wchar_t> pathsBuffer;
     for (const auto& path : filePaths) {
         for (wchar_t c : path) pathsBuffer.push_back(c);
-        pathsBuffer.push_back(0); // �?null 分隔
+        pathsBuffer.push_back(0); // 閸?null 閸掑棝娈?
     }
-    pathsBuffer.push_back(0); // �?null 结尾
+    pathsBuffer.push_back(0); // 閸?null 缂佹挸鐔?
 
     SHFILEOPSTRUCTW fileOp = { 0 };
     fileOp.hwnd = GetForegroundWindow();
@@ -1000,31 +1096,31 @@ bool CSystemApi::MoveFiles(const std::vector<std::wstring>& filePaths, const std
 bool CSystemApi::DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm)
 {
     SHFILEOPSTRUCTW fileOp = { 0 };
-    fileOp.hwnd = NULL; // 可以指定一个窗口句柄用于显示进度或错误信息
-    fileOp.wFunc = FO_DELETE; // 指定操作类型为删�?
-    fileOp.pFrom = filePath; // 指向待删除文件的路径，路径字符串必须以双null字符结尾（L"...\0\0"�?
+    fileOp.hwnd = NULL; // 閸欘垯浜掗幐鍥х暰娑撯偓娑擃亞鐛ラ崣锝呭綖閺屽嫮鏁ゆ禍搴㈡▔缁€楦跨箻鎼达附鍨ㄩ柨娆掝嚖娣団剝浼?
+    fileOp.wFunc = FO_DELETE; // 閹稿洤鐣鹃幙宥勭稊缁鐎锋稉鍝勫灩闂?
+    fileOp.pFrom = filePath; // 閹稿洤鎮滃鍛灩闂勩倖鏋冩禒鍓佹畱鐠侯垰绶為敍宀冪熅瀵板嫬鐡х粭锔胯韫囧懘銆忔禒銉ュ蓟null鐎涙顑佺紒鎾崇啲閿涘湢"...\0\0"閿?
 
-    //启用确认对话�?
+    //閸氼垳鏁ょ涵顔款吇鐎电鐦藉?
     if (comfirm)
     {
         fileOp.fFlags = FOF_ALLOWUNDO;
     }
     else {
-        fileOp.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION; // 允许放入回收站并禁用确认对话�?
+        fileOp.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION; // 閸忎浇顔忛弨鎯у弳閸ョ偞鏁圭粩娆忚嫙缁備胶鏁ょ涵顔款吇鐎电鐦藉?
     }
-    // 执行文件操作
+    // 閹笛嗩攽閺傚洣娆㈤幙宥勭稊
     int result = SHFileOperationW(&fileOp);
     if (result == 0)
     {
-        // 操作成功
+        // 閹垮秳缍旈幋鎰
         return true;
     }
     else
     {
-        // 获取错误代码
+        // 閼惧嘲褰囬柨娆掝嚖娴狅絿鐖?
         DWORD error = GetLastError();
         SetLastError(error);
-        // 处理错误
+        // 婢跺嫮鎮婇柨娆掝嚖
         return false;
     }
 }
@@ -1038,30 +1134,30 @@ PathType CSystemApi::GetPathType(const wchar_t* filePath)
 
     DWORD attributes = GetFileAttributesW(filePath);
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        // 无效路径
+        // 閺冪姵鏅ョ捄顖氱窞
         return InvalidPath;
     }
 
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
-        // 目录路径
+        // 閻╊喖缍嶇捄顖氱窞
         return DirectoryPath;
     }
     else {
-        // 文件路径
+        // 閺傚洣娆㈢捄顖氱窞
         return FilePath;
     }
 }
 
 /**
-lpVerb 参数�?ShellExecute �?lpOperation 参数一致：
-edit 用编辑器打开 lpFile 指定的文档，如果 lpFile 不是文档，则会失�?
-explore 浏览 lpFile 指定的文件夹
-find 搜索 lpDirectory 指定的目�?
-open 打开 lpFile 文件，lpFile 可以是文件或文件�?
-print 打印 lpFile，如�?lpFile 不是文档，则函数失败
-properties 显示属�?
-runas 请求以管理员权限运行，比如以管理员权限运行某个exe
-NULL 执行默认"open"动作
+lpVerb 閸欏倹鏆熸稉?ShellExecute 閻?lpOperation 閸欏倹鏆熸稉鈧懛杈剧窗
+edit 閻劎绱潏鎴濇珤閹垫挸绱?lpFile 閹稿洤鐣鹃惃鍕瀮濡楋綇绱濇俊鍌涚亯 lpFile 娑撳秵妲搁弬鍥ㄣ€傞敍灞藉灟娴兼艾銇戠拹?
+explore 濞村繗顫?lpFile 閹稿洤鐣鹃惃鍕瀮娴犺泛銇?
+find 閹兼粎鍌?lpDirectory 閹稿洤鐣鹃惃鍕窗瑜?
+open 閹垫挸绱?lpFile 閺傚洣娆㈤敍瀹璸File 閸欘垯浜掗弰顖涙瀮娴犺埖鍨ㄩ弬鍥︽婢?
+print 閹垫挸宓?lpFile閿涘苯顩ч弸?lpFile 娑撳秵妲搁弬鍥ㄣ€傞敍灞藉灟閸戣姤鏆熸径杈Е
+properties 閺勫墽銇氱仦鐐粹偓?
+runas 鐠囬攱鐪版禒銉ь吀閻炲棗鎲抽弶鍐鏉╂劘顢戦敍灞剧槷婵″倷浜掔粻锛勬倞閸涙ɑ娼堥梽鎰箥鐞涘本鐓囨稉鐚爔e
+NULL 閹笛嗩攽姒涙顓?open"閸斻劋缍?
 **/
 void CSystemApi::File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_Operations operation)
 {
@@ -1130,7 +1226,7 @@ HBITMAP CSystemApi::GetShellThumbnail(const wchar_t* path, int width, int height
 }
 int OpenCLSID(const wchar_t* clsidStr)
 {
-    // 替换下面�?CLSID_String 字符串为你想要打开�?CLSID 对应的程序的 CLSID 字符�?
+    // 閺囨寧宕叉稉瀣桨閻?CLSID_String 鐎涙顑佹稉韫礋娴ｇ姵鍏傜憰浣瑰ⅵ瀵偓閻?CLSID 鐎电懓绨查惃鍕柤鎼村繒娈?CLSID 鐎涙顑佹稉?
     LPCWSTR CLSID_String = clsidStr;
 
     SHELLEXECUTEINFO sei = { sizeof(sei) };
@@ -1141,32 +1237,32 @@ int OpenCLSID(const wchar_t* clsidStr)
 
     if (ShellExecuteEx(&sei))
     {
-        // 执行成功
+        // 閹笛嗩攽閹存劕濮?
         return 0;
     }
     else
     {
-        // 执行失败
+        // 閹笛嗩攽婢惰精瑙?
         DWORD dwError = GetLastError();
-        // 处理错误
+        // 婢跺嫮鎮婇柨娆掝嚖
         return dwError;
     }
     return 0;
 }
-//测试代码=========================================================
+//濞村鐦禒锝囩垳=========================================================
 #ifdef _DEBUG
 
 void WriteLocalFile(const vector<IconItem>* items) {
-    // 打开要写入的文件
+    // 閹垫挸绱戠憰浣稿晸閸忋儳娈戦弬鍥︽
     std::ofstream outputFile("items_content.txt");
 
     if (outputFile.is_open()) {
-        // 遍历队列并将内容写入文件
+        // 闁秴宸婚梼鐔峰灙楠炶泛鐨㈤崘鍛啇閸愭瑥鍙嗛弬鍥︽
         for (const auto& item : *items) {
             //std::cout << item.name << std::endl;
             outputFile << item.name << std::endl;
         }
-        // 关闭文件�?
+        // 閸忔娊妫撮弬鍥︽濞?
         outputFile.close();
         std::cout << "List content has been written to 'items_content.txt'." << std::endl;
     }

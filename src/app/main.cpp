@@ -9,6 +9,7 @@
 #include <QTranslator>
 #include <QVector>
 #include <QStringList>
+#include "app/AppFonts.h"
 #include "app/LinDesk.h"
 #include "SystemApi/SystemApi.h"
 #include "SystemApi/Tool.h"
@@ -37,8 +38,7 @@ int main(int argc, char *argv[])
     const AppLaunchOptions launchOptions = AppLaunchOptions::fromArguments(QCoreApplication::arguments());
     
     // Set Windows 1:1 Desktop Standard font
-    QFont defaultFont("Microsoft YaHei UI", 9);
-    defaultFont.setStyleStrategy(QFont::PreferAntialias);
+    QFont defaultFont = AppFonts::uiFont(9);
     app.setFont(defaultFont);
 	//qDebug() << "Application Dir:" << app.applicationDirPath();
     //LinDesk *lindesk = LinDesk::instance();

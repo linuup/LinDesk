@@ -1,4 +1,5 @@
 #include "desktop/ListItem.h"
+#include "app/AppFonts.h"
 #include "services/DesktopItemLoader.h"
 #include "services/IconCacheManager.h"
 #include "desktop/ListView.h"
@@ -312,10 +313,7 @@ ListItem::ListItem(QWidget* parent)
 
 
 	// Match the desktop label font.
-	QFont yaheiFont;
-	yaheiFont.setFamily("Microsoft YaHei UI");
-	yaheiFont.setPointSize(9);
-	yaheiFont.setWeight(QFont::Normal);
+	QFont yaheiFont = AppFonts::uiFont(9);
 	textLabel->setFont(yaheiFont);
 	textLabel->setTextFormat(Qt::PlainText);
 	textLabel->setWordWrap(false);
@@ -363,10 +361,7 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 
 
 	// Match the desktop label font.
-	QFont yaheiFont;
-	yaheiFont.setFamily("Microsoft YaHei UI");
-	yaheiFont.setPointSize(9);
-	yaheiFont.setWeight(QFont::Normal);
+	QFont yaheiFont = AppFonts::uiFont(9);
 	textLabel->setFont(yaheiFont);
 	textLabel->setTextFormat(Qt::PlainText);
 	textLabel->setWordWrap(false);
