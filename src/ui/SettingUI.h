@@ -14,6 +14,9 @@
 #include <QStyleOption>
 #include <QPainter>
 #include <QListWidget>
+#include <QSystemTrayIcon>
+#include <QMenu>
+#include <QAction>
 #include "ui/Fluent/FluentBaseWidget.h"
 #include <QCloseEvent>
 
@@ -33,11 +36,15 @@ public:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     void initUI();
     void setupStyles();
     void retranslateUi();
+    QString startupShortcutPath() const;
+    bool isLaunchAtLoginEnabled() const;
+    bool setLaunchAtLoginEnabled(bool enabled);
 
     QWidget* createGeneralPage();
     QWidget* createDesktopPage();
@@ -50,6 +57,10 @@ private:
     void updatePreviewStyle();
     void updateDesktopSelectionPreview();
     LinBox* controlSourceBox() const;
+    bool shouldMinimizeToTray() const;
+    void ensureTrayIcon();
+    void restoreFromTray();
+    void exitFromTray();
 
     LinBox* m_targetBox;
     QVector<LinBox*> m_allBoxes;
@@ -90,6 +101,7 @@ private:
     FluentCard* m_glassCard = nullptr;
 
     FluentComboBox* m_languageCombo = nullptr;
+    FluentToggleSwitch* m_autoStartToggle = nullptr;
     FluentColorWheel* m_selectionColorWheel = nullptr;
     QLineEdit* m_selectionColorValueEdit = nullptr;
 
@@ -101,6 +113,12 @@ private:
     float m_previewOpacity = 0.45f;
     bool m_previewGlass = false;
     QColor m_selectionPreviewColor;
+    QSystemTrayIcon* m_trayIcon = nullptr;
+    QMenu* m_trayMenu = nullptr;
+    QAction* m_showTrayAction = nullptr;
+    QAction* m_exitTrayAction = nullptr;
+    bool m_isQuittingFromTray = false;
+    bool m_hasShownTrayHint = false;
 };
 
 #endif // SETTINGUI_H

@@ -9,6 +9,8 @@
 #include "ui/Fluent/FluentCard.h"
 
 #include <QCheckBox>
+#include <QCoreApplication>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QProcess>
@@ -23,7 +25,8 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
 {
     setWindowTitle("ListView Debug");
     setAttribute(Qt::WA_DeleteOnClose, false);
-    setMinimumSize(420, 620);
+    setMinimumSize(720, 640);
+    resize(820, 720);
 
     // --- Scrollable root ---
     auto* outerLayout = new QVBoxLayout(this);
@@ -37,16 +40,46 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
 
     auto* scrollContent = new QWidget();
     auto* root = new QVBoxLayout(scrollContent);
-    root->setContentsMargins(35, 25, 35, 25);
-    root->setSpacing(12);
+    root->setContentsMargins(26, 22, 26, 24);
+    root->setSpacing(14);
 
     // --- Page Title ---
-    auto* title = new QLabel("UI Tests & Benchmarks", scrollContent);
+    auto* headerLayout = new QHBoxLayout();
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(12);
+
+    auto* title = new QLabel("Debug Console", scrollContent);
     title->setStyleSheet(QStringLiteral(
         "font-family: %1; "
         "font-size: 28px; font-weight: 600; color: #1f2937; margin-bottom: 4px; letter-spacing: -0.01em;"
     ).arg(AppFonts::uiCssFamily()));
-    root->addWidget(title);
+    headerLayout->addWidget(title, 1);
+
+    QPushButton* restartBtn = new QPushButton("Restart App", scrollContent);
+    restartBtn->setFixedSize(120, 34);
+    restartBtn->setCursor(Qt::PointingHandCursor);
+    restartBtn->setStyleSheet("background: #0f766e; border: none; border-radius: 7px; font-weight: 600; color: #ffffff;");
+    connect(restartBtn, &QPushButton::clicked, this, []() {
+        const QString appPath = QCoreApplication::applicationFilePath();
+        QStringList args = QCoreApplication::arguments();
+        if (!args.isEmpty()) {
+            args.removeFirst();
+        }
+        QProcess::startDetached(appPath, args, QCoreApplication::applicationDirPath());
+        QCoreApplication::quit();
+    });
+    headerLayout->addWidget(restartBtn);
+    root->addLayout(headerLayout);
+
+    auto* subtitle = new QLabel("Quick tools, layout controls, and desktop text rendering diagnostics.", scrollContent);
+    subtitle->setWordWrap(true);
+    subtitle->setStyleSheet("font-size: 12px; color: #6b7280;");
+    root->addWidget(subtitle);
+
+    auto* quickGrid = new QGridLayout();
+    quickGrid->setContentsMargins(0, 4, 0, 2);
+    quickGrid->setHorizontalSpacing(12);
+    quickGrid->setVerticalSpacing(12);
 
     // ========== 1. Open Windows Desktop Icon Settings ==========
     QPushButton* deskIconBtn = new QPushButton("Open Settings", scrollContent);
@@ -56,7 +89,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     connect(deskIconBtn, &QPushButton::clicked, this, []() {
         QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,0");
     });
-    root->addWidget(new FluentCard(u8"\uE71D", "Desktop Icon Settings", "Access the native Windows dialog to control which system icons appear on your desktop", deskIconBtn, scrollContent));
+    quickGrid->addWidget(new FluentCard(u8"\uE71D", "Desktop Icon Settings", "Control native Windows desktop system icons", deskIconBtn, scrollContent), 0, 0);
 
     // ========== 2. Open QML Test ==========
     QPushButton* qmlTestBtn = new QPushButton("Open QML Test", scrollContent);
@@ -69,7 +102,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
         window->raise();
         window->activateWindow();
     });
-    root->addWidget(new FluentCard(u8"\uE943", "QML Test Page", "Open a small Qt Quick test window to verify QML is available inside the project", qmlTestBtn, scrollContent));
+    quickGrid->addWidget(new FluentCard(u8"\uE943", "QML Test Page", "Verify Qt Quick availability inside the project", qmlTestBtn, scrollContent), 0, 1);
 
     // ========== 3. Embedded Desktop Mode ==========
     LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
@@ -85,7 +118,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
         }
     });
 
-    root->addWidget(new FluentCard(u8"\uE7F4", "Embedded Desktop Mode", "Attach window to the Windows worker window layer", m_embedToggle, scrollContent));
+    quickGrid->addWidget(new FluentCard(u8"\uE7F4", "Embedded Desktop Mode", "Attach window to the Windows worker window layer", m_embedToggle, scrollContent), 1, 0);
 
     // ========== 4. Refresh Desktop ==========
     QPushButton* refreshBtn = new QPushButton("Refresh", scrollContent);
@@ -98,7 +131,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
         }
     });
 
-    root->addWidget(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render the desktop icon layout", refreshBtn, scrollContent));
+    quickGrid->addWidget(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render the desktop layout", refreshBtn, scrollContent), 1, 1);
 
     // ========== 5. Persistence Toggle ==========
     m_persistToggle = new FluentToggleSwitch(scrollContent);
@@ -108,7 +141,10 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     connect(m_persistToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
         if (m_listView) m_listView->setPersistenceEnabled(checked);
     });
-    root->addWidget(new FluentCard(u8"\uE71B", "Data Persistence", "Automatically load and save box and icon info from storage", m_persistToggle, scrollContent));
+    quickGrid->addWidget(new FluentCard(u8"\uE71B", "Data Persistence", "Load and save box and icon info from storage", m_persistToggle, scrollContent), 2, 0);
+    quickGrid->setColumnStretch(0, 1);
+    quickGrid->setColumnStretch(1, 1);
+    root->addLayout(quickGrid);
 
     // ========== 6. Row Spacing Slider ==========
     root->addSpacing(6);

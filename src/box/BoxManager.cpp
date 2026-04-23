@@ -270,7 +270,7 @@ void BoxManager::saveAll() {
 void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
                          const QVector<ListItem*>& allItems,
                          const QMap<QString, QMap<QString, QVariant>>& iconPositions,
-                         int viewMode, int sortType, int iconPosMode,
+                         int viewMode, int sortType, int preAutoSort, int iconPosMode,
                          bool autoArrange, bool gridAlignment,
                          bool showDesktopIcons, bool doubleClickHideIcons,
                          bool showShortCutArrow) {
@@ -285,6 +285,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
     QJsonObject settingsObj;
     settingsObj["viewMode"] = viewMode;
     settingsObj["sortType"] = sortType;
+    settingsObj["preAutoSort"] = preAutoSort;
     settingsObj["iconPosMode"] = iconPosMode;
     settingsObj["autoArrange"] = autoArrange;
     settingsObj["gridAlignment"] = gridAlignment;
@@ -360,7 +361,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
         out << files;
     }
     // Save settings
-    out << enablePersistence << viewMode << sortType << iconPosMode 
+    out << enablePersistence << viewMode << sortType << preAutoSort << iconPosMode
         << autoArrange << gridAlignment << showDesktopIcons 
         << doubleClickHideIcons << showShortCutArrow;
     out << iconPositions.size();
@@ -368,7 +369,8 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
         out << it.key()
             << it.value().value("x").toInt()
             << it.value().value("y").toInt()
-            << it.value().value("boxId").toString();
+            << it.value().value("boxId").toString()
+            << it.value().value("ord").toInt();
     }
 #endif
     
@@ -378,7 +380,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
 
 void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
                          bool& enablePersistence, QMap<QString, QString>& iconShowRules,
-                         int& viewMode, int& sortType, int& iconPosMode,
+                         int& viewMode, int& sortType, int& preAutoSort, int& iconPosMode,
                          bool& autoArrange, bool& gridAlignment,
                          bool& showDesktopIcons, bool& doubleClickHideIcons,
                          bool& showShortCutArrow,
@@ -404,6 +406,7 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
     enablePersistence = settingsObj["enablePersistence"].toBool();
     viewMode = settingsObj["viewMode"].toInt();
     sortType = settingsObj["sortType"].toInt();
+    preAutoSort = settingsObj["preAutoSort"].toInt();
     iconPosMode = settingsObj["iconPosMode"].toInt();
     autoArrange = settingsObj["autoArrange"].toBool();
     gridAlignment = settingsObj["gridAlignment"].toBool();
@@ -420,6 +423,7 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
         posMap["x"] = posObj["x"].toInt();
         posMap["y"] = posObj["y"].toInt();
         posMap["boxId"] = posObj["boxId"].toString();
+        posMap["ord"] = posObj["ord"].toInt();
         iconPositions[path] = posMap;
     }
     
@@ -481,7 +485,7 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
         boxData.append(data);
     }
     // Load settings
-    in >> enablePersistence >> viewMode >> sortType >> iconPosMode 
+    in >> enablePersistence >> viewMode >> sortType >> preAutoSort >> iconPosMode
        >> autoArrange >> gridAlignment >> showDesktopIcons 
        >> doubleClickHideIcons >> showShortCutArrow;
 
@@ -492,13 +496,15 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
             QString path;
             int x = 0;
             int y = 0;
+            int customSortOrder = -1;
             QString boxId;
-            in >> path >> x >> y >> boxId;
+            in >> path >> x >> y >> boxId >> customSortOrder;
 
             QMap<QString, QVariant> posMap;
             posMap["x"] = x;
             posMap["y"] = y;
             posMap["boxId"] = boxId;
+            posMap["ord"] = customSortOrder;
             iconPositions[path] = posMap;
         }
     }

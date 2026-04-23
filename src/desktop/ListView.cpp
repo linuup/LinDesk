@@ -32,6 +32,7 @@
 #include <QEventLoop>
 #include <QFont>
 #include <QFontMetrics>
+#include <climits>
 #include <shobjidl.h>
 #include "../OS/SystemApi/resources.h"
 #include "ui/Fluent/FluentDialog.h"
@@ -88,6 +89,37 @@ float normalizedSavedBoxOpacity(const QVariant& value)
     }
 
     return static_cast<float>(qBound(0.0, rawOpacity, 1.0));
+}
+
+int specialFolderNameSortPriority(const ListItem* item)
+{
+    if (!item || item->type() != ObjectType::SpecialFolder) {
+        return 100;
+    }
+
+    const QString clsid = item->getItemData().getCLSID();
+    if (clsid == APP_USER_FOLDER_CLS) return 1;
+    if (clsid == APP_MY_COMPUTER_CLS) return 2;
+    if (clsid == APP_NETWORK_CLS) return 3;
+    if (clsid == APP_RECYCLE_BIN_CLS) return 4;
+    if (clsid == APP_CONTROL_PANEL_CLS) return 5;
+    return 6;
+}
+
+int categorizedPriority(const ListItem* item)
+{
+    if (!item) {
+        return 999;
+    }
+    if (item->type() == ObjectType::SpecialFolder) return 0;
+    if (item->type() == ObjectType::DiskLetter || item->fileInfo().isDir()) return 1;
+
+    const QString ext = item->fileInfo().suffix().toLower();
+    if (ext == "exe" || ext == "lnk" || ext == "url") return 2;
+
+    static const QStringList docExts = {"txt", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "md", "zip", "rar", "7z"};
+    if (docExts.contains(ext)) return 3;
+    return 4;
 }
 
 quint64 packGridCell(int gridX, int gridY)
@@ -759,6 +791,17 @@ void ListView::paintEvent(QPaintEvent* event)
         //painter.fillRect(rect(), QColor(60, 200, 171)); // 娴呰摑鑹茶儗鏅?
     }
 
+    const QRect indicatorRect = desktopAutoArrangeInsertionIndicatorRect();
+    if (!indicatorRect.isNull()) {
+        painter.save();
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 220, 220, 80));
+        painter.drawRoundedRect(indicatorRect.adjusted(-4, -3, 4, 3), 5, 5);
+        painter.setBrush(QColor(0, 220, 220, 230));
+        painter.drawRoundedRect(indicatorRect, 2, 2);
+        painter.restore();
+    }
+
 
     //qDebug() << "drawingMaskRect:" << this->drawingMaskRect;
 
@@ -824,6 +867,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
         m_isDragging = false;
         m_draggedItem = nullptr;
     }
+    clearDesktopAutoArrangeReorderPreview();
     
     // Clear selection state if we were selecting background
     if (m_isSelecting) {
@@ -937,6 +981,7 @@ void ListView::dragEnterEvent(QDragEnterEvent* event)
 void ListView::dragLeaveEvent(QDragLeaveEvent* event)
 {
     if (m_dragTip) m_dragTip->hide();
+    clearDesktopAutoArrangeReorderPreview();
     event->accept();
 }
 
@@ -944,6 +989,7 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
 {
     if (!event->mimeData()->hasUrls()) {
         if (m_dragTip) m_dragTip->hide();
+        clearDesktopAutoArrangeReorderPreview();
         return;
     }
     const QStringList draggedPaths = ListViewFileOpsHelper::draggedLocalFilePaths(event->mimeData());
@@ -970,6 +1016,31 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
     }
 
     bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
+    const bool canPreviewDesktopReorder = isInternalDrag &&
+        m_iconShowRule.autoArrange &&
+        m_iconShowRule.sortType == SortOrderType::SortByCustom &&
+        !preferShortcutForDrop &&
+        !isCtrl;
+    const QVector<ListItem*> reorderDraggedItems = canPreviewDesktopReorder
+        ? orderedDraggedItemsForPaths(draggedPaths)
+        : QVector<ListItem*>();
+    if (canPreviewDesktopReorder &&
+        !reorderDraggedItems.isEmpty() &&
+        !draggedItemsContainMappedSource(reorderDraggedItems)) {
+        updateDesktopAutoArrangeReorderPreview(event->pos(), reorderDraggedItems);
+        ListViewFileOpsHelper::updateInternalDragDescription(
+            event->mimeData(),
+            Qt::MoveAction,
+            QCoreApplication::translate("ListView", "Desktop"));
+        if (m_dragTip) {
+            m_dragTip->hide();
+        }
+        event->setDropAction(Qt::MoveAction);
+        event->accept();
+        return;
+    }
+
+    clearDesktopAutoArrangeReorderPreview();
 
     if (hitItem) {
         if (isInternalDrag && m_draggedItem) {
@@ -1125,11 +1196,27 @@ void ListView::dropEvent(QDropEvent* event)
     }
 
     const QMimeData* mime = event->mimeData();
-    if (!mime->hasUrls()) return;
+    if (!mime->hasUrls()) {
+        clearDesktopAutoArrangeReorderPreview();
+        return;
+    }
     const QStringList draggedPaths = ListViewFileOpsHelper::draggedLocalFilePaths(mime);
+    const bool desktopReorderCopyMode = (event->keyboardModifiers() & Qt::ControlModifier);
+    const bool desktopReorderShortcutMode = shouldPreferShortcutForDrop(
+        draggedPaths, event->keyboardModifiers(), event->source() != this);
+    const QVector<ListItem*> desktopReorderDraggedItems = (event->source() == this)
+        ? orderedDraggedItemsForPaths(draggedPaths)
+        : QVector<ListItem*>();
+    const bool forceDesktopReorder = event->source() == this &&
+        m_iconShowRule.autoArrange &&
+        m_iconShowRule.sortType == SortOrderType::SortByCustom &&
+        !desktopReorderCopyMode &&
+        !desktopReorderShortcutMode &&
+        !desktopReorderDraggedItems.isEmpty() &&
+        !draggedItemsContainMappedSource(desktopReorderDraggedItems);
 
     // Drop onto an APP/File: Open with it; Drop onto Folder: Copy to it
-    if (hitItem && !m_selectedItems.contains(hitItem)) {
+    if (hitItem && !m_selectedItems.contains(hitItem) && !forceDesktopReorder) {
         QString targetPath = hitItem->filePath();
         QString clsid = hitItem->getItemData().getCLSID();
 
@@ -1242,7 +1329,10 @@ void ListView::dropEvent(QDropEvent* event)
         }
     }
 
-    if (draggedPaths.isEmpty()) return;
+    if (draggedPaths.isEmpty()) {
+        clearDesktopAutoArrangeReorderPreview();
+        return;
+    }
 
     // Handle dropping onto the desktop background (no hitItem)
     if (!hitItem) {
@@ -1280,6 +1370,9 @@ void ListView::dropEvent(QDropEvent* event)
                 } else {
                     result = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
                 }
+                if (result) {
+                    applyAutoArrangeAfterDesktopMutation(false, false);
+                }
                 event->accept();
                 return;
             }
@@ -1307,6 +1400,7 @@ void ListView::dropEvent(QDropEvent* event)
 
             if (ok) {
                 clearCheckedItem();
+                applyAutoArrangeAfterDesktopMutation(false, false);
                 requestSaveBoxes();
                 event->accept();
             } else {
@@ -1319,6 +1413,82 @@ void ListView::dropEvent(QDropEvent* event)
         QPoint dropPos = event->pos(); // ????????? dragHotSpot ??????
         
         if (!m_selectedItems.isEmpty()) {
+            if (m_iconShowRule.autoArrange) {
+                const bool customSortDrag = (m_iconShowRule.sortType == SortOrderType::SortByCustom);
+                const QVector<ListItem*> draggedItems = m_selectedItems;
+                const int customInsertIndex = customSortDrag
+                    ? (m_desktopReorderInsertIndex >= 0
+                        ? m_desktopReorderInsertIndex
+                        : desktopCustomInsertionIndexForPos(dropPos, draggedItems))
+                    : -1;
+
+                for (auto* item : m_selectedItems) {
+                    if (!item) {
+                        continue;
+                    }
+
+                    if (item->parentWidget() != this || !item->boxId().isEmpty()) {
+                        QWidget* parent = item->parentWidget();
+                        LinBox* sourceBox = nullptr;
+                        while (parent) {
+                            sourceBox = qobject_cast<LinBox*>(parent);
+                            if (sourceBox) {
+                                break;
+                            }
+                            parent = parent->parentWidget();
+                        }
+                        if (sourceBox) {
+                            sourceBox->removeListItem(item, false);
+                            sourceBox->refreshLayout();
+                            sourceBox->update();
+                        }
+
+                        item->setBoxId("");
+                        item->setParent(this);
+                        item->setLayoutMode(ListItem::LayoutMode::IconMode);
+                        item->setItemSize(m_iconWidth, m_iconHeight);
+                        setupItemConnections(item);
+                        if (!m_items.contains(item)) {
+                            m_items.push_back(item);
+                        }
+                        if (m_iconShowRule.showDesktopIcons) {
+                            item->show();
+                        }
+                    }
+                    item->raise();
+                }
+
+                if (customSortDrag) {
+                    QVector<ListItem*> orderedItems = collectAutoArrangeItems();
+                    sortAutoArrangeItems(orderedItems, SortOrderType::SortByCustom);
+                    QVector<ListItem*> orderedDraggedItems;
+                    for (ListItem* item : orderedItems) {
+                        if (draggedItems.contains(item)) {
+                            orderedDraggedItems.append(item);
+                        }
+                    }
+                    for (ListItem* item : draggedItems) {
+                        if (item && !orderedDraggedItems.contains(item)) {
+                            orderedDraggedItems.append(item);
+                        }
+                    }
+                    for (ListItem* item : orderedDraggedItems) {
+                        orderedItems.removeAll(item);
+                    }
+                    const int clampedIndex = qBound(0, customInsertIndex, orderedItems.size());
+                    for (int i = 0; i < orderedDraggedItems.size(); ++i) {
+                        orderedItems.insert(clampedIndex + i, orderedDraggedItems[i]);
+                    }
+                    assignCustomSortOrders(orderedItems);
+                }
+
+                applyAutoArrangeLayout(true, false);
+                clearDesktopAutoArrangeReorderPreview();
+                clearCheckedItem();
+                event->acceptProposedAction();
+                return;
+            }
+
             int strideX = m_iconWidth + m_colSpacing;
             int strideY = m_iconHeight + m_rowSpacing;
 
@@ -1446,6 +1616,7 @@ void ListView::dropEvent(QDropEvent* event)
             CSystemApi::CopyFiles(srcPaths, desktopDir.toStdWString());
         }
     }
+    applyAutoArrangeAfterDesktopMutation(true, false);
     if (m_dragTip) m_dragTip->hide();
     event->acceptProposedAction();
 }
@@ -1625,6 +1796,12 @@ void ListView::initialize()
     CSystemApi::GetDesktopConfigFlags(osAutoArrange, osSnapToGrid);
     m_iconShowRule.autoArrange = osAutoArrange;
     m_iconShowRule.gridAlignment = osSnapToGrid;
+    if (m_iconShowRule.autoArrange) {
+        m_iconShowRule.sortTypeBeforeAutoArrange = m_iconShowRule.sortType;
+        m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        m_iconShowRule.gridAlignment = true;
+        m_iconShowRule.iconPosMode = IconPosMode::AlignIconToGrid;
+    }
     syncViewModeSizes(); // Sync initial sizes to member variables
     qDebug() << "Synced Windows Desktop Layout Rules: AutoArrange=" << osAutoArrange << ", SnapToGrid=" << osSnapToGrid;
     // ===================================
@@ -1769,8 +1946,7 @@ void ListView::loadIconLayer()
     qDebug() << "[ListView] After render filtering, item count in m_items:" << m_items.size();
     if (m_iconShowRule.autoArrange && !shouldRestorePersistedLayout) {
         qDebug() << "[ListView] Applying auto-layout (Stable Categorized).";
-        this->performSort(m_iconShowRule.sortType); // Use non-toggling version for stability
-        loadAutoLayout();
+        applyAutoArrangeLayout(false, false);
     } else if (shouldRestorePersistedLayout) {
         qDebug() << "[ListView] Applying persistent layout.";
         loadPersistentLayout();
@@ -1806,29 +1982,502 @@ void ListView::loadIconLayer()
 }
 
 
-void ListView::loadAutoLayout()
+QVector<ListItem*> ListView::collectAutoArrangeItems() const
 {
-    int Icon_X = m_marginLeft;
-    int Icon_Y = m_marginTop;
-    
-    for (auto it = m_items.begin(); it != m_items.end(); it++) {
-        ListItem* item = *it;
+    QVector<ListItem*> items;
+    items.reserve(m_items.size());
+    for (ListItem* item : m_items) {
+        if (!item || !item->boxId().isEmpty()) {
+            continue;
+        }
+        items.push_back(item);
+    }
+    return items;
+}
+
+void ListView::sortAutoArrangeItems(QVector<ListItem*>& items, SortOrderType order) const
+{
+    const SortOrderType effectiveOrder = (order == SortOrderType::Default)
+        ? SortOrderType::SortByCategorized
+        : order;
+
+    QCollator collator;
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    collator.setIgnorePunctuation(true);
+    collator.setLocale(QLocale::system());
+
+    switch (effectiveOrder) {
+    case SortOrderType::SortByCustom:
+        std::stable_sort(items.begin(), items.end(), [](ListItem* a, ListItem* b) {
+            const int orderA = a ? a->customSortOrder() : -1;
+            const int orderB = b ? b->customSortOrder() : -1;
+            const int safeOrderA = orderA < 0 ? INT_MAX : orderA;
+            const int safeOrderB = orderB < 0 ? INT_MAX : orderB;
+            if (safeOrderA != safeOrderB) {
+                return safeOrderA < safeOrderB;
+            }
+
+            return a->baseName().toLower() < b->baseName().toLower();
+        });
+        break;
+    case SortOrderType::SortByName_ASC:
+    case SortOrderType::SortByName_DESC:
+    {
+        const bool ascending = (effectiveOrder == SortOrderType::SortByName_ASC);
+        std::sort(items.begin(), items.end(), [&](ListItem* a, ListItem* b) {
+            const int prioA = specialFolderNameSortPriority(a);
+            const int prioB = specialFolderNameSortPriority(b);
+            if (prioA != prioB) {
+                return ascending ? (prioA < prioB) : (prioA > prioB);
+            }
+
+            const int result = collator.compare(a->getSortName(), b->getSortName());
+            return ascending ? (result < 0) : (result > 0);
+        });
+        break;
+    }
+    case SortOrderType::SortBySize_ASC:
+    case SortOrderType::SortBySize_DESC:
+    {
+        const bool ascending = (effectiveOrder == SortOrderType::SortBySize_ASC);
+        std::sort(items.begin(), items.end(), [ascending](ListItem* a, ListItem* b) {
+            const bool aIsSpecial = (a->type() == ObjectType::SpecialFolder);
+            const bool bIsSpecial = (b->type() == ObjectType::SpecialFolder);
+            if (aIsSpecial != bIsSpecial) {
+                return aIsSpecial;
+            }
+
+            const bool aIsDir = a->fileInfo().isDir();
+            const bool bIsDir = b->fileInfo().isDir();
+            if (aIsDir != bIsDir) {
+                return ascending ? aIsDir : !aIsDir;
+            }
+
+            const qint64 sizeA = a->fileInfo().size();
+            const qint64 sizeB = b->fileInfo().size();
+            if (sizeA != sizeB) {
+                return ascending ? (sizeA < sizeB) : (sizeA > sizeB);
+            }
+
+            return a->baseName().toLower() < b->baseName().toLower();
+        });
+        break;
+    }
+    case SortOrderType::SortByType_ASC:
+    case SortOrderType::SortByType_DESC:
+    {
+        const bool ascending = (effectiveOrder == SortOrderType::SortByType_ASC);
+        std::sort(items.begin(), items.end(), [ascending](ListItem* a, ListItem* b) {
+            const bool aIsSpecial = (a->type() == ObjectType::SpecialFolder);
+            const bool bIsSpecial = (b->type() == ObjectType::SpecialFolder);
+            if (aIsSpecial != bIsSpecial) {
+                return aIsSpecial;
+            }
+
+            const bool aIsDirLike = (a->type() == ObjectType::DiskLetter) || a->fileInfo().isDir();
+            const bool bIsDirLike = (b->type() == ObjectType::DiskLetter) || b->fileInfo().isDir();
+            const QString extA = aIsDirLike ? QString() : a->fileInfo().suffix().toLower();
+            const QString extB = bIsDirLike ? QString() : b->fileInfo().suffix().toLower();
+            if (extA != extB) {
+                return ascending ? (extA < extB) : (extA > extB);
+            }
+
+            return a->baseName().toLower() < b->baseName().toLower();
+        });
+        break;
+    }
+    case SortOrderType::SortByDateModified_ASC:
+    case SortOrderType::SortByDateModified_DESC:
+    {
+        const bool ascending = (effectiveOrder == SortOrderType::SortByDateModified_ASC);
+        std::sort(items.begin(), items.end(), [ascending](ListItem* a, ListItem* b) {
+            const bool aIsSpecial = (a->type() == ObjectType::SpecialFolder);
+            const bool bIsSpecial = (b->type() == ObjectType::SpecialFolder);
+            if (aIsSpecial != bIsSpecial) {
+                return aIsSpecial;
+            }
+
+            const QDateTime dateA = a->fileInfo().lastModified();
+            const QDateTime dateB = b->fileInfo().lastModified();
+            if (dateA != dateB) {
+                return ascending ? (dateA < dateB) : (dateA > dateB);
+            }
+
+            return a->baseName().toLower() < b->baseName().toLower();
+        });
+        break;
+    }
+    case SortOrderType::SortByCategorized:
+    default:
+        std::sort(items.begin(), items.end(), [](ListItem* a, ListItem* b) {
+            const int pA = categorizedPriority(a);
+            const int pB = categorizedPriority(b);
+            if (pA != pB) {
+                return pA < pB;
+            }
+
+            return a->baseName().toLower() < b->baseName().toLower();
+        });
+        break;
+    }
+}
+
+void ListView::assignCustomSortOrders(const QVector<ListItem*>& orderedItems)
+{
+    int order = 0;
+    for (ListItem* item : orderedItems) {
+        if (!item || !item->boxId().isEmpty()) {
+            continue;
+        }
+        item->setCustomSortOrder(order++);
+    }
+}
+
+int ListView::desktopCustomInsertionIndexForPos(const QPoint& pos, const QVector<ListItem*>& draggedItems) const
+{
+    QVector<ListItem*> orderedItems = collectAutoArrangeItems();
+    sortAutoArrangeItems(orderedItems, SortOrderType::SortByCustom);
+    for (ListItem* draggedItem : draggedItems) {
+        orderedItems.removeAll(draggedItem);
+    }
+
+    for (int i = 0; i < orderedItems.size(); ++i) {
+        const QRect itemRect = orderedItems[i]->geometry();
+        if (itemRect.contains(pos)) {
+            return pos.y() <= itemRect.center().y() ? i : i + 1;
+        }
+    }
+
+    int bestIndex = 0;
+    qint64 bestScore = LLONG_MAX;
+    for (int i = 0; i <= orderedItems.size(); ++i) {
+        const QRect rect = desktopAutoArrangeInsertionIndicatorRectForIndex(i, orderedItems);
+        if (rect.isNull()) {
+            continue;
+        }
+
+        const int dx = pos.x() < rect.left()
+            ? rect.left() - pos.x()
+            : (pos.x() > rect.right() ? pos.x() - rect.right() : 0);
+        const int dy = pos.y() < rect.top()
+            ? rect.top() - pos.y()
+            : (pos.y() > rect.bottom() ? pos.y() - rect.bottom() : 0);
+        const qint64 score = static_cast<qint64>(dx) * dx + static_cast<qint64>(dy) * dy;
+        if (score < bestScore) {
+            bestScore = score;
+            bestIndex = i;
+        }
+    }
+
+    return qBound(0, bestIndex, orderedItems.size());
+}
+
+void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QVector<ListItem*>& draggedItems)
+{
+    const int nextIndex = desktopCustomInsertionIndexForPos(pos, draggedItems);
+    QVector<ListItem*> allOrderedItems = collectAutoArrangeItems();
+    sortAutoArrangeItems(allOrderedItems, SortOrderType::SortByCustom);
+    QVector<ListItem*> orderedItems = collectAutoArrangeItems();
+    sortAutoArrangeItems(orderedItems, SortOrderType::SortByCustom);
+    for (ListItem* draggedItem : draggedItems) {
+        orderedItems.removeAll(draggedItem);
+    }
+
+    QRect nextIndicatorRect;
+    const int lineHeight = 2;
+    const int horizontalInset = 8;
+    const int indicatorWidth = qMax(20, m_iconWidth - horizontalInset * 2);
+    for (ListItem* draggedItem : draggedItems) {
+        if (!draggedItem) {
+            continue;
+        }
+
+        const QRect draggedRect = draggedItem->geometry();
+        const QRect draggedSlotRect = draggedRect.adjusted(0, -qMax(2, m_rowSpacing / 2), 0, qMax(2, m_rowSpacing / 2));
+        if (!draggedSlotRect.contains(pos)) {
+            continue;
+        }
+
+        const int draggedIndex = allOrderedItems.indexOf(draggedItem);
+        if (draggedIndex < 0) {
+            continue;
+        }
+
+        const bool insertBeforeItem = pos.y() <= draggedRect.center().y();
+        int y = insertBeforeItem ? draggedRect.top() : draggedRect.bottom();
+        int left = draggedRect.left() + horizontalInset;
+        int width = indicatorWidth;
+        if (insertBeforeItem && draggedIndex > 0 && allOrderedItems[draggedIndex - 1]) {
+            const QRect prevRect = allOrderedItems[draggedIndex - 1]->geometry();
+            y = (prevRect.bottom() + draggedRect.top()) / 2;
+            y = qMin(y, draggedRect.top() - lineHeight);
+            left = qMin(prevRect.left(), draggedRect.left()) + horizontalInset;
+            const int right = qMax(prevRect.right(), draggedRect.right()) - horizontalInset;
+            width = qMax(20, right - left);
+        } else if (!insertBeforeItem && draggedIndex + 1 < allOrderedItems.size() && allOrderedItems[draggedIndex + 1]) {
+            const QRect nextRect = allOrderedItems[draggedIndex + 1]->geometry();
+            y = (draggedRect.bottom() + nextRect.top()) / 2;
+            y = qMax(y, draggedRect.bottom() + lineHeight);
+            left = qMin(draggedRect.left(), nextRect.left()) + horizontalInset;
+            const int right = qMax(draggedRect.right(), nextRect.right()) - horizontalInset;
+            width = qMax(20, right - left);
+        }
+
+        nextIndicatorRect = QRect(left, y - lineHeight / 2, width, lineHeight);
+        break;
+    }
+
+    for (int i = 0; i < allOrderedItems.size(); ++i) {
+        if (!nextIndicatorRect.isNull()) {
+            break;
+        }
+        ListItem* hoverItem = allOrderedItems[i];
+        if (!hoverItem || !hoverItem->geometry().contains(pos)) {
+            continue;
+        }
+
+        const QRect hoverRect = hoverItem->geometry();
+        const bool insertBeforeItem = pos.y() <= hoverRect.center().y();
+        if (insertBeforeItem) {
+            if (i > 0 && allOrderedItems[i - 1]) {
+                const QRect prevRect = allOrderedItems[i - 1]->geometry();
+                const int y = (prevRect.bottom() + hoverRect.top()) / 2;
+                const int left = qMin(prevRect.left(), hoverRect.left()) + horizontalInset;
+                const int right = qMax(prevRect.right(), hoverRect.right()) - horizontalInset;
+                nextIndicatorRect = QRect(left,
+                    y - lineHeight / 2,
+                    qMax(20, right - left),
+                    lineHeight);
+            } else {
+                nextIndicatorRect = QRect(hoverRect.left() + horizontalInset,
+                    hoverRect.top() - lineHeight / 2,
+                    indicatorWidth,
+                    lineHeight);
+            }
+        } else {
+            if (i + 1 < allOrderedItems.size() && allOrderedItems[i + 1]) {
+                const QRect nextRect = allOrderedItems[i + 1]->geometry();
+                const int y = (hoverRect.bottom() + nextRect.top()) / 2;
+                const int left = qMin(hoverRect.left(), nextRect.left()) + horizontalInset;
+                const int right = qMax(hoverRect.right(), nextRect.right()) - horizontalInset;
+                nextIndicatorRect = QRect(left,
+                    y - lineHeight / 2,
+                    qMax(20, right - left),
+                    lineHeight);
+            } else {
+                nextIndicatorRect = QRect(hoverRect.left() + horizontalInset,
+                    hoverRect.bottom() - lineHeight / 2,
+                    indicatorWidth,
+                    lineHeight);
+            }
+        }
+        break;
+    }
+    if (nextIndicatorRect.isNull()) {
+        nextIndicatorRect = desktopAutoArrangeInsertionIndicatorRectForIndex(nextIndex, orderedItems);
+    }
+    for (ListItem* draggedItem : draggedItems) {
+        if (!draggedItem || nextIndicatorRect.isNull()) {
+            continue;
+        }
+
+        const QRect draggedRect = draggedItem->geometry();
+        if (!draggedRect.intersects(nextIndicatorRect) && !draggedRect.contains(nextIndicatorRect.center())) {
+            continue;
+        }
+
+        const int y = pos.y() <= draggedRect.center().y()
+            ? draggedRect.top() - lineHeight
+            : draggedRect.bottom() + lineHeight;
+        nextIndicatorRect.moveTop(y - lineHeight / 2);
+        break;
+    }
+
+    bool sameDraggedItems = (m_desktopReorderDraggedItems.size() == draggedItems.size());
+    if (sameDraggedItems) {
+        for (int i = 0; i < draggedItems.size(); ++i) {
+            if (m_desktopReorderDraggedItems[i] != draggedItems[i]) {
+                sameDraggedItems = false;
+                break;
+            }
+        }
+    }
+
+    if (m_desktopReorderInsertIndex == nextIndex &&
+        sameDraggedItems &&
+        m_desktopReorderIndicatorRect == nextIndicatorRect) {
+        return;
+    }
+
+    m_desktopReorderInsertIndex = nextIndex;
+    m_desktopReorderDraggedItems = draggedItems;
+    m_desktopReorderIndicatorRect = nextIndicatorRect;
+    update();
+}
+
+void ListView::clearDesktopAutoArrangeReorderPreview()
+{
+    if (m_desktopReorderInsertIndex < 0 &&
+        m_desktopReorderDraggedItems.isEmpty() &&
+        m_desktopReorderIndicatorRect.isNull()) {
+        return;
+    }
+
+    m_desktopReorderInsertIndex = -1;
+    m_desktopReorderDraggedItems.clear();
+    m_desktopReorderIndicatorRect = QRect();
+    update();
+}
+
+QRect ListView::desktopAutoArrangeInsertionIndicatorRect() const
+{
+    if (!m_iconShowRule.autoArrange ||
+        m_iconShowRule.sortType != SortOrderType::SortByCustom ||
+        m_desktopReorderInsertIndex < 0) {
+        return QRect();
+    }
+
+    if (!m_desktopReorderIndicatorRect.isNull()) {
+        return m_desktopReorderIndicatorRect;
+    }
+
+    QVector<ListItem*> orderedItems = collectAutoArrangeItems();
+    sortAutoArrangeItems(orderedItems, SortOrderType::SortByCustom);
+    for (ListItem* draggedItem : m_desktopReorderDraggedItems) {
+        orderedItems.removeAll(draggedItem);
+    }
+
+    return desktopAutoArrangeInsertionIndicatorRectForIndex(m_desktopReorderInsertIndex, orderedItems);
+}
+
+QRect ListView::desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<ListItem*>& orderedItems) const
+{
+    insertIndex = qBound(0, insertIndex, orderedItems.size());
+    const int lineHeight = 2;
+    const int horizontalInset = 8;
+    const int indicatorWidth = qMax(20, m_iconWidth - horizontalInset * 2);
+
+    if (orderedItems.isEmpty()) {
+        return QRect(m_marginLeft + horizontalInset, m_marginTop - lineHeight / 2, indicatorWidth, lineHeight);
+    }
+
+    if (insertIndex <= 0) {
+        const QRect nextRect = orderedItems.first()->geometry();
+        const int y = qMax(0, nextRect.top());
+        return QRect(nextRect.left() + horizontalInset, y - lineHeight / 2, indicatorWidth, lineHeight);
+    }
+
+    if (insertIndex >= orderedItems.size()) {
+        const QRect prevRect = orderedItems.last()->geometry();
+        const int y = qMin(height() - lineHeight, prevRect.bottom());
+        return QRect(prevRect.left() + horizontalInset, y - lineHeight / 2, indicatorWidth, lineHeight);
+    }
+
+    const QRect prevRect = orderedItems[insertIndex - 1]->geometry();
+    const QRect nextRect = orderedItems[insertIndex]->geometry();
+    const int strideX = m_iconWidth + m_colSpacing;
+    const bool sameColumn = qAbs(prevRect.center().x() - nextRect.center().x()) <= qMax(1, strideX / 2);
+
+    if (sameColumn) {
+        const int y = (prevRect.bottom() + nextRect.top()) / 2;
+        const int left = qMin(prevRect.left(), nextRect.left()) + horizontalInset;
+        const int right = qMax(prevRect.right(), nextRect.right()) - horizontalInset;
+        return QRect(left, y - lineHeight / 2, qMax(20, right - left), lineHeight);
+    }
+
+    const int y = qMax(0, nextRect.top());
+    return QRect(nextRect.left() + horizontalInset, y - lineHeight / 2, indicatorWidth, lineHeight);
+}
+
+QVector<QPoint> ListView::layoutAutoArrangeItems(const QVector<ListItem*>& items) const
+{
+    QVector<QPoint> positions;
+    positions.reserve(items.size());
+
+    int iconX = m_marginLeft;
+    int iconY = m_marginTop;
+    for (ListItem* item : items) {
+        if (!item) {
+            positions.push_back(QPoint());
+            continue;
+        }
+
         item->setItemSize(m_iconWidth, m_iconHeight);
         item->initData();
-        
-        if (item->pos() != QPoint(Icon_X, Icon_Y)) {
-             item->updateLocationInfo(QPoint(Icon_X, Icon_Y));
-             item->move(Icon_X, Icon_Y);
+        positions.push_back(QPoint(iconX, iconY));
+
+        iconY += m_iconHeight + m_rowSpacing;
+        if (iconY > m_marginTop && iconY + m_iconHeight > height() - m_bottomPadding) {
+            iconX += m_iconWidth + m_colSpacing;
+            iconY = m_marginTop;
         }
-        
-        Icon_Y = Icon_Y + m_iconHeight + m_rowSpacing;
-        if (Icon_Y > m_marginTop && Icon_Y + m_iconHeight > height() - m_bottomPadding) {
-            Icon_X = Icon_X + m_iconWidth + m_colSpacing;
-            Icon_Y = m_marginTop;
+    }
+
+    return positions;
+}
+
+void ListView::finalizeAutoArrangeLayout(const QVector<ListItem*>& items,
+                                         const QVector<QPoint>& positions,
+                                         bool persist,
+                                         bool refreshSelection)
+{
+    if (items.size() != positions.size()) {
+        return;
+    }
+
+    QScopedPointer<ListViewSelectionSnapshot> selectionSnapshot;
+    if (refreshSelection) {
+        selectionSnapshot.reset(new ListViewSelectionSnapshot(ListViewSelectionSnapshot::capture(*this)));
+    }
+
+    m_items = items;
+    for (int i = 0; i < items.size(); ++i) {
+        ListItem* item = items[i];
+        if (!item) {
+            continue;
+        }
+
+        const QPoint& pos = positions[i];
+        item->updateLocationInfo(pos);
+        if (item->pos() != pos) {
+            item->move(pos);
         }
     }
 
     rebuildSpatialIndex();
+    update();
+    if (persist) {
+        requestSaveBoxes();
+    }
+    if (selectionSnapshot) {
+        selectionSnapshot->restore(*this, false);
+    }
+}
+
+void ListView::applyAutoArrangeLayout(bool persist, bool refreshSelection)
+{
+    QVector<ListItem*> items = collectAutoArrangeItems();
+    sortAutoArrangeItems(items, m_iconShowRule.sortType);
+    if (m_iconShowRule.sortType == SortOrderType::SortByCustom) {
+        assignCustomSortOrders(items);
+    }
+    const QVector<QPoint> positions = layoutAutoArrangeItems(items);
+    finalizeAutoArrangeLayout(items, positions, persist, refreshSelection);
+}
+
+void ListView::applyAutoArrangeAfterDesktopMutation(bool persist, bool refreshSelection)
+{
+    if (!m_iconShowRule.autoArrange) {
+        return;
+    }
+
+    applyAutoArrangeLayout(persist, refreshSelection);
+}
+
+void ListView::loadAutoLayout()
+{
+    applyAutoArrangeLayout(false, false);
 }
 
 void ListView::loadGridLayout()
@@ -1914,6 +2563,8 @@ ListView::SortOrderType ListView::getOppositeDirection() {
         return SortOrderType::SortByDateModified_ASC;
     case SortOrderType::SortByCategorized:
         return SortOrderType::SortByCategorized;
+    case SortOrderType::SortByCustom:
+        return SortOrderType::SortByCustom;
     case SortOrderType::Default:
         return SortOrderType::SortByName_ASC; // Or stay at Default
     default:
@@ -1971,11 +2622,15 @@ void ListView::performSort(SortOrderType order)
     case SortOrderType::SortByCategorized:
         sortByCategorized();
         break;
+    case SortOrderType::SortByCustom:
+        sortByCustom();
+        break;
     default:
         // Do nothing for unknown states
         break;
     }
     m_iconShowRule.sortType = order;
+    applyAutoArrangeAfterDesktopMutation(false, false);
 }
 
 void ListView::sortByCategorized()
@@ -2007,6 +2662,15 @@ void ListView::sortByCategorized()
         // 2. Secondary sort: Alphabetical (Natural sort order)
         return a->baseName().toLower() < b->baseName().toLower();
     });
+}
+
+void ListView::sortByCustom()
+{
+    m_items.erase(std::remove_if(m_items.begin(), m_items.end(), [](ListItem* item) {
+        return !item || !item->boxId().isEmpty();
+    }), m_items.end());
+
+    sortAutoArrangeItems(m_items, SortOrderType::SortByCustom);
 }
 
 void ListView::sortByName(bool ascending)
@@ -2136,11 +2800,13 @@ void ListView::addItem(ListItem* item, bool refresh)
     if (!item) return;
 
     QPoint pos;
-    if (!takeReservedCreatedItemPosition(item->filePath(), pos)) {
-        pos = generateItemPosition();
+    if (!m_iconShowRule.autoArrange) {
+        if (!takeReservedCreatedItemPosition(item->filePath(), pos)) {
+            pos = generateItemPosition();
+        }
+        item->updateLocationInfo(pos);
     }
     item->setItemSize(m_iconWidth, m_iconHeight);
-    item->updateLocationInfo(pos);
     
     setupItemConnections(item);
     
@@ -2149,7 +2815,11 @@ void ListView::addItem(ListItem* item, bool refresh)
     m_allItems.push_back(item);
     
     item->show();
-    rebuildSpatialIndex();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        rebuildSpatialIndex();
+    }
 }
 
 void ListView::addItemNoDelete(ListItem* item)
@@ -2171,9 +2841,11 @@ void ListView::addItemNoDelete(ListItem* item)
     
     // Check if already in m_items
     if (!m_items.contains(item)) {
-        QPoint pos = generateItemPosition();
         item->setItemSize(m_iconWidth, m_iconHeight);
-        item->updateLocationInfo(pos);
+        if (!m_iconShowRule.autoArrange) {
+            QPoint pos = generateItemPosition();
+            item->updateLocationInfo(pos);
+        }
         setupItemConnections(item);
         m_items.push_back(item);
     }
@@ -2183,8 +2855,12 @@ void ListView::addItemNoDelete(ListItem* item)
         item->show();
     }
 
-    rebuildSpatialIndex();
-    update();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        rebuildSpatialIndex();
+        update();
+    }
 }
 
 void ListView::removeItem(ListItem* item)
@@ -2216,9 +2892,13 @@ void ListView::removeItem(ListItem* item)
     }
     
     // 寮哄埗鏇存柊鐣岄潰
-    rebuildSpatialIndex();
-    update();
-    repaint();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        rebuildSpatialIndex();
+        update();
+        repaint();
+    }
     
 }
 
@@ -2238,9 +2918,13 @@ void ListView::removeItemNoDelete(ListItem* item)
     }
     
     // 寮哄埗鏇存柊鐣岄潰
-    rebuildSpatialIndex();
-    update();
-    repaint();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        rebuildSpatialIndex();
+        update();
+        repaint();
+    }
 }
 
 void ListView::removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidgets)
@@ -2301,9 +2985,13 @@ void ListView::removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidg
         box->update();
     }
 
-    rebuildSpatialIndex();
-    update();
-    repaint();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        rebuildSpatialIndex();
+        update();
+        repaint();
+    }
 }
 
 void ListView::setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden)
@@ -2492,6 +3180,10 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
 
 void ListView::reserveCreatedItemPosition(const QString& filePath, const QPoint& requestedPos)
 {
+    if (m_iconShowRule.autoArrange) {
+        return;
+    }
+
     const QString normalizedPath = normalizeDesktopPath(filePath);
     if (normalizedPath.isEmpty()) return;
     m_pendingCreatedItemPositions[normalizedPath] = resolveCreatePosition(requestedPos);
@@ -2684,7 +3376,11 @@ void ListView::initRightMenuConnections() {
     }
 
     // init sort-by sub-menu check state
-    switch (m_iconShowRule.sortType) {
+    const SortOrderType visibleSortType =
+        (m_iconShowRule.autoArrange && m_iconShowRule.sortType == SortOrderType::SortByCustom)
+            ? m_iconShowRule.sortTypeBeforeAutoArrange
+            : m_iconShowRule.sortType;
+    switch (visibleSortType) {
     case SortOrderType::SortByName_ASC:
     case SortOrderType::SortByName_DESC:
         menu->setSortByNameChecked(true);
@@ -2818,8 +3514,12 @@ void ListView::onMenuLargeIcons() {
     const int oldColSpacing = m_colSpacing;
     m_iconShowRule.viewMode = ViewMode::LargeIcon;
     syncViewModeSizes();
-    applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
-    loadIconLayer();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        loadIconLayer();
+    }
     update();
     requestSaveBoxes();
 }
@@ -2833,8 +3533,12 @@ void ListView::onMenuMediumIcons() {
     const int oldColSpacing = m_colSpacing;
     m_iconShowRule.viewMode = ViewMode::MediumIcon;
     syncViewModeSizes();
-    applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
-    loadIconLayer();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        loadIconLayer();
+    }
     update();
     requestSaveBoxes();
 }
@@ -2848,30 +3552,59 @@ void ListView::onMenuSmallIcons() {
     const int oldColSpacing = m_colSpacing;
     m_iconShowRule.viewMode = ViewMode::SmallIcon;
     syncViewModeSizes();
-    applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
-    loadIconLayer();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        loadIconLayer();
+    }
     update();
     requestSaveBoxes();
 }
 
 void ListView::onMenuAutoArrangeIcons() {
     qDebug() << "ListView: Auto Arrange Icons triggered";
-    m_iconShowRule.autoArrange = rightMenu->isAutoArrangeIconsChecked();
-    
-    if (m_iconShowRule.autoArrange) {
-        // Automatically default to Categorized sort when entering Auto-Arrange mode
-        m_iconShowRule.sortType = SortOrderType::Default;
+    const bool enableAutoArrange = rightMenu->isAutoArrangeIconsChecked();
+    m_iconShowRule.autoArrange = enableAutoArrange;
+
+    if (enableAutoArrange) {
+        if (m_iconShowRule.sortType != SortOrderType::SortByCustom) {
+            m_iconShowRule.sortTypeBeforeAutoArrange = m_iconShowRule.sortType;
+            QVector<ListItem*> items = collectAutoArrangeItems();
+            sortAutoArrangeItems(items, m_iconShowRule.sortType);
+            assignCustomSortOrders(items);
+        }
+        m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        m_iconShowRule.gridAlignment = true;
+        m_iconShowRule.iconPosMode = IconPosMode::AlignIconToGrid;
+        updateRightMenuState();
+        applyAutoArrangeLayout(true, true);
+    } else {
+        m_iconShowRule.sortType = m_iconShowRule.sortTypeBeforeAutoArrange;
+        m_iconShowRule.gridAlignment = rightMenu->isAlignIconsToGridChecked();
+        m_iconShowRule.iconPosMode = m_iconShowRule.gridAlignment
+            ? IconPosMode::AlignIconToGrid
+            : IconPosMode::UnAlignIconToGrid;
+        updateRightMenuState();
+        update();
+        requestSaveBoxes();
     }
-    
-    loadIconLayer();
-    updateRightMenuState(); // Sync menu checkboxes
-    update();
-    requestSaveBoxes();
 }
 
 void ListView::onMenuAlignIconsToGrid() {
     qDebug() << "ListView: Align Icons to Grid triggered";
+    if (m_iconShowRule.autoArrange) {
+        m_iconShowRule.gridAlignment = true;
+        m_iconShowRule.iconPosMode = IconPosMode::AlignIconToGrid;
+        updateRightMenuState();
+        applyAutoArrangeLayout(true, true);
+        return;
+    }
+
     m_iconShowRule.gridAlignment = rightMenu->isAlignIconsToGridChecked();
+    m_iconShowRule.iconPosMode = m_iconShowRule.gridAlignment
+        ? IconPosMode::AlignIconToGrid
+        : IconPosMode::UnAlignIconToGrid;
     
     if (m_iconShowRule.gridAlignment) {
         loadGridLayout();
@@ -2944,36 +3677,96 @@ void ListView::showSettings(LinBox* target) {
 
 void ListView::onMenuSortByName() {
     qDebug() << "ListView: Sort By Name triggered";
+    if (m_iconShowRule.autoArrange) {
+        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByName_ASC;
+        QVector<ListItem*> items = collectAutoArrangeItems();
+        sortAutoArrangeItems(items, SortOrderType::SortByName_ASC);
+        assignCustomSortOrders(items);
+        m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        updateRightMenuState();
+        applyAutoArrangeLayout(false, false);
+        update();
+        requestSaveBoxes();
+        return;
+    }
+
     this->sortItems(SortOrderType::SortByName_ASC);
     updateRightMenuState();
-    loadAutoLayout(); // Force re-layout and update memory positions after sorting
+    if (!m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    }
     update();
     requestSaveBoxes();
 }
 
 void ListView::onMenuSortBySize() {
     qDebug() << "ListView: Sort By Size triggered";
+    if (m_iconShowRule.autoArrange) {
+        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortBySize_ASC;
+        QVector<ListItem*> items = collectAutoArrangeItems();
+        sortAutoArrangeItems(items, SortOrderType::SortBySize_ASC);
+        assignCustomSortOrders(items);
+        m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        updateRightMenuState();
+        applyAutoArrangeLayout(false, false);
+        update();
+        requestSaveBoxes();
+        return;
+    }
+
     this->sortItems(SortOrderType::SortBySize_ASC);
     updateRightMenuState();
-    loadAutoLayout();
+    if (!m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    }
     update();
     requestSaveBoxes();
 }
 
 void ListView::onMenuSortByType() {
     qDebug() << "ListView: Sort By Type triggered";
+    if (m_iconShowRule.autoArrange) {
+        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByType_ASC;
+        QVector<ListItem*> items = collectAutoArrangeItems();
+        sortAutoArrangeItems(items, SortOrderType::SortByType_ASC);
+        assignCustomSortOrders(items);
+        m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        updateRightMenuState();
+        applyAutoArrangeLayout(false, false);
+        update();
+        requestSaveBoxes();
+        return;
+    }
+
     this->sortItems(SortOrderType::SortByType_ASC);
     updateRightMenuState();
-    loadAutoLayout();
+    if (!m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    }
     update();
     requestSaveBoxes();
 }
 
 void ListView::onMenuSortByDate() {
     qDebug() << "ListView: Sort By Date triggered";
+    if (m_iconShowRule.autoArrange) {
+        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByDateModified_ASC;
+        QVector<ListItem*> items = collectAutoArrangeItems();
+        sortAutoArrangeItems(items, SortOrderType::SortByDateModified_ASC);
+        assignCustomSortOrders(items);
+        m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        updateRightMenuState();
+        applyAutoArrangeLayout(false, false);
+        update();
+        requestSaveBoxes();
+        return;
+    }
+
     this->sortItems(SortOrderType::SortByDateModified_ASC);
     updateRightMenuState();
-    loadAutoLayout();
+    if (!m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    }
     update();
     requestSaveBoxes();
 }
@@ -3082,6 +3875,7 @@ void ListView::onMenuRefresh() {
             }
 
             m_items = desktopVisible;
+            applyAutoArrangeAfterDesktopMutation(false, false);
 
             // Refresh icons for items in boxes and ensure boxes are re-shown
             for (const auto& box : allBoxes) {
@@ -3178,15 +3972,18 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 
     // 閲嶆柊甯冨眬骞跺埛鏂?
     auto relayout = [this]() {
-        loadIconLayer();
-        update();
-        repaint();
+        if (m_iconShowRule.autoArrange) {
+            applyAutoArrangeLayout(false, false);
+        } else {
+            loadIconLayer();
+            update();
+            repaint();
+        }
     };
 
     // 鎸夊綋鍓嶆帓搴忚鍒欓噸鎺?
     auto resort = [this]() {
-        // Use the current sortType from m_iconShowRule
-        this->sortItems(m_iconShowRule.sortType);
+        this->performSort(m_iconShowRule.sortType);
     };
 
     switch (eventInfo.eventType) {
@@ -3211,7 +4008,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 targetBox->refreshLayout();
                 targetBox->raise();
                 if (m_iconShowRule.autoArrange) {
-                    loadIconLayer();
+                    applyAutoArrangeAfterDesktopMutation(false, false);
                 } else {
                     update();
                 }
@@ -3258,7 +4055,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 item->initData();
                 item->update();
                 resort();
-                relayout();
+                if (!m_iconShowRule.autoArrange) {
+                    relayout();
+                }
             } else {
                 removeItem(item);
             }
@@ -3279,7 +4078,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 targetBox->refreshLayout();
                 targetBox->raise();
                 if (m_iconShowRule.autoArrange) {
-                    loadIconLayer();
+                    applyAutoArrangeAfterDesktopMutation(false, false);
                 } else {
                     update();
                 }
@@ -3583,6 +4382,7 @@ void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
             // 鎷栨嫿缁撴潫鍚庣殑娓呯悊
             m_isDragging = false;
             m_draggedItem = nullptr;
+            clearDesktopAutoArrangeReorderPreview();
             for (auto& ghost : m_ghosts) {
                 if (ghost.widget) ghost.widget->deleteLater();
             }
@@ -3605,6 +4405,24 @@ void ListView::onItemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event)
 void ListView::onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event)
 {
 	if (m_isDragging) {
+        Q_UNUSED(item);
+        Q_UNUSED(event);
+
+        if (!box && m_iconShowRule.autoArrange) {
+            for (auto& ghost : m_ghosts) {
+                if (ghost.widget) {
+                    ghost.widget->hide();
+                    ghost.widget->deleteLater();
+                }
+            }
+            m_ghosts.clear();
+            m_isDragging = false;
+            m_draggedItem = nullptr;
+            clearDesktopAutoArrangeReorderPreview();
+            applyAutoArrangeLayout(true, false);
+            return;
+        }
+
 		bool hasCollision = false;
 		QVector<QPoint> targetPositions;
 
@@ -3667,6 +4485,7 @@ void ListView::onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* eve
 		m_ghosts.clear();
 		m_isDragging = false;
 		m_draggedItem = nullptr;
+        clearDesktopAutoArrangeReorderPreview();
 		
 		// Snap back to grid in LinBox if applicable
 		if (box) {
@@ -3822,8 +4641,10 @@ bool ListView::createNewFolderInHost(LinBox* targetBox)
         m_pendingCreatedItemBoxes[newFolderPath] = targetBox;
         m_pendingCreatedItemInsertIndices.remove(newFolderPath);
     } else if (reserveDesktopPosition) {
-        const QPoint requestedPos = m_focusedItem ? m_focusedItem->getLocationInfo() : generateItemPosition();
-        reserveCreatedItemPosition(newFolderPath, requestedPos);
+        if (!m_iconShowRule.autoArrange) {
+            const QPoint requestedPos = m_focusedItem ? m_focusedItem->getLocationInfo() : generateItemPosition();
+            reserveCreatedItemPosition(newFolderPath, requestedPos);
+        }
     }
 
     if (!ListViewFileOpsHelper::createDirectoryPath(newFolderPath)) {
@@ -3882,6 +4703,7 @@ void ListView::saveBoxes() {
     state.enablePersistence = m_enablePersistence;
     state.viewMode = (int)m_iconShowRule.viewMode;
     state.sortType = (int)m_iconShowRule.sortType;
+    state.preAutoSort = (int)m_iconShowRule.sortTypeBeforeAutoArrange;
     state.iconPosMode = (int)m_iconShowRule.iconPosMode;
     state.autoArrange = m_iconShowRule.autoArrange;
     state.gridAlignment = m_iconShowRule.gridAlignment;
@@ -3979,6 +4801,7 @@ void ListView::applySavedPositionsToItems(const QMap<QString, QMap<QString, QVar
         const QString boxIdFromConfig = posInfo.value("boxId").toString();
         const QString resolvedBoxId = !boxIdFromConfig.isEmpty() ? boxIdFromConfig : item->boxId();
         item->setBoxId(resolvedBoxId);
+        item->setCustomSortOrder(posInfo.value("ord").toInt());
         item->updateLocationInfo(QPoint(posInfo.value("x").toInt(), posInfo.value("y").toInt()));
     }
 }
@@ -4022,6 +4845,7 @@ void ListView::loadBoxes(bool autoUpdateState) {
     state.enablePersistence = m_enablePersistence;
     state.viewMode = (int)m_iconShowRule.viewMode;
     state.sortType = (int)m_iconShowRule.sortType;
+    state.preAutoSort = (int)m_iconShowRule.sortTypeBeforeAutoArrange;
     state.iconPosMode = (int)m_iconShowRule.iconPosMode;
     state.autoArrange = m_iconShowRule.autoArrange;
     state.gridAlignment = m_iconShowRule.gridAlignment;
@@ -4034,12 +4858,21 @@ void ListView::loadBoxes(bool autoUpdateState) {
     m_enablePersistence = state.enablePersistence;
     m_iconShowRule.viewMode = (ViewMode)state.viewMode;
     m_iconShowRule.sortType = (SortOrderType)state.sortType;
+    m_iconShowRule.sortTypeBeforeAutoArrange = (SortOrderType)state.preAutoSort;
     m_iconShowRule.iconPosMode = (IconPosMode)state.iconPosMode;
     m_iconShowRule.autoArrange = state.autoArrange;
     m_iconShowRule.gridAlignment = state.gridAlignment;
     m_iconShowRule.showDesktopIcons = state.showDesktopIcons;
     m_iconShowRule.doubleClickHideIcons = state.doubleClickHideIcons;
     m_iconShowRule.showShortCutArrow = state.showShortCutArrow;
+    if (m_iconShowRule.autoArrange) {
+        if (m_iconShowRule.sortType != SortOrderType::SortByCustom) {
+            m_iconShowRule.sortTypeBeforeAutoArrange = m_iconShowRule.sortType;
+            m_iconShowRule.sortType = SortOrderType::SortByCustom;
+        }
+        m_iconShowRule.gridAlignment = true;
+        m_iconShowRule.iconPosMode = IconPosMode::AlignIconToGrid;
+    }
 
     QVector<QMap<QString, QVariant>>& boxData = state.boxData;
     QMap<QString, QMap<QString, QVariant>>& iconPositions = state.iconPositions;
@@ -4078,6 +4911,9 @@ void ListView::loadBoxes(bool autoUpdateState) {
     m_allItems;
     m_items;
     m_isLoadingPersistence = false;
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    }
     selectionSnapshot.restore(*this, false);
 
     qDebug() << "Loaded. Persistence:" << m_enablePersistence;
@@ -4163,17 +4999,22 @@ void ListView::onMenuDestroyBox(LinBox* box) {
         item->setItemSize(m_iconWidth, m_iconHeight);
         setupItemConnections(item);
 
-        const QPoint desktopPos = generateItemPosition();
-        item->updateLocationInfo(desktopPos);
+        QPoint desktopPos = item->getLocationInfo();
+        if (!m_iconShowRule.autoArrange) {
+            desktopPos = generateItemPosition();
+            item->updateLocationInfo(desktopPos);
+        }
         item->setBoxId("");
 
         if (!m_items.contains(item)) {
             m_items.push_back(item);
         }
 
-        QString key = QDir::toNativeSeparators(item->filePath());
-        while (key.endsWith('\\')) key.chop(1);
-        m_savedIconPositions[key] = { desktopPos.x(), desktopPos.y(), "" };
+        if (!m_iconShowRule.autoArrange) {
+            QString key = QDir::toNativeSeparators(item->filePath());
+            while (key.endsWith('\\')) key.chop(1);
+            m_savedIconPositions[key] = { desktopPos.x(), desktopPos.y(), "" };
+        }
 
         if (m_iconShowRule.showDesktopIcons) {
             item->show();
@@ -4181,6 +5022,7 @@ void ListView::onMenuDestroyBox(LinBox* box) {
     }
     
     BoxManager::instance()->destroyBox(box, this);
+    applyAutoArrangeAfterDesktopMutation(true, false);
     update();
 }
 
@@ -4534,6 +5376,20 @@ void ListView::loadPersistentLayout() {
     QVector<ListItem*> allItemsSnapshot = m_items;
     QSet<LinBox*> boxesToRefresh;
 
+    if (useConfigLayout) {
+        for (auto* item : allItemsSnapshot) {
+            if (!item || !item->boxId().isEmpty()) {
+                continue;
+            }
+
+            const QString normalizedPath = normalizeDesktopPath(item->filePath());
+            if (!m_savedIconPositions.contains(normalizedPath)) {
+                item->updateLocationInfo(QPoint(0, 0));
+                item->move(0, 0);
+            }
+        }
+    }
+
     //for (auto box : BoxManager::instance()->allBoxes()) {
     //    if (!box) continue;
     //    QVector<ListItem*> boxItems = box->items();
@@ -4568,7 +5424,9 @@ void ListView::loadPersistentLayout() {
 
         // 妫€鏌?item 鏄惁宸叉湁鏈夋晥浣嶇疆
         QPoint currentPos = item->getLocationInfo();
-        bool hasValidPosition = (currentPos != QPoint(0, 0));
+        const QString normalizedPath = normalizeDesktopPath(item->filePath());
+        const bool hasPersistedPosition = !useConfigLayout || m_savedIconPositions.contains(normalizedPath);
+        bool hasValidPosition = hasPersistedPosition && (currentPos != QPoint(0, 0));
         
         if (!hasValidPosition) {
             QPoint pos = useConfigLayout ? generateItemPosition() : currentPos;
@@ -4576,6 +5434,7 @@ void ListView::loadPersistentLayout() {
                 pos = generateItemPosition();
             }
             item->updateLocationInfo(pos);
+            item->move(pos);
             continue;
         }
 
@@ -4583,8 +5442,10 @@ void ListView::loadPersistentLayout() {
         if (savedPos.x() <= 0 || savedPos.y() <= 0) {
             QPoint newPos = generateItemPosition();
             item->updateLocationInfo(newPos);
+            item->move(newPos);
         } else {
             item->updateLocationInfo(savedPos);
+            item->move(savedPos);
         }
         // Set parent to ListView for desktop items
         item->setParent(this);
@@ -4652,15 +5513,20 @@ void ListView::updateRightMenuState() {
     rightMenu->setAlignIconsToGridChecked(m_iconShowRule.gridAlignment);
     rightMenu->setDoubleClickedHideIconsChecked(m_iconShowRule.doubleClickHideIcons);
     
-    if (m_iconShowRule.sortType == SortOrderType::Default) {
+    const SortOrderType visibleSortType =
+        (m_iconShowRule.autoArrange && m_iconShowRule.sortType == SortOrderType::SortByCustom)
+            ? m_iconShowRule.sortTypeBeforeAutoArrange
+            : m_iconShowRule.sortType;
+
+    if (visibleSortType == SortOrderType::Default) {
         rightMenu->setSortByNameChecked(false);
         rightMenu->setSortBySizeChecked(false);
         rightMenu->setSortByTypeChecked(false);
         rightMenu->setSortByDateChecked(false);
     } else {
-        rightMenu->setSortByNameChecked(m_iconShowRule.sortType == SortOrderType::SortByName_ASC || m_iconShowRule.sortType == SortOrderType::SortByName_DESC);
-        rightMenu->setSortBySizeChecked(m_iconShowRule.sortType == SortOrderType::SortBySize_ASC || m_iconShowRule.sortType == SortOrderType::SortBySize_DESC);
-        rightMenu->setSortByTypeChecked(m_iconShowRule.sortType == SortOrderType::SortByType_ASC || m_iconShowRule.sortType == SortOrderType::SortByType_DESC);
-        rightMenu->setSortByDateChecked(m_iconShowRule.sortType == SortOrderType::SortByDateModified_ASC || m_iconShowRule.sortType == SortOrderType::SortByDateModified_DESC);
+        rightMenu->setSortByNameChecked(visibleSortType == SortOrderType::SortByName_ASC || visibleSortType == SortOrderType::SortByName_DESC);
+        rightMenu->setSortBySizeChecked(visibleSortType == SortOrderType::SortBySize_ASC || visibleSortType == SortOrderType::SortBySize_DESC);
+        rightMenu->setSortByTypeChecked(visibleSortType == SortOrderType::SortByType_ASC || visibleSortType == SortOrderType::SortByType_DESC);
+        rightMenu->setSortByDateChecked(visibleSortType == SortOrderType::SortByDateModified_ASC || visibleSortType == SortOrderType::SortByDateModified_DESC);
     }
 }

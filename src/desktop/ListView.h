@@ -76,6 +76,7 @@ public:
 		SortByType_DESC,
 		SortByDateModified_ASC,
 		SortByDateModified_DESC,
+		SortByCustom,
 		SortByCategorized			// 自动分类排序（系统、文件夹、应用、文档）
 	};
 
@@ -116,6 +117,7 @@ public:
 		IconPosMode iconPosMode = IconPosMode::AlignIconToGrid; //图标位置模式，默认与网格对齐
 		ViewMode viewMode = ViewMode::MediumIcon;	//图标显示模式，默认中等图标
 		SortOrderType sortType = SortOrderType::Default;	// 默认使用"默认排序"
+		SortOrderType sortTypeBeforeAutoArrange = SortOrderType::Default;
 		bool autoArrange = false;        // 是否自动排列
 		bool gridAlignment = false;      // 是否网格对齐
 		bool showDesktopIcons = true;	//是否显示桌面图标
@@ -131,6 +133,7 @@ public:
 	// 初始化相关
 	void initialize();
 	void loadIconLayer();
+	void applyAutoArrangeLayout(bool persist = true, bool refreshSelection = true);
 	void loadAutoLayout();
 	void loadGridLayout();
 	void loadPersistentLayout();
@@ -166,6 +169,7 @@ public:
 	void sortByType(bool ascending = true);
 	void sortByDate(bool ascending = true);
 	void sortByCategorized();
+	void sortByCustom();
 
 	// 选择相关
 	QVector<ListItem*> selectedItems() const { return m_selectedItems; }
@@ -285,6 +289,20 @@ private:
 	// 工具函数
 	void ensureDragTip();
 	void ensureInfoTip();
+	QVector<ListItem*> collectAutoArrangeItems() const;
+	void sortAutoArrangeItems(QVector<ListItem*>& items, SortOrderType order) const;
+	void assignCustomSortOrders(const QVector<ListItem*>& orderedItems);
+	int desktopCustomInsertionIndexForPos(const QPoint& pos, const QVector<ListItem*>& draggedItems) const;
+	void updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QVector<ListItem*>& draggedItems);
+	void clearDesktopAutoArrangeReorderPreview();
+	QRect desktopAutoArrangeInsertionIndicatorRect() const;
+	QRect desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<ListItem*>& orderedItems) const;
+	QVector<QPoint> layoutAutoArrangeItems(const QVector<ListItem*>& items) const;
+	void finalizeAutoArrangeLayout(const QVector<ListItem*>& items,
+		const QVector<QPoint>& positions,
+		bool persist,
+		bool refreshSelection);
+	void applyAutoArrangeAfterDesktopMutation(bool persist = true, bool refreshSelection = true);
 	bool handlePendingShellCreatedItem(const QString& newPath);
 	void removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidgets = true);
 	void setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden);
@@ -378,6 +396,9 @@ private:
 	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;
 	QVector<ListItem*> m_selectedItems;
 	QVector<GhostInfo> m_ghosts;
+	QVector<ListItem*> m_desktopReorderDraggedItems;
+	QRect m_desktopReorderIndicatorRect;
+	int m_desktopReorderInsertIndex = -1;
 
 	// 映射和索引
 	QMap<QString, QStringList> m_mappedBoxFilePaths;

@@ -4,8 +4,11 @@
 #include "desktop/ListView.h"
 #include <windows.h>
 #include <winuser.h>
+#include <shlobj.h>
+#include <shobjidl.h>
 #include <QScreen>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QPainter>
 #include <QFrame>
 #include <QCheckBox>
@@ -31,12 +34,15 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
+#include <QFileInfo>
 #include <QComboBox>
 #include <QLayoutItem>
 #include <QFileDialog>
 #include <QDesktopServices>
+#include <QSignalBlocker>
 #include <QUrl>
 #include <QDir>
+#include <QShowEvent>
 
 // Custom delegate to draw the Fluent Design 2 style sidebar
 class SidebarDelegate : public QStyledItemDelegate {
@@ -195,6 +201,8 @@ SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidge
     if (m_targetBox) {
         move(m_targetBox->mapToGlobal(QPoint(m_targetBox->width()/2 - width()/2, m_targetBox->height()/2 - height()/2)));
     }
+
+    ensureTrayIcon();
 }
 
 void SettingUI::initUI() {
@@ -293,6 +301,156 @@ QWidget* SettingUI::wrapScrollablePage(QWidget* content) {
     return scroll;
 }
 
+QString SettingUI::startupShortcutPath() const
+{
+    wchar_t startupDir[MAX_PATH] = {};
+    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_STARTUP, nullptr, SHGFP_TYPE_CURRENT, startupDir))) {
+        return QString();
+    }
+
+    return QDir::fromNativeSeparators(QString::fromWCharArray(startupDir)) + "/LinDesk.lnk";
+}
+
+bool SettingUI::isLaunchAtLoginEnabled() const
+{
+    const QString shortcutPath = startupShortcutPath();
+    return !shortcutPath.isEmpty() && QFile::exists(shortcutPath);
+}
+
+bool SettingUI::setLaunchAtLoginEnabled(bool enabled)
+{
+    const QString shortcutPath = startupShortcutPath();
+    if (shortcutPath.isEmpty()) {
+        return false;
+    }
+
+    if (!enabled) {
+        return !QFile::exists(shortcutPath) || QFile::remove(shortcutPath);
+    }
+
+    const QString exePath = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    const QString workingDir = QDir::toNativeSeparators(QCoreApplication::applicationDirPath());
+    const std::wstring shortcutPathW = QDir::toNativeSeparators(shortcutPath).toStdWString();
+    const std::wstring exePathW = exePath.toStdWString();
+    const std::wstring workingDirW = workingDir.toStdWString();
+
+    const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool shouldUninitialize = SUCCEEDED(initHr);
+    if (FAILED(initHr) && initHr != RPC_E_CHANGED_MODE) {
+        return false;
+    }
+
+    IShellLinkW* shellLink = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, reinterpret_cast<void**>(&shellLink));
+    if (FAILED(hr) || !shellLink) {
+        if (shouldUninitialize) {
+            CoUninitialize();
+        }
+        return false;
+    }
+
+    shellLink->SetPath(exePathW.c_str());
+    shellLink->SetWorkingDirectory(workingDirW.c_str());
+    shellLink->SetIconLocation(exePathW.c_str(), 0);
+    shellLink->SetDescription(L"Launch LinDesk at sign in");
+
+    IPersistFile* persistFile = nullptr;
+    hr = shellLink->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&persistFile));
+    bool ok = false;
+    if (SUCCEEDED(hr) && persistFile) {
+        ok = SUCCEEDED(persistFile->Save(shortcutPathW.c_str(), TRUE));
+        persistFile->Release();
+    }
+
+    shellLink->Release();
+    if (shouldUninitialize) {
+        CoUninitialize();
+    }
+
+    return ok;
+}
+
+bool SettingUI::shouldMinimizeToTray() const
+{
+    const QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    QSettings settings(configPath, QSettings::IniFormat);
+    return settings.value("General/MinimizeToTray", true).toBool();
+}
+
+void SettingUI::ensureTrayIcon()
+{
+    if (m_trayIcon || !QSystemTrayIcon::isSystemTrayAvailable()) {
+        return;
+    }
+
+    m_trayIcon = new QSystemTrayIcon(this);
+    QIcon trayIcon = QApplication::windowIcon();
+    if (trayIcon.isNull()) {
+        trayIcon = QIcon(":/Assets/icon.png");
+    }
+    m_trayIcon->setIcon(trayIcon);
+    m_trayIcon->setToolTip(tr("LinDesk Settings"));
+
+    m_trayMenu = new QMenu(this);
+    m_trayMenu->setStyleSheet(
+        "QMenu {"
+        " background: #ffffff;"
+        " color: #1f2937;"
+        " border: 1px solid rgba(0, 0, 0, 0.12);"
+        " padding: 6px 0px;"
+        " }"
+        "QMenu::item {"
+        " padding: 8px 18px;"
+        " background: transparent;"
+        " }"
+        "QMenu::item:selected {"
+        " background: #e8f3ff;"
+        " color: #0f172a;"
+        " }"
+        "QMenu::separator {"
+        " height: 1px;"
+        " margin: 4px 10px;"
+        " background: rgba(0, 0, 0, 0.08);"
+        " }"
+    );
+    m_showTrayAction = m_trayMenu->addAction(tr("Show Settings"));
+    m_exitTrayAction = m_trayMenu->addAction(tr("Exit"));
+    m_trayIcon->setContextMenu(m_trayMenu);
+
+    connect(m_showTrayAction, &QAction::triggered, this, &SettingUI::restoreFromTray);
+    connect(m_exitTrayAction, &QAction::triggered, this, &SettingUI::exitFromTray);
+    connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+            restoreFromTray();
+        }
+    });
+}
+
+void SettingUI::restoreFromTray()
+{
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+    }
+
+    if (windowState() & Qt::WindowMinimized) {
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+    }
+
+    show();
+    showNormal();
+    raise();
+    activateWindow();
+}
+
+void SettingUI::exitFromTray()
+{
+    m_isQuittingFromTray = true;
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+    }
+    QCoreApplication::quit();
+}
+
 QWidget* SettingUI::createGeneralPage() {
     QWidget* page = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(page);
@@ -307,13 +465,24 @@ QWidget* SettingUI::createGeneralPage() {
     layout->addWidget(m_generalPageTitle);
 
     // 1. Auto Start
-    FluentToggleSwitch* autoStart = new FluentToggleSwitch(page);
-    autoStart->setChecked(settings.value("General/AutoStart", true).toBool());
-    connect(autoStart, &FluentToggleSwitch::toggled, this, [configPath](bool checked){
+    m_autoStartToggle = new FluentToggleSwitch(page);
+    const bool autoStartEnabled = isLaunchAtLoginEnabled();
+    m_autoStartToggle->setChecked(autoStartEnabled);
+    settings.setValue("General/AutoStart", autoStartEnabled);
+    connect(m_autoStartToggle, &FluentToggleSwitch::toggled, this, [this, configPath](bool checked){
+        if (!setLaunchAtLoginEnabled(checked)) {
+            if (m_autoStartToggle) {
+                const QSignalBlocker blocker(m_autoStartToggle);
+                m_autoStartToggle->setChecked(!checked);
+            }
+            FluentDialog::showInfo(this, tr("Launch at Login"), tr("LinDesk could not update the startup shortcut."));
+            return;
+        }
+
         QSettings s(configPath, QSettings::IniFormat);
         s.setValue("General/AutoStart", checked);
     });
-    m_autoStartCard = new FluentCard(u8"\uE7E6", tr("Launch at Login"), tr("Automatically start LinDesk when you sign in to Windows"), autoStart, page);
+    m_autoStartCard = new FluentCard(u8"\uE7E6", tr("Launch at Login"), tr("Automatically start LinDesk when you sign in to Windows"), m_autoStartToggle, page);
     layout->addWidget(m_autoStartCard);
 
     // 2. Tray Only
@@ -1111,6 +1280,17 @@ void SettingUI::closeEvent(QCloseEvent* event) {
     settings.setValue("SettingUI/Size", size());
     settings.sync();
 
+    if (!m_isQuittingFromTray && shouldMinimizeToTray() && m_trayIcon) {
+        event->ignore();
+        hide();
+        m_trayIcon->show();
+        if (!m_hasShownTrayHint) {
+            m_trayIcon->showMessage(tr("LinDesk"), tr("Settings is still available in the system tray."), QSystemTrayIcon::Information, 3000);
+            m_hasShownTrayHint = true;
+        }
+        return;
+    }
+
     this->hide();
     event->ignore(); // Prevent destruction
 }
@@ -1119,7 +1299,15 @@ void SettingUI::changeEvent(QEvent* event) {
     if (event && event->type() == QEvent::LanguageChange) {
         retranslateUi();
     }
+
     FluentBaseWidget::changeEvent(event);
+}
+
+void SettingUI::showEvent(QShowEvent* event) {
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+    }
+    FluentBaseWidget::showEvent(event);
 }
 
 void SettingUI::retranslateUi() {
@@ -1149,6 +1337,15 @@ void SettingUI::retranslateUi() {
     if (m_trayOnlyCard) {
         m_trayOnlyCard->setTitle(tr("Minimize to Tray"));
         m_trayOnlyCard->setSubtitle(tr("Keep LinDesk running in the system tray when window is closed"));
+    }
+    if (m_trayIcon) {
+        m_trayIcon->setToolTip(tr("LinDesk Settings"));
+    }
+    if (m_showTrayAction) {
+        m_showTrayAction->setText(tr("Show Settings"));
+    }
+    if (m_exitTrayAction) {
+        m_exitTrayAction->setText(tr("Exit"));
     }
     if (m_languageCard) {
         m_languageCard->setTitle(tr("Display Language"));

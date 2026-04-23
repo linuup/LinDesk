@@ -68,7 +68,7 @@ QMenu* RightMenu::createSortBySubMenu()
     m_sortByDateAction->setActionGroup(sortGroup);
     connect(m_sortByDateAction, &QAction::triggered, this, &RightMenu::onSortByDate);
     sortByMenu->addAction(m_sortByDateAction);
-    
+
     // 不默认选中任何选项（Default 状态下均不勾选）
     
     return sortByMenu;

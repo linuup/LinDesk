@@ -41,14 +41,14 @@ public:
     void saveAll(const QString& persistencePath, bool enablePersistence,
                  const QVector<ListItem*>& allItems,
                  const QMap<QString, QMap<QString, QVariant>>& iconPositions,
-                 int viewMode, int sortType, int iconPosMode,
+                 int viewMode, int sortType, int preAutoSort, int iconPosMode,
                  bool autoArrange, bool gridAlignment,
                  bool showDesktopIcons, bool doubleClickHideIcons,
                  bool showShortCutArrow);
     void loadAll(bool autoUpdateState = true);
     void loadAll(const QString& persistencePath, bool autoUpdateState,
                  bool& enablePersistence, QMap<QString, QString>& iconShowRules,
-                 int& viewMode, int& sortType, int& iconPosMode,
+                 int& viewMode, int& sortType, int& preAutoSort, int& iconPosMode,
                  bool& autoArrange, bool& gridAlignment,
                  bool& showDesktopIcons, bool& doubleClickHideIcons,
                  bool& showShortCutArrow,

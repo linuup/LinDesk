@@ -20,6 +20,7 @@ struct LayoutPersistenceState {
     QMap<QString, QString> iconShowRules;
     int viewMode = 0;
     int sortType = 0;
+    int preAutoSort = 0;
     int iconPosMode = 0;
     bool autoArrange = false;
     bool gridAlignment = false;

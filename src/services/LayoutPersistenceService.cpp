@@ -33,6 +33,7 @@ QMap<QString, QMap<QString, QVariant>> LayoutPersistenceService::collectIconPosi
         posInfo["x"] = item->x();
         posInfo["y"] = item->y();
         posInfo["boxId"] = item->boxId();
+        posInfo["ord"] = item->customSortOrder();
         iconPositions[filePath] = posInfo;
     }
 
@@ -52,6 +53,7 @@ QMap<QString, QMap<QString, QVariant>> LayoutPersistenceService::collectIconPosi
             posInfo["x"] = item->x();
             posInfo["y"] = item->y();
             posInfo["boxId"] = item->boxId();
+            posInfo["ord"] = item->customSortOrder();
             iconPositions[filePath] = posInfo;
         }
     }
@@ -86,6 +88,7 @@ void LayoutPersistenceService::save(const QString& persistencePath,
         state.iconPositions,
         state.viewMode,
         state.sortType,
+        state.preAutoSort,
         state.iconPosMode,
         state.autoArrange,
         state.gridAlignment,
@@ -108,6 +111,7 @@ bool LayoutPersistenceService::load(const QString& persistencePath,
         state.iconShowRules,
         state.viewMode,
         state.sortType,
+        state.preAutoSort,
         state.iconPosMode,
         state.autoArrange,
         state.gridAlignment,

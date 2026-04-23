@@ -2348,7 +2348,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         this->raise();
 
         if (lv->isAutoArrangeEnabled()) {
-            lv->loadIconLayer();
+            lv->applyAutoArrangeLayout(false, false);
         } else {
             lv->update();
         }

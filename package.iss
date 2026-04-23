@@ -6,6 +6,8 @@
 [Setup]
 AppName={#AppName}
 AppVersion={#AppVersion}
+AppPublisher=Max
+AppPublisherURL=https://github.com/linuup
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir={#BuildDir}
@@ -17,22 +19,14 @@ CreateUninstallRegKey=yes
 Uninstallable=yes
 UninstallFilesDir={app}
 
-[Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式:"
-Name: "startmenuicon"; Description: "创建开始菜单快捷方式"; GroupDescription: "快捷方式:"; Flags: checkedonce
-
 [Files]
 Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-Source: "{tmp}\unins000.exe"; DestDir: "{app}"; Flags: external
-
-[Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: startmenuicon
-Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"; Tasks: startmenuicon
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "安装 VC++ 运行时..."
-Filename: "{app}\{#AppExeName}"; Description: "运行 {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing VC++ Runtime..."
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{autodesktop}\{#AppName}.lnk');$s.TargetPath='{app}\{#AppExeName}';$s.WorkingDirectory='{app}';$s.IconLocation='{app}\{#AppExeName},0';$s.Save()"""; Description: "Create desktop shortcut"; Flags: postinstall runhidden skipifsilent unchecked
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""New-Item -ItemType Directory -Force -Path '{group}' | Out-Null;$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{group}\{#AppName}.lnk');$s.TargetPath='{app}\{#AppExeName}';$s.WorkingDirectory='{app}';$s.IconLocation='{app}\{#AppExeName},0';$s.Save();$u=(New-Object -ComObject WScript.Shell).CreateShortcut('{group}\Uninstall {#AppName}.lnk');$u.TargetPath='{uninstallexe}';$u.WorkingDirectory='{app}';$u.Save()"""; Description: "Create Start Menu shortcut"; Flags: postinstall runhidden skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 function InitializeUninstall(): Boolean;
@@ -40,23 +34,23 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  
-  Exec('cmd.exe', '/C "tasklist /FI "IMAGENAME eq {#AppExeName}" 2>NUL | find /I "{#AppExeName}" >NUL"', 
+
+  Exec('cmd.exe', '/C "tasklist /FI ""IMAGENAME eq {#AppExeName}"" 2>NUL | find /I ""{#AppExeName}"" >NUL"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    
+
   if ResultCode = 0 then
   begin
-    if MsgBox('{#AppName} 正在运行，是否结束程序以继续卸载？', mbConfirmation, MB_YESNO) = IDYES then
+    if MsgBox('{#AppName} is running. Close it and continue uninstall?', mbConfirmation, MB_YESNO) = IDYES then
     begin
       Exec('taskkill.exe', '/f /im {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Sleep(1000);
-      
-      Exec('cmd.exe', '/C "tasklist /FI "IMAGENAME eq {#AppExeName}" 2>NUL | find /I "{#AppExeName}" >NUL"', 
+
+      Exec('cmd.exe', '/C "tasklist /FI ""IMAGENAME eq {#AppExeName}"" 2>NUL | find /I ""{#AppExeName}"" >NUL"',
         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-        
+
       if ResultCode = 0 then
       begin
-        MsgBox('无法结束程序，请手动结束后再试。', mbError, MB_OK);
+        MsgBox('Unable to close the application. Please close it manually and try again.', mbError, MB_OK);
         Result := False;
       end;
     end

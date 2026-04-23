@@ -82,6 +82,8 @@ public:
 
     QString boxId() const { return m_boxId; }
     void setBoxId(const QString& id) { m_boxId = id; }
+    int customSortOrder() const { return m_customSortOrder; }
+    void setCustomSortOrder(int order) { m_customSortOrder = order; }
     const QString& normalizedPath() const { return m_normalizedPath; }
     // 统一使用 m_itemPos 和 m_boxId，以下方法保持兼容
     bool hasPersistentRenderState() const { return m_itemPos != QPoint(0, 0) || !m_boxId.isEmpty(); }
@@ -134,6 +136,7 @@ private:
      QLabel* textLabel = nullptr; //文件名称Label
      LayoutMode m_layoutMode = LayoutMode::IconMode;
 	 QString m_boxId; // ID of the box this item belongs to (empty for desktop)
+     int m_customSortOrder = -1;
      QString m_normalizedPath; // Normalized path for fast lookup
      bool m_expandFullNameOnSelect = false;
      QString m_expandedPreviewText;

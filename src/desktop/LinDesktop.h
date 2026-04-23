@@ -19,6 +19,12 @@
 #include <QVariantAnimation>
 #include <QPainter>
 #include <QTimer>
+#include <QImage>
+#include <QSystemTrayIcon>
+#include <QMenu>
+#include <QAction>
+#include <QCloseEvent>
+#include <windows.h>
 class LinDesktop : public QWidget {
     Q_OBJECT
     Q_PROPERTY(float transitionOpacity READ transitionOpacity WRITE setTransitionOpacity)
@@ -44,9 +50,15 @@ public:
 
 	//QRect drawingMaskRect;    //拖拽选择框矩形
     void loadBackImage();
+    void applyLoadedWallpaper(const QString& path, const QImage& image);
+    void rebuildScaledWallpaperPixmaps();
 	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
     void checkFirstLaunchPrompt();
+    void initializeTrayIcon();
+    bool shouldMinimizeToTray() const;
+    void restoreFromTray();
+    void exitFromTray();
     
     void embedToDesktop();
     void unembedFromDesktop();
@@ -56,11 +68,22 @@ private:
     QString m_configPath;
     QPixmap m_backImagePixmap;
     QPixmap m_prevBackImagePixmap;
+    QPixmap m_scaledBackImagePixmap;
+    QPixmap m_prevScaledBackImagePixmap;
     float m_transitionOpacity = 1.0f;
     int m_transitionDuration = 1000; // Default 500ms
     QVariantAnimation* m_transitionAnimation = nullptr;
     QTimer* m_wallpaperLoadTimer = nullptr;
     QString m_currentWallpaperPath;
+    QString m_pendingWallpaperPath;
+    quint64 m_wallpaperLoadRequestId = 0;
+    HANDLE m_singleInstanceMutex = nullptr;
+    QSystemTrayIcon* m_trayIcon = nullptr;
+    QMenu* m_trayMenu = nullptr;
+    QAction* m_showAction = nullptr;
+    QAction* m_exitAction = nullptr;
+    bool m_isQuittingFromTray = false;
+    bool m_hasShownTrayHint = false;
     
     QPushButton* m_embedBtn = nullptr;
     bool m_isEmbedded = false;
@@ -76,6 +99,8 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event);
     void resizeEvent(QResizeEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
     void contextMenuEvent(QContextMenuEvent* event) override;
     bool nativeEvent(const QByteArray & eventType, void* message, long* result) override;
