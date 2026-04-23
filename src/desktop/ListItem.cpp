@@ -8,6 +8,7 @@
 #include "box/LinBox.h"
 #include "ui/SoftDesktopTextRenderer.h"
 #include <QFontMetrics>
+#include <QImageReader>
 #include <QRegularExpression>
 #include <QTimer>
 #include "services/SysInfoUtil.h"
@@ -51,6 +52,14 @@ QString buildBaseIconCacheKey(const QString& identityKey)
 QString buildRenderPixmapCacheKey(const QString& identityKey, int iconSide)
 {
     return QString("%1|render|%2").arg(identityKey).arg(iconSide);
+}
+
+QString buildImagePreviewPixmapCacheKey(const QFileInfo& fileInfo, int iconSide)
+{
+    return QString("image_preview:%1|%2|%3")
+        .arg(QDir::toNativeSeparators(fileInfo.absoluteFilePath()))
+        .arg(fileInfo.lastModified().toMSecsSinceEpoch())
+        .arg(iconSide);
 }
 
 QString buildShortcutArrowCacheKey(int overlaySize)
@@ -138,6 +147,48 @@ bool isShortcutSuffix(const QFileInfo& fileInfo)
 {
     const QString suffix = fileInfo.suffix().toLower();
     return suffix == "lnk" || suffix == "url" || suffix == "appref-ms";
+}
+
+bool canUseImagePreview(const QFileInfo& fileInfo, ObjectType type)
+{
+    return type != ObjectType::SpecialFolder &&
+        fileInfo.isFile() &&
+        !isShortcutSuffix(fileInfo);
+}
+
+QPixmap buildImagePreviewPixmap(const QFileInfo& fileInfo, ObjectType type, int iconSide)
+{
+    if (!canUseImagePreview(fileInfo, type) || iconSide <= 0) {
+        return QPixmap();
+    }
+
+    QImageReader reader(fileInfo.absoluteFilePath());
+    reader.setAutoTransform(true);
+    if (!reader.canRead()) {
+        return QPixmap();
+    }
+
+    QImage image = reader.read();
+    if (image.isNull()) {
+        return QPixmap();
+    }
+
+    image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QSize targetSize(iconSide, iconSide);
+    const QImage scaled = image.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (scaled.isNull()) {
+        return QPixmap();
+    }
+
+    QPixmap preview(targetSize);
+    preview.fill(Qt::transparent);
+
+    QPainter painter(&preview);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    const QPoint drawPos((targetSize.width() - scaled.width()) / 2,
+                         (targetSize.height() - scaled.height()) / 2);
+    painter.drawImage(drawPos, scaled);
+    return preview;
 }
 
 QString buildVisibleDisplayName(const ListItemData& data,
@@ -450,10 +501,20 @@ void ListItem::initData()
 				leftMargin = 8;
 			}
 
-            const QString renderPixmapCacheKey = buildRenderPixmapCacheKey(iconIdentityKey, iconSide);
-			QPixmap rawPix = IconCacheManager::instance().getPixmap(renderPixmapCacheKey, [this, iconSide]() {
-                return buildCroppedRenderPixmap(m_icon, iconSide);
-            });
+            QPixmap rawPix;
+            if (canUseImagePreview(m_fileInfo, m_type)) {
+                const QString imagePreviewCacheKey = buildImagePreviewPixmapCacheKey(m_fileInfo, iconSide);
+                rawPix = IconCacheManager::instance().getPixmap(imagePreviewCacheKey, [this, iconSide]() {
+                    return buildImagePreviewPixmap(m_fileInfo, m_type, iconSide);
+                });
+            }
+
+            if (rawPix.isNull()) {
+                const QString renderPixmapCacheKey = buildRenderPixmapCacheKey(iconIdentityKey, iconSide);
+                rawPix = IconCacheManager::instance().getPixmap(renderPixmapCacheKey, [this, iconSide]() {
+                    return buildCroppedRenderPixmap(m_icon, iconSide);
+                });
+            }
             if (rawPix.isNull()) {
                 QIcon fallbackIcon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
                 rawPix = buildCroppedRenderPixmap(fallbackIcon, iconSide);
@@ -464,6 +525,16 @@ void ListItem::initData()
                 QPainter fadePainter(&fadedPix);
                 fadePainter.setRenderHint(QPainter::SmoothPixmapTransform);
                 fadePainter.setOpacity(0.8);
+                fadePainter.drawPixmap(0, 0, rawPix);
+                fadePainter.end();
+                rawPix = fadedPix;
+            }
+            if (m_hiddenFileVisual && !rawPix.isNull()) {
+                QPixmap fadedPix(rawPix.size());
+                fadedPix.fill(Qt::transparent);
+                QPainter fadePainter(&fadedPix);
+                fadePainter.setRenderHint(QPainter::SmoothPixmapTransform);
+                fadePainter.setOpacity(0.45);
                 fadePainter.drawPixmap(0, 0, rawPix);
                 fadePainter.end();
                 rawPix = fadedPix;
@@ -658,6 +729,19 @@ void ListItem::setCutMarked(bool cutMarked)
     }
     setProperty("cutMarked", cutMarked);
     update();
+}
+
+void ListItem::setHiddenFileVisual(bool hiddenFileVisual)
+{
+    if (m_hiddenFileVisual == hiddenFileVisual) {
+        return;
+    }
+
+    m_hiddenFileVisual = hiddenFileVisual;
+    if (isReady) {
+        initData();
+        update();
+    }
 }
 
 void ListItem::openItem()

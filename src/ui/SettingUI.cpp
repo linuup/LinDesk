@@ -1280,7 +1280,9 @@ void SettingUI::closeEvent(QCloseEvent* event) {
     settings.setValue("SettingUI/Size", size());
     settings.sync();
 
-    if (!m_isQuittingFromTray && shouldMinimizeToTray() && m_trayIcon) {
+    const bool forceQuit = QCoreApplication::instance() &&
+        QCoreApplication::instance()->property("LinDeskForceQuit").toBool();
+    if (!forceQuit && !m_isQuittingFromTray && shouldMinimizeToTray() && m_trayIcon) {
         event->ignore();
         hide();
         m_trayIcon->show();

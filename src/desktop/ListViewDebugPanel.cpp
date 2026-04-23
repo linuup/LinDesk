@@ -7,12 +7,14 @@
 #include "ui/SoftDesktopTextRenderer.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 #include "ui/Fluent/FluentCard.h"
+#include "services/DebugInfoExporter.h"
 
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
@@ -142,11 +144,27 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
         if (m_listView) m_listView->setPersistenceEnabled(checked);
     });
     quickGrid->addWidget(new FluentCard(u8"\uE71B", "Data Persistence", "Load and save box and icon info from storage", m_persistToggle, scrollContent), 2, 0);
+
+    // ========== 6. Export Debug JSON ==========
+    QPushButton* exportDebugBtn = new QPushButton("Export", scrollContent);
+    exportDebugBtn->setFixedSize(86, 32);
+    exportDebugBtn->setCursor(Qt::PointingHandCursor);
+    exportDebugBtn->setStyleSheet("background: #0891b2; border: none; border-radius: 6px; font-weight: 600; color: #ffffff;");
+    connect(exportDebugBtn, &QPushButton::clicked, this, [this]() {
+        QString outputPath;
+        QString errorMessage;
+        if (DebugInfoExporter::exportToApplicationDir(m_listView, &outputPath, &errorMessage)) {
+            QMessageBox::information(this, "Export Debug JSON", QString("Exported to:\n%1").arg(outputPath));
+        } else {
+            QMessageBox::warning(this, "Export Debug JSON", QString("Export failed:\n%1").arg(errorMessage));
+        }
+    });
+    quickGrid->addWidget(new FluentCard(u8"\uE8AB", "Export debug.json", "Dump ListView state and visible item data", exportDebugBtn, scrollContent), 2, 1);
     quickGrid->setColumnStretch(0, 1);
     quickGrid->setColumnStretch(1, 1);
     root->addLayout(quickGrid);
 
-    // ========== 6. Row Spacing Slider ==========
+    // ========== 7. Row Spacing Slider ==========
     root->addSpacing(6);
     root->addWidget(new QLabel("Row Spacing", scrollContent));
     auto* rowLayout = new QHBoxLayout();
@@ -158,7 +176,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     rowLayout->addWidget(m_rowValueLabel);
     root->addLayout(rowLayout);
 
-    // ========== 7. Column Spacing Slider ==========
+    // ========== 8. Column Spacing Slider ==========
     root->addWidget(new QLabel("Column Spacing", scrollContent));
     auto* colLayout = new QHBoxLayout();
     m_colSlider = new QSlider(Qt::Horizontal, scrollContent);
@@ -169,7 +187,7 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     colLayout->addWidget(m_colValueLabel);
     root->addLayout(colLayout);
 
-    // ========== 8. Desktop Text Blend Test ==========
+    // ========== 9. Desktop Text Blend Test ==========
     auto* previewTitle = new QLabel("Desktop Text Blend Test", scrollContent);
     previewTitle->setStyleSheet("font-size: 14px; font-weight: 600; color: #111827; margin-top: 6px;");
     root->addWidget(previewTitle);

@@ -33,6 +33,7 @@
 #include "monitor/DesktopInfoMonitor.h"
 #include "monitor/DirectoryMonitor.h"
 #include "monitor/LinDirectoryMonitor.h"
+#include "monitor/WindowsConfigMonitor.h"
 #include "desktop/SelectArea.h"
 #include "ui/SettingUI.h"
 class LinBox;
@@ -303,6 +304,10 @@ private:
 		bool persist,
 		bool refreshSelection);
 	void applyAutoArrangeAfterDesktopMutation(bool persist = true, bool refreshSelection = true);
+	bool fileHasHiddenAttribute(const QString& filePath) const;
+	void applyWindowsHiddenVisualState(ListItem* item);
+	bool shouldShowFileSystemItem(ListItem* item) const;
+	void refreshVisibilityForWindowsConfig();
 	bool handlePendingShellCreatedItem(const QString& newPath);
 	void removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidgets = true);
 	void setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden);
@@ -347,6 +352,7 @@ public slots:
 
 	// 系统图标
 	void updateSystemIconVisibility(const QString& clsid, bool hidden);
+	void onWindowsShowHiddenFilesChanged(bool showHiddenFiles);
 	void resetRenameClickState();
 	void armPendingShellNewTargetBox(LinBox* box);
 	void clearPendingShellNewTargetBox();
@@ -417,6 +423,7 @@ private:
 	ListItem* m_draggedItem = nullptr;
 	DesktopInfoMonitor* monitor;
 	LinDirectoryMonitor* m_linMonitor;
+	WindowsConfigMonitor* m_windowsConfigMonitor = nullptr;
 
 	// 计时器
 	QTimer* m_pendingShellNewTargetTimer = nullptr;
@@ -427,6 +434,7 @@ private:
 	bool m_isDragging = false;
 	bool m_isSelecting = false;
 	bool m_wasSelectedBeforeClick = false;
+	bool m_showHiddenFiles = false;
 
 	// 坐标和区域
 	QPoint m_dragOffset;

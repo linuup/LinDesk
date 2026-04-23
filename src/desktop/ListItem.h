@@ -68,6 +68,8 @@ public:
     void unCheckSelf();
     void setFocused(bool focused);
     void setCutMarked(bool cutMarked);
+    void setHiddenFileVisual(bool hiddenFileVisual);
+    bool hiddenFileVisual() const { return m_hiddenFileVisual; }
     void openItem();
     void refreshIcon(); // Refresh icon from system
     QRect iconRect() const;
@@ -139,6 +141,7 @@ private:
      int m_customSortOrder = -1;
      QString m_normalizedPath; // Normalized path for fast lookup
      bool m_expandFullNameOnSelect = false;
+     bool m_hiddenFileVisual = false;
      QString m_expandedPreviewText;
      QSize m_baseItemSize;
      int m_visibleTextHeight = 0;

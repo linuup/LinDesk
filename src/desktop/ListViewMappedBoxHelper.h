@@ -22,7 +22,18 @@ class ListView;
 class ListViewMappedBoxHelper
 {
 public:
-    static inline QStringList mappedFolderEntryPaths(const QString& folderPath)
+    static inline bool mappedEntryHasHiddenAttribute(const QString& path)
+    {
+        if (path.isEmpty()) {
+            return false;
+        }
+
+        const std::wstring nativePath = QDir::toNativeSeparators(path).toStdWString();
+        const DWORD attributes = GetFileAttributesW(nativePath.c_str());
+        return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_HIDDEN);
+    }
+
+    static inline QStringList mappedFolderEntryPaths(const QString& folderPath, bool showHiddenFiles = true)
     {
         const QString normalizedFolderPath = QDir::toNativeSeparators(folderPath);
         if (normalizedFolderPath.isEmpty()) {
@@ -46,6 +57,9 @@ public:
         };
         for (const QFileInfo& entry : entries) {
             if (blockedFolderNames.contains(entry.fileName())) {
+                continue;
+            }
+            if (!showHiddenFiles && mappedEntryHasHiddenAttribute(entry.absoluteFilePath())) {
                 continue;
             }
             paths.append(QDir::toNativeSeparators(entry.absoluteFilePath()));
@@ -106,7 +120,7 @@ public:
             return;
         }
 
-        const QStringList paths = mappedFolderEntryPaths(box->mappedFolderPath());
+        const QStringList paths = mappedFolderEntryPaths(box->mappedFolderPath(), view.m_showHiddenFiles);
         view.m_mappedBoxFilePaths[box->boxId()] = paths;
         DesktopItemLoader itemLoader;
 
@@ -128,6 +142,7 @@ public:
             }
 
             item->setBoxId(box->boxId());
+            view.applyWindowsHiddenVisualState(item);
             item->hide();
             box->addListItem(item, false);
         }

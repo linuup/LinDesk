@@ -134,7 +134,7 @@ QSet<QString> hiddenShellFolderPaths()
         QStandardPaths::DownloadLocation,
         QStandardPaths::MoviesLocation,
         QStandardPaths::MusicLocation,
-        QStandardPaths::PicturesLocation
+        QStandardPaths::PicturesLocation,
     };
 
     for (const QStandardPaths::StandardLocation location : locations) {
@@ -143,6 +143,12 @@ QSet<QString> hiddenShellFolderPaths()
         if (!normalized.isEmpty()) {
             result.insert(normalized);
         }
+    }
+
+    const QString userProfilePath = QDir::homePath();
+    const QString normalizedOneDrivePath = normalizedExistingPath(userProfilePath + "/OneDrive");
+    if (!normalizedOneDrivePath.isEmpty()) {
+        result.insert(normalizedOneDrivePath);
     }
 
     return result;

@@ -436,7 +436,9 @@ void LinDesktop::resizeEvent(QResizeEvent* event)
 
 void LinDesktop::closeEvent(QCloseEvent* event)
 {
-    if (!m_isQuittingFromTray && shouldMinimizeToTray() && m_trayIcon) {
+    const bool forceQuit = QCoreApplication::instance() &&
+        QCoreApplication::instance()->property("LinDeskForceQuit").toBool();
+    if (!forceQuit && !m_isQuittingFromTray && shouldMinimizeToTray() && m_trayIcon) {
         if (!m_trayIcon->isVisible()) {
             m_trayIcon->show();
         }

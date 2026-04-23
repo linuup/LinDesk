@@ -232,6 +232,11 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
 
     monitor = new DesktopInfoMonitor(this);
     startListeningSpecialIcon();
+    m_windowsConfigMonitor = new WindowsConfigMonitor(this);
+    connect(m_windowsConfigMonitor, &WindowsConfigMonitor::showHiddenFilesChanged,
+        this, &ListView::onWindowsShowHiddenFilesChanged);
+    m_windowsConfigMonitor->startListening();
+    m_showHiddenFiles = m_windowsConfigMonitor->showHiddenFiles();
 
     // Initialize Plugin System & Hotkeys ASYNCHRONOUSLY to avoid recursion in constructor
     QTimer::singleShot(0, this, [this]() {
@@ -409,6 +414,17 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
     update();
     repaint();
 }
+
+void ListView::onWindowsShowHiddenFilesChanged(bool showHiddenFiles)
+{
+    if (m_showHiddenFiles == showHiddenFiles) {
+        return;
+    }
+
+    m_showHiddenFiles = showHiddenFiles;
+    refreshVisibilityForWindowsConfig();
+}
+
 void ListView::startListeningSpecialIcon()
 {
     // 寮€濮嬬洃鍚?
@@ -1448,14 +1464,21 @@ void ListView::dropEvent(QDropEvent* event)
                         item->setLayoutMode(ListItem::LayoutMode::IconMode);
                         item->setItemSize(m_iconWidth, m_iconHeight);
                         setupItemConnections(item);
-                        if (!m_items.contains(item)) {
+                        const bool shouldShowOnDesktop = shouldShowFileSystemItem(item);
+                        if (shouldShowOnDesktop && !m_items.contains(item)) {
                             m_items.push_back(item);
+                        } else if (!shouldShowOnDesktop && !m_hiddenIcons.contains(item)) {
+                            m_hiddenIcons.push_back(item);
                         }
-                        if (m_iconShowRule.showDesktopIcons) {
+                        if (shouldShowOnDesktop && m_iconShowRule.showDesktopIcons) {
                             item->show();
+                        } else if (!shouldShowOnDesktop) {
+                            item->hide();
                         }
                     }
-                    item->raise();
+                    if (shouldShowFileSystemItem(item)) {
+                        item->raise();
+                    }
                 }
 
                 if (customSortDrag) {
@@ -1579,13 +1602,20 @@ void ListView::dropEvent(QDropEvent* event)
                         item->updateLocationInfo(it.value());
                         
                         // 4. Ensure it's in the correct visible pools
-                        if (!m_items.contains(item)) {
+                        const bool shouldShowOnDesktop = shouldShowFileSystemItem(item);
+                        if (shouldShowOnDesktop && !m_items.contains(item)) {
                             m_items.push_back(item);
+                        } else if (!shouldShowOnDesktop && !m_hiddenIcons.contains(item)) {
+                            m_hiddenIcons.push_back(item);
                         }
-                        if (m_iconShowRule.showDesktopIcons) {
+                        if (shouldShowOnDesktop && m_iconShowRule.showDesktopIcons) {
                             item->show();
+                        } else if (!shouldShowOnDesktop) {
+                            item->hide();
                         }
-                        item->raise();
+                        if (shouldShowOnDesktop) {
+                            item->raise();
+                        }
                         
                         // IMPORTANT: Do NOT delete the item. 
                         // We use a single unified instance across Box and Desktop.
@@ -1844,8 +1874,10 @@ void ListView::initialize()
                                SystemFolderCLSIDs.contains(listItem->getItemData().getCLSID()) ||
                                listItem->getItemData().fullName() == "desktop.ini" ||
                                listItem->filePath().startsWith("::");
-        const bool isOsHidden = listItem->fileInfo().isHidden();
+        const bool isDiskLetter = listItem->type() == ObjectType::DiskLetter;
+        const bool isOsHidden = fileHasHiddenAttribute(listItem->filePath());
         const bool isAppHiddenShellFolder = DesktopItemLoader::shouldTreatAsHiddenShellFolder(listItem->getItemData());
+        applyWindowsHiddenVisualState(listItem);
 
         bool isVisibleSpecial = false;
         if (isSpecial) {
@@ -1858,15 +1890,13 @@ void ListView::initialize()
             }
         }
 
-        const bool shouldShowOnDesktop = !isAppHiddenShellFolder &&
+        const bool shouldShowOnDesktop = !isDiskLetter &&
+            !isAppHiddenShellFolder &&
             boxId.isEmpty() &&
-            ((isSpecial && isVisibleSpecial) || (!isSpecial && !isOsHidden));
+            ((isSpecial && isVisibleSpecial) || (!isSpecial && (m_showHiddenFiles || !isOsHidden)));
 
         if (shouldShowOnDesktop) {
             listItems.push_back(listItem);
-            if (listItem->type() == ObjectType::DiskLetter) {
-                itemsWithoutNativePos.push_back(listItem);
-            }
         } else {
             listItem->hide();
             m_hiddenIcons.push_back(listItem);
@@ -1943,6 +1973,19 @@ void ListView::loadIconLayer()
 {
     qDebug() << "[ListView] Starting reload. Master list size:" << m_allItems.size();
     const bool shouldRestorePersistedLayout = m_isLoadingPersistence || m_forceConfigLayout;
+
+    m_items.erase(std::remove_if(m_items.begin(), m_items.end(), [this](ListItem* item) {
+        if (!item || shouldShowFileSystemItem(item)) {
+            return false;
+        }
+
+        item->hide();
+        if (!m_hiddenIcons.contains(item)) {
+            m_hiddenIcons.push_back(item);
+        }
+        return true;
+    }), m_items.end());
+
     qDebug() << "[ListView] After render filtering, item count in m_items:" << m_items.size();
     if (m_iconShowRule.autoArrange && !shouldRestorePersistedLayout) {
         qDebug() << "[ListView] Applying auto-layout (Stable Categorized).";
@@ -1962,6 +2005,13 @@ void ListView::loadIconLayer()
     // Ensure visibility and stacking
     for (auto* item : m_items) {
         if (!item) continue;
+        if (!shouldShowFileSystemItem(item)) {
+            item->hide();
+            if (!m_hiddenIcons.contains(item)) {
+                m_hiddenIcons.push_back(item);
+            }
+            continue;
+        }
         if (m_iconShowRule.showDesktopIcons) {
             item->show();
             item->raise();
@@ -2475,6 +2525,62 @@ void ListView::applyAutoArrangeAfterDesktopMutation(bool persist, bool refreshSe
     applyAutoArrangeLayout(persist, refreshSelection);
 }
 
+bool ListView::fileHasHiddenAttribute(const QString& filePath) const
+{
+    if (filePath.isEmpty() || filePath.startsWith("::")) {
+        return false;
+    }
+
+    const std::wstring nativePath = QDir::toNativeSeparators(filePath).toStdWString();
+    const DWORD attributes = GetFileAttributesW(nativePath.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_HIDDEN);
+}
+
+void ListView::applyWindowsHiddenVisualState(ListItem* item)
+{
+    if (!item) {
+        return;
+    }
+
+    const bool isSpecial = item->getItemData().type() == ObjectType::SpecialFolder ||
+        SystemFolderCLSIDs.contains(item->getItemData().getCLSID()) ||
+        item->filePath().startsWith("::");
+    const bool shouldFade = !isSpecial && m_showHiddenFiles && fileHasHiddenAttribute(item->filePath());
+    item->setHiddenFileVisual(shouldFade);
+}
+
+bool ListView::shouldShowFileSystemItem(ListItem* item) const
+{
+    if (!item) {
+        return false;
+    }
+
+    if (item->type() == ObjectType::DiskLetter) {
+        return false;
+    }
+
+    const bool isSpecial = item->getItemData().type() == ObjectType::SpecialFolder ||
+        SystemFolderCLSIDs.contains(item->getItemData().getCLSID()) ||
+        item->filePath().startsWith("::");
+    if (isSpecial) {
+        return true;
+    }
+
+    return m_showHiddenFiles || !fileHasHiddenAttribute(item->filePath());
+}
+
+void ListView::refreshVisibilityForWindowsConfig()
+{
+    const QVector<QPointer<LinBox>> boxes = BoxManager::instance()->allBoxes();
+    for (const QPointer<LinBox>& box : boxes) {
+        if (box && box->isFolderMapped()) {
+            reloadMappedFolderBox(box);
+        }
+    }
+
+    onMenuRefresh();
+}
+
 void ListView::loadAutoLayout()
 {
     applyAutoArrangeLayout(false, false);
@@ -2799,8 +2905,10 @@ void ListView::addItem(ListItem* item, bool refresh)
 {
     if (!item) return;
 
+    applyWindowsHiddenVisualState(item);
+    const bool shouldShowOnDesktop = shouldShowFileSystemItem(item);
     QPoint pos;
-    if (!m_iconShowRule.autoArrange) {
+    if (shouldShowOnDesktop && !m_iconShowRule.autoArrange) {
         if (!takeReservedCreatedItemPosition(item->filePath(), pos)) {
             pos = generateItemPosition();
         }
@@ -2811,11 +2919,19 @@ void ListView::addItem(ListItem* item, bool refresh)
     setupItemConnections(item);
     
     // 鎵€鏈夋枃浠堕兘鍔犲叆 m_items 鍜?m_allItems
-    m_items.push_back(item);
+    if (shouldShowOnDesktop) {
+        m_items.push_back(item);
+    } else if (!m_hiddenIcons.contains(item)) {
+        m_hiddenIcons.push_back(item);
+    }
     m_allItems.push_back(item);
     
-    item->show();
-    if (m_iconShowRule.autoArrange) {
+    if (shouldShowOnDesktop && m_iconShowRule.showDesktopIcons) {
+        item->show();
+    } else {
+        item->hide();
+    }
+    if (shouldShowOnDesktop && m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
     } else {
         rebuildSpatialIndex();
@@ -2841,6 +2957,15 @@ void ListView::addItemNoDelete(ListItem* item)
     
     // Check if already in m_items
     if (!m_items.contains(item)) {
+        applyWindowsHiddenVisualState(item);
+        if (!shouldShowFileSystemItem(item)) {
+            if (!m_hiddenIcons.contains(item)) {
+                m_hiddenIcons.push_back(item);
+            }
+            item->hide();
+            return;
+        }
+
         item->setItemSize(m_iconWidth, m_iconHeight);
         if (!m_iconShowRule.autoArrange) {
             QPoint pos = generateItemPosition();
@@ -3828,8 +3953,10 @@ void ListView::onMenuRefresh() {
                                   item->getItemData().fullName() == "desktop.ini" ||
                                   item->filePath().startsWith("::"));
                 
-                bool isOsHidden = item->fileInfo().isHidden();
+                const bool isOsHidden = fileHasHiddenAttribute(item->filePath());
+                const bool isDiskLetter = item->type() == ObjectType::DiskLetter;
                 const bool isAppHiddenShellFolder = DesktopItemLoader::shouldTreatAsHiddenShellFolder(item->getItemData());
+                applyWindowsHiddenVisualState(item);
 
                 if (isSpecial) {
                     QString itemClsid = item->getItemData().getCLSID();
@@ -3851,13 +3978,16 @@ void ListView::onMenuRefresh() {
                     isVisibleSpecial = systemSaysVisible;
                 }
 
-                if (isAppHiddenShellFolder) {
+                if (isDiskLetter) {
+                    item->hide();
+                    m_hiddenIcons.push_back(item);
+                } else if (isAppHiddenShellFolder) {
                     item->hide();
                     m_hiddenIcons.push_back(item);
                 } else if (!boxId.isEmpty()) {
                     if (item->parent() == this) item->hide();
                     m_hiddenIcons.push_back(item);
-                } else if (isOsHidden && !isSpecial) {
+                } else if (isOsHidden && !isSpecial && !m_showHiddenFiles) {
                     item->hide();
                     m_hiddenIcons.push_back(item);
                 } else if (isSpecial) {
@@ -4052,8 +4182,14 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             if (oldDir == newDir) {
                 const ListItemData data = DesktopItemLoader().loadItem(newPath);
                 item->setItemData(data);
+                applyWindowsHiddenVisualState(item);
                 item->initData();
                 item->update();
+                if (!shouldShowFileSystemItem(item)) {
+                    refreshVisibilityForWindowsConfig();
+                    requestSaveBoxes();
+                    break;
+                }
                 resort();
                 if (!m_iconShowRule.autoArrange) {
                     relayout();
@@ -4102,8 +4238,12 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (item) {
             const ListItemData data = DesktopItemLoader().loadItem(updatePath);
             item->setItemData(data);
+            applyWindowsHiddenVisualState(item);
             item->initData();
             item->update();
+            if (eventInfo.eventType == FileSystemEvent::FileAttributesChanged) {
+                refreshVisibilityForWindowsConfig();
+            }
         }
         break;
     }
@@ -4117,6 +4257,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 
 void ListView::onMenuQuitApp() {
     qDebug() << "LinDesk: Global Quit Requested...";
+    qApp->setProperty("LinDeskForceQuit", true);
     
     // Close the settings window if open
     if (m_settingsWindow) {
@@ -4779,7 +4920,7 @@ void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVarian
 }
 
 QStringList ListView::mappedFolderEntryPaths(const QString& folderPath) const {
-    return ListViewMappedBoxHelper::mappedFolderEntryPaths(folderPath);
+    return ListViewMappedBoxHelper::mappedFolderEntryPaths(folderPath, m_showHiddenFiles);
 }
 
 void ListView::clearMappedFolderItemsForBox(LinBox* box) {
@@ -4825,8 +4966,13 @@ void ListView::loadBoxes(bool autoUpdateState) {
             for (auto* item : box->items()) {
                 if (item) {
                     item->setBoxId(QString());
-                    item->show();
-                    if (!m_items.contains(item)) m_items.push_back(item);
+                    if (shouldShowFileSystemItem(item)) {
+                        item->show();
+                        if (!m_items.contains(item)) m_items.push_back(item);
+                    } else {
+                        item->hide();
+                        if (!m_hiddenIcons.contains(item)) m_hiddenIcons.push_back(item);
+                    }
                 }
             }
             box->deleteLater();
@@ -5006,18 +5152,23 @@ void ListView::onMenuDestroyBox(LinBox* box) {
         }
         item->setBoxId("");
 
-        if (!m_items.contains(item)) {
+        const bool shouldShowOnDesktop = shouldShowFileSystemItem(item);
+        if (shouldShowOnDesktop && !m_items.contains(item)) {
             m_items.push_back(item);
+        } else if (!shouldShowOnDesktop && !m_hiddenIcons.contains(item)) {
+            m_hiddenIcons.push_back(item);
         }
 
-        if (!m_iconShowRule.autoArrange) {
+        if (shouldShowOnDesktop && !m_iconShowRule.autoArrange) {
             QString key = QDir::toNativeSeparators(item->filePath());
             while (key.endsWith('\\')) key.chop(1);
             m_savedIconPositions[key] = { desktopPos.x(), desktopPos.y(), "" };
         }
 
-        if (m_iconShowRule.showDesktopIcons) {
+        if (shouldShowOnDesktop && m_iconShowRule.showDesktopIcons) {
             item->show();
+        } else if (!shouldShowOnDesktop) {
+            item->hide();
         }
     }
     
@@ -5472,10 +5623,15 @@ void ListView::setPersistenceEnabled(bool enabled) {
             const auto& boxItems = box->items();
             for (auto* item : boxItems) {
                 if (item) {
-                item->setBoxId("");
+                    item->setBoxId("");
                     item->setParent(this);
-                    item->show();
-                    if (!m_items.contains(item)) m_items.push_back(item);
+                    if (shouldShowFileSystemItem(item)) {
+                        item->show();
+                        if (!m_items.contains(item)) m_items.push_back(item);
+                    } else {
+                        item->hide();
+                        if (!m_hiddenIcons.contains(item)) m_hiddenIcons.push_back(item);
+                    }
                 }
             }
             box->deleteLater();
