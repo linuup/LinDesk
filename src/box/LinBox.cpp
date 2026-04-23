@@ -2833,7 +2833,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 
     // 2. Get shared actions from RightMenu and convert them
     if (QMenu* sharedMenu = RightMenu::getInstance()->getCustomMenu()) {
-        auto sharedItems = RightMenu::exportCustomMenuItems(sharedMenu, tempBitmaps, false, true);
+        auto sharedItems = RightMenu::exportCustomMenuItems(sharedMenu, tempBitmaps, false, false);
         if (!sharedItems.empty()) {
             items.insert(items.end(), sharedItems.begin(), sharedItems.end());
         }

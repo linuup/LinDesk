@@ -1,63 +1,126 @@
 ﻿
 #include "ShellContextMenu.h"
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 namespace {
-int FindTopLevelMenuAnchor(HMENU menu)
+std::filesystem::path GetDesktopLogPath()
+{
+    PWSTR localAppDataPath = nullptr;
+    const HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataPath);
+    if (FAILED(hr) || !localAppDataPath) {
+        return {};
+    }
+
+    std::filesystem::path logPath(localAppDataPath);
+    CoTaskMemFree(localAppDataPath);
+    logPath /= L"LinDesk";
+    logPath /= L"desktop.log";
+    return logPath;
+}
+
+std::string WideToUtf8(const std::wstring& text)
+{
+    if (text.empty()) {
+        return {};
+    }
+
+    const int requiredSize = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    if (requiredSize <= 0) {
+        return {};
+    }
+
+    std::string utf8(requiredSize, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), utf8.data(), requiredSize, nullptr, nullptr);
+    return utf8;
+}
+
+std::wstring BuildTimestamp()
+{
+    SYSTEMTIME st = {};
+    GetLocalTime(&st);
+    wchar_t timeBuffer[64] = {};
+    swprintf_s(timeBuffer, L"%04u-%02u-%02u %02u:%02u:%02u.%03u",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    return timeBuffer;
+}
+
+void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
+{
+    const std::wstring line = BuildTimestamp() + L"-" + (moduleName ? moduleName : L"Menu") + L"-" + info + L"\n";
+    OutputDebugStringW(line.c_str());
+
+    const std::filesystem::path logPath = GetDesktopLogPath();
+    if (logPath.empty()) {
+        return;
+    }
+
+    std::error_code ec;
+    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
+    if (!logFileExists) {
+        return;
+    }
+
+    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
+    if (!logFile.is_open()) {
+        return;
+    }
+
+    const std::string utf8Line = WideToUtf8(line);
+    if (!utf8Line.empty()) {
+        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
+    }
+}
+
+void DebugLogTopLevelMenuItems(HMENU menu, const wchar_t* tag)
+{
+    if (!menu) {
+        return;
+    }
+
+    const int count = GetMenuItemCount(menu);
+    EmitBoxMenuDebugLine(tag, L"top level menu count=" + std::to_wstring(count));
+
+    for (int i = 0; i < count; ++i) {
+        const UINT state = GetMenuState(menu, i, MF_BYPOSITION);
+        if (state == static_cast<UINT>(-1)) {
+            continue;
+        }
+
+        if ((state & MF_SEPARATOR) == MF_SEPARATOR) {
+            EmitBoxMenuDebugLine(tag, L"[" + std::to_wstring(i) + L"] <separator>");
+            continue;
+        }
+
+        std::wstring text = MenuHelper::GetMenuItemString(menu, i, true);
+        if (text.empty()) {
+            text = L"<empty>";
+        }
+
+        EmitBoxMenuDebugLine(tag, L"[" + std::to_wstring(i) + L"] " + text);
+    }
+}
+
+int FindNewMenuInsertPosition(HMENU menu)
 {
     if (!menu) {
         return -1;
     }
 
-    const int exactBackgroundAnchor = MenuHelper::FindMenuItem(menu, TEXT("Next desktop background"));
-    if (exactBackgroundAnchor != -1) {
-        return exactBackgroundAnchor;
+    const int newMenuPos = MenuHelper::FindMenuItem(menu, TEXT("Ne&w"));
+    if (newMenuPos != -1) {
+        return newMenuPos + 1;
     }
 
-    const int exactCnBackgroundAnchor = MenuHelper::FindMenuItem(menu, TEXT("\x4E0B\x4E00\x5F20\x684C\x9762\x80CC\x666F"));
-    if (exactCnBackgroundAnchor != -1) {
-        return exactCnBackgroundAnchor;
+    const int plainNewMenuPos = MenuHelper::FindMenuItem(menu, TEXT("New"));
+    if (plainNewMenuPos != -1) {
+        return plainNewMenuPos + 1;
     }
 
-    const int organizeAnchor = MenuHelper::FindMenuItem(menu, TEXT("\x5F00\x542F\x684C\x9762\x6574\x7406"));
-    if (organizeAnchor != -1) {
-        return organizeAnchor;
-    }
-
-    const wchar_t* exactCandidates[] = {
-        TEXT("&Next desktop background"),
-        TEXT("\x4E0B\x4E00\x5F20\x684C\x9762\x80CC\x666F"),
-        TEXT("Ne&w"),
-        TEXT("\x65B0\x5EFA"),
-        TEXT("Display settings"),
-        TEXT("\x663E\x793A\x8BBE\x7F6E"),
-        TEXT("Personalize"),
-        TEXT("\x4E2A\x6027\x5316"),
-        TEXT("\x5F00\x542F\x684C\x9762\x6574\x7406")
-    };
-
-    for (const auto* candidate : exactCandidates) {
-        const int pos = MenuHelper::FindMenuItem(menu, candidate);
-        if (pos != -1) {
-            return pos;
-        }
-    }
-
-    const int count = GetMenuItemCount(menu);
-    for (int i = 0; i < count; ++i) {
-        const std::wstring text = MenuHelper::GetMenuItemString(menu, i, true);
-        if (text.empty()) {
-            continue;
-        }
-
-        if (text.find(L"desktop background") != std::wstring::npos ||
-            text.find(L"妗岄潰鑳屾櫙") != std::wstring::npos ||
-            text == L"New" || text == L"鏂板缓" ||
-            text.find(L"Display settings") != std::wstring::npos ||
-            text.find(L"鏄剧ず璁剧疆") != std::wstring::npos ||
-            text.find(L"Personalize") != std::wstring::npos ||
-            text.find(L"涓€у寲") != std::wstring::npos) {
-            return i;
-        }
+    const int cnNewMenuPos = MenuHelper::FindMenuItem(menu, TEXT("新建"));
+    if (cnNewMenuPos != -1) {
+        return cnNewMenuPos + 1;
     }
 
     return -1;
@@ -91,13 +154,27 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
     };
 
     const wchar_t* exactCandidates[] = {
+        L"View",
+        L"视图",
+        L"Sort by",
+        L"排序",
+        L"Refresh",
+        L"刷新",
+        L"Paste",
+        L"粘贴",
+        L"Paste shortcut",
+        L"粘贴快捷方式",
+        L"Browse background",
+        L"浏览背景",
+        L"Next background",
+        L"下一个背景",
         L"Next desktop background",
-        L"\x4E0B\x4E00\x5F20\x684C\x9762\x80CC\x666F",
         L"Display settings",
-        L"\x663E\x793A\x8BBE\x7F6E",
+        L"显示设置",
         L"Personalize",
-        L"\x4E2A\x6027\x5316",
-        L"\x5F00\x542F\x684C\x9762\x6574\x7406"
+        L"个性化",
+        L"Organize Desktop",
+        L"Desktop organizer",
     };
 
     for (int i = GetMenuItemCount(menu) - 1; i >= 0; --i) {
@@ -438,34 +515,39 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             UINT nextId = CUSTOM_MENU_ID_BASE;
 
             // 閫掑綊鏋勫缓鑿滃崟鐨勮緟鍔╁嚱鏁?
-            std::function<void(HMENU, const std::vector<CustomMenuItem>&)> addItems = 
-                [&](HMENU hMenuTarget, const std::vector<CustomMenuItem>& items) {
-                // 鍏堟彃鍏ュ垎闅旂嚎锛堝鏋滄槸椤跺眰锛屽垯鍦ㄦ渶鍚庢彃鍏ヤ互鍒嗛殧Shell鑿滃崟锛?
+            std::function<void(HMENU, const std::vector<CustomMenuItem>&, int)> addItems =
+                [&](HMENU hMenuTarget, const std::vector<CustomMenuItem>& items, int insertPosition) {
+                const bool appendAfterAnchor = hMenuTarget == hMenu.get() && insertPosition >= 0;
+                UINT currentInsertPos = appendAfterAnchor ? static_cast<UINT>(insertPosition) : 0;
                 if (hMenuTarget == hMenu.get()) {
-                     InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                    InsertMenuW(hMenuTarget, currentInsertPos, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                    if (appendAfterAnchor) {
+                        ++currentInsertPos;
+                    }
                 }
 
-                // 浠庡悗寰€鍓嶆彃鍏ュ埌浣嶇疆0锛屼互淇濇寔 items 涓殑椤哄簭
-                for (int i = static_cast<int>(items.size()) - 1; i >= 0; --i) {
+                const int start = appendAfterAnchor ? 0 : static_cast<int>(items.size()) - 1;
+                const int end = appendAfterAnchor ? static_cast<int>(items.size()) : -1;
+                const int step = appendAfterAnchor ? 1 : -1;
+                for (int i = start; i != end; i += step) {
                     const auto& item = items[i];
                     if (item.isSeparator) {
-                        InsertMenuW(hMenuTarget, 0, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                        InsertMenuW(hMenuTarget, currentInsertPos, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+                        if (appendAfterAnchor) {
+                            ++currentInsertPos;
+                        }
                     } else if (!item.children.empty()) {
                         HMENU hSubMenu = CreatePopupMenu();
-                        addItems(hSubMenu, item.children);
-                        UINT insertPos = 0;
-                        if (hMenuTarget == hMenu.get() && item.text == L"Undo Delete") {
-                            int anchor = FindTopLevelMenuAnchor(hMenuTarget);
-                            if (anchor >= 0) {
-                                insertPos = static_cast<UINT>(anchor);
-                            }
-                        }
-                        InsertMenuW(hMenuTarget, insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
+                        addItems(hSubMenu, item.children, -1);
+                        InsertMenuW(hMenuTarget, currentInsertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
                         if (item.hBitmap) {
                             MENUITEMINFOW mii = { sizeof(mii) };
                             mii.fMask = MIIM_BITMAP;
                             mii.hbmpItem = item.hBitmap;
-                            SetMenuItemInfoW(hMenuTarget, insertPos, TRUE, &mii);
+                            SetMenuItemInfoW(hMenuTarget, currentInsertPos, TRUE, &mii);
+                        }
+                        if (appendAfterAnchor) {
+                            ++currentInsertPos;
                         }
                     } else {
                         UINT id = nextId++;
@@ -473,25 +555,20 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                         if (item.checked) flags |= MF_CHECKED;
                         if (!item.enabled) flags |= MF_GRAYED;
 
-                        UINT insertPos = 0;
-                        if (hMenuTarget == hMenu.get() && item.text == L"Undo Delete") {
-                            int anchor = FindTopLevelMenuAnchor(hMenuTarget);
-                            if (anchor >= 0) {
-                                insertPos = static_cast<UINT>(anchor);
-                            }
-                        }
-
-                        InsertMenuW(hMenuTarget, insertPos, flags, id, item.text.c_str());
+                        InsertMenuW(hMenuTarget, currentInsertPos, flags, id, item.text.c_str());
                         
                         if (item.hBitmap) {
                             MENUITEMINFOW mii = { sizeof(mii) };
                             mii.fMask = MIIM_BITMAP;
                             mii.hbmpItem = item.hBitmap;
-                            SetMenuItemInfoW(hMenuTarget, insertPos, TRUE, &mii);
+                            SetMenuItemInfoW(hMenuTarget, currentInsertPos, TRUE, &mii);
                         }
                         
                         if (item.callback) {
                             m_customCallbackMap[id] = item.callback;
+                        }
+                        if (appendAfterAnchor) {
+                            ++currentInsertPos;
                         }
                     }
                 }
@@ -500,7 +577,6 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             if (operationType == OperationType::boxBackground) {
                 std::vector<CustomMenuItem> sharedItems;
                 std::vector<CustomMenuItem> boxTailItems;
-                std::vector<CustomMenuItem> deferredItems;
                 int splitIndex = -1;
                 auto trimSeparators = [](std::vector<CustomMenuItem>& menuItems) {
                     while (!menuItems.empty() && menuItems.front().isSeparator) {
@@ -525,11 +601,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
                 if (splitIndex >= 0) {
                     for (int i = 0; i < static_cast<int>(m_customItems.size()); ++i) {
                         if (i < splitIndex) {
-                            if (m_customItems[i].text == L"LinDesk") {
-                                deferredItems.push_back(m_customItems[i]);
-                            } else {
-                                sharedItems.push_back(m_customItems[i]);
-                            }
+                            sharedItems.push_back(m_customItems[i]);
                         } else if (i > splitIndex) {
                             boxTailItems.push_back(m_customItems[i]);
                         }
@@ -540,85 +612,26 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
 
                 trimSeparators(sharedItems);
                 trimSeparators(boxTailItems);
-                trimSeparators(deferredItems);
 
                 if (!sharedItems.empty()) {
-                    addItems(hMenu.get(), sharedItems);
+                    addItems(hMenu.get(), sharedItems, -1);
                 }
 
-                int anchor = FindTopLevelMenuAnchor(hMenu.get());
-                if (anchor >= 0) {
-                    UINT insertPos = static_cast<UINT>(anchor + 1);
-                    if (!boxTailItems.empty()) {
-                        InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
-                        ++insertPos;
+                if (!boxTailItems.empty()) {
+                    int insertPosition = FindNewMenuInsertPosition(hMenu.get());
+                    if (insertPosition < 0) {
+                        insertPosition = GetMenuItemCount(hMenu.get());
                     }
-                    for (const auto& item : boxTailItems) {
-                        if (item.isSeparator) {
-                            InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
-                            ++insertPos;
-                            continue;
-                        }
-
-                        HMENU hSubMenu = nullptr;
-                        if (!item.children.empty()) {
-                            hSubMenu = CreatePopupMenu();
-                            addItems(hSubMenu, item.children);
-                            InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
-                        } else {
-                            UINT id = nextId++;
-                            UINT flags = MF_BYPOSITION | MF_STRING;
-                            if (item.checked) flags |= MF_CHECKED;
-                            if (!item.enabled) flags |= MF_GRAYED;
-                            InsertMenuW(hMenu.get(), insertPos, flags, id, item.text.c_str());
-                            if (item.callback) {
-                                m_customCallbackMap[id] = item.callback;
-                            }
-                        }
-
-                        if (item.hBitmap) {
-                            MENUITEMINFOW mii = { sizeof(mii) };
-                            mii.fMask = MIIM_BITMAP;
-                            mii.hbmpItem = item.hBitmap;
-                            SetMenuItemInfoW(hMenu.get(), insertPos, TRUE, &mii);
-                        }
-
-                        ++insertPos;
-                    }
-
-                    for (const auto& item : deferredItems) {
-                        HMENU hSubMenu = nullptr;
-                        if (!item.children.empty()) {
-                            hSubMenu = CreatePopupMenu();
-                            addItems(hSubMenu, item.children);
-                            InsertMenuW(hMenu.get(), insertPos, MF_BYPOSITION | MF_POPUP, (UINT_PTR)hSubMenu, item.text.c_str());
-                        } else {
-                            UINT id = nextId++;
-                            UINT flags = MF_BYPOSITION | MF_STRING;
-                            if (item.checked) flags |= MF_CHECKED;
-                            if (!item.enabled) flags |= MF_GRAYED;
-                            InsertMenuW(hMenu.get(), insertPos, flags, id, item.text.c_str());
-                            if (item.callback) {
-                                m_customCallbackMap[id] = item.callback;
-                            }
-                        }
-
-                        if (item.hBitmap) {
-                            MENUITEMINFOW mii = { sizeof(mii) };
-                            mii.fMask = MIIM_BITMAP;
-                            mii.hbmpItem = item.hBitmap;
-                            SetMenuItemInfoW(hMenu.get(), insertPos, TRUE, &mii);
-                        }
-
-                        ++insertPos;
-                    }
-                } else {
-                    addItems(hMenu.get(), m_customItems);
+                    addItems(hMenu.get(), boxTailItems, insertPosition);
                 }
             } else {
-                addItems(hMenu.get(), m_customItems);
+                addItems(hMenu.get(), m_customItems, -1);
             }
         }
+    }
+
+    if (operationType == OperationType::boxBackground) {
+        DebugLogTopLevelMenuItems(hMenu.get(), L"BoxContextMenu");
     }
 
     UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);

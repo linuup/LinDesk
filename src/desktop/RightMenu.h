@@ -31,7 +31,6 @@ public:
 
     void initializeCustomMenu();
     void showMenu(QPoint pos, ListItem* listItem) const;
-    void showBoxMenu(QPoint pos) const;
     void showMultObjectMenu(QPoint pos, std::vector<ListItem*> items) const;
 
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);

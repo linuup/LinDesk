@@ -381,6 +381,7 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 	scm.ShowMenu(this->hwnd, position, nullptr);
 }
 
+#if 0
 void RightMenu::showBoxMenu(QPoint pos) const {
 	ShellContextMenu scm;
 	POINT p = { pos.x(),pos.y() };
@@ -402,6 +403,8 @@ void RightMenu::showBoxMenu(QPoint pos) const {
 	}
 	scm.ShowMenu(this->hwnd, position, nullptr);
 }
+
+#endif
 
 std::vector<ShellContextMenu::CustomMenuItem> RightMenu::convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps) {
 	std::vector<ShellContextMenu::CustomMenuItem> items;
