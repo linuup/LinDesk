@@ -20,8 +20,11 @@ public:
     struct Options
     {
         QColor textColor = QColor(255, 255, 255);
+        QColor outlineColor = QColor(0, 0, 0, 220);
         QColor glowColor = QColor(0, 0, 0, 210);
         QColor innerShadowColor = QColor(0, 0, 0, 155);
+        int outlineWidth = 0;
+        QPoint outlineOffset = QPoint(0, 0);
         int largeGlowRadius = 6;
         int tightGlowRadius = 2;
         QPoint glowOffset = QPoint(0, 0);

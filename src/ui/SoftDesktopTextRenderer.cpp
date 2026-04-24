@@ -76,6 +76,23 @@ void SoftDesktopTextRenderer::drawText(QPainter* painter,
         }
     }
 
+    if (options.outlineWidth > 0 && options.outlineColor.alpha() > 0) {
+        painter->setPen(options.outlineColor);
+        for (int i = 0; i < elidedLines.size() && i < lineRects.size(); ++i) {
+            for (int dy = -options.outlineWidth; dy <= options.outlineWidth; ++dy) {
+                for (int dx = -options.outlineWidth; dx <= options.outlineWidth; ++dx) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    painter->drawText(lineRects[i].translated(dx + options.outlineOffset.x(),
+                                                              dy + options.outlineOffset.y()),
+                                      options.alignment,
+                                      elidedLines[i]);
+                }
+            }
+        }
+    }
+
     painter->setPen(options.innerShadowColor);
     for (int i = 0; i < elidedLines.size() && i < lineRects.size(); ++i) {
         painter->drawText(lineRects[i].translated(options.innerShadowOffset), options.alignment, elidedLines[i]);

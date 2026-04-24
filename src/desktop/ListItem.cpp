@@ -9,6 +9,7 @@
 #include "ui/SoftDesktopTextRenderer.h"
 #include <QFontMetrics>
 #include <QImageReader>
+#include <QQueue>
 #include <QRegularExpression>
 #include <QTimer>
 #include "services/SysInfoUtil.h"
@@ -28,7 +29,7 @@ QString buildIconIdentityKey(const ListItemData& data,
 
     const QString suffix = fileInfo.suffix().toLower();
     if (fileInfo.isDir()) {
-        return QString("dir:%1").arg(normalizedPath);
+        return QString("dir:v3:%1").arg(normalizedPath);
     }
 
     if (suffix == "exe" || suffix == "msi" || suffix == "msp" || suffix == "msu" ||
@@ -141,6 +142,152 @@ QPixmap buildCroppedRenderPixmap(const QIcon& icon, int iconSide)
         pix = pix.scaled(iconSide, iconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
     return pix;
+}
+
+bool isNearWhiteOpaque(QRgb pixel)
+{
+    return qAlpha(pixel) >= 245 &&
+        qRed(pixel) >= 235 &&
+        qGreen(pixel) >= 235 &&
+        qBlue(pixel) >= 235;
+}
+
+bool isCloseToMatteColor(QRgb pixel, const QColor& matteColor, int tolerance)
+{
+    if (qAlpha(pixel) < 245) {
+        return false;
+    }
+
+    return qAbs(qRed(pixel) - matteColor.red()) <= tolerance &&
+        qAbs(qGreen(pixel) - matteColor.green()) <= tolerance &&
+        qAbs(qBlue(pixel) - matteColor.blue()) <= tolerance;
+}
+
+QPixmap sanitizeFolderPreviewMatte(const QPixmap& source)
+{
+    if (source.isNull()) {
+        return source;
+    }
+
+    QImage image = source.toImage().convertToFormat(QImage::Format_ARGB32);
+    if (image.isNull() || image.width() < 8 || image.height() < 8) {
+        return source;
+    }
+
+    const QRgb topLeft = image.pixel(0, 0);
+    const QRgb topRight = image.pixel(image.width() - 1, 0);
+    const QRgb bottomLeft = image.pixel(0, image.height() - 1);
+    const QRgb bottomRight = image.pixel(image.width() - 1, image.height() - 1);
+    if (!isNearWhiteOpaque(topLeft) ||
+        !isNearWhiteOpaque(topRight) ||
+        !isNearWhiteOpaque(bottomLeft) ||
+        !isNearWhiteOpaque(bottomRight)) {
+        return source;
+    }
+
+    const QColor matteColor = QColor::fromRgb(topLeft);
+    const int tolerance = 16;
+    QImage result = image;
+    QVector<uchar> visited(image.width() * image.height(), 0);
+    QQueue<QPoint> queue;
+
+    auto enqueue = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) {
+            return;
+        }
+        const int index = y * image.width() + x;
+        if (visited[index]) {
+            return;
+        }
+        if (!isCloseToMatteColor(result.pixel(x, y), matteColor, tolerance)) {
+            return;
+        }
+        visited[index] = 1;
+        queue.enqueue(QPoint(x, y));
+    };
+
+    for (int x = 0; x < image.width(); ++x) {
+        enqueue(x, 0);
+        enqueue(x, image.height() - 1);
+    }
+    for (int y = 0; y < image.height(); ++y) {
+        enqueue(0, y);
+        enqueue(image.width() - 1, y);
+    }
+
+    int clearedPixels = 0;
+    while (!queue.isEmpty()) {
+        const QPoint point = queue.dequeue();
+        result.setPixel(point.x(), point.y(), qRgba(qRed(result.pixel(point.x(), point.y())),
+                                                    qGreen(result.pixel(point.x(), point.y())),
+                                                    qBlue(result.pixel(point.x(), point.y())),
+                                                    0));
+        ++clearedPixels;
+
+        enqueue(point.x() - 1, point.y());
+        enqueue(point.x() + 1, point.y());
+        enqueue(point.x(), point.y() - 1);
+        enqueue(point.x(), point.y() + 1);
+    }
+
+    if (clearedPixels == 0) {
+        return source;
+    }
+
+    auto isClearedMattePixel = [&](int x, int y) -> bool {
+        if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) {
+            return false;
+        }
+        return visited[y * image.width() + x] != 0;
+    };
+
+    auto decontaminateChannel = [](int channel, int matteChannel, int alpha) -> int {
+        if (alpha <= 0) {
+            return 0;
+        }
+
+        const double a = alpha / 255.0;
+        const double corrected = (channel - (1.0 - a) * matteChannel) / a;
+        return qBound(0, qRound(corrected), 255);
+    };
+
+    for (int y = 0; y < result.height(); ++y) {
+        for (int x = 0; x < result.width(); ++x) {
+            if (isClearedMattePixel(x, y)) {
+                continue;
+            }
+
+            const QRgb pixel = result.pixel(x, y);
+            const int alpha = qAlpha(pixel);
+            if (alpha <= 0 || alpha >= 255) {
+                continue;
+            }
+
+            bool touchesClearedMatte = false;
+            for (int dy = -1; dy <= 1 && !touchesClearedMatte; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    if (isClearedMattePixel(x + dx, y + dy)) {
+                        touchesClearedMatte = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!touchesClearedMatte) {
+                continue;
+            }
+
+            const int correctedR = decontaminateChannel(qRed(pixel), matteColor.red(), alpha);
+            const int correctedG = decontaminateChannel(qGreen(pixel), matteColor.green(), alpha);
+            const int correctedB = decontaminateChannel(qBlue(pixel), matteColor.blue(), alpha);
+            result.setPixel(x, y, qRgba(correctedR, correctedG, correctedB, alpha));
+        }
+    }
+
+    return QPixmap::fromImage(result);
 }
 
 bool isShortcutSuffix(const QFileInfo& fileInfo)
@@ -518,6 +665,9 @@ void ListItem::initData()
             if (rawPix.isNull()) {
                 QIcon fallbackIcon = requestSystemShellFallbackIcon(m_fileInfo, m_type);
                 rawPix = buildCroppedRenderPixmap(fallbackIcon, iconSide);
+            }
+            if (m_type != ObjectType::SpecialFolder && m_fileInfo.isDir() && !rawPix.isNull()) {
+                rawPix = sanitizeFolderPreviewMatte(rawPix);
             }
             if (m_type == ObjectType::DiskLetter && !rawPix.isNull()) {
                 QPixmap fadedPix(rawPix.size());
@@ -1033,17 +1183,22 @@ void ListItem::paintEvent(QPaintEvent* event) {
             QStringList textLines;
             SoftDesktopTextRenderer::Options options;
             options.textColor = QColor(255, 255, 255);
-            options.glowColor = QColor(0, 0, 0, 170);
-            options.innerShadowColor = QColor(0, 0, 0, 115);
+            options.outlineColor = QColor(0, 0, 0, 105);
+            options.outlineOffset = QPoint(0, 1);
+            options.innerShadowColor = QColor(0, 0, 0, 0);
+            options.glowColor = QColor(0, 0, 0, 52);
+            options.glowOffset = QPoint(0, 1);
             options.largeGlowRadius = 1;
             options.tightGlowRadius = 1;
 
             if (m_layoutMode == LayoutMode::IconMode) {
                 textLines = buildDesktopLines(displayName(), fm, labelRect.width(), m_expandFullNameOnSelect ? 64 : 2);
                 options.alignment = Qt::AlignHCenter | Qt::AlignTop;
+                options.outlineWidth = 1;
             } else {
                 textLines << fm.elidedText(displayName(), Qt::ElideRight, labelRect.width());
                 options.alignment = Qt::AlignVCenter | Qt::AlignLeft;
+                options.outlineWidth = 0;
             }
 
             SoftDesktopTextRenderer::drawText(&painter, labelRect, textLines, labelFont, options);
