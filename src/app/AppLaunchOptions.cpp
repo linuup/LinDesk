@@ -1,5 +1,32 @@
 #include "app/AppLaunchOptions.h"
 #include "desktop/LinDesktop.h"
+#include <QDir>
+#include <QFile>
+
+namespace {
+void ensureDesktopDebugLogExists()
+{
+    const QString localAppDataPath = qEnvironmentVariable("LOCALAPPDATA");
+    if (localAppDataPath.isEmpty()) {
+        return;
+    }
+
+    QDir dir(localAppDataPath);
+    if (!dir.mkpath(QStringLiteral("LinDesk"))) {
+        return;
+    }
+
+    const QString logFilePath = dir.filePath(QStringLiteral("LinDesk/desktop.log"));
+    QFile logFile(logFilePath);
+    if (logFile.exists()) {
+        return;
+    }
+
+    if (logFile.open(QIODevice::WriteOnly)) {
+        logFile.close();
+    }
+}
+}
 
 AppLaunchOptions AppLaunchOptions::fromArguments(const QStringList& arguments)
 {
@@ -25,4 +52,5 @@ void AppLaunchOptions::apply(LinDesktop* linDesktop) const
 void AppLaunchOptions::handleDebugOption(LinDesktop* linDesktop) const
 {
     Q_UNUSED(linDesktop);
+    ensureDesktopDebugLogExists();
 }

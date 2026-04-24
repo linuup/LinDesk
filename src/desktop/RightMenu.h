@@ -32,6 +32,9 @@ public:
     void initializeCustomMenu();
     void showMenu(QPoint pos, ListItem* listItem) const;
     void showMultObjectMenu(QPoint pos, std::vector<ListItem*> items) const;
+    static bool isWindows11SystemContextMenuSupported();
+    static bool isWindows11SystemContextMenuEnabled();
+    static void setWindows11SystemContextMenuEnabled(bool enabled);
 
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);
     static std::vector<ShellContextMenu::CustomMenuItem> exportCustomMenuItems(

@@ -16,10 +16,25 @@
 #include <QApplication>
 #include <QStyle>
 #include <QPainter>
+#include <QOperatingSystemVersion>
 #include <Windows.h>
 
 namespace {
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
+constexpr int kWindows11BuildNumber = 22000;
+const char kWindows11ContextMenuConfigKey[] = "Desktop/UseWindows11SystemContextMenu";
+
+QString rightMenuConfigPath()
+{
+    return QCoreApplication::applicationDirPath() + "/config.ini";
+}
+
+bool isWindows11OrNewer()
+{
+    const QOperatingSystemVersion currentVersion = QOperatingSystemVersion::current();
+    return currentVersion.majorVersion() > 10 ||
+        (currentVersion.majorVersion() == 10 && currentVersion.microVersion() >= kWindows11BuildNumber);
+}
 
 bool useChineseShellMenuText()
 {
@@ -33,6 +48,39 @@ QString shellMenuText(const char* englishSource, const char* chineseUtf8)
         ? QString::fromUtf8(chineseUtf8)
         : QString::fromUtf8(englishSource);
 }
+}
+
+bool RightMenu::isWindows11SystemContextMenuSupported()
+{
+    return isWindows11OrNewer();
+}
+
+bool RightMenu::isWindows11SystemContextMenuEnabled()
+{
+    QSettings settings(rightMenuConfigPath(), QSettings::IniFormat);
+    const QString configKey = QString::fromLatin1(kWindows11ContextMenuConfigKey);
+
+    if (!isWindows11SystemContextMenuSupported()) {
+        settings.setValue(configKey, false);
+        settings.sync();
+        return false;
+    }
+
+    if (!settings.contains(configKey)) {
+        settings.setValue(configKey, true);
+        settings.sync();
+        return true;
+    }
+
+    return settings.value(configKey, true).toBool();
+}
+
+void RightMenu::setWindows11SystemContextMenuEnabled(bool enabled)
+{
+    QSettings settings(rightMenuConfigPath(), QSettings::IniFormat);
+    settings.setValue(QString::fromLatin1(kWindows11ContextMenuConfigKey),
+        isWindows11SystemContextMenuSupported() && enabled);
+    settings.sync();
 }
   
 QMenu* RightMenu::createSortBySubMenu()
@@ -358,6 +406,10 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 	if (this->fileType == ObjectType::BackGround) {
 		const_cast<RightMenu*>(this)->updatePasteActionsState();
 		scm.DisplayDesktopContextMenu();
+		if (RightMenu::isWindows11SystemContextMenuEnabled()) {
+			scm.ShowMenu(this->hwnd, position, nullptr);
+			return;
+		}
 
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {

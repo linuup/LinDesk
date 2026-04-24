@@ -1,0 +1,28 @@
+# Visual Studio local state
+.vs/
+*.user
+*.suo
+
+# Build output
+bin/
+obj/
+x64/
+Debug/
+Release/
+
+# Local packaging output
+package/
+
+# Local restored packages
+packages/
+.nuget/
+
+# Temporary and diagnostics
+*.log
+*.tmp
+*.temp
+
+# Leftover nested prototype cache
+NativeXamlIslandMenu/.vs/
+NativeXamlIslandMenu/bin/
+NativeXamlIslandMenu/obj/

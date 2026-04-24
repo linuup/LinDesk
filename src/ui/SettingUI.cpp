@@ -43,6 +43,7 @@
 #include <QUrl>
 #include <QDir>
 #include <QShowEvent>
+#include "desktop/RightMenu.h"
 
 // Custom delegate to draw the Fluent Design 2 style sidebar
 class SidebarDelegate : public QStyledItemDelegate {
@@ -647,6 +648,34 @@ QWidget* SettingUI::createDesktopPage() {
     });
     m_hideIconsCard = new FluentCard(u8"\uE949", tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces"), hideToggle, page);
     layout->addWidget(m_hideIconsCard);
+
+    m_windows11ContextMenuToggle = new FluentToggleSwitch(page);
+    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
+    m_windows11ContextMenuToggle->setChecked(RightMenu::isWindows11SystemContextMenuEnabled());
+    m_windows11ContextMenuToggle->setEnabled(windows11ContextMenuSupported);
+    if (!windows11ContextMenuSupported) {
+        m_windows11ContextMenuToggle->setToolTip(tr("This option is available only on Windows 11."));
+    }
+    connect(m_windows11ContextMenuToggle, &FluentToggleSwitch::toggled, this, [this, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (m_windows11ContextMenuToggle) {
+                const QSignalBlocker blocker(m_windows11ContextMenuToggle);
+                m_windows11ContextMenuToggle->setChecked(false);
+            }
+            return;
+        }
+
+        RightMenu::setWindows11SystemContextMenuEnabled(checked);
+    });
+    m_windows11ContextMenuCard = new FluentCard(
+        u8"\uE8B8",
+        tr("Windows 11 Context Menu"),
+        windows11ContextMenuSupported
+            ? tr("Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView")
+            : tr("This option is available only on Windows 11"),
+        m_windows11ContextMenuToggle,
+        page);
+    layout->addWidget(m_windows11ContextMenuCard);
 
     layout->addStretch();
     return page;
@@ -1362,6 +1391,15 @@ void SettingUI::retranslateUi() {
     if (m_hideIconsCard) {
         m_hideIconsCard->setTitle(tr("Double Click to Hide"));
         m_hideIconsCard->setSubtitle(tr("Quickly show or hide all desktop icons by double-clicking on empty spaces"));
+    }
+    if (m_windows11ContextMenuCard) {
+        m_windows11ContextMenuCard->setTitle(tr("Windows 11 Context Menu"));
+        m_windows11ContextMenuCard->setSubtitle(RightMenu::isWindows11SystemContextMenuSupported()
+            ? tr("Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView")
+            : tr("This option is available only on Windows 11"));
+    }
+    if (m_windows11ContextMenuToggle && !RightMenu::isWindows11SystemContextMenuSupported()) {
+        m_windows11ContextMenuToggle->setToolTip(tr("This option is available only on Windows 11."));
     }
     if (m_boxColorSectionTitle) m_boxColorSectionTitle->setText(tr("Accent Color"));
     if (m_boxColorSectionSubtitle) m_boxColorSectionSubtitle->setText(tr("Define the primary theme color for your desktop boxes"));
