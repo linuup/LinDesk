@@ -7,16 +7,35 @@
 #include "desktop/RenameManager.h"
 #include "box/LinBox.h"
 #include "ui/SoftDesktopTextRenderer.h"
+#include <QCoreApplication>
 #include <QFontMetrics>
 #include <QImageReader>
 #include <QQueue>
 #include <QRegularExpression>
 #include <QTimer>
+#include "services/DpiScaleHelper.h"
 #include "services/SysInfoUtil.h"
 #include <shellapi.h>
 class ListView;
 
 namespace {
+
+int scaledPx(const QWidget* widget, int value)
+{
+    return DpiScaleHelper::scalePx(widget, value);
+}
+
+ListView* owningListView(const QWidget* widget)
+{
+    const QWidget* current = widget;
+    while (current) {
+        if (auto* listView = qobject_cast<ListView*>(const_cast<QWidget*>(current))) {
+            return listView;
+        }
+        current = current->parentWidget();
+    }
+    return nullptr;
+}
 
 QString buildIconIdentityKey(const ListItemData& data,
                              ObjectType type,
@@ -370,40 +389,42 @@ QString buildVisibleDisplayName(const ListItemData& data,
     return data.fullName();
 }
 
-int fixedIconSideForMode(ListItem::LayoutMode layoutMode, int itemWidth)
+int fixedIconSideForMode(const QWidget* widget, ListItem::LayoutMode layoutMode, int itemWidth)
 {
     if (layoutMode == ListItem::LayoutMode::ListMode) {
-        return 20;
+        return DpiScaleHelper::scalePx(widget, 20);
     }
 
-    if (itemWidth >= ListView::kLargeIconW) {
-        return 96;
+    const int largeThreshold = DpiScaleHelper::scalePx(widget, ListView::kLargeIconW);
+    const int smallThreshold = DpiScaleHelper::scalePx(widget, ListView::kSmallIconW);
+    if (itemWidth >= largeThreshold) {
+        return DpiScaleHelper::scalePx(widget, 96);
     }
-    if (itemWidth <= ListView::kSmallIconW) {
-        return 32;
+    if (itemWidth <= smallThreshold) {
+        return DpiScaleHelper::scalePx(widget, 32);
     }
-    return 48;
+    return DpiScaleHelper::scalePx(widget, 48);
 }
 
-QSize baseItemSizeForMode(ListItem::LayoutMode layoutMode)
+QSize baseItemSizeForMode(const QWidget* widget, ListItem::LayoutMode layoutMode)
 {
     if (layoutMode == ListItem::LayoutMode::ListMode) {
-        return QSize(0, 30);
+        return QSize(0, DpiScaleHelper::scalePx(widget, 30));
     }
 
-    ListView* listView = ListView::instance();
+    ListView* listView = owningListView(widget);
     if (!listView) {
-        return QSize(76, 78);
+        return QSize(DpiScaleHelper::scalePx(widget, 76), DpiScaleHelper::scalePx(widget, 78));
     }
 
     switch (listView->viewMode()) {
     case ListView::ViewMode::LargeIcon:
-        return QSize(ListView::kLargeIconW, ListView::kLargeIconH);
+        return QSize(DpiScaleHelper::scalePx(widget, ListView::kLargeIconW), DpiScaleHelper::scalePx(widget, ListView::kLargeIconH));
     case ListView::ViewMode::SmallIcon:
-        return QSize(ListView::kSmallIconW, ListView::kSmallIconH);
+        return QSize(DpiScaleHelper::scalePx(widget, ListView::kSmallIconW), DpiScaleHelper::scalePx(widget, ListView::kSmallIconH));
     case ListView::ViewMode::MediumIcon:
     default:
-        return QSize(ListView::kMediumIconW, ListView::kMediumIconH);
+        return QSize(DpiScaleHelper::scalePx(widget, ListView::kMediumIconW), DpiScaleHelper::scalePx(widget, ListView::kMediumIconH));
     }
 }
 
@@ -484,7 +505,7 @@ int computeDesktopTextHeight(const QString& text, const QFontMetrics& metrics, i
 ListItem::ListItem(QWidget* parent)
 	: QWidget(parent)
 {
-    m_baseItemSize = QSize(76, 78);
+    m_baseItemSize = baseItemSizeForMode(this, LayoutMode::IconMode);
 	// Child widgets should not have separate window flags
 	// setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
 	setAttribute(Qt::WA_TranslucentBackground);
@@ -500,9 +521,9 @@ ListItem::ListItem(QWidget* parent)
 	// Add a subtle shadow so white desktop text stays readable.
 	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
 	
-	shadowEffect->setBlurRadius(5);
+	shadowEffect->setBlurRadius(DpiScaleHelper::scalePx(this, 5));
 	shadowEffect->setColor(QColor(0, 0, 0, 200));
-	shadowEffect->setOffset(-1, 1);
+	shadowEffect->setOffset(-DpiScaleHelper::scalePx(this, 1), DpiScaleHelper::scalePx(this, 1));
 
 
 
@@ -522,13 +543,13 @@ ListItem::ListItem(QWidget* parent)
 
 ListItem::ListItem(const QString& path, QWidget* parent)
 	: QWidget(parent)
-	, m_baseItemSize(76, 78)
-	, m_itemSize(76, 78)
+	, m_baseItemSize(baseItemSizeForMode(parent, LayoutMode::IconMode))
+	, m_itemSize(baseItemSizeForMode(parent, LayoutMode::IconMode))
 	, m_itemPos(0, 0)
 	, m_iconWidget(nullptr)
 	, textLabel(nullptr)
 {
-	this->setItemSize(76, 78);
+	this->setItemSize(m_baseItemSize.width(), m_baseItemSize.height());
 	
 	setParent(parent);
 	this->setObjectName(QUuid::createUuid().toString(QUuid::WithoutBraces));
@@ -548,9 +569,9 @@ ListItem::ListItem(const QString& path, QWidget* parent)
 	// Add a subtle shadow so white desktop text stays readable.
 	QGraphicsDropShadowEffect* shadowEffect = new QGraphicsDropShadowEffect(this);
 
-	shadowEffect->setBlurRadius(5);
+	shadowEffect->setBlurRadius(DpiScaleHelper::scalePx(this, 5));
 	shadowEffect->setColor(QColor(0, 0, 0, 200));
-	shadowEffect->setOffset(-1, 1);
+	shadowEffect->setOffset(-DpiScaleHelper::scalePx(this, 1), DpiScaleHelper::scalePx(this, 1));
 
 
 
@@ -637,15 +658,15 @@ void ListItem::initData()
 			int leftMargin;
 			
 			if (m_layoutMode == LayoutMode::IconMode) {
-				iconSide = qBound(16, fixedIconSideForMode(m_layoutMode, m_itemSize.width()), 128);
-				iconSide = qMin(iconSide, m_itemSize.width() - 4);
-				topMargin = 4;
+				iconSide = qBound(DpiScaleHelper::scalePx(this, 16), fixedIconSideForMode(this, m_layoutMode, m_itemSize.width()), DpiScaleHelper::scalePx(this, 128));
+				iconSide = qMin(iconSide, m_itemSize.width() - DpiScaleHelper::scalePx(this, 4));
+				topMargin = DpiScaleHelper::scalePx(this, 4);
 				leftMargin = (m_itemSize.width() - iconSide) / 2;
 			} else {
 				// List Mode: standard list icon size (20px in 30px row)
-				iconSide = fixedIconSideForMode(m_layoutMode, m_itemSize.width());
+				iconSide = fixedIconSideForMode(this, m_layoutMode, m_itemSize.width());
 				topMargin = (m_itemSize.height() - iconSide) / 2;
-				leftMargin = 8;
+				leftMargin = DpiScaleHelper::scalePx(this, 8);
 			}
 
             QPixmap rawPix;
@@ -698,7 +719,8 @@ void ListItem::initData()
 
 			// --- Shortcut Arrow Overlay ---
 			bool isShortcut = m_fileInfo.suffix().toLower() == "lnk" || m_fileInfo.suffix().toLower() == "url";
-			bool showArrowSetting = ListView::instance()->shortcutArrowVisible();
+			ListView* listView = owningListView(this);
+			bool showArrowSetting = listView ? listView->shortcutArrowVisible() : true;
 
 			if (isShortcut && showArrowSetting) {
 				if (!m_shortcutArrowOverlay) {
@@ -720,7 +742,7 @@ void ListItem::initData()
 						overlaySize = ListView::kListArrowSize;
 					} else {
 						// Map of ViewMode -> Arrow Size
-						ListView::ViewMode currentMode = ListView::instance()->viewMode();
+						ListView::ViewMode currentMode = listView ? listView->viewMode() : ListView::ViewMode::MediumIcon;
 						switch (currentMode) {
 							case ListView::ViewMode::LargeIcon:  overlaySize = ListView::kLargeArrowSize; break;
 							case ListView::ViewMode::MediumIcon: overlaySize = ListView::kMediumArrowSize; break;
@@ -762,9 +784,9 @@ void ListItem::initData()
 		}
 
         if (m_layoutMode == LayoutMode::IconMode) {
-            const QSize fallbackBaseSize = baseItemSizeForMode(m_layoutMode);
+            const QSize fallbackBaseSize = baseItemSizeForMode(this, m_layoutMode);
             const int baseWidth = m_baseItemSize.width() > 0 ? m_baseItemSize.width() : fallbackBaseSize.width();
-            const int textWidth = qMax(10, baseWidth - 4);
+            const int textWidth = qMax(DpiScaleHelper::scalePx(this, 10), baseWidth - DpiScaleHelper::scalePx(this, 4));
             const QFontMetrics labelMetrics(textLabel->font());
             int textHeight = 0;
             if (m_expandFullNameOnSelect) {
@@ -981,7 +1003,8 @@ int ListItem::visibleTextHeight() const
 QRect ListItem::selectionContentRect() const
 {
     if (m_layoutMode != LayoutMode::IconMode) {
-        return rect().adjusted(2, 2, -2, -2);
+        const int inset = DpiScaleHelper::scalePx(this, 2);
+        return rect().adjusted(inset, inset, -inset, -inset);
     }
 
     const QRect iconArea = iconRect();
@@ -998,31 +1021,31 @@ QRect ListItem::selectionContentRect() const
 QRect ListItem::iconRect() const
 {
     if (m_layoutMode == LayoutMode::ListMode) {
-        const int iconSide = fixedIconSideForMode(m_layoutMode, width());
+        const int iconSide = fixedIconSideForMode(this, m_layoutMode, width());
         const int topMargin = (height() - iconSide) / 2;
-        return QRect(8, topMargin, iconSide, iconSide);
+        return QRect(DpiScaleHelper::scalePx(this, 8), topMargin, iconSide, iconSide);
     }
 
-    const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode, width()), 128), width() - 4);
+    const int iconSide = qMin(qBound(DpiScaleHelper::scalePx(this, 16), fixedIconSideForMode(this, m_layoutMode, width()), DpiScaleHelper::scalePx(this, 128)), width() - DpiScaleHelper::scalePx(this, 4));
     const int leftMargin = (width() - iconSide) / 2;
-    return QRect(leftMargin, 1, iconSide, iconSide);
+    return QRect(leftMargin, DpiScaleHelper::scalePx(this, 1), iconSide, iconSide);
 }
 
 QRect ListItem::textRect() const
 {
     if (m_layoutMode == LayoutMode::ListMode) {
-        return QRect(36, 0, qMax(10, width() - 40), height());
+        return QRect(DpiScaleHelper::scalePx(this, 36), 0, qMax(DpiScaleHelper::scalePx(this, 10), width() - DpiScaleHelper::scalePx(this, 40)), height());
     }
 
     const QRect iconArea = iconRect();
-    const int top = iconArea.bottom() + ListItem::kIconTextGap;
-    return QRect(2, top, qMax(10, width() - 4), qMax(18, height() - top));
+    const int top = iconArea.bottom() + DpiScaleHelper::scalePx(this, ListItem::kIconTextGap);
+    return QRect(DpiScaleHelper::scalePx(this, 2), top, qMax(DpiScaleHelper::scalePx(this, 10), width() - DpiScaleHelper::scalePx(this, 4)), qMax(DpiScaleHelper::scalePx(this, 18), height() - top));
 }
 
 QRect ListItem::renameEditorRect() const
 {
     QRect rect = textRect();
-    rect.setHeight(qMax(22, rect.height()));
+    rect.setHeight(qMax(DpiScaleHelper::scalePx(this, 22), rect.height()));
     return rect;
 }
 
@@ -1032,11 +1055,11 @@ int ListItem::desiredIconModeHeight() const
         return m_baseItemSize.height();
     }
 
-    const int iconSide = qMin(qBound(16, fixedIconSideForMode(m_layoutMode, m_baseItemSize.width()), 128), m_baseItemSize.width() - 4);
-    const int textTop = 1 + iconSide + ListItem::kIconTextGap;
+    const int iconSide = qMin(qBound(DpiScaleHelper::scalePx(this, 16), fixedIconSideForMode(this, m_layoutMode, m_baseItemSize.width()), DpiScaleHelper::scalePx(this, 128)), m_baseItemSize.width() - DpiScaleHelper::scalePx(this, 4));
+    const int textTop = DpiScaleHelper::scalePx(this, 1) + iconSide + DpiScaleHelper::scalePx(this, ListItem::kIconTextGap);
     const int lineHeight = textLabel ? QFontMetrics(textLabel->font()).lineSpacing() : fontMetrics().lineSpacing();
     const int textHeight = qMax(m_visibleTextHeight, lineHeight);
-    return textTop + textHeight + 2;
+    return textTop + textHeight + DpiScaleHelper::scalePx(this, 2);
 }
 
 void ListItem::applyEffectiveGeometry()
@@ -1118,14 +1141,16 @@ void ListItem::paintEvent(QPaintEvent* event) {
 	//    return;
 	//}
 	//qDebug() << "ListItem painted";
-	QPainter painter(this);
-	painter.setRenderHint(QPainter::Antialiasing);
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
     const QRect rect = this->rect();
 	QPoint pos = this->pos();
 	QSize size = this->size();
     const QRect contentBounds = selectionContentRect();
-    const QRect outerHighlightRect = contentBounds.adjusted(-3, -3, 3, 3);
-    const QRect innerHighlightRect = contentBounds.adjusted(1, 1, -1, -1);
+    const int outerInset = DpiScaleHelper::scalePx(this, 3);
+    const int innerInset = DpiScaleHelper::scalePx(this, 1);
+    const QRect outerHighlightRect = contentBounds.adjusted(-outerInset, -outerInset, outerInset, outerInset);
+    const QRect innerHighlightRect = contentBounds.adjusted(innerInset, innerInset, -innerInset, -innerInset);
 
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(255, 80, 80, 32));
@@ -1144,22 +1169,22 @@ void ListItem::paintEvent(QPaintEvent* event) {
 	if (isSelected) {
 		painter.setPen(Qt::NoPen);
 		painter.setBrush(QColor(100, 150, 255, 30));
-		painter.drawRoundedRect(outerHighlightRect, 8, 8);
+		painter.drawRoundedRect(outerHighlightRect, DpiScaleHelper::scalePx(this, 8), DpiScaleHelper::scalePx(this, 8));
 
 		/*painter.setBrush(QColor(80, 140, 255, 60));
 		painter.drawRoundedRect(-1, -1, width + 2, height + 2, 6, 6);*/
 
 		painter.setBrush(QColor(255, 255, 255, 90));
-		painter.drawRoundedRect(innerHighlightRect, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, DpiScaleHelper::scalePx(this, 2), DpiScaleHelper::scalePx(this, 2));
 
-		painter.setPen(QPen(QColor(255, 255, 255, 150), 0.7));
+		painter.setPen(QPen(QColor(255, 255, 255, 150), qMax<qreal>(0.7, DpiScaleHelper::uiScaleForWidget(this) * 0.7)));
 		painter.setBrush(Qt::NoBrush);
-		painter.drawRoundedRect(innerHighlightRect, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, DpiScaleHelper::scalePx(this, 2), DpiScaleHelper::scalePx(this, 2));
 	}
 	if (isHovered) {
 		painter.setPen(Qt::NoPen);
 		painter.setBrush(QColor(255, 255, 255, 25));
-		painter.drawRoundedRect(innerHighlightRect, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, DpiScaleHelper::scalePx(this, 2), DpiScaleHelper::scalePx(this, 2));
 
 		QPen dashPen(QColor(255, 255, 255, 100));
 		dashPen.setWidthF(0.8);
@@ -1169,7 +1194,7 @@ void ListItem::paintEvent(QPaintEvent* event) {
 		
 		painter.setPen(dashPen);
 		painter.setBrush(Qt::NoBrush);
-		painter.drawRoundedRect(innerHighlightRect, 2, 2);
+		painter.drawRoundedRect(innerHighlightRect, DpiScaleHelper::scalePx(this, 2), DpiScaleHelper::scalePx(this, 2));
 	}
 
     if (isCutMarked) {

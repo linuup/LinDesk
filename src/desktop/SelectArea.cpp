@@ -4,11 +4,14 @@
 
 SelectArea::SelectArea(QWidget* parent)
     : QWidget(parent)
+    , m_hostWidget(parent)
 {
     setAttribute(Qt::WA_TransparentForMouseEvents);
     setAttribute(Qt::WA_NoSystemBackground, true);
     setAttribute(Qt::WA_TranslucentBackground);
-    syncToParent();
+    if (m_hostWidget) {
+        syncToRect(m_hostWidget->rect());
+    }
     hide();
 }
 
@@ -25,9 +28,14 @@ void SelectArea::setSelectionRect(const QRect& selectionRect)
 
 void SelectArea::syncToParent()
 {
-    if (parentWidget()) {
-        setGeometry(parentWidget()->rect());
+    if (m_hostWidget) {
+        syncToRect(m_hostWidget->rect());
     }
+}
+
+void SelectArea::syncToRect(const QRect& rect)
+{
+    setGeometry(rect);
 }
 
 void SelectArea::paintEvent(QPaintEvent* event)

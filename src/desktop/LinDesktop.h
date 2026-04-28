@@ -24,6 +24,8 @@
 #include <QMenu>
 #include <QAction>
 #include <QCloseEvent>
+#include <QMetaObject>
+#include <QPointer>
 #include <windows.h>
 class LinDesktop : public QWidget {
     Q_OBJECT
@@ -31,11 +33,11 @@ class LinDesktop : public QWidget {
 
 public:
     explicit LinDesktop(QWidget* parent = nullptr);
-    SelectArea* selectArea; //选择区域对象
+    QPointer<SelectArea> selectArea; //选择区域对象
 
     //First Floor
-    ListView* listView;
-    DesktopInfoMonitor* m_monitor = nullptr;
+    QPointer<ListView> listView;
+    QPointer<DesktopInfoMonitor> m_monitor;
     ~LinDesktop();
 
     QRect m_lastSelectRect;
@@ -59,6 +61,8 @@ public:
     bool shouldMinimizeToTray() const;
     void restoreFromTray();
     void exitFromTray();
+    void connectScreenSignals(QScreen* screen);
+    void handleDpiOrScreenMetricsChanged();
     
     void embedToDesktop();
     void unembedFromDesktop();
@@ -72,23 +76,27 @@ private:
     QPixmap m_prevScaledBackImagePixmap;
     float m_transitionOpacity = 1.0f;
     int m_transitionDuration = 1000; // Default 500ms
-    QVariantAnimation* m_transitionAnimation = nullptr;
-    QTimer* m_wallpaperLoadTimer = nullptr;
+    QPointer<QVariantAnimation> m_transitionAnimation;
+    QPointer<QTimer> m_wallpaperLoadTimer;
     QString m_currentWallpaperPath;
     QString m_pendingWallpaperPath;
     quint64 m_wallpaperLoadRequestId = 0;
     HANDLE m_singleInstanceMutex = nullptr;
-    QSystemTrayIcon* m_trayIcon = nullptr;
-    QMenu* m_trayMenu = nullptr;
-    QAction* m_showAction = nullptr;
-    QAction* m_exitAction = nullptr;
+    QPointer<QSystemTrayIcon> m_trayIcon;
+    QPointer<QMenu> m_trayMenu;
+    QPointer<QAction> m_showAction;
+    QPointer<QAction> m_exitAction;
     bool m_isQuittingFromTray = false;
     bool m_hasShownTrayHint = false;
     
-    QPushButton* m_embedBtn = nullptr;
+    QPointer<QPushButton> m_embedBtn;
     bool m_isEmbedded = false;
     bool m_firstLaunchPromptShown = false;
     bool m_isFirstLaunch = true;
+    QPointer<QScreen> m_connectedScreen;
+    QMetaObject::Connection m_screenGeometryChangedConnection;
+    QMetaObject::Connection m_screenDpiChangedConnection;
+    QMetaObject::Connection m_windowScreenChangedConnection;
 
 private slots:
 

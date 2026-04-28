@@ -20,6 +20,10 @@ using namespace ShortcutArrowManager;
 int main(int argc, char *argv[])
 {
     SetConsoleOutputCP(CP_UTF8);
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+    QApplication::setHighDpiScaleFactorRoundingPolicy(
+        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     // 启用缩放支持
     //QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     //// 允许图标使用高分像素图

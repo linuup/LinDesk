@@ -114,6 +114,10 @@ public:
 
         const QFileInfo mappedInfo(box->mappedFolderPath());
         if (!mappedInfo.exists() || !mappedInfo.isDir() || !mappedInfo.isReadable()) {
+            if (LinDirectoryMonitor* oldMonitor = box->mappedFolderMonitor()) {
+                oldMonitor->stopListening();
+                box->setMappedFolderMonitor(nullptr);
+            }
             view.m_mappedBoxFilePaths.remove(box->boxId());
             box->refreshLayout();
             box->raise();

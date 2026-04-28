@@ -42,6 +42,8 @@
 #include "box/LinBox.h"
 #include "plugins/PluginManager.h"
 #include "services/HotkeyManager.h"
+#include "services/IconCacheManager.h"
+#include "services/DpiScaleHelper.h"
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 
@@ -203,6 +205,94 @@ bool draggedItemsContainMappedSource(const QVector<ListItem*>& items)
     return false;
 }
 
+void logDesktopLayoutMetrics(const char* tag,
+                             const ListView* view,
+                             int layoutLeft,
+                             int layoutTop,
+                             int usableRight,
+                             int usableBottom,
+                             int itemWidth,
+                             int itemHeight,
+                             int strideX,
+                             int strideY)
+{
+    qDebug().nospace()
+        << "[DesktopLayout][" << tag << "] "
+        << "viewMode=" << static_cast<int>(view->viewMode())
+        << " layoutLeft=" << layoutLeft
+        << " layoutTop=" << layoutTop
+        << " usableRight=" << usableRight
+        << " usableBottom=" << usableBottom
+        << " itemWidth=" << itemWidth
+        << " itemHeight=" << itemHeight
+        << " strideX=" << strideX
+        << " strideY=" << strideY;
+}
+
+}
+
+QRect ListView::desktopLayoutBounds() const
+{
+    QScreen* activeScreen = screen();
+    if (!activeScreen && windowHandle()) {
+        activeScreen = windowHandle()->screen();
+    }
+    if (!activeScreen) {
+        activeScreen = QApplication::primaryScreen();
+    }
+    if (!activeScreen) {
+        return rect();
+    }
+
+    const QRect globalViewRect(mapToGlobal(QPoint(0, 0)), size());
+    const QRect usableGlobalRect = activeScreen->availableGeometry().intersected(globalViewRect);
+    if (!usableGlobalRect.isValid() || usableGlobalRect.isEmpty()) {
+        return rect();
+    }
+
+    const QRect usableLocalRect(usableGlobalRect.topLeft() - globalViewRect.topLeft(), usableGlobalRect.size());
+    return usableLocalRect.intersected(rect());
+}
+
+int ListView::desktopLayoutLeft() const
+{
+    return qMax(m_marginLeft, desktopLayoutBounds().left());
+}
+
+int ListView::desktopLayoutTop() const
+{
+    return qMax(m_marginTop, desktopLayoutBounds().top());
+}
+
+int ListView::desktopUsableRight() const
+{
+    const QRect bounds = desktopLayoutBounds();
+    return qMax(desktopLayoutLeft(), qMin(width() - 1, bounds.right()));
+}
+
+int ListView::desktopUsableBottom() const
+{
+    const QRect bounds = desktopLayoutBounds();
+    return qMax(desktopLayoutTop(), qMin(height() - 1, bounds.bottom() - m_bottomPadding));
+}
+
+int ListView::desktopItemFootprintHeight() const
+{
+    if (m_iconShowRule.viewMode == ViewMode::SmallIcon) {
+        const int iconSide = scalePx(32);
+        const int lineHeight = QFontMetrics(AppFonts::uiFont(9)).lineSpacing();
+        return scalePx(1) + iconSide + scalePx(ListItem::kIconTextGap) + qMax(lineHeight, lineHeight * 2) + scalePx(2);
+    }
+
+    if (m_iconShowRule.viewMode == ViewMode::LargeIcon) {
+        const int iconSide = scalePx(96);
+        const int lineHeight = QFontMetrics(AppFonts::uiFont(9)).lineSpacing();
+        return scalePx(1) + iconSide + scalePx(ListItem::kIconTextGap) + qMax(lineHeight, lineHeight * 2) + scalePx(2);
+    }
+
+    const int iconSide = scalePx(48);
+    const int lineHeight = QFontMetrics(AppFonts::uiFont(9)).lineSpacing();
+    return scalePx(1) + iconSide + scalePx(ListItem::kIconTextGap) + qMax(lineHeight, lineHeight * 2) + scalePx(2);
 }
 
 // 闈欐€佹垚鍛樺垵濮嬪寲
@@ -413,6 +503,28 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
     loadIconLayer();
     update();
     repaint();
+}
+
+int maxGridRowsForBounds(int layoutTop, int usableBottom, int itemHeight, int strideY)
+{
+    int rows = 0;
+    int gridY = 0;
+    while (layoutTop + gridY * strideY + itemHeight - 1 <= usableBottom) {
+        ++rows;
+        ++gridY;
+    }
+    return qMax(1, rows);
+}
+
+int maxGridColsForBounds(int layoutLeft, int usableRight, int itemWidth, int strideX)
+{
+    int cols = 0;
+    int gridX = 0;
+    while (layoutLeft + gridX * strideX + itemWidth - 1 <= usableRight) {
+        ++cols;
+        ++gridX;
+    }
+    return qMax(1, cols);
 }
 
 void ListView::onWindowsShowHiddenFilesChanged(bool showHiddenFiles)
@@ -1512,8 +1624,11 @@ void ListView::dropEvent(QDropEvent* event)
                 return;
             }
 
-            int strideX = m_iconWidth + m_colSpacing;
-            int strideY = m_iconHeight + m_rowSpacing;
+            const int itemHeight = desktopItemFootprintHeight();
+            const int strideX = m_iconWidth + m_colSpacing;
+            const int strideY = itemHeight + m_rowSpacing;
+            const int layoutLeft = desktopLayoutLeft();
+            const int layoutTop = desktopLayoutTop();
 
             // 1. 璁＄畻榧犳爣浣嶇Щ閲?(releasePos - grabPos)
             QPoint displacement = dropPos - m_startPos;
@@ -1542,11 +1657,11 @@ void ListView::dropEvent(QDropEvent* event)
 
                 if (m_iconShowRule.gridAlignment) {
                     // Grid Mode: Calculate nearest grid cell
-                    int gridX = qRound((double)(itemIntendedTopLeft.x() - m_marginLeft) / strideX);
-                    int gridY = qRound((double)(itemIntendedTopLeft.y() - m_marginTop) / strideY);
+                    int gridX = qRound((double)(itemIntendedTopLeft.x() - layoutLeft) / strideX);
+                    int gridY = qRound((double)(itemIntendedTopLeft.y() - layoutTop) / strideY);
 
-                    targetPos.setX(m_marginLeft + gridX * strideX);
-                    targetPos.setY(m_marginTop + gridY * strideY);
+                    targetPos.setX(layoutLeft + gridX * strideX);
+                    targetPos.setY(layoutTop + gridY * strideY);
 
                     // 纰版挒妫€娴嬶細妫€鏌ヨ缃戞牸鏄惁宸茶鈥滈潪褰撳墠閫変腑鈥濋」鍗犵敤 (浠呭湪缃戞牸妯″紡涓嬪己鍒?
                     for (auto* other : m_items) {
@@ -1563,8 +1678,8 @@ void ListView::dropEvent(QDropEvent* event)
                 }
 
                 // 杈圭晫妫€鏌?(鏃犺鏄摢绉嶆ā寮忛兘淇濈暀锛岄槻姝㈠浘鏍囬鍑哄睆骞?
-                targetPos.setX(qMax(m_marginLeft, qMin(targetPos.x(), width() - m_iconWidth)));
-                targetPos.setY(qMax(m_marginTop, qMin(targetPos.y(), height() - m_iconHeight)));
+                targetPos.setX(qMax(layoutLeft, qMin(targetPos.x(), desktopUsableRight() - m_iconWidth + 1)));
+                targetPos.setY(qMax(layoutTop, qMin(targetPos.y(), desktopUsableBottom() - itemHeight + 1)));
 
                 if (!canPlaceAll) break;
                 targetPositions.insert(item, targetPos);
@@ -2184,6 +2299,17 @@ void ListView::assignCustomSortOrders(const QVector<ListItem*>& orderedItems)
     }
 }
 
+void ListView::clearDesktopCustomSortOrders()
+{
+    const QVector<ListItem*> items = collectAutoArrangeItems();
+    for (ListItem* item : items) {
+        if (!item || !item->boxId().isEmpty()) {
+            continue;
+        }
+        item->setCustomSortOrder(-1);
+    }
+}
+
 int ListView::desktopCustomInsertionIndexForPos(const QPoint& pos, const QVector<ListItem*>& draggedItems) const
 {
     QVector<ListItem*> orderedItems = collectAutoArrangeItems();
@@ -2445,8 +2571,23 @@ QVector<QPoint> ListView::layoutAutoArrangeItems(const QVector<ListItem*>& items
     QVector<QPoint> positions;
     positions.reserve(items.size());
 
-    int iconX = m_marginLeft;
-    int iconY = m_marginTop;
+    const int itemWidth = m_iconWidth;
+    const int itemHeight = desktopItemFootprintHeight();
+    const int strideX = itemWidth + m_colSpacing;
+    const int strideY = itemHeight + m_rowSpacing;
+    int iconX = desktopLayoutLeft();
+    int iconY = desktopLayoutTop();
+    const int usableBottom = desktopUsableBottom();
+    logDesktopLayoutMetrics("AutoArrange",
+                            this,
+                            desktopLayoutLeft(),
+                            desktopLayoutTop(),
+                            desktopUsableRight(),
+                            usableBottom,
+                            itemWidth,
+                            itemHeight,
+                            strideX,
+                            strideY);
     for (ListItem* item : items) {
         if (!item) {
             positions.push_back(QPoint());
@@ -2457,10 +2598,10 @@ QVector<QPoint> ListView::layoutAutoArrangeItems(const QVector<ListItem*>& items
         item->initData();
         positions.push_back(QPoint(iconX, iconY));
 
-        iconY += m_iconHeight + m_rowSpacing;
-        if (iconY > m_marginTop && iconY + m_iconHeight > height() - m_bottomPadding) {
-            iconX += m_iconWidth + m_colSpacing;
-            iconY = m_marginTop;
+        iconY += strideY;
+        if (iconY > desktopLayoutTop() && iconY + itemHeight - 1 > usableBottom) {
+            iconX += strideX;
+            iconY = desktopLayoutTop();
         }
     }
 
@@ -2589,9 +2730,32 @@ void ListView::loadAutoLayout()
 void ListView::loadGridLayout()
 {
     const int strideX = m_iconWidth + m_colSpacing;
-    const int strideY = m_iconHeight + m_rowSpacing;
-    const int maxRows = maxGridRowsForHeight(height(), m_marginTop, m_bottomPadding, m_iconHeight, strideY);
-    const int maxCols = maxGridColsForWidth(width(), m_marginLeft, m_iconWidth, strideX);
+    const int itemHeight = desktopItemFootprintHeight();
+    const int strideY = itemHeight + m_rowSpacing;
+    const int layoutLeft = desktopLayoutLeft();
+    const int layoutTop = desktopLayoutTop();
+    logDesktopLayoutMetrics("GenerateItemPosition",
+                            this,
+                            layoutLeft,
+                            layoutTop,
+                            desktopUsableRight(),
+                            desktopUsableBottom(),
+                            m_iconWidth,
+                            itemHeight,
+                            strideX,
+                            strideY);
+    const int maxRows = maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY);
+    const int maxCols = maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX);
+    logDesktopLayoutMetrics("GridLayout",
+                            this,
+                            layoutLeft,
+                            layoutTop,
+                            desktopUsableRight(),
+                            desktopUsableBottom(),
+                            m_iconWidth,
+                            itemHeight,
+                            strideX,
+                            strideY);
     const int visibleCapacity = qMax(1, maxCols * maxRows);
     QSet<quint64> occupiedSlots;
     int overflowIndex = 0;
@@ -2607,7 +2771,7 @@ void ListView::loadGridLayout()
         }
 
         if (m_iconShowRule.gridAlignment) {
-            const int requestedIndex = pointToGridLinearIndex(p, m_marginLeft, m_marginTop, strideX, strideY, maxRows);
+            const int requestedIndex = pointToGridLinearIndex(p, layoutLeft, layoutTop, strideX, strideY, maxRows);
             int gridX = 0;
             int gridY = 0;
 
@@ -2630,7 +2794,7 @@ void ListView::loadGridLayout()
                 ++overflowIndex;
             }
 
-            const QPoint snappedPoint = gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
+            const QPoint snappedPoint = gridCellToPoint(gridX, gridY, layoutLeft, layoutTop, strideX, strideY);
             const int snappedX = snappedPoint.x();
             const int snappedY = snappedPoint.y();
 
@@ -3205,13 +3369,19 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
         pos = const_cast<ListView*>(this)->generateItemPosition();
     }
 
+    const int itemHeight = desktopItemFootprintHeight();
+    const int layoutLeft = desktopLayoutLeft();
+    const int layoutTop = desktopLayoutTop();
+    const int usableRight = desktopUsableRight();
+    const int usableBottom = desktopUsableBottom();
+
     if (m_iconShowRule.gridAlignment) {
         const int strideX = m_iconWidth + m_colSpacing;
-        const int strideY = m_iconHeight + m_rowSpacing;
-        const int maxRows = maxGridRowsForHeight(height(), m_marginTop, m_bottomPadding, m_iconHeight, strideY);
-        const int maxCols = maxGridColsForWidth(width(), m_marginLeft, m_iconWidth, strideX);
+        const int strideY = itemHeight + m_rowSpacing;
+        const int maxRows = maxGridRowsForBounds(layoutTop, usableBottom, itemHeight, strideY);
+        const int maxCols = maxGridColsForBounds(layoutLeft, usableRight, m_iconWidth, strideX);
         const int visibleCapacity = qMax(1, maxCols * maxRows);
-        const int requestedIndex = pointToGridLinearIndex(pos, m_marginLeft, m_marginTop, strideX, strideY, maxRows);
+        const int requestedIndex = pointToGridLinearIndex(pos, layoutLeft, layoutTop, strideX, strideY, maxRows);
         int gridX = 0;
         int gridY = 0;
 
@@ -3220,12 +3390,12 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
         for (auto* item : m_items) {
             if (!item || !item->boxId().isEmpty()) continue;
             ++desktopItemCount;
-            const QPoint gridCell = pointToGridCell(item->pos(), m_marginLeft, m_marginTop, strideX, strideY);
+            const QPoint gridCell = pointToGridCell(item->pos(), layoutLeft, layoutTop, strideX, strideY);
             occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
         }
         for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
             ++desktopItemCount;
-            const QPoint gridCell = pointToGridCell(it.value(), m_marginLeft, m_marginTop, strideX, strideY);
+            const QPoint gridCell = pointToGridCell(it.value(), layoutLeft, layoutTop, strideX, strideY);
             occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
         }
 
@@ -3239,26 +3409,26 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
                 }
                 gridX = visibleCell.x();
                 gridY = visibleCell.y();
-                return gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
+                return gridCellToPoint(gridX, gridY, layoutLeft, layoutTop, strideX, strideY);
             }
         }
 
         const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
-        return gridCellToPoint(overflowCell.x(), overflowCell.y(), m_marginLeft, m_marginTop, strideX, strideY);
+        return gridCellToPoint(overflowCell.x(), overflowCell.y(), layoutLeft, layoutTop, strideX, strideY);
     }
 
-    pos.setX(qMax(m_marginLeft, qMin(pos.x(), width() - m_iconWidth)));
-    pos.setY(qMax(m_marginTop, qMin(pos.y(), height() - m_bottomPadding - m_iconHeight)));
+    pos.setX(qMax(layoutLeft, qMin(pos.x(), usableRight - m_iconWidth + 1)));
+    pos.setY(qMax(layoutTop, qMin(pos.y(), usableBottom - itemHeight + 1)));
 
     const int step = 16;
-    const int minX = m_marginLeft;
-    const int minY = m_marginTop;
-    const int maxX = qMax(minX, width() - m_iconWidth);
-    const int maxY = qMax(minY, height() - m_bottomPadding - m_iconHeight);
+    const int minX = layoutLeft;
+    const int minY = layoutTop;
+    const int maxX = qMax(minX, usableRight - m_iconWidth + 1);
+    const int maxY = qMax(minY, usableBottom - itemHeight + 1);
     QSet<quint64> visitedPositions;
 
     while (true) {
-        QRect candidateRect(pos, QSize(m_iconWidth, m_iconHeight));
+        QRect candidateRect(pos, QSize(m_iconWidth, itemHeight));
         bool occupied = false;
 
         for (auto* item : m_items) {
@@ -3271,7 +3441,7 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
 
         if (!occupied) {
             for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
-                QRect pendingRect(it.value(), QSize(m_iconWidth, m_iconHeight));
+                QRect pendingRect(it.value(), QSize(m_iconWidth, itemHeight));
                 if (candidateRect.intersects(pendingRect)) {
                     occupied = true;
                     break;
@@ -3398,9 +3568,12 @@ QPoint ListView::generateItemPosition()
     qDebug() << "[generateItemPosition] Using grid layout position";
 
     const int strideX = m_iconWidth + m_colSpacing;
-    const int strideY = m_iconHeight + m_rowSpacing;
-    const int maxRows = maxGridRowsForHeight(height(), m_marginTop, m_bottomPadding, m_iconHeight, strideY);
-    const int maxCols = maxGridColsForWidth(width(), m_marginLeft, m_iconWidth, strideX);
+    const int itemHeight = desktopItemFootprintHeight();
+    const int strideY = itemHeight + m_rowSpacing;
+    const int layoutLeft = desktopLayoutLeft();
+    const int layoutTop = desktopLayoutTop();
+    const int maxRows = maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY);
+    const int maxCols = maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX);
     const int visibleCapacity = qMax(1, maxCols * maxRows);
     QSet<quint64> occupiedSlots;
     int desktopItemCount = 0;
@@ -3408,13 +3581,13 @@ QPoint ListView::generateItemPosition()
     for (auto* item : m_items) {
         if (item && item->boxId().isEmpty() && (item->pos().x() > 0 || item->pos().y() > 0)) {
             ++desktopItemCount;
-            const QPoint gridCell = pointToGridCell(item->pos(), m_marginLeft, m_marginTop, strideX, strideY);
+            const QPoint gridCell = pointToGridCell(item->pos(), layoutLeft, layoutTop, strideX, strideY);
             occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
         }
     }
     for (auto it = m_pendingCreatedItemPositions.constBegin(); it != m_pendingCreatedItemPositions.constEnd(); ++it) {
         ++desktopItemCount;
-        const QPoint gridCell = pointToGridCell(it.value(), m_marginLeft, m_marginTop, strideX, strideY);
+        const QPoint gridCell = pointToGridCell(it.value(), layoutLeft, layoutTop, strideX, strideY);
         occupiedSlots.insert(packGridCell(qBound(0, gridCell.x(), maxCols - 1), qBound(0, gridCell.y(), maxRows - 1)));
     }
 
@@ -3425,13 +3598,13 @@ QPoint ListView::generateItemPosition()
                     continue;
                 }
 
-                return gridCellToPoint(gridX, gridY, m_marginLeft, m_marginTop, strideX, strideY);
+                return gridCellToPoint(gridX, gridY, layoutLeft, layoutTop, strideX, strideY);
             }
         }
     }
 
     const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
-    return gridCellToPoint(overflowCell.x(), overflowCell.y(), m_marginLeft, m_marginTop, strideX, strideY);
+    return gridCellToPoint(overflowCell.x(), overflowCell.y(), layoutLeft, layoutTop, strideX, strideY);
 
     return QPoint(0, 0); // 鍏滃簳杩斿洖
 }
@@ -3461,6 +3634,7 @@ void ListView::initRightMenuConnections() {
     connect(menu, &RightMenu::pasteShortcutTriggered, this, &ListView::onMenuPasteShortcut);
     connect(menu, &RightMenu::createBoxTriggered, this, &ListView::onMenuCreateBox);
     connect(menu, &RightMenu::mapFolderTriggered, this, &ListView::onMenuMapFolder);
+    connect(menu, &RightMenu::organizeDesktopTriggered, this, &ListView::onMenuOrganizeDesktopByNameSort);
     connect(menu, &RightMenu::linDeskTriggered, this, &ListView::onMenuLinDesk);
     connect(menu, &RightMenu::quitAppTriggered, this, &ListView::onMenuQuitApp);
     
@@ -3529,35 +3703,55 @@ void ListView::initRightMenuConnections() {
 }
 
 void ListView::syncViewModeSizes() {
+    m_marginTop = scalePx(kBaseMarginTop);
+    m_marginLeft = scalePx(kBaseMarginLeft);
+    m_bottomPadding = scalePx(kBaseBottomPadding);
+
     switch (m_iconShowRule.viewMode) {
         case ViewMode::LargeIcon:
-            m_iconWidth  = kLargeIconW;
-            m_rowSpacing = kLargeRowSpacing;
-            m_colSpacing = kLargeColSpacing;
-            ListItemData::s_targetIconSize = kLargeIconW;
-            m_iconHeight = iconCellHeightForTwoTextLines(kLargeIconW - 4);
+            m_iconWidth  = scalePx(kLargeIconW);
+            m_rowSpacing = scalePx(kLargeRowSpacing);
+            m_colSpacing = scalePx(kLargeColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             if (rightMenu) rightMenu->setLargeIconsChecked(true);
             break;
         case ViewMode::MediumIcon:
-            m_iconWidth  = kMediumIconW;
-            m_iconHeight = iconCellHeightForTwoTextLines(kMediumIconW - 4);
-            m_rowSpacing = kMediumRowSpacing;
-            m_colSpacing = kMediumColSpacing;
-            ListItemData::s_targetIconSize = kMediumIconW;
+            m_iconWidth  = scalePx(kMediumIconW);
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
+            m_rowSpacing = scalePx(kMediumRowSpacing);
+            m_colSpacing = scalePx(kMediumColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setMediumIconsChecked(true);
             break;
         case ViewMode::SmallIcon:
-            m_iconWidth = kSmallIconW;
-            m_iconHeight = iconCellHeightForTwoTextLines(kSmallIconW - 4);
-            m_rowSpacing = kSmallRowSpacing;
-            m_colSpacing = kSmallColSpacing;
-            ListItemData::s_targetIconSize = kSmallIconW;
+            m_iconWidth = scalePx(kSmallIconW);
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
+            m_rowSpacing = scalePx(kSmallRowSpacing);
+            m_colSpacing = scalePx(kSmallColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setSmallIconsChecked(true);
             break;
     }
 }
 
-QPoint ListView::remapPositionForViewMetrics(const QPoint& pos, int oldIconWidth, int oldIconHeight, int oldRowSpacing, int oldColSpacing) const
+qreal ListView::currentDpiScale() const
+{
+    return DpiScaleHelper::uiScaleForWidget(this);
+}
+
+int ListView::scalePx(int logicalPx) const
+{
+    return DpiScaleHelper::scalePx(this, logicalPx);
+}
+
+QPoint ListView::remapPositionForViewMetrics(const QPoint& pos,
+                                             int oldIconWidth,
+                                             int oldIconHeight,
+                                             int oldRowSpacing,
+                                             int oldColSpacing,
+                                             int oldMarginTop,
+                                             int oldMarginLeft) const
 {
     if (pos == QPoint(0, 0)) {
         return pos;
@@ -3566,30 +3760,37 @@ QPoint ListView::remapPositionForViewMetrics(const QPoint& pos, int oldIconWidth
     const int oldStrideX = qMax(1, oldIconWidth + oldColSpacing);
     const int oldStrideY = qMax(1, oldIconHeight + oldRowSpacing);
     const int newStrideX = qMax(1, m_iconWidth + m_colSpacing);
-    const int newStrideY = qMax(1, m_iconHeight + m_rowSpacing);
+    const int newStrideY = qMax(1, desktopItemFootprintHeight() + m_rowSpacing);
 
     QPoint mappedPos = pos;
     if (m_iconShowRule.gridAlignment) {
-        const QPoint gridCell = pointToGridCell(pos, m_marginLeft, m_marginTop, oldStrideX, oldStrideY);
-        mappedPos = gridCellToPoint(gridCell.x(), gridCell.y(), m_marginLeft, m_marginTop, newStrideX, newStrideY);
+        const QPoint gridCell = pointToGridCell(pos, oldMarginLeft, oldMarginTop, oldStrideX, oldStrideY);
+        mappedPos = gridCellToPoint(gridCell.x(), gridCell.y(), desktopLayoutLeft(), desktopLayoutTop(), newStrideX, newStrideY);
     } else {
-        const double logicalX = static_cast<double>(pos.x() - m_marginLeft) / oldStrideX;
-        const double logicalY = static_cast<double>(pos.y() - m_marginTop) / oldStrideY;
-        mappedPos.setX(m_marginLeft + qRound(logicalX * newStrideX));
-        mappedPos.setY(m_marginTop + qRound(logicalY * newStrideY));
+        const double logicalX = static_cast<double>(pos.x() - oldMarginLeft) / oldStrideX;
+        const double logicalY = static_cast<double>(pos.y() - oldMarginTop) / oldStrideY;
+        mappedPos.setX(desktopLayoutLeft() + qRound(logicalX * newStrideX));
+        mappedPos.setY(desktopLayoutTop() + qRound(logicalY * newStrideY));
     }
 
-    mappedPos.setX(qMax(m_marginLeft, qMin(mappedPos.x(), width() - m_iconWidth)));
-    mappedPos.setY(qMax(m_marginTop, qMin(mappedPos.y(), height() - m_bottomPadding - m_iconHeight)));
+    mappedPos.setX(qMax(desktopLayoutLeft(), qMin(mappedPos.x(), desktopUsableRight() - m_iconWidth + 1)));
+    mappedPos.setY(qMax(desktopLayoutTop(), qMin(mappedPos.y(), desktopUsableBottom() - desktopItemFootprintHeight() + 1)));
     return mappedPos;
 }
 
-void ListView::applyViewModeMetricsChange(int oldIconWidth, int oldIconHeight, int oldRowSpacing, int oldColSpacing)
+void ListView::applyViewModeMetricsChange(int oldIconWidth,
+                                          int oldIconHeight,
+                                          int oldRowSpacing,
+                                          int oldColSpacing,
+                                          int oldMarginTop,
+                                          int oldMarginLeft)
 {
     if (oldIconWidth == m_iconWidth &&
         oldIconHeight == m_iconHeight &&
         oldRowSpacing == m_rowSpacing &&
-        oldColSpacing == m_colSpacing) {
+        oldColSpacing == m_colSpacing &&
+        oldMarginTop == m_marginTop &&
+        oldMarginLeft == m_marginLeft) {
         return;
     }
 
@@ -3603,7 +3804,14 @@ void ListView::applyViewModeMetricsChange(int oldIconWidth, int oldIconHeight, i
             continue;
         }
 
-        item->updateLocationInfo(remapPositionForViewMetrics(currentPos, oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing));
+        item->updateLocationInfo(remapPositionForViewMetrics(
+            currentPos,
+            oldIconWidth,
+            oldIconHeight,
+            oldRowSpacing,
+            oldColSpacing,
+            oldMarginTop,
+            oldMarginLeft));
     }
 
     for (auto it = m_savedIconPositions.begin(); it != m_savedIconPositions.end(); ++it) {
@@ -3612,14 +3820,63 @@ void ListView::applyViewModeMetricsChange(int oldIconWidth, int oldIconHeight, i
         }
 
         const QPoint currentPos(it.value().x, it.value().y);
-        const QPoint mappedPos = remapPositionForViewMetrics(currentPos, oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        const QPoint mappedPos = remapPositionForViewMetrics(
+            currentPos,
+            oldIconWidth,
+            oldIconHeight,
+            oldRowSpacing,
+            oldColSpacing,
+            oldMarginTop,
+            oldMarginLeft);
         it.value().x = mappedPos.x();
         it.value().y = mappedPos.y();
     }
 
     for (auto it = m_pendingCreatedItemPositions.begin(); it != m_pendingCreatedItemPositions.end(); ++it) {
-        it.value() = remapPositionForViewMetrics(it.value(), oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        it.value() = remapPositionForViewMetrics(
+            it.value(),
+            oldIconWidth,
+            oldIconHeight,
+            oldRowSpacing,
+            oldColSpacing,
+            oldMarginTop,
+            oldMarginLeft);
     }
+}
+
+void ListView::refreshForDpiChange()
+{
+    const int oldIconWidth = m_iconWidth;
+    const int oldIconHeight = m_iconHeight;
+    const int oldRowSpacing = m_rowSpacing;
+    const int oldColSpacing = m_colSpacing;
+    const int oldMarginTop = m_marginTop;
+    const int oldMarginLeft = m_marginLeft;
+
+    syncViewModeSizes();
+    IconCacheManager::instance().clear();
+
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeLayout(false, false);
+    } else {
+        applyViewModeMetricsChange(
+            oldIconWidth,
+            oldIconHeight,
+            oldRowSpacing,
+            oldColSpacing,
+            oldMarginTop,
+            oldMarginLeft);
+        loadIconLayer();
+    }
+
+    for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
+        if (box) {
+            box->refreshLayout();
+            box->update();
+        }
+    }
+
+    update();
 }
 
 void ListView::setDebugGridSpacing(int rowSpacing, int colSpacing)
@@ -3637,12 +3894,14 @@ void ListView::onMenuLargeIcons() {
     const int oldIconHeight = m_iconHeight;
     const int oldRowSpacing = m_rowSpacing;
     const int oldColSpacing = m_colSpacing;
+    const int oldMarginTop = m_marginTop;
+    const int oldMarginLeft = m_marginLeft;
     m_iconShowRule.viewMode = ViewMode::LargeIcon;
     syncViewModeSizes();
     if (m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
     } else {
-        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing, oldMarginTop, oldMarginLeft);
         loadIconLayer();
     }
     update();
@@ -3656,12 +3915,14 @@ void ListView::onMenuMediumIcons() {
     const int oldIconHeight = m_iconHeight;
     const int oldRowSpacing = m_rowSpacing;
     const int oldColSpacing = m_colSpacing;
+    const int oldMarginTop = m_marginTop;
+    const int oldMarginLeft = m_marginLeft;
     m_iconShowRule.viewMode = ViewMode::MediumIcon;
     syncViewModeSizes();
     if (m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
     } else {
-        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing, oldMarginTop, oldMarginLeft);
         loadIconLayer();
     }
     update();
@@ -3675,12 +3936,14 @@ void ListView::onMenuSmallIcons() {
     const int oldIconHeight = m_iconHeight;
     const int oldRowSpacing = m_rowSpacing;
     const int oldColSpacing = m_colSpacing;
+    const int oldMarginTop = m_marginTop;
+    const int oldMarginLeft = m_marginLeft;
     m_iconShowRule.viewMode = ViewMode::SmallIcon;
     syncViewModeSizes();
     if (m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
     } else {
-        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing);
+        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing, oldMarginTop, oldMarginLeft);
         loadIconLayer();
     }
     update();
@@ -3710,6 +3973,7 @@ void ListView::onMenuAutoArrangeIcons() {
         m_iconShowRule.iconPosMode = m_iconShowRule.gridAlignment
             ? IconPosMode::AlignIconToGrid
             : IconPosMode::UnAlignIconToGrid;
+        clearDesktopCustomSortOrders();
         updateRightMenuState();
         update();
         requestSaveBoxes();
@@ -4310,6 +4574,31 @@ void ListView::onMenuMapFolder()
     requestSaveBoxes();
 }
 
+void ListView::onMenuOrganizeDesktop()
+{
+    if (!m_enablePersistence) {
+        m_enablePersistence = true;
+    }
+
+    m_iconShowRule.autoArrange = true;
+    m_iconShowRule.gridAlignment = true;
+    m_iconShowRule.iconPosMode = IconPosMode::AlignIconToGrid;
+    m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByName_ASC;
+    m_iconShowRule.sortType = SortOrderType::SortByCustom;
+
+    QVector<ListItem*> items = collectAutoArrangeItems();
+    sortAutoArrangeItems(items, SortOrderType::SortByName_ASC);
+    assignCustomSortOrders(items);
+    const QVector<QPoint> positions = layoutAutoArrangeItems(items);
+    finalizeAutoArrangeLayout(items, positions, true, false);
+    updateRightMenuState();
+}
+
+void ListView::onMenuOrganizeDesktopByNameSort()
+{
+    onMenuSortByName();
+}
+
 QVector<LinBox*> ListView::boxes() const {
     QVector<LinBox*> result;
     for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
@@ -4570,17 +4859,24 @@ void ListView::onItemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* eve
 		// 1. Calculate target positions and check collisions for desktop icons
 		if (!box) {
 			if (m_iconShowRule.gridAlignment) {
+                const int itemHeight = desktopItemFootprintHeight();
+                const int strideX = m_iconWidth + m_colSpacing;
+                const int strideY = itemHeight + m_rowSpacing;
+                const int layoutLeft = desktopLayoutLeft();
+                const int layoutTop = desktopLayoutTop();
+                const int usableRight = desktopUsableRight();
+                const int usableBottom = desktopUsableBottom();
 				for (const auto& ghost : m_ghosts) {
 					if (ghost.widget && ghost.item) {
 						QPoint pos = ghost.widget->pos();
-						int gridX = qRound((double)(pos.x() - m_marginLeft) / (m_iconWidth + m_colSpacing));
-						int gridY = qRound((double)(pos.y() - m_marginTop) / (m_iconHeight + m_rowSpacing));
+						int gridX = qRound((double)(pos.x() - layoutLeft) / strideX);
+						int gridY = qRound((double)(pos.y() - layoutTop) / strideY);
 						
 						QPoint snappedPos;
-						snappedPos.setX(m_marginLeft + gridX * (m_iconWidth + m_colSpacing));
-						snappedPos.setY(m_marginTop + gridY * (m_iconHeight + m_rowSpacing));
-						snappedPos.setX(qMax(m_marginLeft, qMin(snappedPos.x(), width() - m_iconWidth)));
-						snappedPos.setY(qMax(m_marginTop, qMin(snappedPos.y(), height() - m_iconHeight)));
+						snappedPos.setX(layoutLeft + gridX * strideX);
+						snappedPos.setY(layoutTop + gridY * strideY);
+						snappedPos.setX(qMax(layoutLeft, qMin(snappedPos.x(), usableRight - m_iconWidth + 1)));
+						snappedPos.setY(qMax(layoutTop, qMin(snappedPos.y(), usableBottom - itemHeight + 1)));
 						
 						targetPositions.append(snappedPos);
 
@@ -5645,13 +5941,13 @@ void ListView::setPersistenceEnabled(bool enabled) {
 
     if (!enabled) {
         FluentDialog* dlg = new FluentDialog(nullptr);
-        dlg->setDialogTitle("妗岄潰鏁寸悊");
-        dlg->setMessage("鏄惁绔嬪嵆涓€閿暣鐞嗗綋鍓嶆闈㈢殑鍥炬爣甯冨眬锛?");
-        dlg->addActionButton("绔嬪嵆鏁寸悊", FluentDialog::ActionType::Primary, [this]() {
-            this->setPersistenceEnabled(true); // Undo the disable action if they want an immediate organize/save
-            this->onMenuRefresh();
+        dlg->setDialogTitle(tr("Desktop Organization"));
+        dlg->setMessage(tr("Do you want to organize the current desktop icon layout now?"));
+        dlg->addActionButton(tr("Organize Now"), FluentDialog::ActionType::Primary, [this]() {
+            this->setPersistenceEnabled(true);
+            this->onMenuOrganizeDesktop();
         });
-        dlg->addActionButton("鍙栨秷", FluentDialog::ActionType::Close);
+        dlg->addActionButton(tr("Cancel"), FluentDialog::ActionType::Close);
         dlg->show();
         dlg->raise();
         dlg->activateWindow();

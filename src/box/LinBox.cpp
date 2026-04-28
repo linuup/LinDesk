@@ -21,6 +21,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QtMath>
+#include <QCoreApplication>
 #include <limits>
 #include <climits>
 #include <vector>
@@ -32,6 +33,7 @@
 #include "box/BoxManager.h"
 #include "desktop/RightMenu.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "services/DpiScaleHelper.h"
 #include "services/WinBlurHelper.h"
 #include "ui/Fluent/FluentDragTip.h"
 #include "monitor/LinDirectoryMonitor.h"
@@ -42,6 +44,28 @@
 
 namespace {
 
+int scaledPx(const QWidget* widget, int value)
+{
+    return DpiScaleHelper::scalePx(widget, value);
+}
+
+QString boxScrollAreaStyle(const QWidget* widget)
+{
+    const int scrollBarWidth = scaledPx(widget, 4);
+    const int scrollBarRadius = qMax(1, scaledPx(widget, 2));
+    const int scrollBarHandleMinHeight = scaledPx(widget, 20);
+    return QString(
+        "QScrollArea { background: transparent; border: none; } "
+        "QScrollBar:vertical { width: %1px; background: transparent; margin: 0px 0px 0px 0px; } "
+        "QScrollBar::handle:vertical { background: rgba(255, 255, 255, 120); border-radius: %2px; min-height: %3px; } "
+        "QScrollBar::handle:vertical:hover { background: rgba(255, 255, 255, 200); } "
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; } "
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; } ")
+        .arg(scrollBarWidth)
+        .arg(scrollBarRadius)
+        .arg(scrollBarHandleMinHeight);
+}
+
 QString normalizeMappedFolderPath(const QString& path)
 {
     QString normalized = QDir::toNativeSeparators(path.trimmed());
@@ -50,6 +74,33 @@ QString normalizeMappedFolderPath(const QString& path)
     }
     return normalized;
 }
+
+constexpr int kBaseBoxBorderWidth = 8;
+constexpr int kBaseBoxTitleHeight = 30;
+constexpr int kBaseBoxMinWidth = 180;
+constexpr int kBaseBoxMinHeight = 120;
+constexpr int kBaseBoxDefaultWidth = 300;
+constexpr int kBaseBoxDefaultHeight = 400;
+constexpr int kBaseTitleLayoutLeft = 10;
+constexpr int kBaseTitleLayoutRight = 5;
+constexpr int kBaseTitleEditHeight = 22;
+constexpr int kBaseTitleButtonSize = 24;
+constexpr int kBaseTitleIconSize = 16;
+constexpr int kBaseScrollBarWidth = 4;
+constexpr int kBaseScrollBarHandleMinHeight = 20;
+constexpr int kBaseItemWidth = 76;
+constexpr int kBaseItemHeight = 78;
+constexpr int kBaseItemListHeight = 30;
+constexpr int kBaseItemMarginLeft = 5;
+constexpr int kBaseItemMarginTop = 5;
+constexpr int kBaseItemGap = 8;
+constexpr int kBaseItemListPadding = 8;
+constexpr int kBaseItemListRightPadding = 12;
+constexpr int kBaseIndicatorLine = 2;
+constexpr int kBaseIndicatorInset = 8;
+constexpr int kBasePlaceholderInset = 16;
+constexpr int kBaseDragTipOffset = 24;
+constexpr int kBaseDragTipMargin = 8;
 
 QString defaultDesktopPath()
 {
@@ -421,17 +472,10 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     setStyleSheet("LinBox { background: transparent; }");
     setMouseTracking(true);
     
+    updateDpiMetrics();
     setMinimumSize(m_minBoxWidth, m_minBoxHeight);
-    resize(300, 400);
+    resize(scaledPx(this, kBaseBoxDefaultWidth), scaledPx(this, kBaseBoxDefaultHeight));
     setAcceptDrops(true);
-    m_blurRefreshTimer = new QTimer(this);
-    m_blurRefreshTimer->setSingleShot(true);
-    m_blurRefreshTimer->setInterval(16);
-    connect(m_blurRefreshTimer, &QTimer::timeout, this, &LinBox::updateBlurCache);
-    m_mappedFolderStateTimer = new QTimer(this);
-    m_mappedFolderStateTimer->setInterval(1200);
-    connect(m_mappedFolderStateTimer, &QTimer::timeout, this, &LinBox::checkMappedFolderStateAndRefresh);
-    m_mappedFolderStateTimer->start();
 
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setContentsMargins(m_borderWidth, m_borderWidth, m_borderWidth, m_borderWidth);
@@ -445,7 +489,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleBar->setMouseTracking(true);
     
     QHBoxLayout* titleLayout = new QHBoxLayout(m_titleBar);
-    titleLayout->setContentsMargins(10, 0, 5, 0);
+    titleLayout->setContentsMargins(scaledPx(this, 10), 0, scaledPx(this, 5), 0);
 
     m_titleEdit = new QLineEdit(m_titleBar);
     m_titleEdit->setMouseTracking(true);
@@ -453,13 +497,15 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleEdit->setText(m_title);
     m_titleEdit->setAlignment(Qt::AlignCenter);
     m_titleEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    m_titleEdit->setFixedHeight(22);
-    m_titleEdit->setStyleSheet("background: white; color: black; border-radius: 4px; padding: 2px;");
+    m_titleEdit->setFixedHeight(scaledPx(this, 22));
+    m_titleEdit->setStyleSheet(QString("background: white; color: black; border-radius: %1px; padding: %2px;")
+        .arg(scaledPx(this, 4))
+        .arg(scaledPx(this, 2)));
 
     m_viewSwitchBtn = new QPushButton(m_titleBar);
     m_viewSwitchBtn->setMouseTracking(true);
-    m_viewSwitchBtn->setFixedSize(24, 24);
-    m_viewSwitchBtn->setIconSize(QSize(16, 16));
+    m_viewSwitchBtn->setFixedSize(scaledPx(this, 24), scaledPx(this, 24));
+    m_viewSwitchBtn->setIconSize(QSize(scaledPx(this, 16), scaledPx(this, 16)));
     m_viewSwitchBtn->setText(QString());
     m_viewSwitchBtn->setIcon(buildWhiteSvgIcon(":/Assets/list.svg", m_viewSwitchBtn->iconSize()));
     
@@ -477,14 +523,14 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
         iconFont.setFamily("Wingdings");
         fontLoaded = QFontInfo(iconFont).exactMatch();
     }
-    iconFont.setPixelSize(14);
+    iconFont.setPixelSize(scaledPx(this, 14));
     m_viewSwitchBtn->setStyleSheet("QPushButton { background: transparent; color: white; border: none; border-radius: 4px; } "
                                    "QPushButton:hover { background: rgba(255, 255, 255, 40); } "
                                    "QPushButton:pressed { background: rgba(255, 255, 255, 20); }");
 
     m_collapseBtn = new QPushButton(m_titleBar);
     m_collapseBtn->setMouseTracking(true);
-    m_collapseBtn->setFixedSize(24, 24);
+    m_collapseBtn->setFixedSize(scaledPx(this, 24), scaledPx(this, 24));
     m_collapseBtn->setFont(iconFont);
     // Use text icons as fallback if font doesn't support Fluent Icons
     QString collapseIcon = fontLoaded ? u8"\uE70E" : "v";
@@ -506,12 +552,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_scrollArea->setFrameShape(QFrame::NoFrame);
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_scrollArea->setStyleSheet("QScrollArea { background: transparent; border: none; } "
-                                "QScrollBar:vertical { width: 4px; background: transparent; margin: 0px 0px 0px 0px; } "
-                                "QScrollBar::handle:vertical { background: rgba(255, 255, 255, 120); border-radius: 2px; min-height: 20px; } "
-                                "QScrollBar::handle:vertical:hover { background: rgba(255, 255, 255, 200); } "
-                                "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; } "
-                                "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; } ");
+    m_scrollArea->setStyleSheet(boxScrollAreaStyle(this));
 
     m_contentArea = new QWidget(m_scrollArea);
     m_contentArea->setObjectName("contentArea");
@@ -524,6 +565,17 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
 
     m_mainLayout->addWidget(m_titleBar);
     m_mainLayout->addWidget(m_scrollArea);
+
+    m_blurRefreshTimer = new QTimer(this);
+    m_blurRefreshTimer->setSingleShot(true);
+    m_blurRefreshTimer->setInterval(16);
+    connect(m_blurRefreshTimer, &QTimer::timeout, this, &LinBox::updateBlurCache);
+    m_mappedFolderStateTimer = new QTimer(this);
+    m_mappedFolderStateTimer->setInterval(1200);
+    connect(m_mappedFolderStateTimer, &QTimer::timeout, this, &LinBox::checkMappedFolderStateAndRefresh);
+    m_mappedFolderStateTimer->start();
+
+    updateDpiMetrics();
 
     refreshStyles();
 
@@ -560,6 +612,35 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     raise(); 
 }
 
+void LinBox::updateDpiMetrics()
+{
+    m_dpiScale = DpiScaleHelper::uiScaleForWidget(this);
+    m_borderWidth = scaledPx(this, kBaseBoxBorderWidth);
+    m_titleHeight = scaledPx(this, kBaseBoxTitleHeight);
+    m_minBoxWidth = scaledPx(this, kBaseBoxMinWidth);
+    m_minBoxHeight = scaledPx(this, kBaseBoxMinHeight);
+
+    if (m_mainLayout) {
+        m_mainLayout->setContentsMargins(m_borderWidth, m_borderWidth, m_borderWidth, m_borderWidth);
+    }
+    if (m_titleBar) {
+        m_titleBar->setFixedHeight(m_titleHeight);
+    }
+    if (m_titleEdit) {
+        m_titleEdit->setFixedHeight(scaledPx(this, kBaseTitleEditHeight));
+    }
+    if (m_viewSwitchBtn) {
+        m_viewSwitchBtn->setFixedSize(scaledPx(this, kBaseTitleButtonSize), scaledPx(this, kBaseTitleButtonSize));
+        m_viewSwitchBtn->setIconSize(QSize(scaledPx(this, kBaseTitleIconSize), scaledPx(this, kBaseTitleIconSize)));
+    }
+    if (m_collapseBtn) {
+        m_collapseBtn->setFixedSize(scaledPx(this, kBaseTitleButtonSize), scaledPx(this, kBaseTitleButtonSize));
+    }
+    if (m_scrollArea) {
+        m_scrollArea->setStyleSheet(boxScrollAreaStyle(this));
+    }
+}
+
 LinBox::~LinBox() {
     // Clean up drag tip
     if (m_dragTip) {
@@ -573,6 +654,7 @@ LinBox::~LinBox() {
 
 void LinBox::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
+    updateDpiMetrics();
     raise();
     refreshLayout();
     QTimer::singleShot(0, this, [this]() {
@@ -650,12 +732,12 @@ void LinBox::removeListItem(ListItem* item, bool refresh) {
 
 void LinBox::refreshLayout() {
     if (m_isRefreshingLayout || m_items.isEmpty()) return;
-    const int itemW = 76;
-    const int itemH = 78;
-    const int colSpacing = 8;
-    const int rowSpacing = 8;
-    const int marginLeft = 5; 
-    const int marginTop = 5;
+    const int itemW = scaledPx(this, kBaseItemWidth);
+    const int itemH = scaledPx(this, kBaseItemHeight);
+    const int colSpacing = scaledPx(this, kBaseItemGap);
+    const int rowSpacing = scaledPx(this, kBaseItemGap);
+    const int marginLeft = scaledPx(this, kBaseItemMarginLeft);
+    const int marginTop = scaledPx(this, kBaseItemMarginTop);
     if (m_mainLayout) {
         m_mainLayout->activate();
     }
@@ -717,16 +799,17 @@ void LinBox::refreshLayout() {
         }
     } else {
         int listItemH = 30; 
+        listItemH = scaledPx(this, kBaseItemListHeight);
         for (int i = 0; i < m_items.size(); ++i) {
             ListItem* item = m_items[i];
             const QFont textFont = AppFonts::uiFont(9);
             const QFontMetrics fm(textFont);
-            const int iconAreaW = 8 + 20 + 8; // left padding + icon + gap
-            const int textW = qMax(24, fm.horizontalAdvance(item->displayName()));
-            const int rightPadding = 12;
+            const int iconAreaW = scaledPx(this, kBaseItemListPadding) + scaledPx(this, 20) + scaledPx(this, kBaseItemListPadding);
+            const int textW = qMax(scaledPx(this, 24), fm.horizontalAdvance(item->displayName()));
+            const int rightPadding = scaledPx(this, kBaseItemListRightPadding);
             const int listItemW = qMin(contentW - 2 * marginLeft, iconAreaW + textW + rightPadding);
             const int x = marginLeft;
-            const int y = marginTop + i * (listItemH + 2);
+            const int y = marginTop + i * (listItemH + scaledPx(this, 2));
             const QPoint targetPos(x, y);
             item->setLayoutMode(ListItem::LayoutMode::ListMode);
             if (item->size() != QSize(listItemW, listItemH)) {
@@ -756,9 +839,9 @@ void LinBox::refreshLayout() {
             rowHeightSum += rowMaxHeight;
         }
         const int rows = (m_items.size() + cols - 1) / cols;
-        totalHeight = marginTop + rowHeightSum + qMax(0, rows - 1) * rowSpacing + 10;
+        totalHeight = marginTop + rowHeightSum + qMax(0, rows - 1) * rowSpacing + scaledPx(this, 10);
     } else {
-        totalHeight = marginTop + m_items.size() * (30 + 2) + 10;
+        totalHeight = marginTop + m_items.size() * (scaledPx(this, kBaseItemListHeight) + scaledPx(this, 2)) + scaledPx(this, 10);
     }
     m_contentArea->setMinimumWidth(contentW);
     m_contentArea->setMinimumHeight(totalHeight);
@@ -932,15 +1015,15 @@ QRect LinBox::mappedTitleIconRect() const
         return QRect();
     }
 
-    const int iconSize = 20;
+    const int iconSize = scaledPx(this, 20);
     const int iconY = (m_titleBar->height() - iconSize) / 2;
     const QFont titleFont = AppFonts::uiFont(9, QFont::Bold);
     const QFontMetrics fm(titleFont);
     const QString title = displayTitleText();
     const int textWidth = fm.horizontalAdvance(title);
-    const int totalWidth = iconSize + 6 + textWidth;
+    const int totalWidth = iconSize + scaledPx(this, 6) + textWidth;
     int startX = (m_titleBar->width() - totalWidth) / 2;
-    startX = qMax(35, startX);
+    startX = qMax(scaledPx(this, 35), startX);
     return QRect(startX, iconY, iconSize, iconSize);
 }
 
@@ -950,14 +1033,14 @@ QRect LinBox::mappedTitleTextRect() const
         return QRect();
     }
 
-    QRect textRect = m_titleBar->rect().adjusted(35, 0, -35, 0);
+    QRect textRect = m_titleBar->rect().adjusted(scaledPx(this, 35), 0, -scaledPx(this, 35), 0);
     if (!isFolderMapped()) {
         return textRect;
     }
 
     const QRect iconRect = mappedTitleIconRect();
     if (!iconRect.isNull()) {
-        textRect = m_titleBar->rect().adjusted(iconRect.right() + 7, 0, -35, 0);
+        textRect = m_titleBar->rect().adjusted(iconRect.right() + scaledPx(this, 7), 0, -scaledPx(this, 35), 0);
     }
     return textRect;
 }
@@ -997,7 +1080,8 @@ QRect LinBox::mappedPlaceholderRect() const
     const QPoint topLeft = viewport ? viewport->mapTo(const_cast<LinBox*>(this), QPoint(0, 0)) : m_scrollArea->geometry().topLeft();
     const QSize areaSize = viewport ? viewport->size() : m_scrollArea->size();
     QRect placeholderArea(topLeft, areaSize);
-    placeholderArea = placeholderArea.adjusted(16, 16, -16, -16);
+    const int placeholderInset = scaledPx(this, kBasePlaceholderInset);
+    placeholderArea = placeholderArea.adjusted(placeholderInset, placeholderInset, -placeholderInset, -placeholderInset);
     if (placeholderArea.width() <= 0 || placeholderArea.height() <= 0) {
         return QRect();
     }
@@ -1009,11 +1093,11 @@ QRect LinBox::mappedPlaceholderRect() const
 
     QSize targetSize = renderer.defaultSize();
     if (!targetSize.isValid()) {
-        targetSize = QSize(220, 220);
+        targetSize = QSize(scaledPx(this, 220), scaledPx(this, 220));
     }
 
-    const int maxWidth = qMax(96, qRound(placeholderArea.width() * 0.58));
-    const int maxHeight = qMax(96, qRound(placeholderArea.height() * 0.58));
+    const int maxWidth = qMax(scaledPx(this, 96), qRound(placeholderArea.width() * 0.58));
+    const int maxHeight = qMax(scaledPx(this, 96), qRound(placeholderArea.height() * 0.58));
     targetSize.scale(maxWidth, maxHeight, Qt::KeepAspectRatio);
     return QRect(
         placeholderArea.center().x() - targetSize.width() / 2,
@@ -1355,7 +1439,8 @@ void LinBox::mouseMoveEvent(QMouseEvent* event) {
         if (m_resizeDir & Right) newGeom.setRight(m_dragStartGeometry.right() + delta.x());
         if (m_resizeDir & Top) newGeom.setTop(m_dragStartGeometry.top() + delta.y());
         if (m_resizeDir & Bottom) newGeom.setBottom(m_dragStartGeometry.bottom() + delta.y());
-        if (newGeom.width() >= 100 && newGeom.height() >= 100) {
+        const int minResizeSize = scaledPx(this, 100);
+        if (newGeom.width() >= minResizeSize && newGeom.height() >= minResizeSize) {
             if (geometry() != newGeom) {
                 setGeometry(newGeom);
                 m_geometryChangedDuringInteraction = true;
@@ -1470,7 +1555,7 @@ void LinBox::beginItemSelection(const QPoint& contentPos)
 
     m_isSelectingItems = true;
     m_selectionStartPos = contentPos;
-    m_selectionArea->syncToParent();
+    m_selectionArea->syncToRect(m_contentArea->rect());
     m_selectionArea->setSelectionRect(QRect(contentPos, QSize(1, 1)));
     m_selectionArea->show();
     m_selectionArea->raise();
@@ -1485,7 +1570,7 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
 
     const QRect selectionRect = QRect(m_selectionStartPos, contentPos).normalized();
     if (m_selectionArea) {
-        m_selectionArea->syncToParent();
+        m_selectionArea->syncToRect(m_contentArea->rect());
         m_selectionArea->setSelectionRect(selectionRect);
     }
 
@@ -1528,8 +1613,8 @@ LinBox::ResizeDir LinBox::getResizeDir(const QPoint& pos) {
     const int y = pos.y();
     const int w = width();
     const int h = height();
-    const int resizeMargin = qMax(4, m_borderWidth);
-    const int cornerMargin = qMax(resizeMargin * 2, 16);
+    const int resizeMargin = qMax(scaledPx(this, 4), m_borderWidth);
+    const int cornerMargin = qMax(resizeMargin * 2, scaledPx(this, 16));
 
     if (x < 0 || y < 0 || x >= w || y >= h) {
         return None;
@@ -1562,6 +1647,28 @@ LinBox::ResizeDir LinBox::getResizeDir(const QPoint& pos) {
 
 bool LinBox::nativeEvent(const QByteArray& eventType, void* message, long* result) {
     MSG* msg = static_cast<MSG*>(message);
+    if (msg->message == WM_DPICHANGED) {
+        updateDpiMetrics();
+        if (msg->lParam) {
+            const RECT* suggested = reinterpret_cast<const RECT*>(msg->lParam);
+            const QRect suggestedGeometry(
+                QPoint(suggested->left, suggested->top),
+                QSize(suggested->right - suggested->left, suggested->bottom - suggested->top));
+            if (suggestedGeometry.isValid()) {
+                setGeometry(suggestedGeometry);
+            }
+        }
+        refreshLayout();
+        update();
+        if (m_glassEffect) {
+            scheduleBlurRefresh();
+        }
+        if (result) {
+            *result = 0;
+        }
+        return true;
+    }
+
     if (msg->message == WM_KEYDOWN || msg->message == WM_SYSKEYDOWN) {
         if (ListView* lv = ListView::instance()) {
             if (msg->wParam == 'N' &&
@@ -1782,38 +1889,38 @@ QRect LinBox::insertionIndicatorRect() const
 
     if (m_showType == BoxShowType::List_ShowType) {
         if (orderedItems.isEmpty()) {
-            return QRect(5, m_titleHeight + 5, qMax(20, width() - 10), 2);
+            return QRect(scaledPx(this, kBaseItemMarginLeft), m_titleHeight + scaledPx(this, kBaseItemMarginTop), qMax(scaledPx(this, 20), width() - scaledPx(this, 10)), scaledPx(this, kBaseIndicatorLine));
         }
 
         if (m_reorderInsertIndex >= orderedItems.size()) {
             const QRect rect = itemBorderRectInBox(orderedItems.last());
-            return QRect(rect.left(), rect.bottom() + 2, rect.width(), 2);
+            return QRect(rect.left(), rect.bottom() + scaledPx(this, 2), rect.width(), scaledPx(this, kBaseIndicatorLine));
         }
 
         const QRect rect = itemBorderRectInBox(orderedItems[m_reorderInsertIndex]);
-        return QRect(rect.left(), rect.top() - 2, rect.width(), 2);
+        return QRect(rect.left(), rect.top() - scaledPx(this, 2), rect.width(), scaledPx(this, kBaseIndicatorLine));
     }
 
     if (orderedItems.isEmpty()) {
-        return QRect(m_contentArea->x() + 5, m_contentArea->y() + 5, 3, 78);
+        return QRect(m_contentArea->x() + scaledPx(this, kBaseItemMarginLeft), m_contentArea->y() + scaledPx(this, kBaseItemMarginTop), scaledPx(this, 3), scaledPx(this, kBaseItemHeight));
     }
 
     if (m_reorderInsertIndex <= 0) {
         const QRect firstRect = itemBorderRectInBox(orderedItems.first());
-        return QRect(firstRect.left() - 3, firstRect.top(), 3, firstRect.height());
+        return QRect(firstRect.left() - scaledPx(this, 3), firstRect.top(), scaledPx(this, 3), firstRect.height());
     }
 
     if (m_reorderInsertIndex >= orderedItems.size()) {
         const QRect lastRect = itemBorderRectInBox(orderedItems.last());
-        return QRect(lastRect.right() + 2, lastRect.top(), 3, lastRect.height());
+        return QRect(lastRect.right() + scaledPx(this, 2), lastRect.top(), scaledPx(this, 3), lastRect.height());
     }
 
     const QRect prevRect = itemBorderRectInBox(orderedItems[m_reorderInsertIndex - 1]);
     const QRect nextRect = itemBorderRectInBox(orderedItems[m_reorderInsertIndex]);
     if (m_reorderIndicatorAfterPrev) {
-        return QRect(prevRect.right() + 2, prevRect.top(), 3, prevRect.height());
+        return QRect(prevRect.right() + scaledPx(this, 2), prevRect.top(), scaledPx(this, 3), prevRect.height());
     }
-    return QRect(nextRect.left() - 3, nextRect.top(), 3, nextRect.height());
+    return QRect(nextRect.left() - scaledPx(this, 3), nextRect.top(), scaledPx(this, 3), nextRect.height());
 }
 
 void LinBox::clearReorderPreview()
@@ -1882,9 +1989,9 @@ void LinBox::showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtr
         m_dragTip->setText(htmlText);
     }
 
-    QPoint targetPos = boxPos + QPoint(24, 24);
-    if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(boxPos.x() - m_dragTip->width() - 8);
-    if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(boxPos.y() - m_dragTip->height() - 8);
+    QPoint targetPos = boxPos + QPoint(scaledPx(this, kBaseDragTipOffset), scaledPx(this, kBaseDragTipOffset));
+    if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(boxPos.x() - m_dragTip->width() - scaledPx(this, kBaseDragTipMargin));
+    if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(boxPos.y() - m_dragTip->height() - scaledPx(this, kBaseDragTipMargin));
     m_dragTip->showAt(mapToGlobal(targetPos));
 }
 
@@ -2608,7 +2715,7 @@ void LinBox::toggleCollapse() {
         iconFont.setFamily("Wingdings");
         fontLoaded = QFontInfo(iconFont).exactMatch();
     }
-    iconFont.setPixelSize(14);
+    iconFont.setPixelSize(scaledPx(this, 14));
     m_collapseBtn->setFont(iconFont);
 
     if (!m_isCollapsed) {
@@ -2767,8 +2874,8 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     // 1. Add Box-specific context actions
     // Rename Box
     ShellContextMenu::CustomMenuItem renameItem;
-    QIcon renameIcon(":/Assets/rename.svg");
-    HBITMAP hRenameBmp = QtWin::toHBITMAP(renameIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+        QIcon renameIcon(":/Assets/rename.svg");
+    HBITMAP hRenameBmp = QtWin::toHBITMAP(renameIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
     renameItem.hBitmap = hRenameBmp;
     tempBitmaps.push_back(hRenameBmp);
     renameItem.text = tr("Rename Box").toStdWString();
@@ -2778,7 +2885,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     if (isFolderMapped()) {
         ShellContextMenu::CustomMenuItem remapItem;
         QIcon remapIcon(":/Assets/change_Mapped_Folder.svg");
-        HBITMAP hRemapBmp = QtWin::toHBITMAP(remapIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+        HBITMAP hRemapBmp = QtWin::toHBITMAP(remapIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
         remapItem.hBitmap = hRemapBmp;
         tempBitmaps.push_back(hRemapBmp);
         remapItem.text = tr("Change Mapped Folder").toStdWString();
@@ -2796,7 +2903,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     }else{
         viewIcon = QIcon(":/Assets/grid.svg");
     }
-    HBITMAP hViewBmp = QtWin::toHBITMAP(viewIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    HBITMAP hViewBmp = QtWin::toHBITMAP(viewIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
     viewItem.hBitmap = hViewBmp;
     tempBitmaps.push_back(hViewBmp);
     viewItem.text = (m_showType == BoxShowType::Icon_ShowType ? tr("List View") : tr("Icon View")).toStdWString();
@@ -2810,7 +2917,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     // Settings
     ShellContextMenu::CustomMenuItem settingsItem;
     QIcon settingsIcon(":/Assets/settings.svg");
-    HBITMAP hSettingsBmp = QtWin::toHBITMAP(settingsIcon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    HBITMAP hSettingsBmp = QtWin::toHBITMAP(settingsIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
     settingsItem.hBitmap = hSettingsBmp;
     tempBitmaps.push_back(hSettingsBmp);
     settingsItem.text = tr("Box Settings").toStdWString();
@@ -2825,7 +2932,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     ShellContextMenu::CustomMenuItem destroyItem;
     destroyItem.text = tr("Destroy Box").toStdWString();
     QIcon icon(":/Assets/destroy.svg");
-    HBITMAP hBmp = QtWin::toHBITMAP(icon.pixmap(16, 16), QtWin::HBitmapPremultipliedAlpha);
+    HBITMAP hBmp = QtWin::toHBITMAP(icon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
     destroyItem.hBitmap = hBmp;
     tempBitmaps.push_back(hBmp);
     destroyItem.callback = [this]() { emit destroyRequested(this); };
@@ -2879,9 +2986,9 @@ void LinBox::updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut) 
             : QString("<b style='color:#70a1ff'>%1</b> <span>%2</span>").arg(tr("Move to"), targetText));
     }
 
-    QPoint targetPos = pos + QPoint(24, 24);
-    if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(pos.x() - m_dragTip->width() - 8);
-    if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(pos.y() - m_dragTip->height() - 8);
+    QPoint targetPos = pos + QPoint(scaledPx(this, kBaseDragTipOffset), scaledPx(this, kBaseDragTipOffset));
+    if (targetPos.x() + m_dragTip->width() > width()) targetPos.setX(pos.x() - m_dragTip->width() - scaledPx(this, kBaseDragTipMargin));
+    if (targetPos.y() + m_dragTip->height() > height()) targetPos.setY(pos.y() - m_dragTip->height() - scaledPx(this, kBaseDragTipMargin));
 
     m_dragTip->showAt(mapToGlobal(targetPos));
 }

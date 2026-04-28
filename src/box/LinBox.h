@@ -20,6 +20,7 @@
 #include <QUuid>
 #include <QPixmap>
 #include <QScopedPointer>
+#include <QPointer>
 #include <QtGlobal>
 
 class LinDirectoryMonitor;
@@ -149,19 +150,20 @@ private:
     bool tryRefreshMappedFolderFromPlaceholderClick(const QPoint& boxPos);
     bool remapMappedFolderInteractively();
     void checkMappedFolderStateAndRefresh();
+    void updateDpiMetrics();
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<ListItem*> m_items;
     
     // UI Elements
-    QWidget* m_titleBar;
+    QWidget* m_titleBar = nullptr;
     QString m_title;
-    QLineEdit* m_titleEdit;
-    QPushButton* m_viewSwitchBtn;
-    QPushButton* m_collapseBtn;
-    QScrollArea* m_scrollArea;
-    QWidget* m_contentArea;
-    QVBoxLayout* m_mainLayout;
+    QLineEdit* m_titleEdit = nullptr;
+    QPushButton* m_viewSwitchBtn = nullptr;
+    QPushButton* m_collapseBtn = nullptr;
+    QScrollArea* m_scrollArea = nullptr;
+    QWidget* m_contentArea = nullptr;
+    QVBoxLayout* m_mainLayout = nullptr;
 
     // Interaction State
     bool m_isResizing = false;
@@ -185,9 +187,10 @@ private:
     QString m_id; 
     QString m_mappedFolderPath;
     MappedFolderState m_mappedFolderState = MappedFolderState::Normal;
+    qreal m_dpiScale = 1.0;
 
 private:
-    class FluentDragTip* m_dragTip = nullptr;
+    QPointer<class FluentDragTip> m_dragTip;
     void updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut = false);
     class QTimer* m_blurRefreshTimer = nullptr;
     class QTimer* m_mappedFolderStateTimer = nullptr;
@@ -196,7 +199,7 @@ private:
     bool m_isRefreshingLayout = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
-    SelectArea* m_selectionArea = nullptr;
+    QPointer<SelectArea> m_selectionArea;
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;
     BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;

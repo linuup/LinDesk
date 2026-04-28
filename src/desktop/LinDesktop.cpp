@@ -7,6 +7,7 @@
 #include <QSettings>
 #include <QAction>
 #include <QMenu>
+#include <QWindow>
 
 LinDesktop::LinDesktop(QWidget* parent)
     : QWidget(parent)
@@ -72,6 +73,20 @@ LinDesktop::LinDesktop(QWidget* parent)
     m_wallpaperLoadTimer->setInterval(500);
     connect(m_wallpaperLoadTimer, &QTimer::timeout, this, &LinDesktop::loadBackImage);
     QTimer::singleShot(800, this, &LinDesktop::checkFirstLaunchPrompt);
+    QTimer::singleShot(0, this, [this]() {
+        if (windowHandle()) {
+            m_windowScreenChangedConnection = connect(
+                windowHandle(),
+                &QWindow::screenChanged,
+                this,
+                [this](QScreen* screen) {
+                    connectScreenSignals(screen);
+                    handleDpiOrScreenMetricsChanged();
+                });
+        }
+        connectScreenSignals(screen());
+        handleDpiOrScreenMetricsChanged();
+    });
 }
 
 LinDesktop::~LinDesktop()
@@ -211,6 +226,71 @@ void LinDesktop::requestHoverEffect()
 {
 }
 
+void LinDesktop::connectScreenSignals(QScreen* screen)
+{
+    if (m_connectedScreen == screen) {
+        return;
+    }
+
+    if (m_connectedScreen) {
+        disconnect(m_screenGeometryChangedConnection);
+        disconnect(m_screenDpiChangedConnection);
+    }
+
+    m_connectedScreen = screen ? screen : QApplication::primaryScreen();
+    if (!m_connectedScreen) {
+        return;
+    }
+
+    m_screenGeometryChangedConnection = connect(
+        m_connectedScreen,
+        &QScreen::geometryChanged,
+        this,
+        [this](const QRect&) {
+            handleDpiOrScreenMetricsChanged();
+        });
+    m_screenDpiChangedConnection = connect(
+        m_connectedScreen,
+        &QScreen::logicalDotsPerInchChanged,
+        this,
+        [this](qreal) {
+            handleDpiOrScreenMetricsChanged();
+        });
+}
+
+void LinDesktop::handleDpiOrScreenMetricsChanged()
+{
+    QScreen* activeScreen = screen();
+    if (!activeScreen && windowHandle()) {
+        activeScreen = windowHandle()->screen();
+    }
+    if (!activeScreen) {
+        activeScreen = QApplication::primaryScreen();
+    }
+    if (!activeScreen) {
+        return;
+    }
+
+    const QRect targetGeometry = m_isEmbedded
+        ? activeScreen->geometry()
+        : geometry();
+
+    if (m_isEmbedded && geometry() != targetGeometry) {
+        setGeometry(targetGeometry);
+    }
+
+    if (listView) {
+        listView->setGeometry(rect());
+        listView->refreshForDpiChange();
+    }
+
+    rebuildScaledWallpaperPixmaps();
+    if (selectArea) {
+        selectArea->syncToRect(rect());
+    }
+    update();
+}
+
 void LinDesktop::checkFirstLaunchPrompt()
 {
     if (m_firstLaunchPromptShown || !m_isFirstLaunch) {
@@ -264,7 +344,7 @@ void LinDesktop::initializeTrayIcon()
     m_trayIcon->setIcon(trayIcon);
     m_trayIcon->setToolTip(tr("LinDesk"));
 
-    m_trayMenu = new QMenu();
+    m_trayMenu = new QMenu(this);
     m_trayMenu->setStyleSheet(
         "QMenu {"
         " background: #ffffff;"
@@ -380,8 +460,10 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event)
     QRect rect;
     const bool shouldShowSelection = listView->updateBackgroundSelection(event->pos(), &rect);
 
-    selectArea->syncToParent();
-    selectArea->setSelectionRect(rect);
+    if (selectArea) {
+        selectArea->syncToRect(this->rect());
+        selectArea->setSelectionRect(rect);
+    }
 
     if (shouldShowSelection) {
         if (!selectArea->isVisible()) {
@@ -429,7 +511,7 @@ void LinDesktop::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     rebuildScaledWallpaperPixmaps();
     if (selectArea) {
-        selectArea->syncToParent();
+        selectArea->syncToRect(rect());
     }
     update();
 }
@@ -492,5 +574,23 @@ void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
+    MSG* msg = static_cast<MSG*>(message);
+    if (msg && msg->message == WM_DPICHANGED) {
+        if (RECT* suggestedRect = reinterpret_cast<RECT*>(msg->lParam)) {
+            setGeometry(QRect(
+                suggestedRect->left,
+                suggestedRect->top,
+                suggestedRect->right - suggestedRect->left,
+                suggestedRect->bottom - suggestedRect->top));
+        }
+        QTimer::singleShot(0, this, [this]() {
+            connectScreenSignals(screen());
+            handleDpiOrScreenMetricsChanged();
+        });
+        if (result) {
+            *result = 0;
+        }
+        return true;
+    }
     return QWidget::nativeEvent(eventType, message, result);
 }

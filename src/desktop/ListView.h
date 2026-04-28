@@ -99,19 +99,22 @@ public:
 	static constexpr int kMediumIconW = 76, kMediumIconH = 78;
 	static constexpr int kSmallIconW = 62, kSmallIconH = 64;
 	//
-	static constexpr int kLargeRowSpacing = 16;
+	static constexpr int kLargeRowSpacing = 14;
 	static constexpr int kLargeColSpacing = 10;
 	//
-	static constexpr int kMediumRowSpacing = 8;
+	static constexpr int kMediumRowSpacing = 6;
 	static constexpr int kMediumColSpacing = 4;
 	//
-	static constexpr int kSmallRowSpacing = 6;
+	static constexpr int kSmallRowSpacing = 4;
 	static constexpr int kSmallColSpacing = 2;
 	//arrow size
 	static constexpr int kLargeArrowSize = 42;
 	static constexpr int kMediumArrowSize = 32;
 	static constexpr int kSmallArrowSize = 24;
 	static constexpr int kListArrowSize = 20;
+	static constexpr int kBaseBottomPadding = 5;
+	static constexpr int kBaseMarginTop = 4;
+	static constexpr int kBaseMarginLeft = 2;
 
 	// 结构体定义
 	struct IconShowRule {
@@ -143,8 +146,22 @@ public:
 	void startListeningSpecialIcon();
 	void initRightMenuConnections();
 	void syncViewModeSizes();
-	QPoint remapPositionForViewMetrics(const QPoint& pos, int oldIconWidth, int oldIconHeight, int oldRowSpacing, int oldColSpacing) const;
-	void applyViewModeMetricsChange(int oldIconWidth, int oldIconHeight, int oldRowSpacing, int oldColSpacing);
+	QPoint remapPositionForViewMetrics(const QPoint& pos,
+		int oldIconWidth,
+		int oldIconHeight,
+		int oldRowSpacing,
+		int oldColSpacing,
+		int oldMarginTop,
+		int oldMarginLeft) const;
+	void applyViewModeMetricsChange(int oldIconWidth,
+		int oldIconHeight,
+		int oldRowSpacing,
+		int oldColSpacing,
+		int oldMarginTop,
+		int oldMarginLeft);
+	void refreshForDpiChange();
+	qreal currentDpiScale() const;
+	int scalePx(int logicalPx) const;
 
 	// 配置加载
 	void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
@@ -290,9 +307,16 @@ private:
 	// 工具函数
 	void ensureDragTip();
 	void ensureInfoTip();
+	QRect desktopLayoutBounds() const;
+	int desktopLayoutLeft() const;
+	int desktopLayoutTop() const;
+	int desktopUsableRight() const;
+	int desktopUsableBottom() const;
+	int desktopItemFootprintHeight() const;
 	QVector<ListItem*> collectAutoArrangeItems() const;
 	void sortAutoArrangeItems(QVector<ListItem*>& items, SortOrderType order) const;
 	void assignCustomSortOrders(const QVector<ListItem*>& orderedItems);
+	void clearDesktopCustomSortOrders();
 	int desktopCustomInsertionIndexForPos(const QPoint& pos, const QVector<ListItem*>& draggedItems) const;
 	void updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QVector<ListItem*>& draggedItems);
 	void clearDesktopAutoArrangeReorderPreview();
@@ -336,6 +360,8 @@ public slots:
 	void onMenuRefresh();
 	void onMenuCreateBox();
 	void onMenuMapFolder();
+	void onMenuOrganizeDesktop();
+	void onMenuOrganizeDesktopByNameSort();
 	void onMenuQuitApp();
 	void onMenuLinDesk();
 	void onMenuPaste();
@@ -391,9 +417,9 @@ private:
 	int m_rowSpacing = kMediumRowSpacing;
 	int m_colSpacing = kMediumColSpacing;
 
-	int m_bottomPadding = 26;
-	const int m_marginTop = 6;
-	const int m_marginLeft = 2;
+	int m_bottomPadding = kBaseBottomPadding;
+	int m_marginTop = kBaseMarginTop;
+	int m_marginLeft = kBaseMarginLeft;
 
 	// 数据存储
 	QVector<ListItem*> m_allItems;
