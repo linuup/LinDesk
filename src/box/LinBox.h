@@ -16,6 +16,7 @@
 #include <QScrollBar>
 #include "desktop/SelectArea.h"
 #include "desktop/ListItem.h"
+#include "desktop/DesktopRootItemState.h"
 #include <QMimeData>
 #include <QUuid>
 #include <QPixmap>
@@ -46,6 +47,10 @@ public:
     void addListItem(ListItem* item, bool refresh = true);
     void insertListItem(ListItem* item, int index, bool refresh = true);
     void removeListItem(ListItem* item, bool refresh = true);
+    void addItemState(const DesktopRootItemState& state, bool refresh = true);
+    void insertItemState(const DesktopRootItemState& state, int index, bool refresh = true);
+    bool removeItemState(const QString& filePath, bool refresh = true);
+    bool takeItemState(const QString& filePath, DesktopRootItemState& stateOut, bool refresh = true);
     void setBoxTitle(const QString& title);
     void setResizeBorderWidth(int width);
     void toggleCollapse();
@@ -60,6 +65,11 @@ public:
     bool isCollapsed() const { return m_isCollapsed; }
     int originalHeight() const { return m_originalHeight; }
     QVector<ListItem*> items() const { return m_items; }
+    QVector<QString> itemPaths() const;
+    const QVector<DesktopRootItemState>& itemStates() const { return m_itemStates; }
+    bool containsItemPath(const QString& filePath) const;
+    DesktopRootItemState* findItemStateByPath(const QString& filePath);
+    const DesktopRootItemState* findItemStateByPath(const QString& filePath) const;
     bool isFolderMapped() const { return !m_mappedFolderPath.isEmpty(); }
     QString mappedFolderPath() const { return m_mappedFolderPath; }
     MappedFolderState mappedFolderState() const { return m_mappedFolderState; }
@@ -129,6 +139,8 @@ private:
     void beginTitleEditing();
     void commitTitleEditing();
     ListItem* hitItemAt(const QPoint& boxPos) const;
+    DesktopRootItemState* hitItemStateAt(const QPoint& boxPos);
+    const DesktopRootItemState* hitItemStateAt(const QPoint& boxPos) const;
     ListItem* findItemByPath(const QString& filePath) const;
     int insertionIndexForPos(const QPoint& boxPos, const QVector<ListItem*>& draggedItems, bool* alignAfterPrev = nullptr) const;
     QRect insertionIndicatorRect() const;
@@ -151,9 +163,11 @@ private:
     bool remapMappedFolderInteractively();
     void checkMappedFolderStateAndRefresh();
     void updateDpiMetrics();
+    ListItem* ensureLegacyItemForState(DesktopRootItemState& state);
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<ListItem*> m_items;
+    QVector<DesktopRootItemState> m_itemStates;
     
     // UI Elements
     QWidget* m_titleBar = nullptr;
@@ -199,6 +213,7 @@ private:
     bool m_isRefreshingLayout = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
+    QString m_pressedItemPath;
     QPointer<SelectArea> m_selectionArea;
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;

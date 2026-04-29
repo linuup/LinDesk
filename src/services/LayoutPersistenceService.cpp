@@ -4,6 +4,7 @@
 
 #include "box/BoxManager.h"
 #include "box/LinBox.h"
+#include "desktop/DesktopRootItemState.h"
 #include "desktop/ListItem.h"
 
 namespace {
@@ -61,6 +62,50 @@ QMap<QString, QMap<QString, QVariant>> LayoutPersistenceService::collectIconPosi
     return iconPositions;
 }
 
+QMap<QString, QMap<QString, QVariant>> LayoutPersistenceService::collectIconPositions(
+    const QVector<DesktopRootItemState>& desktopItems,
+    const QVector<QPointer<LinBox>>& boxes) const
+{
+    QMap<QString, QMap<QString, QVariant>> iconPositions;
+
+    for (const auto& state : desktopItems) {
+        const QString filePath = normalizePersistencePath(state.model.filePath);
+        if (filePath.isEmpty()) {
+            continue;
+        }
+
+        QMap<QString, QVariant> posInfo;
+        posInfo["x"] = state.model.position.x();
+        posInfo["y"] = state.model.position.y();
+        posInfo["boxId"] = state.model.boxId;
+        posInfo["ord"] = state.model.customSortOrder;
+        iconPositions[filePath] = posInfo;
+    }
+
+    for (const auto& boxPtr : boxes) {
+        LinBox* box = boxPtr.data();
+        if (!box) {
+            continue;
+        }
+
+        for (const DesktopRootItemState& state : box->itemStates()) {
+            const QString filePath = normalizePersistencePath(state.model.filePath);
+            if (filePath.isEmpty()) {
+                continue;
+            }
+
+            QMap<QString, QVariant> posInfo;
+            posInfo["x"] = state.model.position.x();
+            posInfo["y"] = state.model.position.y();
+            posInfo["boxId"] = state.model.boxId;
+            posInfo["ord"] = state.model.customSortOrder;
+            iconPositions[filePath] = posInfo;
+        }
+    }
+
+    return iconPositions;
+}
+
 QMap<QString, PersistentIconInfo> LayoutPersistenceService::toSavedIconPositions(
     const QMap<QString, QMap<QString, QVariant>>& iconPositions) const
 {
@@ -81,10 +126,16 @@ void LayoutPersistenceService::save(const QString& persistencePath,
                                     const LayoutPersistenceState& state,
                                     const QVector<ListItem*>& allItems) const
 {
+    Q_UNUSED(allItems);
+    save(persistencePath, state);
+}
+
+void LayoutPersistenceService::save(const QString& persistencePath,
+                                    const LayoutPersistenceState& state) const
+{
     BoxManager::instance()->saveAll(
         persistencePath,
         state.enablePersistence,
-        allItems,
         state.iconPositions,
         state.viewMode,
         state.sortType,

@@ -51,12 +51,12 @@ void RenameManager::startRename(ListItem* item) {
                 return;
             }
 
-            m_activeItem->setExpandedPreviewText(m_editor->text());
-
             ListView* lv = ListView::instance();
             if (!lv) {
                 return;
             }
+
+            lv->setItemExpandedPreviewText(m_activeItem, m_editor->text());
 
             const QPoint itemTopLeft = lv->mapFromGlobal(m_activeItem->mapToGlobal(QPoint(0, 0)));
             const QRect localEditorRect = m_activeItem->renameEditorRect();
@@ -105,7 +105,9 @@ void RenameManager::cancelRename() {
     m_originalDisplayName.clear();
     
     if (item) {
-        item->setExpandedPreviewText(QString());
+        if (ListView* lv = ListView::instance()) {
+            lv->setItemExpandedPreviewText(item, QString());
+        }
         item->refreshTextLabelPresentation();
         item->update();
     }
@@ -127,7 +129,9 @@ void RenameManager::finishRename() {
         return;
     }
 
-    item->setExpandedPreviewText(QString());
+    if (ListView* lv = ListView::instance()) {
+        lv->setItemExpandedPreviewText(item, QString());
+    }
     item->refreshTextLabelPresentation();
 
     if (editedText.isEmpty() || editedText == originalDisplayName) {

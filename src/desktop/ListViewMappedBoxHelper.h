@@ -97,6 +97,7 @@ public:
             view.m_items.removeOne(item);
             view.m_allItems.removeOne(item);
             view.m_selectedItems.removeOne(item);
+            view.removeModelStateForLegacyItem(item);
             item->deleteLater();
         }
 
@@ -135,6 +136,7 @@ public:
                 view.setupItemConnections(item, box);
                 view.m_allItems.push_back(item);
                 view.m_hiddenIcons.push_back(item);
+                view.ensureModelStateForLegacyItem(item);
             } else {
                 item->setItemData(itemLoader.loadItem(path));
                 item->initData();
@@ -143,6 +145,7 @@ public:
                 if (!view.m_hiddenIcons.contains(item)) {
                     view.m_hiddenIcons.push_back(item);
                 }
+                view.ensureModelStateForLegacyItem(item);
             }
 
             item->setBoxId(box->boxId());

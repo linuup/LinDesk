@@ -2,6 +2,7 @@
 #include <qstring.h>
 #include <qsettings.h>
 #include <qicon.h>
+#include <qpixmap.h>
 #include <QtWinExtras/qwinfunctions.h>
 #include <qdir.h>
 #include <QDebug>
@@ -125,6 +126,9 @@ namespace SysInfoUtil{
 
     // 视觉自动裁剪 (Visual Auto-Crop)
     QImage autoCropImage(const QImage& image, bool* wasCropped = nullptr);
+
+    // 文件夹图标背景清理
+    QPixmap sanitizeFolderPreviewMatte(const QPixmap& source);
 }
 
 /* General helper functions. */

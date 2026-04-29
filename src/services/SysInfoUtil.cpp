@@ -8,63 +8,8 @@
 #include <QImageReader>
 #include <QStandardPaths>
 #include <QFileInfoList>
-//QMap<QString, SysFileIcon>* SysInfoUtil::SysIconRegedit_State()
-//{
-//	QMap<QString, SysFileIcon>* regeditValue = new QMap<QString, SysFileIcon>;
-//	QSettings settings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel", QSettings::NativeFormat);
-//	for (const QString& key : settings.allKeys()) {
-//		SysFileIcon icon;
-//		int val = settings.value(key).toInt();
-//		if (key == MY_COMPUTER_CLS) {
-//			icon.name = "This PC";
-//			icon.CLSID = QString(MY_COMPUTER_CLS);
-//			icon.hideIcon = val;
-//			icon.iconIndex = 16;
-//			icon.DllName = "shell32.dll";
-//			icon.sfName = SpecialFolders::ThisPc;
-//		}
-//		else if (key == CONTROL_PANEL_CLS) {
-//			icon.name = "Control Panel";
-//			icon.CLSID = QString(CONTROL_PANEL_CLS);
-//			icon.hideIcon = val;
-//			icon.iconIndex = 58;
-//			icon.DllName = "shell32.dll";
-//			icon.sfName = SpecialFolders::ControlPanel;
-//		}
-//		else if (key == NETWORK_CLS) {
-//
-//			icon.name = "Network";
-//			icon.CLSID = QString(NETWORK_CLS);
-//			icon.hideIcon = val;
-//			icon.iconIndex = 18;
-//			icon.DllName = "shell32.dll";
-//			icon.sfName = SpecialFolders::Network;
-//		}
-//		else if (key == RECYCLE_BIN_CLS) {
-//			icon.name = "Recycle Bin";
-//			icon.CLSID = QString(RECYCLE_BIN_CLS);
-//			icon.hideIcon = val;
-//			icon.iconIndex = 32;
-//			icon.DllName = "shell32.dll";
-//			icon.sfName = SpecialFolders::RecycleBin;
-//		}
-//		else if (key == USER_FOLDER_CLS) {
-//			icon.name = "User";
-//			icon.CLSID = QString(USER_FOLDER_CLS);
-//			icon.hideIcon = val;
-//			icon.iconIndex = 118;
-//			icon.DllName = "imageres.dll";
-//			icon.sfName = SpecialFolders::User;
-//		}
-//		//有状态再存储
-//		if (!icon.name.isEmpty()) {
-//			regeditValue->insert(key, icon);
-//		}
-//	}
-//	return regeditValue;
-//}
-
-
+#include <QQueue>
+#include <QPainter>
 
 QIcon SysInfoUtil::ExtractIconFromExe(const QString& exePath, int iconIndex)
 {
@@ -401,4 +346,94 @@ QImage SysInfoUtil::autoCropImage(const QImage& source, bool* wasCropped)
 	if (wasCropped) *wasCropped = true;
 
 	return cropped.scaled(source.size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+}
+
+namespace {
+bool isNearWhiteOpaque(QRgb pixel) {
+    return qAlpha(pixel) >= 245 && qRed(pixel) >= 235 && qGreen(pixel) >= 235 && qBlue(pixel) >= 235;
+}
+bool isCloseToMatteColor(QRgb pixel, const QColor& matteColor, int tolerance) {
+    if (qAlpha(pixel) < 245) return false;
+    return qAbs(qRed(pixel) - matteColor.red()) <= tolerance &&
+           qAbs(qGreen(pixel) - matteColor.green()) <= tolerance &&
+           qAbs(qBlue(pixel) - matteColor.blue()) <= tolerance;
+}
+}
+
+QPixmap SysInfoUtil::sanitizeFolderPreviewMatte(const QPixmap& source)
+{
+    if (source.isNull()) return source;
+    QImage image = source.toImage().convertToFormat(QImage::Format_ARGB32);
+    if (image.isNull() || image.width() < 8 || image.height() < 8) return source;
+
+    const QRgb topLeft = image.pixel(0, 0);
+    const QRgb topRight = image.pixel(image.width() - 1, 0);
+    const QRgb bottomLeft = image.pixel(0, image.height() - 1);
+    const QRgb bottomRight = image.pixel(image.width() - 1, image.height() - 1);
+    if (!isNearWhiteOpaque(topLeft) || !isNearWhiteOpaque(topRight) ||
+        !isNearWhiteOpaque(bottomLeft) || !isNearWhiteOpaque(bottomRight)) return source;
+
+    const QColor matteColor = QColor::fromRgb(topLeft);
+    const int tolerance = 16;
+    QImage result = image;
+    QVector<uchar> visited(image.width() * image.height(), 0);
+    QQueue<QPoint> queue;
+
+    auto enqueue = [&](int x, int y) {
+        if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) return;
+        const int index = y * image.width() + x;
+        if (visited[index]) return;
+        if (!isCloseToMatteColor(result.pixel(x, y), matteColor, tolerance)) return;
+        visited[index] = 1;
+        queue.enqueue(QPoint(x, y));
+    };
+
+    for (int x = 0; x < image.width(); ++x) { enqueue(x, 0); enqueue(x, image.height() - 1); }
+    for (int y = 0; y < image.height(); ++y) { enqueue(0, y); enqueue(image.width() - 1, y); }
+
+    int clearedPixels = 0;
+    while (!queue.isEmpty()) {
+        const QPoint point = queue.dequeue();
+        result.setPixel(point.x(), point.y(), qRgba(qRed(result.pixel(point.x(), point.y())),
+            qGreen(result.pixel(point.x(), point.y())), qBlue(result.pixel(point.x(), point.y())), 0));
+        ++clearedPixels;
+        enqueue(point.x() - 1, point.y()); enqueue(point.x() + 1, point.y());
+        enqueue(point.x(), point.y() - 1); enqueue(point.x(), point.y() + 1);
+    }
+    if (clearedPixels == 0) return source;
+
+    auto decontaminateChannel = [](int channel, int matteChannel, int alpha) -> int {
+        if (alpha <= 0) return 0;
+        const double a = alpha / 255.0;
+        const double corrected = (channel - (1.0 - a) * matteChannel) / a;
+        return qBound(0, qRound(corrected), 255);
+    };
+
+    for (int y = 0; y < result.height(); ++y) {
+        for (int x = 0; x < result.width(); ++x) {
+            const int idx = y * result.width() + x;
+            if (visited[idx]) continue;
+            const QRgb pixel = result.pixel(x, y);
+            const int alpha = qAlpha(pixel);
+            if (alpha <= 0 || alpha >= 255) continue;
+
+            bool touchesClearedMatte = false;
+            for (int dy = -1; dy <= 1 && !touchesClearedMatte; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && ny >= 0 && nx < result.width() && ny < result.height() && visited[ny * result.width() + nx]) {
+                        touchesClearedMatte = true; break;
+                    }
+                }
+            }
+            if (!touchesClearedMatte) continue;
+
+            result.setPixel(x, y, qRgba(
+                decontaminateChannel(qRed(pixel), matteColor.red(), alpha),
+                decontaminateChannel(qGreen(pixel), matteColor.green(), alpha),
+                decontaminateChannel(qBlue(pixel), matteColor.blue(), alpha), alpha));
+        }
+    }
+    return QPixmap::fromImage(result);
 }

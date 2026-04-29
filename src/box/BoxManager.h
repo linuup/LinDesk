@@ -39,7 +39,6 @@ public:
     // 数据持久化
     void saveAll();
     void saveAll(const QString& persistencePath, bool enablePersistence,
-                 const QVector<ListItem*>& allItems,
                  const QMap<QString, QMap<QString, QVariant>>& iconPositions,
                  int viewMode, int sortType, int preAutoSort, int iconPosMode,
                  bool autoArrange, bool gridAlignment,

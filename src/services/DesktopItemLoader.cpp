@@ -109,6 +109,36 @@ QJsonObject toJsonObject(const ListItem* item)
     return obj;
 }
 
+QJsonObject toJsonObject(const DesktopRootItemState& state)
+{
+    const DesktopRootItemModel& model = state.model;
+    QJsonObject obj;
+    obj["name"] = model.displayName;
+    obj["path"] = model.filePath;
+    obj["normalizedPath"] = model.normalizedPath;
+    obj["clsid"] = model.itemData.getCLSID();
+    obj["type"] = objectTypeToString(model.objectType);
+    obj["typeValue"] = static_cast<int>(model.objectType);
+    obj["fileForm"] = fileFormToString(model.itemData.fileForm());
+    obj["fileFormValue"] = static_cast<int>(model.itemData.fileForm());
+    obj["targetKind"] = targetKindToString(model.itemData.targetKind());
+    obj["targetKindValue"] = static_cast<int>(model.itemData.targetKind());
+    obj["boxId"] = model.boxId;
+    obj["visible"] = model.visible;
+    obj["selected"] = model.isSelected;
+    obj["ready"] = model.isReady;
+    obj["positionX"] = model.position.x();
+    obj["positionY"] = model.position.y();
+    obj["width"] = model.renderData.itemRect.width();
+    obj["height"] = model.renderData.itemRect.height();
+    obj["exists"] = model.fileInfo.exists();
+    obj["isDir"] = model.fileInfo.isDir();
+    obj["suffix"] = model.fileInfo.suffix();
+    obj["size"] = static_cast<qint64>(model.fileInfo.exists() ? model.fileInfo.size() : 0);
+    obj["lastModified"] = model.fileInfo.exists() ? model.fileInfo.lastModified().toString(Qt::ISODate) : QString();
+    return obj;
+}
+
 QString normalizedExistingPath(const QString& path)
 {
     if (path.isEmpty()) {
@@ -271,6 +301,15 @@ QString DesktopItemLoader::dumpListItemsJson(const QVector<ListItem*>& items)
     QJsonArray array;
     for (const ListItem* item : items) {
         array.append(toJsonObject(item));
+    }
+    return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Indented));
+}
+
+QString DesktopItemLoader::dumpDesktopRootStatesJson(const QVector<DesktopRootItemState>& states)
+{
+    QJsonArray array;
+    for (const DesktopRootItemState& state : states) {
+        array.append(toJsonObject(state));
     }
     return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Indented));
 }

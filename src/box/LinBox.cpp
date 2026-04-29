@@ -28,6 +28,7 @@
 #include "ui/SettingUI.h"
 #include "desktop/ListView.h"
 #include "desktop/ListItem.h"
+#include "desktop/DesktopRootItemState.h"
 #include "app/AppFonts.h"
 #include "desktop/ListViewFileOpsHelper.h"
 #include "box/BoxManager.h"
@@ -204,6 +205,41 @@ bool areAllPathsDirectChildrenOfFolder(const QStringList& paths, const QString& 
     }
 
     return true;
+}
+
+QString normalizeBoxItemPath(const QString& filePath)
+{
+    QString normalized = QDir::cleanPath(QDir::fromNativeSeparators(filePath));
+    while (normalized.endsWith('/') || normalized.endsWith('\\')) {
+        normalized.chop(1);
+    }
+    return normalized.toLower();
+}
+
+DesktopRenderParams buildBoxRenderParams(const LinBox* box, LinBox::BoxShowType showType, int itemWidth, int itemHeight)
+{
+    DesktopRenderParams params;
+    params.iconWidth = itemWidth;
+    params.iconHeight = itemHeight;
+    params.largeIconW = scaledPx(box, 100);
+    params.smallIconW = scaledPx(box, 62);
+    params.iconTextGap = (showType == LinBox::BoxShowType::List_ShowType) ? scaledPx(box, 4) : scaledPx(box, 8);
+    params.dpiScale = DpiScaleHelper::uiScaleForWidget(box);
+    params.labelFont = AppFonts::uiFont(9);
+    params.showShortcutArrow = true;
+    return params;
+}
+
+void translateRenderData(DesktopRootItemRenderData& renderData, const QPoint& delta)
+{
+    renderData.itemRect.translate(delta);
+    renderData.iconRect.translate(delta);
+    renderData.textRect.translate(delta);
+    renderData.renameEditorRect.translate(delta);
+    renderData.shortcutArrowRect.translate(delta);
+    renderData.selectionContentRect.translate(delta);
+    renderData.outerHighlightRect.translate(delta);
+    renderData.innerHighlightRect.translate(delta);
 }
 
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
@@ -683,44 +719,59 @@ void LinBox::setShowType(BoxShowType type) {
 }
 
 void LinBox::addListItem(ListItem* item, bool refresh) {
-    if (!item || m_items.contains(item)) return;
-    m_items.append(item);
-    item->setParent(m_contentArea);
-    item->setBoxId(m_id); // Ensure item knows it's in this box
-    item->setMouseTracking(true);
-    item->installEventFilter(this);
-    item->show();
-    item->raise();
-    if (refresh) {
-        refreshLayout();
-        emit geometryChanged(this);
+    if (!item) {
+        return;
     }
+
+    DesktopRootItemState state = buildDesktopRootItemState(*item);
+    state.legacyItem = item;
+    state.model.boxId = m_id;
+    state.model.visible = true;
+
+    if (!m_items.contains(item)) {
+        m_items.append(item);
+    }
+
+    item->setParent(m_contentArea);
+    item->setBoxId(m_id);
+    item->setMouseTracking(true);
+    item->removeEventFilter(this);
+    item->hide();
+
+    addItemState(state, refresh);
 }
 
 void LinBox::insertListItem(ListItem* item, int index, bool refresh) {
-    if (!item) return;
+    if (!item) {
+        return;
+    }
+
+    DesktopRootItemState state = buildDesktopRootItemState(*item);
+    state.legacyItem = item;
+    state.model.boxId = m_id;
+    state.model.visible = true;
+
     m_items.removeAll(item);
     const int clampedIndex = qBound(0, index, m_items.size());
     m_items.insert(clampedIndex, item);
     item->setParent(m_contentArea);
     item->setBoxId(m_id);
     item->setMouseTracking(true);
-    item->installEventFilter(this);
-    item->show();
-    item->raise();
-    m_lastLayoutItemCount = -1;
-    if (refresh) {
-        refreshLayout();
-        emit geometryChanged(this);
-    }
+    item->removeEventFilter(this);
+    item->hide();
+
+    insertItemState(state, index, refresh);
 }
 
 void LinBox::removeListItem(ListItem* item, bool refresh) {
-    if (!item) return;
+    if (!item) {
+        return;
+    }
+
     m_items.removeAll(item);
-    item->setBoxId(""); // Item is no longer in this box
+    removeItemState(item->filePath(), false);
+    item->setBoxId("");
     item->removeEventFilter(this);
-    // Note: Do NOT change parent here. Caller is responsible for reparenting.
     item->hide();
     if (refresh) {
         refreshLayout();
@@ -730,8 +781,104 @@ void LinBox::removeListItem(ListItem* item, bool refresh) {
     }
 }
 
+void LinBox::addItemState(const DesktopRootItemState& state, bool refresh)
+{
+    insertItemState(state, m_itemStates.size(), refresh);
+}
+
+void LinBox::insertItemState(const DesktopRootItemState& state, int index, bool refresh)
+{
+    if (state.model.filePath.isEmpty()) {
+        return;
+    }
+
+    DesktopRootItemState stateCopy = state;
+    stateCopy.model.boxId = m_id;
+    stateCopy.model.visible = true;
+    if (stateCopy.legacyItem) {
+        stateCopy.legacyItem->setBoxId(m_id);
+        stateCopy.legacyItem->hide();
+        if (!m_items.contains(stateCopy.legacyItem)) {
+            const int clampedLegacyIndex = qBound(0, index, m_items.size());
+            m_items.insert(clampedLegacyIndex, stateCopy.legacyItem);
+        }
+    }
+
+    removeItemState(stateCopy.model.filePath, false);
+    const int clampedIndex = qBound(0, index, m_itemStates.size());
+    m_itemStates.insert(clampedIndex, stateCopy);
+    m_lastLayoutItemCount = -1;
+    if (refresh) {
+        refreshLayout();
+        emit geometryChanged(this);
+    }
+}
+
+bool LinBox::removeItemState(const QString& filePath, bool refresh)
+{
+    const QString normalizedPath = normalizeBoxItemPath(filePath);
+    for (int i = 0; i < m_itemStates.size(); ++i) {
+        if (normalizeBoxItemPath(m_itemStates[i].model.filePath) != normalizedPath) {
+            continue;
+        }
+        if (m_itemStates[i].legacyItem) {
+            m_items.removeAll(m_itemStates[i].legacyItem);
+        }
+        m_itemStates.removeAt(i);
+        if (refresh) {
+            refreshLayout();
+            emit geometryChanged(this);
+        } else {
+            m_lastLayoutItemCount = -1;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool LinBox::takeItemState(const QString& filePath, DesktopRootItemState& stateOut, bool refresh)
+{
+    const QString normalizedPath = normalizeBoxItemPath(filePath);
+    for (int i = 0; i < m_itemStates.size(); ++i) {
+        if (normalizeBoxItemPath(m_itemStates[i].model.filePath) != normalizedPath) {
+            continue;
+        }
+        stateOut = m_itemStates.takeAt(i);
+        if (stateOut.legacyItem) {
+            m_items.removeAll(stateOut.legacyItem);
+            stateOut.legacyItem->setBoxId(QString());
+            stateOut.legacyItem->hide();
+        }
+        if (refresh) {
+            refreshLayout();
+            emit geometryChanged(this);
+        } else {
+            m_lastLayoutItemCount = -1;
+        }
+        return true;
+    }
+    return false;
+}
+
+QVector<QString> LinBox::itemPaths() const
+{
+    QVector<QString> paths;
+    paths.reserve(m_itemStates.size());
+    for (const DesktopRootItemState& state : m_itemStates) {
+        if (!state.model.filePath.isEmpty()) {
+            paths.append(state.model.filePath);
+        }
+    }
+    return paths;
+}
+
+bool LinBox::containsItemPath(const QString& filePath) const
+{
+    return findItemStateByPath(filePath) != nullptr;
+}
+
 void LinBox::refreshLayout() {
-    if (m_isRefreshingLayout || m_items.isEmpty()) return;
+    if (m_isRefreshingLayout || m_itemStates.isEmpty()) return;
     const int itemW = scaledPx(this, kBaseItemWidth);
     const int itemH = scaledPx(this, kBaseItemHeight);
     const int colSpacing = scaledPx(this, kBaseItemGap);
@@ -748,14 +895,14 @@ void LinBox::refreshLayout() {
     const int fallbackContentW = qMax(1, width() - (m_borderWidth * 2));
     const int contentW = qMax(1, viewportW > 0 ? viewportW : fallbackContentW);
     quint64 visualSignature = 1469598103934665603ULL;
-    for (const ListItem* item : m_items) {
-        const quint64 textHeight = static_cast<quint64>(qMax(0, item ? item->visibleTextHeight() : 0));
-        const quint64 expanded = (item && item->isFullNameExpanded()) ? 0x9e3779b97f4a7c15ULL : 0ULL;
+    for (const DesktopRootItemState& state : m_itemStates) {
+        const quint64 textHeight = static_cast<quint64>(qMax(0, state.model.visibleTextHeight));
+        const quint64 expanded = state.model.isFullNameExpanded ? 0x9e3779b97f4a7c15ULL : 0ULL;
         visualSignature ^= textHeight + expanded + 0x9e3779b97f4a7c15ULL + (visualSignature << 6) + (visualSignature >> 2);
     }
     const bool layoutUnchanged =
         m_lastLayoutContentWidth == contentW &&
-        m_lastLayoutItemCount == m_items.size() &&
+        m_lastLayoutItemCount == m_itemStates.size() &&
         m_lastLayoutShowType == m_showType &&
         m_lastLayoutVisualSignature == visualSignature;
 
@@ -766,18 +913,20 @@ void LinBox::refreshLayout() {
     m_isRefreshingLayout = true;
 
     if (m_showType == BoxShowType::Icon_ShowType) {
+        DesktopRenderParams params = buildBoxRenderParams(this, m_showType, itemW, itemH);
         const int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
-        const int rows = (m_items.size() + cols - 1) / cols;
+        const int rows = (m_itemStates.size() + cols - 1) / cols;
         QVector<int> rowHeights(rows, itemH);
 
-        for (int i = 0; i < m_items.size(); ++i) {
+        for (int i = 0; i < m_itemStates.size(); ++i) {
             const int row = i / cols;
-            ListItem* item = m_items[i];
-            item->setLayoutMode(ListItem::LayoutMode::IconMode);
-            item->setItemSize(itemW, itemH);
-            rowHeights[row] = qMax(rowHeights[row], item->size().height());
-            item->show();
-            item->raise();
+            DesktopRootItemState& state = m_itemStates[i];
+            state.model.layoutMode = DesktopLayoutMode::IconMode;
+            state.model.position = QPoint(0, 0);
+            state.model.effectiveSize = QSize(itemW, itemH);
+            state.model.renderData = buildRenderDataFromModel(state.model, params);
+            state.model.visibleTextHeight = state.model.renderData.selectionContentRect.height();
+            rowHeights[row] = qMax(rowHeights[row], state.model.renderData.itemRect.height());
         }
 
         QVector<int> rowTops(rows, marginTop);
@@ -785,42 +934,44 @@ void LinBox::refreshLayout() {
             rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + rowSpacing;
         }
 
-        for (int i = 0; i < m_items.size(); ++i) {
+        for (int i = 0; i < m_itemStates.size(); ++i) {
             const int row = i / cols;
             const int col = i % cols;
             const int x = marginLeft + col * (itemW + colSpacing);
             const int y = rowTops[row];
+            DesktopRootItemState& state = m_itemStates[i];
             const QPoint targetPos(x, y);
-            ListItem* item = m_items[i];
-            if (item->pos() != targetPos) {
-                item->move(targetPos);
-                item->updateLocationInfo(targetPos);
+            state.model.position = targetPos;
+            state.model.effectiveSize = QSize(itemW, qMax(itemH, rowHeights[row]));
+            state.model.renderData = buildRenderDataFromModel(state.model, params);
+            state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+            if (state.legacyItem) {
+                state.legacyItem->updateLocationInfo(targetPos);
             }
         }
     } else {
-        int listItemH = 30; 
-        listItemH = scaledPx(this, kBaseItemListHeight);
-        for (int i = 0; i < m_items.size(); ++i) {
-            ListItem* item = m_items[i];
-            const QFont textFont = AppFonts::uiFont(9);
-            const QFontMetrics fm(textFont);
+        const int listItemH = scaledPx(this, kBaseItemListHeight);
+        DesktopRenderParams baseParams = buildBoxRenderParams(this, m_showType, qMax(1, contentW - 2 * marginLeft), listItemH);
+        for (int i = 0; i < m_itemStates.size(); ++i) {
+            DesktopRootItemState& state = m_itemStates[i];
+            const QFontMetrics fm(baseParams.labelFont);
             const int iconAreaW = scaledPx(this, kBaseItemListPadding) + scaledPx(this, 20) + scaledPx(this, kBaseItemListPadding);
-            const int textW = qMax(scaledPx(this, 24), fm.horizontalAdvance(item->displayName()));
+            const int textW = qMax(scaledPx(this, 24), fm.horizontalAdvance(state.model.displayName));
             const int rightPadding = scaledPx(this, kBaseItemListRightPadding);
             const int listItemW = qMin(contentW - 2 * marginLeft, iconAreaW + textW + rightPadding);
             const int x = marginLeft;
             const int y = marginTop + i * (listItemH + scaledPx(this, 2));
             const QPoint targetPos(x, y);
-            item->setLayoutMode(ListItem::LayoutMode::ListMode);
-            if (item->size() != QSize(listItemW, listItemH)) {
-                item->setItemSize(listItemW, listItemH);
+            DesktopRenderParams params = baseParams;
+            params.iconWidth = listItemW;
+            state.model.layoutMode = DesktopLayoutMode::ListMode;
+            state.model.position = targetPos;
+            state.model.effectiveSize = QSize(listItemW, listItemH);
+            state.model.renderData = buildRenderDataFromModel(state.model, params);
+            state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+            if (state.legacyItem) {
+                state.legacyItem->updateLocationInfo(targetPos);
             }
-            if (item->pos() != targetPos) {
-                item->move(targetPos);
-                item->updateLocationInfo(targetPos);
-            }
-            item->show();
-            item->raise();
         }
     }
     m_contentArea->update();
@@ -830,25 +981,25 @@ void LinBox::refreshLayout() {
     if (m_showType == BoxShowType::Icon_ShowType) {
         const int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
         int rowHeightSum = 0;
-        for (int rowStart = 0; rowStart < m_items.size(); rowStart += cols) {
+        for (int rowStart = 0; rowStart < m_itemStates.size(); rowStart += cols) {
             int rowMaxHeight = itemH;
-            const int rowEnd = qMin(rowStart + cols, m_items.size());
+            const int rowEnd = qMin(rowStart + cols, m_itemStates.size());
             for (int i = rowStart; i < rowEnd; ++i) {
-                rowMaxHeight = qMax(rowMaxHeight, m_items[i]->size().height());
+                rowMaxHeight = qMax(rowMaxHeight, m_itemStates[i].model.renderData.itemRect.height());
             }
             rowHeightSum += rowMaxHeight;
         }
-        const int rows = (m_items.size() + cols - 1) / cols;
+        const int rows = (m_itemStates.size() + cols - 1) / cols;
         totalHeight = marginTop + rowHeightSum + qMax(0, rows - 1) * rowSpacing + scaledPx(this, 10);
     } else {
-        totalHeight = marginTop + m_items.size() * (scaledPx(this, kBaseItemListHeight) + scaledPx(this, 2)) + scaledPx(this, 10);
+        totalHeight = marginTop + m_itemStates.size() * (scaledPx(this, kBaseItemListHeight) + scaledPx(this, 2)) + scaledPx(this, 10);
     }
     m_contentArea->setMinimumWidth(contentW);
     m_contentArea->setMinimumHeight(totalHeight);
     m_contentArea->resize(contentW, totalHeight);
 
     m_lastLayoutContentWidth = contentW;
-    m_lastLayoutItemCount = m_items.size();
+    m_lastLayoutItemCount = m_itemStates.size();
     m_lastLayoutShowType = m_showType;
     m_lastLayoutVisualSignature = visualSignature;
     m_isRefreshingLayout = false;
@@ -1216,7 +1367,7 @@ void LinBox::checkMappedFolderStateAndRefresh()
     const bool stateChanged = currentState != previousState;
     const bool invalidStateWithStaleItems =
         currentState != MappedFolderState::Normal &&
-        !m_items.isEmpty();
+        !m_itemStates.isEmpty();
     const bool recoveredWithoutMonitor =
         currentState == MappedFolderState::Normal &&
         !mappedFolderMonitor();
@@ -1531,13 +1682,25 @@ void LinBox::paintEvent(QPaintEvent* event) {
 
     const QRect placeholderRect = mappedPlaceholderRect();
     if (!placeholderRect.isNull()) {
-        const QString resourcePath = mappedFolderPlaceholderResourcePath(mappedFolderState(), m_items.isEmpty());
+        const QString resourcePath = mappedFolderPlaceholderResourcePath(mappedFolderState(), m_itemStates.isEmpty());
         if (!resourcePath.isEmpty()) {
             QSvgRenderer renderer(resourcePath);
             if (renderer.isValid()) {
                 renderer.render(&p, placeholderRect);
             }
         }
+    }
+
+    if (m_contentArea && m_scrollArea && m_scrollArea->viewport()) {
+        const QPoint contentOrigin = m_contentArea->mapTo(this, QPoint(0, 0));
+        p.save();
+        p.setClipRect(m_scrollArea->geometry());
+        for (const DesktopRootItemState& state : m_itemStates) {
+            DesktopRootItemRenderData renderData = state.model.renderData;
+            translateRenderData(renderData, contentOrigin);
+            paintDesktopRootItem(p, renderData);
+        }
+        p.restore();
     }
 
 }
@@ -1575,13 +1738,13 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
     }
 
     QVector<ListItem*> selectedItems;
-    selectedItems.reserve(m_items.size());
-    for (ListItem* item : m_items) {
-        if (!item || !item->isVisible()) {
+    selectedItems.reserve(m_itemStates.size());
+    for (const DesktopRootItemState& state : m_itemStates) {
+        if (!selectionRect.intersects(state.model.renderData.selectionContentRect)) {
             continue;
         }
-        if (selectionRect.intersects(item->getChooseItemRect())) {
-            selectedItems.push_back(item);
+        if (state.legacyItem) {
+            selectedItems.push_back(state.legacyItem);
         }
     }
 
@@ -1728,15 +1891,30 @@ bool LinBox::nativeEvent(const QByteArray& eventType, void* message, long* resul
 
 ListItem* LinBox::hitItemAt(const QPoint& boxPos) const
 {
+    if (const DesktopRootItemState* state = hitItemStateAt(boxPos)) {
+        return state->legacyItem;
+    }
+    return nullptr;
+}
+
+DesktopRootItemState* LinBox::hitItemStateAt(const QPoint& boxPos)
+{
+    return const_cast<DesktopRootItemState*>(
+        static_cast<const LinBox*>(this)->hitItemStateAt(boxPos));
+}
+
+const DesktopRootItemState* LinBox::hitItemStateAt(const QPoint& boxPos) const
+{
     if (!m_contentArea) {
         return nullptr;
     }
 
     const QPoint contentPos = m_contentArea->mapFromGlobal(mapToGlobal(boxPos));
-    for (int i = m_items.size() - 1; i >= 0; --i) {
-        ListItem* item = m_items[i];
-        if (item && item->isVisible() && item->geometry().contains(contentPos)) {
-            return item;
+    for (int i = m_itemStates.size() - 1; i >= 0; --i) {
+        const DesktopRootItemState& state = m_itemStates[i];
+        if (state.model.renderData.selectionContentRect.contains(contentPos) ||
+            state.model.renderData.itemRect.contains(contentPos)) {
+            return &state;
         }
     }
     return nullptr;
@@ -1744,14 +1922,24 @@ ListItem* LinBox::hitItemAt(const QPoint& boxPos) const
 
 ListItem* LinBox::findItemByPath(const QString& filePath) const
 {
-    const QString normalized = QDir::cleanPath(QDir::fromNativeSeparators(filePath)).toLower();
-    for (ListItem* item : m_items) {
-        if (!item) {
-            continue;
-        }
-        const QString itemPath = QDir::cleanPath(QDir::fromNativeSeparators(item->filePath())).toLower();
-        if (itemPath == normalized) {
-            return item;
+    if (const DesktopRootItemState* state = findItemStateByPath(filePath)) {
+        return state->legacyItem;
+    }
+    return nullptr;
+}
+
+DesktopRootItemState* LinBox::findItemStateByPath(const QString& filePath)
+{
+    return const_cast<DesktopRootItemState*>(
+        static_cast<const LinBox*>(this)->findItemStateByPath(filePath));
+}
+
+const DesktopRootItemState* LinBox::findItemStateByPath(const QString& filePath) const
+{
+    const QString normalized = normalizeBoxItemPath(filePath);
+    for (const DesktopRootItemState& state : m_itemStates) {
+        if (normalizeBoxItemPath(state.model.filePath) == normalized) {
+            return &state;
         }
     }
     return nullptr;

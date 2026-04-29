@@ -81,6 +81,14 @@ public:
     void setFullNameExpanded(bool expanded);
     bool isFullNameExpanded() const { return m_expandFullNameOnSelect; }
     void setExpandedPreviewText(const QString& text);
+    const QString& expandedPreviewText() const { return m_expandedPreviewText; }
+
+    // --- 渲染快照访问器 (供 DesktopRootItemState 提取数据) ---
+    QRect currentIconDrawRect() const;
+    QRect currentShortcutArrowRect() const;
+    QPixmap currentIconPixmap() const;
+    QPixmap currentShortcutArrowPixmap() const;
+    QFont labelFont() const;
 
     QString boxId() const { return m_boxId; }
     void setBoxId(const QString& id) { m_boxId = id; }

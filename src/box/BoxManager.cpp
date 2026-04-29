@@ -227,9 +227,7 @@ void BoxManager::saveAll() {
         
         QJsonArray files;
         QSet<QString> seenPaths;
-        for (auto* item : box->items()) {
-            if (!item) continue;
-            QString filePath = item->filePath();
+        for (const QString& filePath : box->itemPaths()) {
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files.append(filePath);
@@ -252,9 +250,7 @@ void BoxManager::saveAll() {
             << box->mappedFolderPath();
         QStringList files;
         QSet<QString> seenPaths;
-        for (auto* item : box->items()) {
-            if (!item) continue;
-            QString filePath = item->filePath();
+        for (const QString& filePath : box->itemPaths()) {
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files << filePath;
@@ -268,7 +264,6 @@ void BoxManager::saveAll() {
 }
 
 void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
-                         const QVector<ListItem*>& allItems,
                          const QMap<QString, QMap<QString, QVariant>>& iconPositions,
                          int viewMode, int sortType, int preAutoSort, int iconPosMode,
                          bool autoArrange, bool gridAlignment,
@@ -326,9 +321,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
         
         QJsonArray files;
         QSet<QString> seenPaths;
-        for (auto* item : box->items()) {
-            if (!item) continue;
-            QString filePath = item->filePath();
+        for (const QString& filePath : box->itemPaths()) {
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files.append(filePath);
@@ -351,9 +344,7 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
             << box->mappedFolderPath();
         QStringList files;
         QSet<QString> seenPaths;
-        for (auto* item : box->items()) {
-            if (!item) continue;
-            QString filePath = item->filePath();
+        for (const QString& filePath : box->itemPaths()) {
             if (seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
             files << filePath;
@@ -598,13 +589,11 @@ QString BoxManager::getBoxIdForItem(const QString& filePath) const {
     for (auto& ptr : m_boxes) {
         LinBox* box = ptr.data();
         if (!box) continue;
-        for (auto* item : box->items()) {
-            if (item) {
-                QString itemPath = QDir::toNativeSeparators(item->filePath());
-                while (itemPath.endsWith('\\')) itemPath.chop(1);
-                if (itemPath == target) {
-                    return box->boxId();
-                }
+        for (const QString& filePathInBox : box->itemPaths()) {
+            QString itemPath = QDir::toNativeSeparators(filePathInBox);
+            while (itemPath.endsWith('\\')) itemPath.chop(1);
+            if (itemPath == target) {
+                return box->boxId();
             }
         }
     }

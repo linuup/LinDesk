@@ -6,6 +6,7 @@
 #include <QVariant>
 #include <QVector>
 
+struct DesktopRootItemState;
 class LinBox;
 class ListItem;
 
@@ -37,12 +38,19 @@ public:
         const QVector<ListItem*>& allItems,
         const QVector<QPointer<LinBox>>& boxes) const;
 
+    QMap<QString, QMap<QString, QVariant>> collectIconPositions(
+        const QVector<DesktopRootItemState>& desktopItems,
+        const QVector<QPointer<LinBox>>& boxes) const;
+
     QMap<QString, PersistentIconInfo> toSavedIconPositions(
         const QMap<QString, QMap<QString, QVariant>>& iconPositions) const;
 
     void save(const QString& persistencePath,
               const LayoutPersistenceState& state,
               const QVector<ListItem*>& allItems) const;
+
+    void save(const QString& persistencePath,
+              const LayoutPersistenceState& state) const;
 
     bool load(const QString& persistencePath,
               bool autoUpdateState,

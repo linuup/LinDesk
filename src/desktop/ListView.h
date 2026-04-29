@@ -23,6 +23,7 @@
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
 #include <QDropEvent>
+#include "desktop/DesktopRootItemState.h"
 #include <windows.h>
 #include <shlobj_core.h>
 #include "desktop/ListItem.h"
@@ -163,6 +164,11 @@ public:
 	qreal currentDpiScale() const;
 	int scalePx(int logicalPx) const;
 
+	// 渲染管理
+	void updateAllItemRenderData();
+	DesktopRenderParams currentRenderParams() const;
+
+
 	// 配置加载
 	void applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVariant>>& boxData);
 	void applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions);
@@ -201,6 +207,9 @@ public:
 	QVector<ListItem*> queryItemsInRect(const QRect& rect) const;
 	bool IsSelecting() const { return m_isSelecting; }
 	void DisableSelecting() { endBackgroundSelection(); }
+	void setItemFullNameExpanded(ListItem* item, bool expanded);
+	void setItemExpandedPreviewText(ListItem* item, const QString& text);
+	void clearItemExpandedState(ListItem* item);
 
 	// 焦点相关
 	ListItem* focusedItem() const { return m_focusedItem; }
@@ -300,6 +309,7 @@ protected:
 	void dragLeaveEvent(QDragLeaveEvent* event) override;
 	void dropEvent(QDropEvent* event) override;
 	void enterEvent(QEvent* event) override;
+	void leaveEvent(QEvent* event) override;
 	//bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
 	void handleHotkey(int id);
 
@@ -314,8 +324,11 @@ private:
 	int desktopUsableBottom() const;
 	int desktopItemFootprintHeight() const;
 	QVector<ListItem*> collectAutoArrangeItems() const;
+	QVector<DesktopRootItemState*> collectAutoArrangeStates() const;
 	void sortAutoArrangeItems(QVector<ListItem*>& items, SortOrderType order) const;
+	void sortAutoArrangeStates(QVector<DesktopRootItemState*>& states, SortOrderType order) const;
 	void assignCustomSortOrders(const QVector<ListItem*>& orderedItems);
+	void assignCustomSortOrders(const QVector<DesktopRootItemState*>& orderedStates);
 	void clearDesktopCustomSortOrders();
 	int desktopCustomInsertionIndexForPos(const QPoint& pos, const QVector<ListItem*>& draggedItems) const;
 	void updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QVector<ListItem*>& draggedItems);
@@ -323,7 +336,12 @@ private:
 	QRect desktopAutoArrangeInsertionIndicatorRect() const;
 	QRect desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<ListItem*>& orderedItems) const;
 	QVector<QPoint> layoutAutoArrangeItems(const QVector<ListItem*>& items) const;
+	QVector<QPoint> layoutAutoArrangeItems(const QVector<DesktopRootItemState*>& states) const;
 	void finalizeAutoArrangeLayout(const QVector<ListItem*>& items,
+		const QVector<QPoint>& positions,
+		bool persist,
+		bool refreshSelection);
+	void finalizeAutoArrangeLayout(const QVector<DesktopRootItemState*>& states,
 		const QVector<QPoint>& positions,
 		bool persist,
 		bool refreshSelection);
@@ -333,10 +351,39 @@ private:
 	bool shouldShowFileSystemItem(ListItem* item) const;
 	void refreshVisibilityForWindowsConfig();
 	bool handlePendingShellCreatedItem(const QString& newPath);
+	DesktopItemInitContext currentDesktopItemInitContext() const;
+	bool addDesktopModelItemFromPath(const QString& filePath);
+	bool refreshDesktopModelItemPath(const QString& oldPath, const QString& newPath);
 	void removeItemsBatch(const QVector<ListItem*>& items, bool deleteWidgets = true);
 	void setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden);
 	void trackPendingExternalRemovals(const QVector<ListItem*>& items);
 	bool consumePendingExternalRemoval(const QString& path);
+	DesktopRootItemState* findModelStateForLegacyItem(ListItem* item);
+	const DesktopRootItemState* findModelStateForLegacyItem(ListItem* item) const;
+	DesktopRootItemState* findDesktopStateAt(const QPoint& pos);
+	const DesktopRootItemState* findDesktopStateAt(const QPoint& pos) const;
+	DesktopRootItemState* findDesktopStateByPath(const QString& filePath);
+	const DesktopRootItemState* findDesktopStateByPath(const QString& filePath) const;
+	void ensureModelStateForLegacyItem(ListItem* item);
+	void removeModelStateForLegacyItem(ListItem* item);
+	void syncModelStateFromLegacyItem(DesktopRootItemState& state, const QSet<ListItem*>& visibleDesktopItems);
+	bool shouldPaintDesktopModelState(const DesktopRootItemState& state) const;
+	bool tryCollectDesktopModelsForItems(const QVector<ListItem*>& items, QVector<DesktopRootItemModel>& models) const;
+	QString normalizeDesktopItemPath(const QString& filePath) const;
+	bool isDesktopPathSelected(const QString& filePath) const;
+	QVector<ListItem*> selectedDesktopLegacyItems() const;
+	QVector<DesktopRootItemModel> selectedDesktopModels() const;
+	QStringList selectedDesktopPaths() const;
+	QString effectiveFocusedDesktopPath() const;
+	QString effectiveAnchorDesktopPath() const;
+	void setDesktopItemSelected(const QString& filePath, bool selected);
+	void clearDesktopSelection();
+	void applyDesktopSelection(const QStringList& filePaths, const QString& focusedPath, bool expandSingle);
+	ListItem* findDesktopItemAt(const QPoint& pos) const;
+	QRect desktopSelectionRectForItem(ListItem* item) const;
+	void updateHoveredDesktopItem(const QPoint& pos);
+	void clearHoveredDesktopItem();
+	void removeDesktopStateByPath(const QString& filePath);
 
 public slots:
 	// 目录监控
@@ -391,6 +438,7 @@ private:
 	struct GhostInfo {
 		QLabel* widget;
 		ListItem* item;
+		QString filePath;
 		QPoint offset;
 	};
 
@@ -425,8 +473,10 @@ private:
 	QVector<ListItem*> m_allItems;
 	QVector<ListItem*> m_items;
 	QVector<ListItem*> m_hiddenIcons;
+	QVector<DesktopRootItemState> m_itemStates;
 	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;
 	QVector<ListItem*> m_selectedItems;
+	QVector<QString> m_selectedDesktopPaths;
 	QVector<GhostInfo> m_ghosts;
 	QVector<ListItem*> m_desktopReorderDraggedItems;
 	QRect m_desktopReorderIndicatorRect;
@@ -444,9 +494,15 @@ private:
 	// 指针和引用
 	QPointer<ListItem> m_focusedItem;
 	QPointer<ListItem> m_anchorItem;
+	QPointer<ListItem> m_hoveredItem;
+	QString m_hoveredDesktopPath;
+	QString m_focusedDesktopPath;
+	QString m_anchorDesktopPath;
 	QPointer<LinBox> m_pendingShellNewTargetBox;
 	ListItem* m_lastClickedItem = nullptr;
 	ListItem* m_draggedItem = nullptr;
+	QString m_lastClickedDesktopPath;
+	QString m_draggedDesktopPath;
 	DesktopInfoMonitor* monitor;
 	LinDirectoryMonitor* m_linMonitor;
 	WindowsConfigMonitor* m_windowsConfigMonitor = nullptr;

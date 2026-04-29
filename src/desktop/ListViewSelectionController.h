@@ -40,12 +40,12 @@ public:
         }
 
         for (ListItem* item : filteredItems) {
-            item->setFullNameExpanded(false);
+            view.setItemFullNameExpanded(item, false);
             item->checkSelf();
         }
 
         if (expandSingle && filteredItems.size() == 1 && filteredItems.first()) {
-            filteredItems.first()->setFullNameExpanded(true);
+            view.setItemFullNameExpanded(filteredItems.first(), true);
         }
 
         view.m_selectedItems = filteredItems;
@@ -68,10 +68,11 @@ public:
 
         if (view.m_selectedItems.contains(item)) {
             view.m_selectedItems.removeOne(item);
+            view.clearItemExpandedState(item);
             item->unCheckSelf();
         } else {
             view.m_selectedItems.append(item);
-            item->setFullNameExpanded(false);
+            view.setItemFullNameExpanded(item, false);
             item->checkSelf();
         }
         view.setFocusedItem(item);

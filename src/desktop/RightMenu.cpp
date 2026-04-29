@@ -433,6 +433,41 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 	scm.ShowMenu(this->hwnd, position, nullptr);
 }
 
+void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
+{
+    ShellContextMenu scm;
+    POINT p = { pos.x(), pos.y() };
+    const POINT* position = &p;
+    if (this->fileType == ObjectType::BackGround) {
+        const_cast<RightMenu*>(this)->updatePasteActionsState();
+        scm.DisplayDesktopContextMenu();
+        if (RightMenu::isWindows11SystemContextMenuEnabled()) {
+            scm.ShowMenu(this->hwnd, position, nullptr);
+            return;
+        }
+
+        if (m_customMenu) {
+            std::vector<HBITMAP> tempBitmaps;
+            scm.setCustomMenuItems(convertQActionsToCustomItems(m_customMenu->actions(), tempBitmaps));
+            scm.ShowMenu(this->hwnd, position, nullptr);
+
+            for (HBITMAP h : tempBitmaps) {
+                DeleteObject(h);
+            }
+            return;
+        }
+    } else if (this->fileType == ObjectType::File) {
+        scm.setOperationType(ShellContextMenu::OperationType::file);
+    } else if (this->fileType == ObjectType::Folder_ObjectType || this->fileType == ObjectType::DiskLetter) {
+        scm.setOperationType(ShellContextMenu::OperationType::folder);
+    } else if (this->fileType == ObjectType::SpecialFolder) {
+        scm.setOperationType(ShellContextMenu::OperationType::specialFolder);
+    }
+
+    scm.DisplayItemContextMenu(model.itemData.pidl());
+    scm.ShowMenu(this->hwnd, position, nullptr);
+}
+
 #if 0
 void RightMenu::showBoxMenu(QPoint pos) const {
 	ShellContextMenu scm;
@@ -551,6 +586,23 @@ void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const {
 	ShellContextMenu scm;
 	scm.DisplayMultipleContextMenu(pidls);
 	scm.ShowMenu(this->hwnd, position, nullptr);
+}
+
+void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models) const
+{
+    vector<LPITEMIDLIST> pidls;
+    pidls.reserve(models.size());
+    for (const auto& model : models) {
+        if (model.itemData.pidl()) {
+            pidls.push_back(model.itemData.pidl());
+        }
+    }
+
+    POINT p = { pos.x(), pos.y() };
+    const POINT* position = &p;
+    ShellContextMenu scm;
+    scm.DisplayMultipleContextMenu(pidls);
+    scm.ShowMenu(this->hwnd, position, nullptr);
 }
 
 const wchar_t* RightMenu::objPath() const

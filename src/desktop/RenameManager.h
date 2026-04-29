@@ -16,6 +16,7 @@ public:
 
     bool isRenaming() const { return m_activeItem != nullptr; }
     ListItem* activeItem() const { return m_activeItem.data(); }
+    bool isActiveItem(const ListItem* item) const { return m_activeItem == item; }
 
 private slots:
     void onCommit();
