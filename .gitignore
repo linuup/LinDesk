@@ -67,3 +67,4 @@ Output/
 *.tmp
 *.temp
 *.log
+/.tmp_build
