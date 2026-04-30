@@ -15,7 +15,6 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include "desktop/SelectArea.h"
-#include "desktop/ListItem.h"
 #include "desktop/DesktopRootItemState.h"
 #include <QMimeData>
 #include <QUuid>
@@ -44,9 +43,6 @@ public:
     ~LinBox();
 
     void setShowType(BoxShowType type);
-    void addListItem(ListItem* item, bool refresh = true);
-    void insertListItem(ListItem* item, int index, bool refresh = true);
-    void removeListItem(ListItem* item, bool refresh = true);
     void addItemState(const DesktopRootItemState& state, bool refresh = true);
     void insertItemState(const DesktopRootItemState& state, int index, bool refresh = true);
     bool removeItemState(const QString& filePath, bool refresh = true);
@@ -56,6 +52,7 @@ public:
     void toggleCollapse();
     int resizeBorderWidth() const { return m_borderWidth; }
     void refreshLayout();
+    QRect globalRenameEditorRectForPath(const QString& filePath) const;
 
     QString boxId() const { return m_id; }
     void setBoxId(const QString& id) { m_id = id; }
@@ -64,7 +61,6 @@ public:
     BoxShowType showType() const { return m_showType; }
     bool isCollapsed() const { return m_isCollapsed; }
     int originalHeight() const { return m_originalHeight; }
-    QVector<ListItem*> items() const { return m_items; }
     QVector<QString> itemPaths() const;
     const QVector<DesktopRootItemState>& itemStates() const { return m_itemStates; }
     bool containsItemPath(const QString& filePath) const;
@@ -89,11 +85,6 @@ public:
     void refreshStyles();
 
 signals:
-    void itemRelayClicked(LinBox* box, ListItem* item, QMouseEvent* event);
-    void itemRelayMoved(LinBox* box, ListItem* item, QMouseEvent* event);
-    void itemRelayReleased(LinBox* box, ListItem* item, QMouseEvent* event);
-    void itemRelayDoubleClicked(LinBox* box, ListItem* item, QMouseEvent* event);
-    void itemRelayContextMenuRequested(LinBox* box, ListItem* item, const QPoint& globalPos);
     void geometryChanged(LinBox* box);
     void destroyRequested(LinBox* box);
     void customRequested(LinBox* box);
@@ -138,14 +129,12 @@ private:
     void showCustomContextMenu(const QPoint& globalPos);
     void beginTitleEditing();
     void commitTitleEditing();
-    ListItem* hitItemAt(const QPoint& boxPos) const;
     DesktopRootItemState* hitItemStateAt(const QPoint& boxPos);
     const DesktopRootItemState* hitItemStateAt(const QPoint& boxPos) const;
-    ListItem* findItemByPath(const QString& filePath) const;
-    int insertionIndexForPos(const QPoint& boxPos, const QVector<ListItem*>& draggedItems, bool* alignAfterPrev = nullptr) const;
+    int insertionIndexForPos(const QPoint& boxPos, const QStringList& draggedPaths, bool* alignAfterPrev = nullptr) const;
     QRect insertionIndicatorRect() const;
     void clearReorderPreview();
-    void showDropTipForItem(ListItem* item, const QPoint& boxPos, bool isCtrl, bool createShortcut = false);
+    void showDropTipForItem(const DesktopRootItemState* state, const QPoint& boxPos, bool isCtrl, bool createShortcut = false);
     void scheduleBlurRefresh();
     void updateBlurCache();
     QPixmap captureBackgroundPixmap() const;
@@ -163,10 +152,8 @@ private:
     bool remapMappedFolderInteractively();
     void checkMappedFolderStateAndRefresh();
     void updateDpiMetrics();
-    ListItem* ensureLegacyItemForState(DesktopRootItemState& state);
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
-    QVector<ListItem*> m_items;
     QVector<DesktopRootItemState> m_itemStates;
     
     // UI Elements
@@ -219,7 +206,7 @@ private:
     int m_lastLayoutItemCount = -1;
     BoxShowType m_lastLayoutShowType = BoxShowType::Icon_ShowType;
     quint64 m_lastLayoutVisualSignature = 0;
-    QVector<ListItem*> m_reorderDragItems;
+    QStringList m_reorderDragPaths;
     int m_reorderInsertIndex = -1;
     bool m_reorderIndicatorAfterPrev = false;
     QScopedPointer<LinDirectoryMonitor> m_mappedFolderMonitor;

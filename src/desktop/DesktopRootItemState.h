@@ -11,7 +11,6 @@ class ListItem;
 /// 迁移完成后 legacyItem 可移除。
 struct DesktopRootItemState
 {
-    ListItem* legacyItem = nullptr;
     DesktopRootItemModel model;
 };
 

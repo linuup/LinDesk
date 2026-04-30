@@ -296,15 +296,6 @@ QString DesktopItemLoader::dumpListItemDataJson(const std::vector<ListItemData>&
     return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Indented));
 }
 
-QString DesktopItemLoader::dumpListItemsJson(const QVector<ListItem*>& items)
-{
-    QJsonArray array;
-    for (const ListItem* item : items) {
-        array.append(toJsonObject(item));
-    }
-    return QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Indented));
-}
-
 QString DesktopItemLoader::dumpDesktopRootStatesJson(const QVector<DesktopRootItemState>& states)
 {
     QJsonArray array;

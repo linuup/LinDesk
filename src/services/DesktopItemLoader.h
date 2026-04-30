@@ -17,7 +17,6 @@ public:
     static QString dumpJsonFileContent(const QString& filePath);
     static QString dumpDirectoryJsonFiles(const QString& directoryPath);
     static QString dumpListItemDataJson(const std::vector<ListItemData>& items);
-    static QString dumpListItemsJson(const QVector<ListItem*>& items);
     static QString dumpDesktopRootStatesJson(const QVector<DesktopRootItemState>& states);
 
 private:

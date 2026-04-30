@@ -5,7 +5,7 @@
 #include <QHash>
 #include <memory>
 
-class ListItem;
+#include "desktop/DesktopRootItemState.h"
 
 class DesktopQuadTree
 {
@@ -15,13 +15,13 @@ public:
 
     void setBounds(const QRect& bounds);
     void clear();
-    void rebuild(const QVector<ListItem*>& items);
-    QVector<ListItem*> query(const QRect& area) const;
+    void rebuild(const QVector<DesktopRootItemState*>& states);
+    QVector<DesktopRootItemState*> query(const QRect& area) const;
 
 private:
     struct Entry
     {
-        ListItem* item = nullptr;
+        DesktopRootItemState* state = nullptr;
         QRect rect;
     };
 
@@ -46,11 +46,10 @@ private:
     int childIndexForRect(const QRect& rect, const QRect& parent) const;
     void subdivide(Node* node);
     void insert(Node* node, const Entry& entry, int depth);
-    void query(const Node* node, const QRect& area, QVector<ListItem*>& results, QHash<ListItem*, bool>& seen) const;
+    void query(const Node* node, const QRect& area, QVector<DesktopRootItemState*>& results, QHash<DesktopRootItemState*, bool>& seen) const;
 
     QRect m_bounds;
     int m_maxDepth = 6;
     int m_maxItemsPerNode = 8;
     std::unique_ptr<Node> m_root;
 };
-

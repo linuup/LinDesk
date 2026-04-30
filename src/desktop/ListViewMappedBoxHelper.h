@@ -10,7 +10,6 @@
 #include <QObject>
 
 #include "desktop/ListView.h"
-#include "desktop/ListItem.h"
 #include "box/LinBox.h"
 #include "box/BoxManager.h"
 #include "services/DesktopItemLoader.h"
@@ -78,27 +77,21 @@ public:
             return;
         }
 
-        const QVector<ListItem*> currentItems = box->items();
-        for (ListItem* item : currentItems) {
-            if (!item) {
-                continue;
-            }
-
-            const QString normalizedPath = QDir::toNativeSeparators(item->filePath());
+        const QVector<DesktopRootItemState> currentStates = box->itemStates();
+        for (const DesktopRootItemState& state : currentStates) {
+            const QString normalizedPath = QDir::toNativeSeparators(state.model.filePath);
             if (!previousPaths.contains(normalizedPath)) {
                 continue;
             }
 
-            item->disconnect(&view);
-            item->disconnect(box);
-            item->disconnect();
-            box->removeListItem(item, false);
-            view.m_hiddenIcons.removeOne(item);
-            view.m_items.removeOne(item);
-            view.m_allItems.removeOne(item);
-            view.m_selectedItems.removeOne(item);
-            view.removeModelStateForLegacyItem(item);
-            item->deleteLater();
+            view.m_selectedBoxPaths.removeOne(normalizedPath);
+            if (view.m_focusedBoxPath == normalizedPath) {
+                view.m_focusedBoxPath.clear();
+            }
+            if (view.m_anchorBoxPath == normalizedPath) {
+                view.m_anchorBoxPath.clear();
+            }
+            box->removeItemState(normalizedPath, false);
         }
 
         view.m_mappedBoxFilePaths.remove(box->boxId());
@@ -127,31 +120,16 @@ public:
 
         const QStringList paths = mappedFolderEntryPaths(box->mappedFolderPath(), view.m_showHiddenFiles);
         view.m_mappedBoxFilePaths[box->boxId()] = paths;
-        DesktopItemLoader itemLoader;
-
         for (const QString& path : paths) {
-            ListItem* item = view.selectItemByPath(path);
-            if (!item) {
-                item = new ListItem(path, &view);
-                view.setupItemConnections(item, box);
-                view.m_allItems.push_back(item);
-                view.m_hiddenIcons.push_back(item);
-                view.ensureModelStateForLegacyItem(item);
-            } else {
-                item->setItemData(itemLoader.loadItem(path));
-                item->initData();
-                view.setupItemConnections(item, box);
-                view.m_items.removeOne(item);
-                if (!view.m_hiddenIcons.contains(item)) {
-                    view.m_hiddenIcons.push_back(item);
-                }
-                view.ensureModelStateForLegacyItem(item);
-            }
-
-            item->setBoxId(box->boxId());
-            view.applyWindowsHiddenVisualState(item);
-            item->hide();
-            box->addListItem(item, false);
+            DesktopRootItemState state;
+            initDesktopRootItemModel(state.model, DesktopItemLoader().loadItem(path), view.currentDesktopItemInitContext());
+            state.model.layoutMode = DesktopLayoutMode::IconMode;
+            state.model.baseSize = QSize(view.m_iconWidth, view.m_iconHeight);
+            state.model.effectiveSize = state.model.baseSize;
+            state.model.boxId = box->boxId();
+            state.model.visible = true;
+            state.model.position = QPoint(0, 0);
+            box->addItemState(state, false);
         }
 
         if (LinDirectoryMonitor* oldMonitor = box->mappedFolderMonitor()) {

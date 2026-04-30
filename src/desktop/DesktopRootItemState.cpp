@@ -191,7 +191,6 @@ QPixmap applyOpacityEffect(const QPixmap& source, qreal opacity)
 DesktopRootItemState buildDesktopRootItemState(const ListItem& item)
 {
     DesktopRootItemState state;
-    state.legacyItem = const_cast<ListItem*>(&item);
     auto& m = state.model;
     m.filePath = item.filePath();
     m.normalizedPath = item.normalizedPath();

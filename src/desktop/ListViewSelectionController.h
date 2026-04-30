@@ -20,6 +20,8 @@ public:
         view.clearCheckedItem();
         view.setFocusedItem(nullptr);
         view.m_anchorItem = nullptr;
+        view.m_focusedBoxPath.clear();
+        view.m_anchorBoxPath.clear();
         view.clearCutMarks();
         view.resetRenameClickState();
     }
@@ -49,15 +51,31 @@ public:
         }
 
         view.m_selectedItems = filteredItems;
+        view.m_selectedBoxPaths.clear();
+        view.m_selectedBoxPaths.reserve(filteredItems.size());
+        for (ListItem* item : filteredItems) {
+            if (!item) {
+                continue;
+            }
+            const QString normalizedPath = item->normalizedPath();
+            if (!normalizedPath.isEmpty() && !view.m_selectedBoxPaths.contains(normalizedPath)) {
+                view.m_selectedBoxPaths.append(normalizedPath);
+            }
+        }
         view.setFocusedItem(focusedItem);
         if (!view.m_anchorItem && focusedItem) {
             view.m_anchorItem = focusedItem;
+        }
+        view.m_focusedBoxPath = focusedItem ? focusedItem->normalizedPath() : QString();
+        if (view.m_anchorBoxPath.isEmpty() && focusedItem) {
+            view.m_anchorBoxPath = focusedItem->normalizedPath();
         }
     }
 
     static inline void setFocus(ListView& view, ListItem* item)
     {
         view.setFocusedItem(item);
+        view.m_focusedBoxPath = item ? item->normalizedPath() : QString();
     }
 
     static inline void toggleSelection(ListView& view, ListItem* item)
@@ -68,14 +86,19 @@ public:
 
         if (view.m_selectedItems.contains(item)) {
             view.m_selectedItems.removeOne(item);
+            view.m_selectedBoxPaths.removeOne(item->normalizedPath());
             view.clearItemExpandedState(item);
             item->unCheckSelf();
         } else {
             view.m_selectedItems.append(item);
+            if (!view.m_selectedBoxPaths.contains(item->normalizedPath())) {
+                view.m_selectedBoxPaths.append(item->normalizedPath());
+            }
             view.setItemFullNameExpanded(item, false);
             item->checkSelf();
         }
         view.setFocusedItem(item);
+        view.m_focusedBoxPath = item->normalizedPath();
     }
 
     static inline void selectRange(ListView& view, ListItem* item, LinBox* box)

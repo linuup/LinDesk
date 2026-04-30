@@ -17,11 +17,6 @@ public:
     {
         QVector<ListItem*> items;
         if (box) {
-            for (ListItem* item : box->items()) {
-                if (item && item->isVisible()) {
-                    items.append(item);
-                }
-            }
             return items;
         }
 

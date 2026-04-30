@@ -13,7 +13,6 @@
 #include "CommonEnum.h"
 #include "app/LanguageManager.h"
 #include "desktop/DesktopRootItemModel.h"
-#include "desktop/ListItem.h"
 
 #define HKEY_ROOT "HKEY_CLASSES_ROOT\\"
 #define HKEY_USER "HKEY_CURRENT_USER\\"
@@ -31,9 +30,7 @@ public:
     }
 
     void initializeCustomMenu();
-    void showMenu(QPoint pos, ListItem* listItem) const;
     void showMenu(QPoint pos, const DesktopRootItemModel& model) const;
-    void showMultObjectMenu(QPoint pos, std::vector<ListItem*> items) const;
     void showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models) const;
     static bool isWindows11SystemContextMenuSupported();
     static bool isWindows11SystemContextMenuEnabled();

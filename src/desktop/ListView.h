@@ -196,36 +196,41 @@ public:
 	void sortByCustom();
 
 	// 选择相关
-	QVector<ListItem*> selectedItems() const { return m_selectedItems; }
-	void setSelectedItems(const QVector<ListItem*>& items, bool expandSingle = false);
-	void toggleItemSelection(ListItem* item);
-	void selectRangeToItem(ListItem* item, LinBox* box);
+	void setSelectedItemPaths(const QStringList& filePaths, const QString& focusedPath = QString(), bool expandSingle = false);
+	void toggleItemSelection(const QString& filePath);
+	void selectRangeToPath(const QString& filePath, LinBox* box);
 	void clearCheckedItem();
 	void clearSelectionState();
-	void applySelectionState(const QVector<ListItem*>& items, ListItem* focusedItem = nullptr, bool expandSingle = false);
-	ListItem* selectItemByPath(const QString path);
 	QVector<ListItem*> queryItemsInRect(const QRect& rect) const;
 	bool IsSelecting() const { return m_isSelecting; }
 	void DisableSelecting() { endBackgroundSelection(); }
 	void setItemFullNameExpanded(ListItem* item, bool expanded);
 	void setItemExpandedPreviewText(ListItem* item, const QString& text);
 	void clearItemExpandedState(ListItem* item);
+	void setItemFullNameExpanded(const QString& filePath, bool expanded);
+	void setItemExpandedPreviewText(const QString& filePath, const QString& text);
+	void clearItemExpandedState(const QString& filePath);
+	void setItemRenaming(const QString& filePath, bool renaming);
 
 	// 焦点相关
-	ListItem* focusedItem() const { return m_focusedItem; }
-	void setFocusedItem(ListItem* item);
+	void setFocusedItemPath(const QString& filePath);
 	void moveFocusInHost(LinBox* box, FocusMoveDirection direction, bool extendSelection, bool focusOnly);
 	QString focusedItemPath() const;
 	QString anchorItemPath() const;
+	QString draggedItemPath() const;
 
 	// 拖放相关
-	QVector<ListItem*> orderedDraggedItemsForPaths(const QStringList& paths) const;
+	QStringList orderedDraggedPaths(const QStringList& paths) const;
 	void createDragGhosts(const QPoint& clickPos);
 	bool shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const;
 	bool shouldPreferShortcutForDrop(const QStringList& sourcePaths, Qt::KeyboardModifiers modifiers, bool isExternalSource) const;
 	bool createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const;
 	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
-	bool handleDroppedPathsOnItem(const QStringList& sourcePaths, ListItem* targetItem, bool copyMode, bool preferShortcut = false);
+	bool handleDroppedPathsOnModel(const QStringList& sourcePaths, const DesktopRootItemModel& targetModel, bool copyMode, bool preferShortcut = false);
+	bool resolveItemModelByPath(const QString& filePath, DesktopRootItemModel& modelOut) const;
+	QRect globalRenameEditorRectForPath(const QString& filePath) const;
+	bool openItemByPath(const QString& filePath);
+	bool showPropertiesForPath(const QString& filePath) const;
 
 	// Box管理
 	QVector<LinBox*> boxes() const;
@@ -323,24 +328,16 @@ private:
 	int desktopUsableRight() const;
 	int desktopUsableBottom() const;
 	int desktopItemFootprintHeight() const;
-	QVector<ListItem*> collectAutoArrangeItems() const;
 	QVector<DesktopRootItemState*> collectAutoArrangeStates() const;
-	void sortAutoArrangeItems(QVector<ListItem*>& items, SortOrderType order) const;
 	void sortAutoArrangeStates(QVector<DesktopRootItemState*>& states, SortOrderType order) const;
-	void assignCustomSortOrders(const QVector<ListItem*>& orderedItems);
 	void assignCustomSortOrders(const QVector<DesktopRootItemState*>& orderedStates);
 	void clearDesktopCustomSortOrders();
-	int desktopCustomInsertionIndexForPos(const QPoint& pos, const QVector<ListItem*>& draggedItems) const;
-	void updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QVector<ListItem*>& draggedItems);
+	int desktopCustomInsertionIndexForPos(const QPoint& pos, const QStringList& draggedPaths) const;
+	void updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QStringList& draggedPaths);
 	void clearDesktopAutoArrangeReorderPreview();
 	QRect desktopAutoArrangeInsertionIndicatorRect() const;
-	QRect desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<ListItem*>& orderedItems) const;
-	QVector<QPoint> layoutAutoArrangeItems(const QVector<ListItem*>& items) const;
+	QRect desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<DesktopRootItemState*>& orderedStates) const;
 	QVector<QPoint> layoutAutoArrangeItems(const QVector<DesktopRootItemState*>& states) const;
-	void finalizeAutoArrangeLayout(const QVector<ListItem*>& items,
-		const QVector<QPoint>& positions,
-		bool persist,
-		bool refreshSelection);
 	void finalizeAutoArrangeLayout(const QVector<DesktopRootItemState*>& states,
 		const QVector<QPoint>& positions,
 		bool persist,
@@ -348,6 +345,13 @@ private:
 	void applyAutoArrangeAfterDesktopMutation(bool persist = true, bool refreshSelection = true);
 	bool fileHasHiddenAttribute(const QString& filePath) const;
 	void applyWindowsHiddenVisualState(ListItem* item);
+	QVector<ListItem*> selectedItems() const { return m_selectedItems; }
+	void setSelectedItems(const QVector<ListItem*>& items, bool expandSingle = false);
+	void toggleItemSelection(ListItem* item);
+	void selectRangeToItem(ListItem* item, LinBox* box);
+	void applySelectionState(const QVector<ListItem*>& items, ListItem* focusedItem = nullptr, bool expandSingle = false);
+	ListItem* focusedItem() const { return m_focusedItem; }
+	void setFocusedItem(ListItem* item);
 	bool shouldShowFileSystemItem(ListItem* item) const;
 	void refreshVisibilityForWindowsConfig();
 	bool handlePendingShellCreatedItem(const QString& newPath);
@@ -358,6 +362,8 @@ private:
 	void setItemsTransientHidden(const QVector<ListItem*>& items, bool hidden);
 	void trackPendingExternalRemovals(const QVector<ListItem*>& items);
 	bool consumePendingExternalRemoval(const QString& path);
+	DesktopRootItemState* findAnyItemStateByPath(const QString& filePath);
+	const DesktopRootItemState* findAnyItemStateByPath(const QString& filePath) const;
 	DesktopRootItemState* findModelStateForLegacyItem(ListItem* item);
 	const DesktopRootItemState* findModelStateForLegacyItem(ListItem* item) const;
 	DesktopRootItemState* findDesktopStateAt(const QPoint& pos);
@@ -368,14 +374,20 @@ private:
 	void removeModelStateForLegacyItem(ListItem* item);
 	void syncModelStateFromLegacyItem(DesktopRootItemState& state, const QSet<ListItem*>& visibleDesktopItems);
 	bool shouldPaintDesktopModelState(const DesktopRootItemState& state) const;
-	bool tryCollectDesktopModelsForItems(const QVector<ListItem*>& items, QVector<DesktopRootItemModel>& models) const;
 	QString normalizeDesktopItemPath(const QString& filePath) const;
 	bool isDesktopPathSelected(const QString& filePath) const;
 	QVector<ListItem*> selectedDesktopLegacyItems() const;
 	QVector<DesktopRootItemModel> selectedDesktopModels() const;
 	QStringList selectedDesktopPaths() const;
+	QStringList selectedBoxPaths() const;
 	QString effectiveFocusedDesktopPath() const;
 	QString effectiveAnchorDesktopPath() const;
+	QString effectiveFocusedBoxPath() const;
+	QString effectiveAnchorBoxPath() const;
+	QStringList selectableDesktopPaths() const;
+	QStringList selectableBoxPaths(LinBox* box) const;
+	QString findDirectionalDesktopFocusCandidate(const QString& focusedPath, FocusMoveDirection direction) const;
+	QString findDirectionalBoxFocusCandidate(LinBox* box, const QString& focusedPath, FocusMoveDirection direction) const;
 	void setDesktopItemSelected(const QString& filePath, bool selected);
 	void clearDesktopSelection();
 	void applyDesktopSelection(const QStringList& filePaths, const QString& focusedPath, bool expandSingle);
@@ -477,8 +489,9 @@ private:
 	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;
 	QVector<ListItem*> m_selectedItems;
 	QVector<QString> m_selectedDesktopPaths;
+	QVector<QString> m_selectedBoxPaths;
 	QVector<GhostInfo> m_ghosts;
-	QVector<ListItem*> m_desktopReorderDraggedItems;
+	QStringList m_desktopReorderDraggedPaths;
 	QRect m_desktopReorderIndicatorRect;
 	int m_desktopReorderInsertIndex = -1;
 
@@ -498,6 +511,8 @@ private:
 	QString m_hoveredDesktopPath;
 	QString m_focusedDesktopPath;
 	QString m_anchorDesktopPath;
+	QString m_focusedBoxPath;
+	QString m_anchorBoxPath;
 	QPointer<LinBox> m_pendingShellNewTargetBox;
 	ListItem* m_lastClickedItem = nullptr;
 	ListItem* m_draggedItem = nullptr;

@@ -1,7 +1,6 @@
 #pragma once
 #include <QObject>
-#include <QPointer>
-#include "desktop/ListItem.h"
+#include <QString>
 #include "desktop/FilenameEditor.h"
 
 class RenameManager : public QObject {
@@ -10,13 +9,13 @@ class RenameManager : public QObject {
 public:
     static RenameManager* instance();
 
-    void startRename(ListItem* item);
+    void startRename(const QString& filePath);
     void finishRename();
     void cancelRename();
 
-    bool isRenaming() const { return m_activeItem != nullptr; }
-    ListItem* activeItem() const { return m_activeItem.data(); }
-    bool isActiveItem(const ListItem* item) const { return m_activeItem == item; }
+    bool isRenaming() const { return !m_activeFilePath.isEmpty(); }
+    QString activeFilePath() const { return m_activeFilePath; }
+    bool isActivePath(const QString& filePath) const;
 
 private slots:
     void onCommit();
@@ -28,7 +27,7 @@ private:
 
     static RenameManager* m_instance;
 
-    QPointer<ListItem> m_activeItem;
+    QString m_activeFilePath;
     FilenameEditor* m_editor = nullptr;
     QString m_extensionToRestore; // Reserved extension for shortcuts
     QString m_originalDisplayName;

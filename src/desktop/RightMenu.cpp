@@ -399,10 +399,11 @@ void RightMenu::updatePasteActionsState()
     }
 }
 
-void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
-	ShellContextMenu scm;
-	POINT p = { pos.x(),pos.y() };
-	const POINT* position = &p;
+void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
+{
+    ShellContextMenu scm;
+    POINT p = { pos.x(), pos.y() };
+    const POINT* position = &p;
 	if (this->fileType == ObjectType::BackGround) {
 		const_cast<RightMenu*>(this)->updatePasteActionsState();
 		scm.DisplayDesktopContextMenu();
@@ -429,45 +430,9 @@ void RightMenu::showMenu(QPoint pos, ListItem *listitem) const{
 	}else if (this->fileType == ObjectType::SpecialFolder) {
 		scm.setOperationType(ShellContextMenu::OperationType::specialFolder);
 	}
-	scm.DisplayItemContextMenu(listitem->getItemData().pidl());
-	scm.ShowMenu(this->hwnd, position, nullptr);
-}
-
-void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
-{
-    ShellContextMenu scm;
-    POINT p = { pos.x(), pos.y() };
-    const POINT* position = &p;
-    if (this->fileType == ObjectType::BackGround) {
-        const_cast<RightMenu*>(this)->updatePasteActionsState();
-        scm.DisplayDesktopContextMenu();
-        if (RightMenu::isWindows11SystemContextMenuEnabled()) {
-            scm.ShowMenu(this->hwnd, position, nullptr);
-            return;
-        }
-
-        if (m_customMenu) {
-            std::vector<HBITMAP> tempBitmaps;
-            scm.setCustomMenuItems(convertQActionsToCustomItems(m_customMenu->actions(), tempBitmaps));
-            scm.ShowMenu(this->hwnd, position, nullptr);
-
-            for (HBITMAP h : tempBitmaps) {
-                DeleteObject(h);
-            }
-            return;
-        }
-    } else if (this->fileType == ObjectType::File) {
-        scm.setOperationType(ShellContextMenu::OperationType::file);
-    } else if (this->fileType == ObjectType::Folder_ObjectType || this->fileType == ObjectType::DiskLetter) {
-        scm.setOperationType(ShellContextMenu::OperationType::folder);
-    } else if (this->fileType == ObjectType::SpecialFolder) {
-        scm.setOperationType(ShellContextMenu::OperationType::specialFolder);
-    }
-
     scm.DisplayItemContextMenu(model.itemData.pidl());
     scm.ShowMenu(this->hwnd, position, nullptr);
 }
-
 #if 0
 void RightMenu::showBoxMenu(QPoint pos) const {
 	ShellContextMenu scm;
@@ -572,20 +537,6 @@ std::vector<ShellContextMenu::CustomMenuItem> RightMenu::exportCustomMenuItems(
     }
 
     return convertQActionsToCustomItems(filteredActions, tempBitmaps);
-}
-
-void RightMenu::showMultObjectMenu(QPoint pos, vector<ListItem*> items) const {
-	vector<LPITEMIDLIST> pidls;
-	for (auto it = items.begin(); it != items.end(); it++) {
-		ListItem* item = *it;
-		auto pidl = item->getItemData().pidl();
-		pidls.push_back(pidl);
-	}
-	POINT p = { pos.x(),pos.y() };
-	const POINT* position = &p;
-	ShellContextMenu scm;
-	scm.DisplayMultipleContextMenu(pidls);
-	scm.ShowMenu(this->hwnd, position, nullptr);
 }
 
 void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models) const

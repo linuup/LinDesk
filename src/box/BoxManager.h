@@ -9,7 +9,6 @@
 #include <QPointer>
 
 class LinBox;
-class ListItem;
 class ListView;
 
 class BoxManager : public QObject {
@@ -63,8 +62,6 @@ public:
     LinBox* findBoxContainingItem(const QString& filePath) const;
     
     // 移动文件到 Box
-    void moveItemToBox(const QString& filePath, LinBox* targetBox, ListView* listView, int insertIndex = -1, bool refreshBoxes = true);
-    
     // 批量操作
     void refreshAllBoxesLayout();
     void setAllBoxesGlassEffect(bool enabled);

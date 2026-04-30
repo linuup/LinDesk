@@ -1,0 +1,43 @@
+
+No, ListItem still cannot be removed safely.
+
+There are still many live dependencies, and they are in core runtime paths, not only comments or dead code.
+
+The biggest blockers are:
+
+ListView still owns widget era containers and APIs in D:\Desktop\LinDesk\src\desktop\ListView.h
+m_allItems
+m_items
+m_hiddenIcons
+m_selectedItems
+m_focusedItem
+selectItemByPath(...)
+orderedDraggedItemsForPaths(...)
+handleDroppedPathsOnItem(...)
+
+LinBox still directly stores and operates on QVector<ListItem*> m_items in D:\Desktop\LinDesk\src\box\LinBox.h
+It still exposes addListItem(...)
+insertListItem(...)
+removeListItem(...)
+items()
+findItemByPath(...)
+ensureLegacyItemForState(...)
+
+
+
+ListItem.cpp itself is still compiled and used for event relay, geometry, rename rect, and fallback state sync
+
+So the current state is:
+
+direct creation of ListItem is already gone
+desktop painting is model driven
+spatial index is model driven
+many interactions still depend on ListItem as a bridge object
+If you want a full removal, the next real steps are:
+
+remove legacyItem from DesktopRootItemState
+replace LinBox::m_items and all addListItem/removeListItem paths with pure model operations
+remove ListView widget era containers and selection helpers
+move single item context menu to DesktopRootItemModel
+cut LayoutPersistenceService off QVector<ListItem*>
+delete ListItem.cpp and ListItem.h

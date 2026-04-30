@@ -1,5 +1,4 @@
 #include "models/DesktopQuadTree.h"
-#include "desktop/ListItem.h"
 
 DesktopQuadTree::DesktopQuadTree(const QRect& bounds, int maxDepth, int maxItemsPerNode)
     : m_bounds(bounds),
@@ -28,35 +27,35 @@ void DesktopQuadTree::clear()
     m_root = std::make_unique<Node>(m_bounds);
 }
 
-void DesktopQuadTree::rebuild(const QVector<ListItem*>& items)
+void DesktopQuadTree::rebuild(const QVector<DesktopRootItemState*>& states)
 {
     clear();
     if (!m_root) {
         return;
     }
 
-    for (ListItem* item : items) {
-        if (!item || !item->isVisible() || !item->boxId().isEmpty()) {
+    for (DesktopRootItemState* state : states) {
+        if (!state || !state->model.visible || !state->model.boxId.isEmpty()) {
             continue;
         }
 
-        const QRect rect = item->getChooseItemRect();
+        const QRect rect = state->model.renderData.selectionContentRect;
         if (rect.isEmpty() || !m_bounds.intersects(rect)) {
             continue;
         }
 
-        insert(m_root.get(), Entry{ item, rect }, 0);
+        insert(m_root.get(), Entry{ state, rect }, 0);
     }
 }
 
-QVector<ListItem*> DesktopQuadTree::query(const QRect& area) const
+QVector<DesktopRootItemState*> DesktopQuadTree::query(const QRect& area) const
 {
-    QVector<ListItem*> results;
+    QVector<DesktopRootItemState*> results;
     if (!m_root || area.isEmpty()) {
         return results;
     }
 
-    QHash<ListItem*, bool> seen;
+    QHash<DesktopRootItemState*, bool> seen;
     query(m_root.get(), area, results, seen);
     return results;
 }
@@ -147,16 +146,16 @@ void DesktopQuadTree::insert(Node* node, const Entry& entry, int depth)
     node->entries.append(entry);
 }
 
-void DesktopQuadTree::query(const Node* node, const QRect& area, QVector<ListItem*>& results, QHash<ListItem*, bool>& seen) const
+void DesktopQuadTree::query(const Node* node, const QRect& area, QVector<DesktopRootItemState*>& results, QHash<DesktopRootItemState*, bool>& seen) const
 {
     if (!node || !node->bounds.intersects(area)) {
         return;
     }
 
     for (const Entry& entry : node->entries) {
-        if (entry.item && entry.rect.intersects(area) && !seen.contains(entry.item)) {
-            seen.insert(entry.item, true);
-            results.append(entry.item);
+        if (entry.state && entry.rect.intersects(area) && !seen.contains(entry.state)) {
+            seen.insert(entry.state, true);
+            results.append(entry.state);
         }
     }
 

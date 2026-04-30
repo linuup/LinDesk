@@ -1,7 +1,6 @@
 ﻿#include "box/BoxManager.h"
 #include "box/LinBox.h"
 #include "desktop/ListView.h"
-#include "desktop/ListItem.h"
 #include <QWidget>
 #include <QFile>
 #include <QJsonDocument>
@@ -97,14 +96,7 @@ void BoxManager::setupConnections(LinBox* box, ListView* listView) {
     // 甯冨眬鍙樺寲鏃惰姹備繚瀛?
     connect(box, &LinBox::geometryChanged, this, &BoxManager::requestSave, Qt::UniqueConnection);
     
-    // Item 淇″彿杞彂鍒?ListView
     if (listView) {
-        connect(box, &LinBox::itemRelayClicked, listView, &ListView::onItemRelayClicked, Qt::UniqueConnection);
-        connect(box, &LinBox::itemRelayMoved, listView, &ListView::onItemRelayMoved, Qt::UniqueConnection);
-        connect(box, &LinBox::itemRelayReleased, listView, &ListView::onItemRelayReleased, Qt::UniqueConnection);
-        connect(box, &LinBox::itemRelayDoubleClicked, listView, &ListView::onItemRelayDoubleClicked, Qt::UniqueConnection);
-        connect(box, &LinBox::itemRelayContextMenuRequested, listView, &ListView::onItemRelayContextMenuRequested, Qt::UniqueConnection);
-        
         // 鎷栨斁鏂囦欢鍒?Box
         connect(box, &LinBox::destroyRequested, listView, &ListView::onMenuDestroyBox, Qt::UniqueConnection);
         connect(box, &LinBox::customRequested, listView, &ListView::onMenuCustomBox, Qt::UniqueConnection);
@@ -634,31 +626,6 @@ void BoxManager::setAllBoxesBackgroundOpacity(float opacity) {
     for (auto& ptr : m_boxes) {
         if (LinBox* box = ptr.data()) box->setBackgroundOpacity(opacity);
     }
-    requestSave();
-}
-
-void BoxManager::moveItemToBox(const QString& filePath, LinBox* targetBox, ListView* listView, int insertIndex, bool refreshBoxes) {
-    if (filePath.isEmpty() || !targetBox || !listView) return;
-    
-    // Find and remove item from its current location
-    ListItem* item = listView->findItemByPath(filePath);
-    if (!item) return;
-    
-    // Check if item is in another box, if so remove it
-    LinBox* currentBox = findBoxContainingItem(filePath);
-    if (currentBox && currentBox != targetBox) {
-        currentBox->removeListItem(item, refreshBoxes);
-    }
-    
-    // Update item's box id BEFORE adding to new box
-    item->setBoxId(targetBox->boxId());
-    
-    if (insertIndex >= 0) {
-        targetBox->insertListItem(item, insertIndex, refreshBoxes);
-    } else {
-        targetBox->addListItem(item, refreshBoxes);
-    }
-    
     requestSave();
 }
 

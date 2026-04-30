@@ -8,7 +8,6 @@
 
 struct DesktopRootItemState;
 class LinBox;
-class ListItem;
 
 struct PersistentIconInfo {
     int x = 0;
@@ -35,19 +34,11 @@ struct LayoutPersistenceState {
 class LayoutPersistenceService {
 public:
     QMap<QString, QMap<QString, QVariant>> collectIconPositions(
-        const QVector<ListItem*>& allItems,
-        const QVector<QPointer<LinBox>>& boxes) const;
-
-    QMap<QString, QMap<QString, QVariant>> collectIconPositions(
         const QVector<DesktopRootItemState>& desktopItems,
         const QVector<QPointer<LinBox>>& boxes) const;
 
     QMap<QString, PersistentIconInfo> toSavedIconPositions(
         const QMap<QString, QMap<QString, QVariant>>& iconPositions) const;
-
-    void save(const QString& persistencePath,
-              const LayoutPersistenceState& state,
-              const QVector<ListItem*>& allItems) const;
 
     void save(const QString& persistencePath,
               const LayoutPersistenceState& state) const;

@@ -840,7 +840,7 @@ void ListItem::refreshTextLabelPresentation()
         return;
     }
 
-    if (RenameManager::instance()->activeItem() == this) {
+    if (RenameManager::instance()->isActivePath(filePath())) {
         textLabel->hide();
         return;
     }
@@ -1099,7 +1099,7 @@ void ListItem::paintEvent(QPaintEvent* event) {
         painter.setOpacity(1.0);
     }
 
-    if (RenameManager::instance()->activeItem() != this) {
+    if (!RenameManager::instance()->isActivePath(filePath())) {
         const QRect labelRect = textRect();
         if (!labelRect.isEmpty()) {
             const QFontMetrics fm(labelFont);
