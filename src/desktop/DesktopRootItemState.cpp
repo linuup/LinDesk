@@ -1,9 +1,9 @@
 #include "desktop/DesktopRootItemRenderData.h"
+#include "desktop/DesktopItemRenderCacheHelper.h"
 #include "desktop/DesktopRootItemModel.h"
 #include "desktop/DesktopRootItemState.h"
 #include "models/data/ListItemData.h"
 #include "services/DpiScaleHelper.h"
-#include "ui/SoftDesktopTextRenderer.h"
 #include "desktop/RenameManager.h"
 #include "services/DesktopItemLoader.h"
 #include "SystemApi/SystemApi.h"
@@ -310,6 +310,10 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     rd.selectionContentRect = buildSelectionContentRect(modelForGeometry, rd, params.dpiScale);
     rd.renameEditorRect = rd.textRect;
     rd.renameEditorRect.setHeight(qMax(sp(22), rd.renameEditorRect.height()));
+    rd.staticContentRect = rd.iconRect.united(rd.textRect);
+    if (!rd.shortcutArrowRect.isNull()) {
+        rd.staticContentRect = rd.staticContentRect.united(rd.shortcutArrowRect);
+    }
     rd.outerHighlightRect = rd.selectionContentRect.adjusted(-sp(3), -sp(3), sp(3), sp(3));
     rd.innerHighlightRect = rd.selectionContentRect.adjusted(sp(1), sp(1), -sp(1), -sp(1));
     rd.outerHighlightRadius = sp(8);
@@ -321,6 +325,7 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     rd.hovered = model.isHovered && !model.isSelected;
     rd.cutMarked = model.isCutMarked;
     rd.expandedFullName = model.isFullNameExpanded;
+    prepareDesktopRootItemStaticContentCache(rd);
     return rd;
 }
 
@@ -336,18 +341,10 @@ DesktopRootItemRenderData localizeDesktopRootItemRenderData(
     localized.renameEditorRect.translate(offset);
     localized.shortcutArrowRect.translate(offset);
     localized.selectionContentRect.translate(offset);
+    localized.staticContentRect.translate(offset);
     localized.outerHighlightRect.translate(offset);
     localized.innerHighlightRect.translate(offset);
     return localized;
-}
-
-QRect desktopRootItemHighlightDirtyRect(const DesktopRootItemRenderData& item)
-{
-    QRect dirty = item.itemRect.united(item.outerHighlightRect).united(item.selectionContentRect);
-    if (!item.shortcutArrowRect.isNull()) {
-        dirty = dirty.united(item.shortcutArrowRect);
-    }
-    return dirty.adjusted(-1, -1, 1, 1);
 }
 
 QRect desktopRootItemHighlightDirtyRect(const DesktopRootItemState& state)
@@ -364,38 +361,4 @@ bool openDesktopRootItem(const DesktopRootItemModel& model)
     const QString nativePath = QDir::toNativeSeparators(model.filePath);
     CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(nativePath.utf16()), Z_OPEN);
     return true;
-}
-
-void paintDesktopRootItem(QPainter& painter, const DesktopRootItemRenderData& data)
-{
-    if (data.itemRect.isNull()) return;
-    painter.save();
-    painter.setRenderHint(QPainter::Antialiasing);
-    if (data.selected) {
-        painter.setPen(Qt::NoPen); painter.setBrush(QColor(100, 150, 255, 30));
-        painter.drawRoundedRect(data.outerHighlightRect, data.outerHighlightRadius, data.outerHighlightRadius);
-        painter.setBrush(QColor(255, 255, 255, 90)); painter.drawRoundedRect(data.innerHighlightRect, data.innerHighlightRadius, data.innerHighlightRadius);
-        painter.setPen(QPen(QColor(255, 255, 255, 150), data.selectionBorderWidth)); painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(data.innerHighlightRect, data.innerHighlightRadius, data.innerHighlightRadius);
-    } else if (data.hovered) {
-        painter.setPen(Qt::NoPen); painter.setBrush(QColor(255, 255, 255, 25));
-        painter.drawRoundedRect(data.innerHighlightRect, data.innerHighlightRadius, data.innerHighlightRadius);
-        QPen dp(QColor(255, 255, 255, 100)); dp.setWidthF(0.8); dp.setStyle(Qt::DotLine); dp.setDashPattern({1.0, 1.0}); dp.setCapStyle(Qt::FlatCap);
-        painter.setPen(dp); painter.setBrush(Qt::NoBrush); painter.drawRoundedRect(data.innerHighlightRect, data.innerHighlightRadius, data.innerHighlightRadius);
-    }
-    if (data.cutMarked) painter.setOpacity(0.55);
-    if (!data.iconPixmap.isNull()) {
-        QPoint iconPos = data.iconRect.topLeft();
-        if (data.iconPixmap.width() < data.iconRect.width()) {
-            iconPos.setX(data.iconRect.x() + (data.iconRect.width() - data.iconPixmap.width()) / 2);
-        }
-        if (data.iconPixmap.height() < data.iconRect.height()) {
-            iconPos.setY(data.iconRect.y() + (data.iconRect.height() - data.iconPixmap.height()) / 2);
-        }
-        painter.drawPixmap(iconPos, data.iconPixmap);
-    }
-    if (data.cutMarked) painter.setOpacity(1.0);
-    if (!data.shortcutArrowPixmap.isNull()) painter.drawPixmap(data.shortcutArrowRect.topLeft(), data.shortcutArrowPixmap);
-    if (!data.textLines.isEmpty()) SoftDesktopTextRenderer::drawText(&painter, data.textRect, data.textLines, data.labelFont, data.textOptions);
-    painter.restore();
 }

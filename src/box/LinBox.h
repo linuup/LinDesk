@@ -144,7 +144,13 @@ private:
     void beginItemSelection(const QPoint& contentPos);
     void updateItemSelection(const QPoint& contentPos);
     void finishItemSelection();
+    void clearSelectionOverlay();
     void activateForKeyboardFocus();
+    void markItemRenderDataDirty(DesktopRootItemState* state);
+    void markAllItemRenderDataDirty();
+    bool hasDirtyItemRenderData() const;
+    quint64 currentLayoutVisualSignature() const;
+    void rebuildItemRenderData(DesktopRootItemState& state, const DesktopRenderParams& params);
     void updateHoveredItem(const QPoint& boxPos);
     void clearHoveredItem();
     bool handleItemMousePress(QMouseEvent* event, const QPoint& boxPos);

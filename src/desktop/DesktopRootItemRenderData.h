@@ -22,6 +22,7 @@ struct DesktopRootItemRenderData
     QRect renameEditorRect;
     QRect shortcutArrowRect;
     QRect selectionContentRect;
+    QRect staticContentRect;
 
     QRect outerHighlightRect;
     QRect innerHighlightRect;
@@ -32,6 +33,7 @@ struct DesktopRootItemRenderData
 
     QPixmap iconPixmap;
     QPixmap shortcutArrowPixmap;
+    QPixmap staticContentPixmap;
     QFont labelFont;
     QStringList textLines;
     SoftDesktopTextRenderer::Options textOptions;
@@ -45,7 +47,3 @@ struct DesktopRootItemRenderData
 DesktopRootItemRenderData localizeDesktopRootItemRenderData(
     const DesktopRootItemRenderData& item,
     const QPoint& origin);
-
-QRect desktopRootItemHighlightDirtyRect(const DesktopRootItemRenderData& item);
-
-void paintDesktopRootItem(QPainter& painter, const DesktopRootItemRenderData& item);

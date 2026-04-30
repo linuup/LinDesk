@@ -21,6 +21,14 @@ private:
     void initUI();
     void updateLabels();
     void applyTextPreviewOptions();
+    QPushButton* createActionButton(const QString& text, bool accent = false, bool destructive = false) const;
+    QWidget* createSliderSettingRow(const QString& labelText,
+                                    int minValue,
+                                    int maxValue,
+                                    QSlider*& slider,
+                                    QLabel*& valueLabel);
+    QLabel* createPageTitleLabel(const QString& text) const;
+    QLabel* createPageSubtitleLabel(const QString& text) const;
 
     QWidget* createGeneralPage();
     QWidget* createLayoutPage();

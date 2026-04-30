@@ -1,5 +1,6 @@
 #pragma once
 #include "desktop/RightMenu.h"
+#include "desktop/ListViewFileOpsHelper.h"
 #include "app/AppFonts.h"
 #include "ui/Fluent/FluentDialog.h"
 #include <QMenu>
@@ -53,6 +54,11 @@ QString shellMenuText(const char* englishSource, const char* chineseUtf8)
 bool RightMenu::isWindows11SystemContextMenuSupported()
 {
     return isWindows11OrNewer();
+}
+
+RightMenu::~RightMenu()
+{
+    invalidateCustomMenuCaches();
 }
 
 bool RightMenu::isWindows11SystemContextMenuEnabled()
@@ -189,6 +195,8 @@ QMenu* RightMenu::createUndoDeleteMenu() const
 
 void RightMenu::initializeCustomMenu()
 {
+    invalidateCustomMenuCaches();
+
     if (m_customMenu) {
         delete m_customMenu;
         m_customMenu = nullptr;
@@ -295,6 +303,7 @@ void RightMenu::initializeCustomMenu()
 
     m_customMenu->setFixedWidth(150);
     m_customMenu->setStyleSheet(QStringLiteral("QMenu { font-weight: bold; font-family: %1; }").arg(AppFonts::uiCssFamily()));
+    connectMenuActionInvalidation(m_customMenu);
 }
 
 void RightMenu::onLargeIcons() { m_largeIconsAction->setChecked(true); emit LargeIconsTriggered(); }
@@ -327,32 +336,11 @@ void RightMenu::onLinDesk() { emit linDeskTriggered(); }
 
 bool RightMenu::clipboardHasFileItems() const
 {
-    const QClipboard* clipboard = QGuiApplication::clipboard();
-    if (!clipboard) {
-        return false;
+    if (!ListViewFileOpsHelper::clipboardLocalFilePaths().isEmpty()) {
+        return true;
     }
 
-    const QMimeData* mimeData = clipboard->mimeData();
-    if (mimeData && mimeData->hasUrls()) {
-        for (const QUrl& url : mimeData->urls()) {
-            if (url.isLocalFile()) {
-                return true;
-            }
-        }
-    }
-
-    if (!IsClipboardFormatAvailable(CF_HDROP) || !OpenClipboard(nullptr)) {
-        return false;
-    }
-
-    bool hasFiles = false;
-    if (const HANDLE clipboardData = GetClipboardData(CF_HDROP)) {
-        const HDROP dropHandle = static_cast<HDROP>(clipboardData);
-        hasFiles = DragQueryFileW(dropHandle, 0xFFFFFFFF, nullptr, 0) > 0;
-    }
-
-    CloseClipboard();
-    return hasFiles;
+    return ListViewFileOpsHelper::clipboardHasVirtualFileItems();
 }
 
 bool RightMenu::clipboardContainsCutItems() const
@@ -387,16 +375,122 @@ bool RightMenu::clipboardContainsCutItems() const
 
 void RightMenu::updatePasteActionsState()
 {
+    qDebug().noquote() << ListViewFileOpsHelper::clipboardDebugDump();
+
     const bool hasFileItems = clipboardHasFileItems();
+    const bool hasVirtualFileItems = ListViewFileOpsHelper::clipboardHasVirtualFileItems();
     const bool isCutOperation = hasFileItems && clipboardContainsCutItems();
 
     if (m_pasteAction) {
         m_pasteAction->setEnabled(hasFileItems);
     }
     if (pasteShortcutAction) {
-        // Match Explorer behavior more closely: shortcut creation is disabled for cut items.
-        pasteShortcutAction->setEnabled(hasFileItems && !isCutOperation);
+        // Virtual clipboard items from remote providers are not suitable for shortcut creation.
+        pasteShortcutAction->setEnabled(hasFileItems && !isCutOperation && !hasVirtualFileItems);
     }
+}
+
+void RightMenu::connectMenuActionInvalidation(QMenu* menu)
+{
+    if (!menu) {
+        return;
+    }
+
+    for (QAction* action : menu->actions()) {
+        if (!action) {
+            continue;
+        }
+
+        connect(action, &QAction::changed, this, [this]() {
+            invalidateCustomMenuCaches();
+        });
+
+        if (QMenu* subMenu = action->menu()) {
+            connectMenuActionInvalidation(subMenu);
+        }
+    }
+}
+
+void RightMenu::invalidateCustomMenuCaches()
+{
+    clearCachedCustomMenuItems(m_cachedDesktopMenuData);
+    clearCachedCustomMenuItems(m_cachedSharedBoxMenuData);
+}
+
+QList<QAction*> RightMenu::filteredCustomMenuActions(bool includeCreateBox, bool includeLinDeskMenu) const
+{
+    QList<QAction*> filteredActions;
+    if (!m_customMenu) {
+        return filteredActions;
+    }
+
+    for (QAction* action : m_customMenu->actions()) {
+        if (!action) {
+            continue;
+        }
+
+        if (!includeCreateBox && action->text() == tr("New Box")) {
+            continue;
+        }
+
+        if (!includeLinDeskMenu && action->menu() && action->menu()->title() == tr("LinDesk")) {
+            continue;
+        }
+
+        filteredActions.append(action);
+    }
+
+    while (!filteredActions.isEmpty() && filteredActions.first()->isSeparator()) {
+        filteredActions.removeFirst();
+    }
+    while (!filteredActions.isEmpty() && filteredActions.last()->isSeparator()) {
+        filteredActions.removeLast();
+    }
+
+    for (int i = filteredActions.size() - 1; i > 0; --i) {
+        if (filteredActions[i]->isSeparator() && filteredActions[i - 1]->isSeparator()) {
+            filteredActions.removeAt(i);
+        }
+    }
+
+    return filteredActions;
+}
+
+void RightMenu::clearCachedCustomMenuItems(CachedCustomMenuData& cache)
+{
+    for (HBITMAP bitmap : cache.bitmaps) {
+        if (bitmap) {
+            DeleteObject(bitmap);
+        }
+    }
+
+    cache.bitmaps.clear();
+    cache.items.clear();
+    cache.valid = false;
+}
+
+void RightMenu::ensureCachedCustomMenuData(CachedCustomMenuData& cache, bool includeCreateBox, bool includeLinDeskMenu) const
+{
+    if (cache.valid) {
+        return;
+    }
+
+    auto* self = const_cast<RightMenu*>(this);
+    self->clearCachedCustomMenuItems(cache);
+    cache.items = convertQActionsToCustomItems(filteredCustomMenuActions(includeCreateBox, includeLinDeskMenu), cache.bitmaps);
+    cache.valid = true;
+}
+
+const std::vector<ShellContextMenu::CustomMenuItem>& RightMenu::desktopCustomMenuItems() const
+{
+    ensureCachedCustomMenuData(m_cachedDesktopMenuData, true, true);
+    return m_cachedDesktopMenuData.items;
+}
+
+const std::vector<ShellContextMenu::CustomMenuItem>& RightMenu::sharedBoxCustomMenuItems() const
+{
+    ensureCachedCustomMenuData(m_cachedSharedBoxMenuData, false, false);
+    return m_cachedSharedBoxMenuData.items;
 }
 
 void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
@@ -414,13 +508,8 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
 
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {
-			std::vector<HBITMAP> tempBitmaps;
-			scm.setCustomMenuItems(convertQActionsToCustomItems(m_customMenu->actions(), tempBitmaps));
+			scm.setCustomMenuItems(desktopCustomMenuItems());
 			scm.ShowMenu(this->hwnd, position, nullptr);
-			
-			for (HBITMAP h : tempBitmaps) {
-				DeleteObject(h);
-			}
 			return;
 		}
 	}else if (this->fileType == ObjectType::File) {

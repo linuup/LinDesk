@@ -20,6 +20,7 @@
 #include <QMap>
 #include <QHash>
 #include <QSet>
+#include <QRegion>
 #include <memory>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
@@ -329,6 +330,8 @@ private:
 	int desktopUsableRight() const;
 	int desktopUsableBottom() const;
 	int desktopItemFootprintHeight() const;
+	QVector<DesktopRootItemState*> collectGridOrderedDesktopStates() const;
+	bool applyGridAlignedDesktopDropLayout(const QStringList& draggedPaths, const QPoint& releasePos);
 	QVector<DesktopRootItemState*> collectAutoArrangeStates() const;
 	void sortAutoArrangeStates(QVector<DesktopRootItemState*>& states, SortOrderType order) const;
 	void assignCustomSortOrders(const QVector<DesktopRootItemState*>& orderedStates);
@@ -368,6 +371,8 @@ private:
 	const DesktopRootItemState* findDesktopStateAt(const QPoint& pos) const;
 	DesktopRootItemState* findDesktopStateByPath(const QString& filePath);
 	const DesktopRootItemState* findDesktopStateByPath(const QString& filePath) const;
+	void markDesktopStateIndexDirty();
+	void rebuildDesktopStateIndex();
 	bool shouldPaintDesktopModelState(const DesktopRootItemState& state) const;
 	QString normalizeDesktopItemPath(const QString& filePath) const;
 	bool isDesktopPathSelected(const QString& filePath) const;
@@ -382,8 +387,9 @@ private:
 	QStringList selectableBoxPaths(LinBox* box) const;
 	QString findDirectionalDesktopFocusCandidate(const QString& focusedPath, FocusMoveDirection direction) const;
 	QString findDirectionalBoxFocusCandidate(LinBox* box, const QString& focusedPath, FocusMoveDirection direction) const;
-	void setDesktopItemSelected(const QString& filePath, bool selected);
-	void clearDesktopSelection();
+	void setDesktopItemSelected(DesktopRootItemState* state, const QString& normalizedPath, bool selected, QRegion* dirtyRegion = nullptr);
+	void setDesktopItemSelected(const QString& filePath, bool selected, QRegion* dirtyRegion = nullptr);
+	void clearDesktopSelection(QRegion* dirtyRegion = nullptr);
 	void applyDesktopSelection(const QStringList& filePaths, const QString& focusedPath, bool expandSingle);
 	DesktopRootItemState* findDesktopItemAt(const QPoint& pos);
 	const DesktopRootItemState* findDesktopItemAt(const QPoint& pos) const;
@@ -391,6 +397,15 @@ private:
 	void updateHoveredDesktopItem(const QPoint& pos);
 	void clearHoveredDesktopItem();
 	void removeDesktopStateByPath(const QString& filePath);
+	void markDesktopRenderDataDirty(DesktopRootItemState* state);
+	void markAllDesktopRenderDataDirty();
+	void markSpatialIndexDirty();
+	void rebuildBackgroundSelectionOcclusionRegion();
+	void resetBackgroundSelectionCandidateCache();
+	void updateBackgroundSelectionCandidateCache(const QRegion& uncoveredSelectionRegion);
+	void flushBackgroundSelectionUpdate();
+	int currentBackgroundSelectionThrottleMs() const;
+	void updateBackgroundSelectionThrottle(qint64 refreshElapsedMs, const QRect& selectionRect);
 	void finalizeActiveDrag(LinBox* box, QMouseEvent* event);
 	void updateGhostDragHoverPreview(const QPoint& globalPos);
 
@@ -475,6 +490,7 @@ private:
 	QVector<DesktopRootItemState> m_itemStates;
 	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;
 	QVector<QString> m_selectedDesktopPaths;
+	QSet<QString> m_selectedDesktopPathSet;
 	QVector<QString> m_selectedBoxPaths;
 	QVector<GhostInfo> m_ghosts;
 	QStringList m_desktopReorderDraggedPaths;
@@ -490,6 +506,10 @@ private:
 	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
 	QHash<QString, int> m_pendingCreatedItemInsertIndices;
 	std::unique_ptr<DesktopQuadTree> m_spatialIndex;
+	QHash<QString, DesktopRootItemState*> m_desktopStateIndex;
+	QRect m_spatialIndexBounds;
+	bool m_spatialIndexDirty = true;
+	bool m_desktopStateIndexDirty = true;
 
 	// 指针和引用
 	QString m_hoveredDesktopPath;
@@ -508,7 +528,9 @@ private:
 
 	// 计时器
 	QTimer* m_pendingShellNewTargetTimer = nullptr;
+	QTimer* m_backgroundSelectionThrottleTimer = nullptr;
 	QElapsedTimer m_clickTimer;
+	QElapsedTimer m_backgroundSelectionFrameTimer;
 
 	// 状态标志
 	bool m_isMultiSelection = false;
@@ -524,4 +546,17 @@ private:
 	QPoint m_startPos;
 	QPoint m_selectionStart;
 	QRect m_selectionRect;
+	QPoint m_pendingBackgroundSelectionPos;
+	bool m_hasPendingBackgroundSelectionUpdate = false;
+	QRegion m_backgroundSelectionOcclusionRegion;
+	QRegion m_backgroundSelectionPreviousUncoveredRegion;
+	QVector<DesktopRootItemState*> m_backgroundSelectionCandidateStates;
+	QVector<DesktopRootItemState*> m_backgroundSelectionCandidateScratchStates;
+	QVector<DesktopRootItemState*> m_backgroundSelectionNextSelectionStates;
+	QVector<QString> m_backgroundSelectionPreviousSelectionPaths;
+	QSet<DesktopRootItemState*> m_backgroundSelectionCandidateSet;
+	QSet<QString> m_backgroundSelectionNextSelectionSet;
+	int m_backgroundSelectionThrottleMs = 8;
+	qreal m_backgroundSelectionRefreshCostMs = 0.0;
+	int m_backgroundSelectionThrottleRelaxFrames = 0;
 };

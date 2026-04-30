@@ -1,10 +1,7 @@
 ﻿#pragma once
 
 #include <QWidget>
-#include <qlabel.h>
-#include <QMouseEvent>
-#include <QPainter>
-#include <qdebug.h>
+#include <QColor>
 #include <QPointer>
 class SelectArea : public QWidget
 {
@@ -15,13 +12,19 @@ public:
 	~SelectArea();
     void setSelectionRect(const QRect& selectionRect);
     QRect selectionRect() const { return m_rect; }
+    void clearAndHide();
     void syncToParent();
     void syncToRect(const QRect& rect);
 
-protected:
-    void paintEvent(QPaintEvent* event) override;
-
 private:
+    void loadColors();
+    void applyColors();
+    void updateVisuals();
+
     QRect m_rect;
     QPointer<QWidget> m_hostWidget;
+    QColor m_fillColor;
+    QColor m_borderColor;
+    QPointer<QWidget> m_fillWidget;
+    QPointer<QWidget> m_borderWidget;
 };

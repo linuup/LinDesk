@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include "desktop/ListView.h"
+#include "desktop/LinDesktop.h"
 #include "app/AppFonts.h"
 #include "desktop/ListViewMappedBoxHelper.h"
 #include "models/DesktopQuadTree.h"
@@ -30,6 +31,7 @@
 #include <QEventLoop>
 #include <QFont>
 #include <QFontMetrics>
+#include <QRegion>
 #include <climits>
 #include <shobjidl.h>
 #include "../OS/SystemApi/resources.h"
@@ -69,6 +71,11 @@ QString normalizeMappedFolderPathForLookup(const QString& path)
 }
 
 constexpr int kDesktopIconTextGap = 8;
+constexpr int kBackgroundSelectionThrottleFastMs = 8;
+constexpr int kBackgroundSelectionThrottleBalancedMs = 16;
+constexpr int kBackgroundSelectionThrottleBusyMs = 32;
+constexpr int kBackgroundSelectionThrottleMaxMs = 48;
+constexpr int kBackgroundSelectionThrottleRelaxFrameThreshold = 3;
 
 int iconCellHeightForTwoTextLines(int iconSide)
 {
@@ -373,6 +380,9 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     m_pendingShellNewTargetTimer->setSingleShot(true);
     m_pendingShellNewTargetTimer->setInterval(15000);
     connect(m_pendingShellNewTargetTimer, &QTimer::timeout, this, &ListView::clearPendingShellNewTargetBox);
+    m_backgroundSelectionThrottleTimer = new QTimer(this);
+    m_backgroundSelectionThrottleTimer->setSingleShot(true);
+    connect(m_backgroundSelectionThrottleTimer, &QTimer::timeout, this, &ListView::flushBackgroundSelectionUpdate);
 #ifdef QT_DEBUG
     m_persistencePath = QCoreApplication::applicationDirPath() + "/data.json";
 #else
@@ -451,6 +461,7 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
             updatedModel.visible = false;
         }
         state.model = updatedModel;
+        markDesktopRenderDataDirty(&state);
     }
 
     updateAllItemRenderData();
@@ -613,6 +624,7 @@ void ListView::clearCheckedItem()
                         clearItemExpandedState(state.model.filePath);
                         state.model.isSelected = false;
                         state.model.renderData.selected = false;
+                        state.model.renderData.hovered = state.model.isHovered;
                         dirtyBoxes.insert(box);
                     }
                     if (state.model.focused) {
@@ -681,6 +693,7 @@ void ListView::setSelectedItemPaths(const QStringList& filePaths, const QString&
                     if (state.model.isSelected || state.model.focused) {
                         state.model.isSelected = false;
                         state.model.renderData.selected = false;
+                        state.model.renderData.hovered = state.model.isHovered;
                         state.model.focused = false;
                         dirtyBoxes.insert(box);
                     }
@@ -732,6 +745,7 @@ void ListView::setSelectedItemPaths(const QStringList& filePaths, const QString&
                     if (state.model.isSelected != selected) {
                         state.model.isSelected = selected;
                         state.model.renderData.selected = selected;
+                        state.model.renderData.hovered = state.model.isHovered && !selected;
                         boxDirty = true;
                     }
                     if (state.model.focused != focused) {
@@ -785,21 +799,36 @@ void ListView::applySelectionState(const QStringList& filePaths, const QString& 
 void ListView::setItemFullNameExpanded(const QString& filePath, bool expanded)
 {
     if (DesktopRootItemState* state = findDesktopStateByPath(filePath)) {
+        if (state->model.isFullNameExpanded == expanded &&
+            (expanded || state->model.expandedPreviewText.isEmpty())) {
+            return;
+        }
+
+        const QRect oldDirty = desktopRootItemHighlightDirtyRect(state->model.renderData)
+            .united(state->model.renderData.itemRect);
         state->model.isFullNameExpanded = expanded;
         if (!expanded) {
             state->model.expandedPreviewText.clear();
         }
+        markDesktopRenderDataDirty(state);
         updateAllItemRenderData();
-        update();
+        update(oldDirty.united(
+            desktopRootItemHighlightDirtyRect(state->model.renderData)
+            .united(state->model.renderData.itemRect)));
         return;
     }
 
     if (LinBox* box = BoxManager::instance()->findBoxContainingItem(filePath)) {
         if (DesktopRootItemState* state = box->findItemStateByPath(filePath)) {
+            if (state->model.isFullNameExpanded == expanded &&
+                (expanded || state->model.expandedPreviewText.isEmpty())) {
+                return;
+            }
             state->model.isFullNameExpanded = expanded;
             if (!expanded) {
                 state->model.expandedPreviewText.clear();
             }
+            state->renderDataDirty = true;
             box->refreshLayout();
             box->update();
             return;
@@ -810,15 +839,28 @@ void ListView::setItemFullNameExpanded(const QString& filePath, bool expanded)
 void ListView::setItemExpandedPreviewText(const QString& filePath, const QString& text)
 {
     if (DesktopRootItemState* state = findDesktopStateByPath(filePath)) {
+        if (state->model.expandedPreviewText == text) {
+            return;
+        }
+
+        const QRect oldDirty = desktopRootItemHighlightDirtyRect(state->model.renderData)
+            .united(state->model.renderData.itemRect);
         state->model.expandedPreviewText = text;
+        markDesktopRenderDataDirty(state);
         updateAllItemRenderData();
-        update();
+        update(oldDirty.united(
+            desktopRootItemHighlightDirtyRect(state->model.renderData)
+            .united(state->model.renderData.itemRect)));
         return;
     }
 
     if (LinBox* box = BoxManager::instance()->findBoxContainingItem(filePath)) {
         if (DesktopRootItemState* state = box->findItemStateByPath(filePath)) {
+            if (state->model.expandedPreviewText == text) {
+                return;
+            }
             state->model.expandedPreviewText = text;
+            state->renderDataDirty = true;
             box->refreshLayout();
             box->update();
             return;
@@ -835,15 +877,28 @@ void ListView::clearItemExpandedState(const QString& filePath)
 void ListView::setItemRenaming(const QString& filePath, bool renaming)
 {
     if (DesktopRootItemState* state = findDesktopStateByPath(filePath)) {
+        if (state->model.isRenaming == renaming) {
+            return;
+        }
+
+        const QRect oldDirty = desktopRootItemHighlightDirtyRect(state->model.renderData)
+            .united(state->model.renderData.itemRect);
         state->model.isRenaming = renaming;
+        markDesktopRenderDataDirty(state);
         updateAllItemRenderData();
-        update();
+        update(oldDirty.united(
+            desktopRootItemHighlightDirtyRect(state->model.renderData)
+            .united(state->model.renderData.itemRect)));
         return;
     }
 
     if (LinBox* box = BoxManager::instance()->findBoxContainingItem(filePath)) {
         if (DesktopRootItemState* state = box->findItemStateByPath(filePath)) {
+            if (state->model.isRenaming == renaming) {
+                return;
+            }
             state->model.isRenaming = renaming;
+            state->renderDataDirty = true;
             box->refreshLayout();
             box->update();
             return;
@@ -1436,37 +1491,93 @@ void ListView::requestSystemRightMenu(ObjectType objType, QPoint point, const QS
 
 void ListView::refreshCheckedItem(QRect rect)
 {
-    QStringList nextSelection;
-    nextSelection.reserve(m_itemStates.size());
-    for (const auto& state : m_itemStates) {
-        if (!shouldPaintDesktopModelState(state)) {
+    QRegion uncoveredSelectionRegion(rect);
+    if (!m_backgroundSelectionOcclusionRegion.isEmpty()) {
+        uncoveredSelectionRegion = uncoveredSelectionRegion.subtracted(m_backgroundSelectionOcclusionRegion);
+    }
+
+    if (uncoveredSelectionRegion.isEmpty()) {
+        resetBackgroundSelectionCandidateCache();
+        clearCheckedItem();
+        return;
+    }
+
+    updateBackgroundSelectionCandidateCache(uncoveredSelectionRegion);
+
+    m_backgroundSelectionNextSelectionSet.clear();
+    m_backgroundSelectionNextSelectionStates.clear();
+    QString fallbackFocusPath;
+
+    m_backgroundSelectionNextSelectionSet.reserve(m_backgroundSelectionCandidateStates.size());
+    m_backgroundSelectionNextSelectionStates.reserve(m_backgroundSelectionCandidateStates.size());
+    for (DesktopRootItemState* state : m_backgroundSelectionCandidateStates) {
+        if (!state || !shouldPaintDesktopModelState(*state)) {
             continue;
         }
-        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
+
+        const QString normalizedPath = normalizeDesktopItemPath(state->model.filePath);
         if (normalizedPath.isEmpty()) {
             continue;
         }
-        if (state.model.renderData.selectionContentRect.intersects(rect)) {
-            nextSelection.append(normalizedPath);
+
+        if (!uncoveredSelectionRegion.intersects(state->model.renderData.selectionContentRect)) {
+            continue;
+        }
+
+        if (!m_backgroundSelectionNextSelectionSet.contains(normalizedPath)) {
+            m_backgroundSelectionNextSelectionSet.insert(normalizedPath);
+            m_backgroundSelectionNextSelectionStates.append(state);
+            fallbackFocusPath = normalizedPath;
         }
     }
 
-    const QString focusPath = nextSelection.isEmpty()
+    if (m_selectedDesktopPathSet == m_backgroundSelectionNextSelectionSet) {
+        return;
+    }
+
+    QRegion dirtyRegion;
+    m_backgroundSelectionPreviousSelectionPaths = m_selectedDesktopPaths;
+    for (const QString& path : m_backgroundSelectionPreviousSelectionPaths) {
+        if (m_backgroundSelectionNextSelectionSet.contains(path)) {
+            continue;
+        }
+        clearItemExpandedState(path);
+        if (DesktopRootItemState* state = findDesktopStateByPath(path)) {
+            setDesktopItemSelected(state, path, false, &dirtyRegion);
+        }
+    }
+
+    for (DesktopRootItemState* state : m_backgroundSelectionNextSelectionStates) {
+        if (!state) {
+            continue;
+        }
+        const QString normalizedPath = normalizeDesktopItemPath(state->model.filePath);
+        if (normalizedPath.isEmpty() || m_selectedDesktopPathSet.contains(normalizedPath)) {
+            continue;
+        }
+        setDesktopItemSelected(state, normalizedPath, true, &dirtyRegion);
+    }
+
+    if (!dirtyRegion.isEmpty()) {
+        update(dirtyRegion);
+    }
+
+    m_focusedDesktopPath = m_backgroundSelectionNextSelectionSet.isEmpty()
         ? QString()
-        : (m_focusedDesktopPath.isEmpty() ? nextSelection.last() : m_focusedDesktopPath);
-    applyDesktopSelection(nextSelection, focusPath, false);
-    if (!nextSelection.isEmpty() && m_anchorDesktopPath.isEmpty()) {
-        m_anchorDesktopPath = nextSelection.first();
+        : (m_backgroundSelectionNextSelectionSet.contains(m_focusedDesktopPath) ? m_focusedDesktopPath : fallbackFocusPath);
+
+    if (!m_backgroundSelectionNextSelectionSet.isEmpty() && m_anchorDesktopPath.isEmpty()) {
+        m_anchorDesktopPath = fallbackFocusPath;
     }
 }
 
 void ListView::paintEvent(QPaintEvent* event)
 {
-    updateAllItemRenderData();
-
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    const QRegion dirtyRegion = event->region();
+    const bool reducePaintCostForSelection = m_isSelecting;
+    painter.setRenderHint(QPainter::Antialiasing, !reducePaintCostForSelection);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, !reducePaintCostForSelection);
     painter.setRenderHint(QPainter::TextAntialiasing);
 
     // 缂備焦锚閸╂顩煎畝鍕〃濡?(Model-Driven Stateless Rendering)
@@ -1474,15 +1585,16 @@ void ListView::paintEvent(QPaintEvent* event)
         if (!shouldPaintDesktopModelState(state)) continue;
         
         // 闁诡儸鍡楀幋濞村吋锚鐎垫煡鏁嶅顒€娑х紓浣姑崺妤呭捶閵娿儳绉奸柛鎾崇Х閸撲即宕犻崫鍕幍闁告劕鎳愬▓鎴炪亜?
-        if (!event->rect().intersects(state.model.renderData.itemRect)) {
+        if (!dirtyRegion.intersects(state.model.renderData.itemRect)) {
             continue;
         }
 
-        paintDesktopRootItem(painter, state.model.renderData);
+        paintDesktopRootItemDynamic(painter, state.model.renderData);
+        paintDesktopRootItemStatic(painter, state.model.renderData);
     }
 
     const QRect indicatorRect = desktopAutoArrangeInsertionIndicatorRect();
-    if (!indicatorRect.isNull()) {
+    if (!indicatorRect.isNull() && dirtyRegion.intersects(indicatorRect.adjusted(-4, -3, 4, 3))) {
         painter.save();
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor(0, 220, 220, 80));
@@ -1642,8 +1754,24 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     }
 
     if (m_isSelecting) {
-        updateBackgroundSelection(event->pos());
-        event->ignore();
+        QRect rect;
+        const bool shouldShowSelection = updateBackgroundSelection(event->pos(), &rect);
+        if (LinDesktop* desktop = qobject_cast<LinDesktop*>(parentWidget())) {
+            if (desktop->selectArea) {
+                desktop->selectArea->setSelectionRect(rect);
+            }
+            if (shouldShowSelection) {
+                if (desktop->selectArea && !desktop->selectArea->isVisible()) {
+                    desktop->selectArea->show();
+                }
+                if (desktop->selectArea) {
+                    desktop->selectArea->lower();
+                }
+            } else {
+                desktop->clearSelectionOverlay();
+            }
+        }
+        event->accept();
         return;
     }
 
@@ -1670,7 +1798,12 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     
     // Clear selection state if we were selecting background
     if (m_isSelecting) {
+        if (LinDesktop* desktop = qobject_cast<LinDesktop*>(parentWidget())) {
+            desktop->clearSelectionOverlay();
+        }
         endBackgroundSelection();
+        event->accept();
+        return;
     }
     event->ignore();
 }
@@ -1679,7 +1812,19 @@ void ListView::beginBackgroundSelection(const QPoint& startPos)
 {
     clearCheckedItem();
     setFocus();
+    if (mouseGrabber() != this) {
+        grabMouse();
+    }
     rebuildSpatialIndex();
+    rebuildBackgroundSelectionOcclusionRegion();
+    m_backgroundSelectionThrottleTimer->stop();
+    m_backgroundSelectionFrameTimer.invalidate();
+    m_backgroundSelectionThrottleMs = kBackgroundSelectionThrottleFastMs;
+    m_backgroundSelectionRefreshCostMs = 0.0;
+    m_backgroundSelectionThrottleRelaxFrames = 0;
+    m_pendingBackgroundSelectionPos = startPos;
+    m_hasPendingBackgroundSelectionUpdate = false;
+    resetBackgroundSelectionCandidateCache();
 
     m_isSelecting = true;
     m_startPos = startPos;
@@ -1695,16 +1840,36 @@ bool ListView::updateBackgroundSelection(const QPoint& currentPos, QRect* select
 
     const QRect rect = QRect(m_selectionStart, currentPos).normalized();
     const bool shouldShowSelection = rect.width() > 3 || rect.height() > 3;
+    const QRect previousRect = m_selectionRect;
     m_selectionRect = rect;
+    m_pendingBackgroundSelectionPos = currentPos;
+    m_hasPendingBackgroundSelectionUpdate = true;
 
     if (shouldShowSelection) {
-        refreshCheckedItem(rect);
+        const int throttleMs = currentBackgroundSelectionThrottleMs();
+        const bool shouldFlushNow =
+            !m_backgroundSelectionFrameTimer.isValid() ||
+            m_backgroundSelectionFrameTimer.elapsed() >= throttleMs;
+
+        if (shouldFlushNow) {
+            flushBackgroundSelectionUpdate();
+        } else if (!m_backgroundSelectionThrottleTimer->isActive()) {
+            const int remainingMs = qMax(1, throttleMs - static_cast<int>(m_backgroundSelectionFrameTimer.elapsed()));
+            m_backgroundSelectionThrottleTimer->start(remainingMs);
+        }
     } else {
+        m_backgroundSelectionThrottleTimer->stop();
+        m_hasPendingBackgroundSelectionUpdate = false;
+        m_selectionRect = QRect();
+        resetBackgroundSelectionCandidateCache();
         clearCheckedItem();
+        if (!previousRect.isNull()) {
+            update(previousRect.adjusted(-2, -2, 2, 2));
+        }
     }
 
     if (selectionRect) {
-        *selectionRect = rect;
+        *selectionRect = shouldShowSelection ? rect : QRect();
     }
 
     return shouldShowSelection;
@@ -1712,10 +1877,231 @@ bool ListView::updateBackgroundSelection(const QPoint& currentPos, QRect* select
 
 void ListView::endBackgroundSelection()
 {
+    const QRect previousRect = m_selectionRect;
+    if (m_hasPendingBackgroundSelectionUpdate) {
+        flushBackgroundSelectionUpdate();
+    }
+    m_backgroundSelectionThrottleTimer->stop();
+    m_backgroundSelectionFrameTimer.invalidate();
+    m_hasPendingBackgroundSelectionUpdate = false;
     m_isSelecting = false;
     m_startPos = QPoint();
     m_selectionStart = QPoint();
     m_selectionRect = QRect();
+    m_backgroundSelectionOcclusionRegion = QRegion();
+    m_backgroundSelectionThrottleMs = kBackgroundSelectionThrottleFastMs;
+    m_backgroundSelectionRefreshCostMs = 0.0;
+    m_backgroundSelectionThrottleRelaxFrames = 0;
+    resetBackgroundSelectionCandidateCache();
+    if (mouseGrabber() == this) {
+        releaseMouse();
+    }
+    if (!previousRect.isNull()) {
+        update(previousRect.adjusted(-2, -2, 2, 2));
+    }
+}
+
+void ListView::flushBackgroundSelectionUpdate()
+{
+    if (!m_isSelecting || !m_hasPendingBackgroundSelectionUpdate) {
+        return;
+    }
+
+    m_backgroundSelectionThrottleTimer->stop();
+    const QRect rect = QRect(m_selectionStart, m_pendingBackgroundSelectionPos).normalized();
+    QElapsedTimer refreshTimer;
+    refreshTimer.start();
+    if (rect.width() > 3 || rect.height() > 3) {
+        refreshCheckedItem(rect);
+    } else {
+        clearCheckedItem();
+    }
+
+    updateBackgroundSelectionThrottle(qMax<qint64>(1, refreshTimer.elapsed()), rect);
+    m_backgroundSelectionFrameTimer.restart();
+    m_hasPendingBackgroundSelectionUpdate = false;
+}
+
+void ListView::markSpatialIndexDirty()
+{
+    m_spatialIndexDirty = true;
+}
+
+void ListView::resetBackgroundSelectionCandidateCache()
+{
+    m_backgroundSelectionPreviousUncoveredRegion = QRegion();
+    m_backgroundSelectionCandidateStates.clear();
+    m_backgroundSelectionCandidateScratchStates.clear();
+    m_backgroundSelectionCandidateSet.clear();
+}
+
+void ListView::updateBackgroundSelectionCandidateCache(const QRegion& uncoveredSelectionRegion)
+{
+    if (!m_spatialIndex) {
+        m_backgroundSelectionCandidateStates.clear();
+        m_backgroundSelectionCandidateStates.reserve(m_itemStates.size());
+        for (auto& state : m_itemStates) {
+            if (uncoveredSelectionRegion.intersects(state.model.renderData.selectionContentRect)) {
+                m_backgroundSelectionCandidateStates.append(&state);
+            }
+        }
+        m_backgroundSelectionPreviousUncoveredRegion = uncoveredSelectionRegion;
+        return;
+    }
+
+    const QRegion addedRegion = m_backgroundSelectionPreviousUncoveredRegion.isEmpty()
+        ? uncoveredSelectionRegion
+        : uncoveredSelectionRegion.subtracted(m_backgroundSelectionPreviousUncoveredRegion);
+
+    if (!addedRegion.isEmpty()) {
+        const QVector<QRect> addedRects = addedRegion.rects();
+        for (const QRect& addedRect : addedRects) {
+            const QVector<DesktopRootItemState*> queryStates = m_spatialIndex->query(addedRect);
+            for (DesktopRootItemState* state : queryStates) {
+                if (!state || m_backgroundSelectionCandidateSet.contains(state)) {
+                    continue;
+                }
+                if (!uncoveredSelectionRegion.intersects(state->model.renderData.selectionContentRect)) {
+                    continue;
+                }
+                m_backgroundSelectionCandidateSet.insert(state);
+                m_backgroundSelectionCandidateStates.append(state);
+            }
+        }
+    }
+
+    if (!m_backgroundSelectionPreviousUncoveredRegion.isEmpty()) {
+        const QRegion removedRegion = m_backgroundSelectionPreviousUncoveredRegion.subtracted(uncoveredSelectionRegion);
+        if (!removedRegion.isEmpty()) {
+            m_backgroundSelectionCandidateScratchStates.clear();
+            m_backgroundSelectionCandidateScratchStates.reserve(m_backgroundSelectionCandidateStates.size());
+            for (DesktopRootItemState* state : m_backgroundSelectionCandidateStates) {
+                if (state && uncoveredSelectionRegion.intersects(state->model.renderData.selectionContentRect)) {
+                    m_backgroundSelectionCandidateScratchStates.append(state);
+                    continue;
+                }
+                if (state) {
+                    m_backgroundSelectionCandidateSet.remove(state);
+                }
+            }
+            m_backgroundSelectionCandidateStates.swap(m_backgroundSelectionCandidateScratchStates);
+        }
+    }
+
+    m_backgroundSelectionPreviousUncoveredRegion = uncoveredSelectionRegion;
+}
+
+void ListView::rebuildBackgroundSelectionOcclusionRegion()
+{
+    m_backgroundSelectionOcclusionRegion = QRegion();
+
+    BoxManager* manager = BoxManager::instance();
+    if (!manager) {
+        return;
+    }
+
+    const QWidget* sharedParent = parentWidget();
+    for (const QPointer<LinBox>& boxPtr : manager->allBoxes()) {
+        LinBox* box = boxPtr.data();
+        if (!box || !box->isVisible()) {
+            continue;
+        }
+
+        QRect boxRectInView;
+        if (box->parentWidget() == sharedParent) {
+            boxRectInView = QRect(mapFromParent(box->geometry().topLeft()), box->geometry().size());
+        } else {
+            boxRectInView = QRect(mapFromGlobal(box->mapToGlobal(QPoint(0, 0))), box->size());
+        }
+
+        if (!boxRectInView.isEmpty()) {
+            m_backgroundSelectionOcclusionRegion += boxRectInView;
+        }
+    }
+}
+
+int ListView::currentBackgroundSelectionThrottleMs() const
+{
+    return m_backgroundSelectionThrottleMs;
+}
+
+void ListView::updateBackgroundSelectionThrottle(qint64 refreshElapsedMs, const QRect& selectionRect)
+{
+    const qreal viewportArea = qMax(1, width() * height());
+    const qreal selectionArea = qMax(1, selectionRect.width() * selectionRect.height());
+    const qreal coverage = qBound<qreal>(0.0, selectionArea / viewportArea, 1.0);
+    const qreal weightedCostMs = qMax<qreal>(1.0, static_cast<qreal>(refreshElapsedMs)) * (1.0 + coverage * 0.35);
+
+    if (m_backgroundSelectionRefreshCostMs <= 0.0) {
+        m_backgroundSelectionRefreshCostMs = weightedCostMs;
+    } else {
+        m_backgroundSelectionRefreshCostMs = (m_backgroundSelectionRefreshCostMs * 0.7) + (weightedCostMs * 0.3);
+    }
+
+    int targetThrottleMs = kBackgroundSelectionThrottleFastMs;
+    if (m_backgroundSelectionRefreshCostMs >= 9.0 || refreshElapsedMs >= 12) {
+        targetThrottleMs = kBackgroundSelectionThrottleMaxMs;
+    } else if (m_backgroundSelectionRefreshCostMs >= 5.5 || refreshElapsedMs >= 8) {
+        targetThrottleMs = kBackgroundSelectionThrottleBusyMs;
+    } else if (m_backgroundSelectionRefreshCostMs >= 2.5 || refreshElapsedMs >= 4) {
+        targetThrottleMs = kBackgroundSelectionThrottleBalancedMs;
+    }
+
+    if (targetThrottleMs > m_backgroundSelectionThrottleMs) {
+        m_backgroundSelectionThrottleMs = targetThrottleMs;
+        m_backgroundSelectionThrottleRelaxFrames = 0;
+    } else if (targetThrottleMs < m_backgroundSelectionThrottleMs) {
+        ++m_backgroundSelectionThrottleRelaxFrames;
+        if (m_backgroundSelectionThrottleRelaxFrames >= kBackgroundSelectionThrottleRelaxFrameThreshold) {
+            m_backgroundSelectionThrottleMs = targetThrottleMs;
+            m_backgroundSelectionThrottleRelaxFrames = 0;
+        }
+    } else {
+        m_backgroundSelectionThrottleRelaxFrames = 0;
+    }
+
+    if (m_isSelecting && m_backgroundSelectionThrottleTimer && m_backgroundSelectionThrottleTimer->isActive() && m_backgroundSelectionFrameTimer.isValid()) {
+        const int remainingMs = qMax(1, m_backgroundSelectionThrottleMs - static_cast<int>(m_backgroundSelectionFrameTimer.elapsed()));
+        m_backgroundSelectionThrottleTimer->start(remainingMs);
+    }
+}
+
+void ListView::markDesktopRenderDataDirty(DesktopRootItemState* state)
+{
+    if (!state) {
+        return;
+    }
+
+    state->renderDataDirty = true;
+}
+
+void ListView::markAllDesktopRenderDataDirty()
+{
+    for (auto& state : m_itemStates) {
+        state.renderDataDirty = true;
+    }
+}
+
+void ListView::markDesktopStateIndexDirty()
+{
+    m_desktopStateIndexDirty = true;
+}
+
+void ListView::rebuildDesktopStateIndex()
+{
+    if (!m_desktopStateIndexDirty) {
+        return;
+    }
+
+    m_desktopStateIndex.clear();
+    m_desktopStateIndex.reserve(m_itemStates.size());
+    for (auto& state : m_itemStates) {
+        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
+        if (!normalizedPath.isEmpty()) {
+            m_desktopStateIndex.insert(normalizedPath, &state);
+        }
+    }
+    m_desktopStateIndexDirty = false;
 }
 
 void ListView::rebuildSpatialIndex()
@@ -1723,8 +2109,16 @@ void ListView::rebuildSpatialIndex()
     if (!m_spatialIndex) {
         m_spatialIndex = std::make_unique<DesktopQuadTree>(rect());
     }
-    m_spatialIndex->setBounds(rect());
+
+    const QRect currentBounds = rect();
+    if (!m_spatialIndexDirty && m_spatialIndexBounds == currentBounds) {
+        return;
+    }
+
+    m_spatialIndex->setBounds(currentBounds);
     m_spatialIndex->rebuild(collectAutoArrangeStates());
+    m_spatialIndexBounds = currentBounds;
+    m_spatialIndexDirty = false;
 }
 
 QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) const
@@ -2195,7 +2589,9 @@ void ListView::dropEvent(QDropEvent* event)
                     restoredState.model.focused = false;
                     restoredState.model.renderData.selected = false;
                     restoredState.model.renderData.hovered = false;
+                    restoredState.renderDataDirty = true;
                     m_itemStates.push_back(restoredState);
+                    markDesktopStateIndexDirty();
                     sourceBoxes.insert(sourceBox);
                 }
 
@@ -2342,6 +2738,7 @@ void ListView::dropEvent(QDropEvent* event)
                         state->model.position = it.value();
                         state->model.boxId.clear();
                         state->model.visible = true;
+                        markDesktopRenderDataDirty(state);
                     }
                 }
                 updateAllItemRenderData();
@@ -2607,6 +3004,7 @@ void ListView::initialize()
     const vector<ListItemData> allDatas = DesktopItemLoader().loadAllItems();
 
     m_itemStates.clear();
+    markDesktopStateIndexDirty();
     if (monitor) {
         sysIconRegisterInfo = monitor->getCurrentIcons();
     }
@@ -2633,6 +3031,7 @@ void ListView::initialize()
             ? nativePos
             : QPoint(0, 0);
         m_itemStates.push_back(state);
+        markDesktopStateIndexDirty();
     }
 
 
@@ -2747,6 +3146,285 @@ QVector<DesktopRootItemState*> ListView::collectAutoArrangeStates() const
         states.push_back(const_cast<DesktopRootItemState*>(&state));
     }
     return states;
+}
+
+QVector<DesktopRootItemState*> ListView::collectGridOrderedDesktopStates() const
+{
+    QVector<DesktopRootItemState*> states;
+    states.reserve(m_itemStates.size());
+    for (const auto& state : m_itemStates) {
+        if (!shouldPaintDesktopModelState(state)) {
+            continue;
+        }
+        states.push_back(const_cast<DesktopRootItemState*>(&state));
+    }
+
+    const int itemHeight = desktopItemFootprintHeight();
+    const int strideX = qMax(1, m_iconWidth + m_colSpacing);
+    const int strideY = qMax(1, itemHeight + m_rowSpacing);
+    const int layoutLeft = desktopLayoutLeft();
+    const int layoutTop = desktopLayoutTop();
+    const int maxRows = qMax(1, maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY));
+
+    std::stable_sort(states.begin(), states.end(), [&](DesktopRootItemState* a, DesktopRootItemState* b) {
+        if (!a || !b) {
+            return a != nullptr;
+        }
+
+        const int indexA = pointToGridLinearIndex(a->model.position, layoutLeft, layoutTop, strideX, strideY, maxRows);
+        const int indexB = pointToGridLinearIndex(b->model.position, layoutLeft, layoutTop, strideX, strideY, maxRows);
+        if (indexA != indexB) {
+            return indexA < indexB;
+        }
+        if (a->model.position.x() != b->model.position.x()) {
+            return a->model.position.x() < b->model.position.x();
+        }
+        if (a->model.position.y() != b->model.position.y()) {
+            return a->model.position.y() < b->model.position.y();
+        }
+        return normalizeDesktopItemPath(a->model.filePath) < normalizeDesktopItemPath(b->model.filePath);
+    });
+
+    return states;
+}
+
+bool ListView::applyGridAlignedDesktopDropLayout(const QStringList& draggedPaths, const QPoint& releasePos)
+{
+    if (draggedPaths.isEmpty()) {
+        return false;
+    }
+
+    const int itemHeight = desktopItemFootprintHeight();
+    const int strideX = qMax(1, m_iconWidth + m_colSpacing);
+    const int strideY = qMax(1, itemHeight + m_rowSpacing);
+    const int layoutLeft = desktopLayoutLeft();
+    const int layoutTop = desktopLayoutTop();
+    const int maxRows = qMax(1, maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY));
+    const int maxCols = qMax(1, maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX));
+
+    QVector<DesktopRootItemState*> orderedStates = collectGridOrderedDesktopStates();
+    if (orderedStates.isEmpty()) {
+        return false;
+    }
+
+    QSet<QString> draggedPathSet;
+    for (const QString& path : draggedPaths) {
+        const QString normalizedPath = normalizeDesktopItemPath(path);
+        if (!normalizedPath.isEmpty()) {
+            draggedPathSet.insert(normalizedPath);
+        }
+    }
+    if (draggedPathSet.isEmpty()) {
+        return false;
+    }
+
+    QVector<DesktopRootItemState*> orderedDraggedStates;
+    QVector<DesktopRootItemState*> remainingStates;
+    orderedDraggedStates.reserve(draggedPathSet.size());
+    remainingStates.reserve(orderedStates.size());
+
+    for (DesktopRootItemState* state : orderedStates) {
+        if (!state) {
+            continue;
+        }
+        const QString normalizedPath = normalizeDesktopItemPath(state->model.filePath);
+        if (draggedPathSet.contains(normalizedPath)) {
+            orderedDraggedStates.append(state);
+        } else {
+            remainingStates.append(state);
+        }
+    }
+
+    if (orderedDraggedStates.isEmpty()) {
+        return false;
+    }
+
+    QHash<DesktopRootItemState*, QPoint> newPositions;
+    newPositions.reserve(orderedStates.size());
+
+    auto clampCellToBounds = [&](const QPoint& cell) {
+        return QPoint(qBound(0, cell.x(), maxCols - 1), qBound(0, cell.y(), maxRows - 1));
+    };
+
+    auto normalizedCellForPos = [&](const QPoint& pos) {
+        return clampCellToBounds(pointToGridCell(pos, layoutLeft, layoutTop, strideX, strideY));
+    };
+
+    QHash<DesktopRootItemState*, QPoint> originalDraggedCells;
+    originalDraggedCells.reserve(orderedDraggedStates.size());
+    int originalMinCellX = INT_MAX;
+    int originalMinCellY = INT_MAX;
+    int originalMaxCellX = INT_MIN;
+    int originalMaxCellY = INT_MIN;
+
+    for (DesktopRootItemState* state : orderedDraggedStates) {
+        if (!state) {
+            continue;
+        }
+        const QPoint cell = normalizedCellForPos(state->model.position);
+        originalDraggedCells.insert(state, cell);
+        originalMinCellX = qMin(originalMinCellX, cell.x());
+        originalMinCellY = qMin(originalMinCellY, cell.y());
+        originalMaxCellX = qMax(originalMaxCellX, cell.x());
+        originalMaxCellY = qMax(originalMaxCellY, cell.y());
+    }
+
+    if (originalDraggedCells.isEmpty()) {
+        return false;
+    }
+
+    int previewMinCellX = INT_MAX;
+    int previewMinCellY = INT_MAX;
+    bool hasPreviewCells = false;
+    for (const auto& ghost : m_ghosts) {
+        if (!ghost.widget || ghost.filePath.isEmpty()) {
+            continue;
+        }
+        const QString normalizedPath = normalizeDesktopItemPath(ghost.filePath);
+        if (!draggedPathSet.contains(normalizedPath)) {
+            continue;
+        }
+        const QPoint cell = normalizedCellForPos(ghost.widget->pos());
+        previewMinCellX = qMin(previewMinCellX, cell.x());
+        previewMinCellY = qMin(previewMinCellY, cell.y());
+        hasPreviewCells = true;
+    }
+
+    QPoint targetTopLeftCell = hasPreviewCells
+        ? QPoint(previewMinCellX, previewMinCellY)
+        : normalizedCellForPos(releasePos);
+
+    const int selectionWidth = originalMaxCellX - originalMinCellX + 1;
+    const int selectionHeight = originalMaxCellY - originalMinCellY + 1;
+    if (selectionWidth > maxCols || selectionHeight > maxRows) {
+        return false;
+    }
+
+    targetTopLeftCell.setX(qBound(0, targetTopLeftCell.x(), maxCols - selectionWidth));
+    targetTopLeftCell.setY(qBound(0, targetTopLeftCell.y(), maxRows - selectionHeight));
+
+    QSet<quint64> occupiedSlots;
+
+    for (DesktopRootItemState* state : orderedDraggedStates) {
+        if (!state || !originalDraggedCells.contains(state)) {
+            continue;
+        }
+
+        const QPoint originalCell = originalDraggedCells.value(state);
+        const QPoint relativeCell(originalCell.x() - originalMinCellX, originalCell.y() - originalMinCellY);
+        const QPoint targetCell = targetTopLeftCell + relativeCell;
+        const quint64 slotKey = packGridCell(targetCell.x(), targetCell.y());
+        if (occupiedSlots.contains(slotKey)) {
+            return false;
+        }
+
+        occupiedSlots.insert(slotKey);
+        newPositions.insert(state, gridCellToPoint(targetCell.x(), targetCell.y(), layoutLeft, layoutTop, strideX, strideY));
+    }
+
+    QVector<DesktopRootItemState*> displacedStates;
+    displacedStates.reserve(remainingStates.size());
+
+    for (DesktopRootItemState* state : remainingStates) {
+        if (!state) {
+            continue;
+        }
+
+        const QPoint originalCell = normalizedCellForPos(state->model.position);
+        const quint64 slotKey = packGridCell(originalCell.x(), originalCell.y());
+        if (!occupiedSlots.contains(slotKey)) {
+            occupiedSlots.insert(slotKey);
+            newPositions.insert(state, gridCellToPoint(originalCell.x(), originalCell.y(), layoutLeft, layoutTop, strideX, strideY));
+        } else {
+            displacedStates.append(state);
+        }
+    }
+
+    auto nearestAvailableCell = [&](const QPoint& preferredCell) {
+        QVector<QPair<int, QPoint>> candidates;
+        const int maxRadius = qMax(maxCols, maxRows);
+        for (int radius = 0; radius <= maxRadius; ++radius) {
+            candidates.clear();
+            const int minX = qMax(0, preferredCell.x() - radius);
+            const int maxX = qMin(maxCols - 1, preferredCell.x() + radius);
+            const int minY = qMax(0, preferredCell.y() - radius);
+            const int maxY = qMin(maxRows - 1, preferredCell.y() + radius);
+
+            for (int x = minX; x <= maxX; ++x) {
+                for (int y = minY; y <= maxY; ++y) {
+                    if (qMax(qAbs(x - preferredCell.x()), qAbs(y - preferredCell.y())) != radius) {
+                        continue;
+                    }
+
+                    const quint64 slotKey = packGridCell(x, y);
+                    if (occupiedSlots.contains(slotKey)) {
+                        continue;
+                    }
+
+                    const int dx = x - preferredCell.x();
+                    const int dy = y - preferredCell.y();
+                    const int distanceScore = dx * dx + dy * dy;
+                    candidates.append(qMakePair(distanceScore, QPoint(x, y)));
+                }
+            }
+
+            if (!candidates.isEmpty()) {
+                std::sort(candidates.begin(), candidates.end(), [&](const QPair<int, QPoint>& a, const QPair<int, QPoint>& b) {
+                    if (a.first != b.first) {
+                        return a.first < b.first;
+                    }
+
+                    const int indexA = a.second.x() * maxRows + a.second.y();
+                    const int indexB = b.second.x() * maxRows + b.second.y();
+                    return indexA < indexB;
+                });
+                return candidates.first().second;
+            }
+        }
+
+        return QPoint(-1, -1);
+    };
+
+    for (DesktopRootItemState* state : displacedStates) {
+        if (!state) {
+            continue;
+        }
+
+        const QPoint preferredCell = normalizedCellForPos(state->model.position);
+        const QPoint assignedCell = nearestAvailableCell(preferredCell);
+        if (assignedCell.x() < 0 || assignedCell.y() < 0) {
+            return false;
+        }
+
+        occupiedSlots.insert(packGridCell(assignedCell.x(), assignedCell.y()));
+        newPositions.insert(state, gridCellToPoint(assignedCell.x(), assignedCell.y(), layoutLeft, layoutTop, strideX, strideY));
+    }
+
+    bool changed = false;
+    for (DesktopRootItemState* state : orderedStates) {
+        if (!state || !newPositions.contains(state)) {
+            continue;
+        }
+
+        const QPoint newPos = newPositions.value(state);
+        if (state->model.position == newPos) {
+            continue;
+        }
+
+        state->model.position = newPos;
+        markDesktopRenderDataDirty(state);
+        changed = true;
+    }
+
+    if (!changed) {
+        return false;
+    }
+
+    updateAllItemRenderData();
+    rebuildSpatialIndex();
+    update();
+    requestSaveBoxes();
+    return true;
 }
 
 void ListView::sortAutoArrangeStates(QVector<DesktopRootItemState*>& states, SortOrderType order) const
@@ -3236,6 +3914,7 @@ void ListView::finalizeAutoArrangeLayout(const QVector<DesktopRootItemState*>& s
         state->model.baseSize = QSize(m_iconWidth, m_iconHeight);
     }
 
+    markAllDesktopRenderDataDirty();
     updateAllItemRenderData();
     rebuildSpatialIndex();
     update();
@@ -3376,6 +4055,7 @@ void ListView::loadGridLayout()
             }
         }
 
+        markAllDesktopRenderDataDirty();
         updateAllItemRenderData();
         rebuildSpatialIndex();
         update();
@@ -3972,6 +4652,8 @@ void ListView::syncViewModeSizes() {
             if (rightMenu) rightMenu->setSmallIconsChecked(true);
             break;
     }
+
+    markAllDesktopRenderDataDirty();
 }
 
 qreal ListView::currentDpiScale() const
@@ -4026,6 +4708,8 @@ bool ListView::addDesktopModelItemFromPath(const QString& filePath)
     }
 
     m_itemStates.push_back(state);
+    markDesktopStateIndexDirty();
+    markDesktopRenderDataDirty(&m_itemStates.back());
     updateAllItemRenderData();
 
     if (m_iconShowRule.autoArrange) {
@@ -4065,12 +4749,17 @@ bool ListView::refreshDesktopModelItemPath(const QString& oldPath, const QString
     updatedModel.isReady = true;
 
     state->model = updatedModel;
+    markDesktopStateIndexDirty();
+    markDesktopRenderDataDirty(state);
 
     const QString newNormalizedPath = normalizeDesktopItemPath(state->model.filePath);
     for (QString& selectedPath : m_selectedDesktopPaths) {
         if (selectedPath == oldNormalizedPath) {
             selectedPath = newNormalizedPath;
         }
+    }
+    if (m_selectedDesktopPathSet.remove(oldNormalizedPath)) {
+        m_selectedDesktopPathSet.insert(newNormalizedPath);
     }
     if (m_focusedDesktopPath == oldNormalizedPath) {
         m_focusedDesktopPath = newNormalizedPath;
@@ -4138,12 +4827,9 @@ DesktopRootItemState* ListView::findDesktopStateByPath(const QString& filePath)
         return nullptr;
     }
 
-    for (auto& state : m_itemStates) {
-        if (normalizeDesktopItemPath(state.model.filePath) == normalizedPath) {
-            return &state;
-        }
-    }
-    return nullptr;
+    rebuildDesktopStateIndex();
+    const auto it = m_desktopStateIndex.constFind(normalizedPath);
+    return it == m_desktopStateIndex.cend() ? nullptr : it.value();
 }
 
 const DesktopRootItemState* ListView::findDesktopStateByPath(const QString& filePath) const
@@ -4153,18 +4839,16 @@ const DesktopRootItemState* ListView::findDesktopStateByPath(const QString& file
         return nullptr;
     }
 
-    for (const auto& state : m_itemStates) {
-        if (normalizeDesktopItemPath(state.model.filePath) == normalizedPath) {
-            return &state;
-        }
-    }
-    return nullptr;
+    ListView* self = const_cast<ListView*>(this);
+    self->rebuildDesktopStateIndex();
+    const auto it = self->m_desktopStateIndex.constFind(normalizedPath);
+    return it == self->m_desktopStateIndex.cend() ? nullptr : it.value();
 }
 
 bool ListView::isDesktopPathSelected(const QString& filePath) const
 {
     const QString normalizedPath = normalizeDesktopItemPath(filePath);
-    return !normalizedPath.isEmpty() && m_selectedDesktopPaths.contains(normalizedPath);
+    return !normalizedPath.isEmpty() && m_selectedDesktopPathSet.contains(normalizedPath);
 }
 
 QVector<DesktopRootItemModel> ListView::selectedDesktopModels() const
@@ -4388,7 +5072,37 @@ QString ListView::findDirectionalBoxFocusCandidate(LinBox* box, const QString& f
     return candidatePath;
 }
 
-void ListView::setDesktopItemSelected(const QString& filePath, bool selected)
+void ListView::setDesktopItemSelected(DesktopRootItemState* state, const QString& normalizedPath, bool selected, QRegion* dirtyRegion)
+{
+    if (!state || normalizedPath.isEmpty()) {
+        return;
+    }
+
+    if (selected) {
+        if (!m_selectedDesktopPathSet.contains(normalizedPath)) {
+            m_selectedDesktopPaths.push_back(normalizedPath);
+        }
+        m_selectedDesktopPathSet.insert(normalizedPath);
+    } else {
+        m_selectedDesktopPathSet.remove(normalizedPath);
+        m_selectedDesktopPaths.removeOne(normalizedPath);
+    }
+
+    if (state->model.isSelected == selected && state->model.renderData.selected == selected) {
+        return;
+    }
+
+    state->model.isSelected = selected;
+    state->model.renderData.selected = selected;
+    const QRect dirty = desktopRootItemHighlightDirtyRect(state->model.renderData);
+    if (dirtyRegion) {
+        *dirtyRegion += dirty;
+        return;
+    }
+    update(dirty);
+}
+
+void ListView::setDesktopItemSelected(const QString& filePath, bool selected, QRegion* dirtyRegion)
 {
     DesktopRootItemState* state = findDesktopStateByPath(filePath);
     if (!state) {
@@ -4396,36 +5110,24 @@ void ListView::setDesktopItemSelected(const QString& filePath, bool selected)
     }
 
     const QString normalizedPath = normalizeDesktopItemPath(state->model.filePath);
-    if (normalizedPath.isEmpty()) {
-        return;
-    }
-
-    state->model.isSelected = selected;
-    state->model.renderData.selected = selected;
-    if (selected) {
-        if (!m_selectedDesktopPaths.contains(normalizedPath)) {
-            m_selectedDesktopPaths.push_back(normalizedPath);
-        }
-    } else {
-        m_selectedDesktopPaths.removeOne(normalizedPath);
-    }
-
-    update(desktopRootItemHighlightDirtyRect(state->model.renderData));
+    setDesktopItemSelected(state, normalizedPath, selected, dirtyRegion);
 }
 
-void ListView::clearDesktopSelection()
+void ListView::clearDesktopSelection(QRegion* dirtyRegion)
 {
     const QStringList previousSelection = selectedDesktopPaths();
     for (const QString& path : previousSelection) {
         clearItemExpandedState(path);
-        setDesktopItemSelected(path, false);
+        setDesktopItemSelected(path, false, dirtyRegion);
     }
     m_selectedDesktopPaths.clear();
+    m_selectedDesktopPathSet.clear();
 }
 
 void ListView::applyDesktopSelection(const QStringList& filePaths, const QString& focusedPath, bool expandSingle)
 {
-    clearDesktopSelection();
+    QRegion dirtyRegion;
+    clearDesktopSelection(&dirtyRegion);
 
     QStringList filteredPaths;
     for (const QString& path : filePaths) {
@@ -4437,7 +5139,11 @@ void ListView::applyDesktopSelection(const QStringList& filePaths, const QString
             continue;
         }
         filteredPaths.append(normalizedPath);
-        setDesktopItemSelected(normalizedPath, true);
+        setDesktopItemSelected(normalizedPath, true, &dirtyRegion);
+    }
+
+    if (!dirtyRegion.isEmpty()) {
+        update(dirtyRegion);
     }
 
     m_focusedDesktopPath = filteredPaths.isEmpty()
@@ -4570,9 +5276,12 @@ void ListView::removeDesktopStateByPath(const QString& filePath)
         if (normalizeDesktopItemPath(it->model.filePath) == normalizedPath) {
             const QRect dirty = desktopRootItemHighlightDirtyRect(it->model.renderData);
             it = m_itemStates.erase(it);
+            markDesktopStateIndexDirty();
+            markSpatialIndexDirty();
             if (m_hoveredDesktopPath == normalizedPath) {
                 m_hoveredDesktopPath.clear();
             }
+            m_selectedDesktopPathSet.remove(normalizedPath);
             m_selectedDesktopPaths.removeOne(normalizedPath);
             if (m_focusedDesktopPath == normalizedPath) {
                 m_focusedDesktopPath.clear();
@@ -4627,6 +5336,10 @@ QRect ListView::desktopSelectionRectForItem(const DesktopRootItemState& state) c
 
 void ListView::updateHoveredDesktopItem(const QPoint& pos)
 {
+    if (m_isSelecting) {
+        return;
+    }
+
     DesktopRootItemState* nextHoveredState = findDesktopStateAt(pos);
     const QString nextHoveredPath = nextHoveredState
         ? normalizeDesktopItemPath(nextHoveredState->model.filePath)
@@ -4664,14 +5377,28 @@ void ListView::clearHoveredDesktopItem()
 
 void ListView::updateAllItemRenderData()
 {
-    DesktopRenderParams params = currentRenderParams();
+    const DesktopRenderParams params = currentRenderParams();
+    const QString focusedDesktopPath = effectiveFocusedDesktopPath();
+    const QString focusedBoxPath = effectiveFocusedBoxPath();
+    bool rebuiltAny = false;
+
     for (auto& state : m_itemStates) {
         const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
         state.model.focused =
-            (!m_focusedDesktopPath.isEmpty() && normalizedPath == effectiveFocusedDesktopPath()) ||
-            (!m_focusedBoxPath.isEmpty() && normalizedPath == effectiveFocusedBoxPath());
-        state.model.isRenaming = RenameManager::instance()->isActivePath(state.model.filePath);
+            (!m_focusedDesktopPath.isEmpty() && normalizedPath == focusedDesktopPath) ||
+            (!m_focusedBoxPath.isEmpty() && normalizedPath == focusedBoxPath);
+
+        if (!state.renderDataDirty) {
+            continue;
+        }
+
         state.model.renderData = buildRenderDataFromModel(state.model, params);
+        state.renderDataDirty = false;
+        rebuiltAny = true;
+    }
+
+    if (rebuiltAny) {
+        markSpatialIndexDirty();
     }
 }
 
@@ -4777,6 +5504,7 @@ void ListView::applyViewModeMetricsChange(int oldIconWidth,
             oldMarginTop,
             oldMarginLeft);
     }
+    markAllDesktopRenderDataDirty();
     updateAllItemRenderData();
     return;
 }
@@ -4792,8 +5520,6 @@ void ListView::refreshForDpiChange()
 
     syncViewModeSizes();
     IconCacheManager::instance().clear();
-    updateAllItemRenderData();
-
 
     if (m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
@@ -5170,6 +5896,7 @@ void ListView::onMenuRefresh() {
                 updatedModel.isRenaming = state.model.isRenaming;
                 updatedModel.isReady = true;
                 state.model = updatedModel;
+                markDesktopRenderDataDirty(&state);
             }
 
             updateAllItemRenderData();
@@ -5204,7 +5931,12 @@ void ListView::onMenuRefresh() {
 void ListView::onMenuPaste() {
     const QStringList filePaths = ListViewFileOpsHelper::clipboardLocalFilePaths();
     if (filePaths.isEmpty()) {
-        qDebug() << "ListView: Paste skipped, clipboard has no local files";
+        QStringList savedVirtualPaths;
+        const int savedCount = ListViewFileOpsHelper::pasteVirtualClipboardFilesToDirectory(m_desktopDir, &savedVirtualPaths);
+        qDebug() << "ListView: Virtual paste triggered" << "saved:" << savedCount;
+        if (savedCount <= 0) {
+            qDebug() << "ListView: Paste skipped, clipboard has no local files";
+        }
         return;
     }
 
@@ -5394,6 +6126,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                     updatedModel.isRenaming = state->model.isRenaming;
                     updatedModel.isReady = true;
                     state->model = updatedModel;
+                    state->renderDataDirty = true;
 
                     const QString newNormalizedPath = normalizeDesktopItemPath(state->model.filePath);
                     for (QString& selectedPath : m_selectedBoxPaths) {
@@ -5473,6 +6206,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 updatedModel.isRenaming = state->model.isRenaming;
                 updatedModel.isReady = true;
                 state->model = updatedModel;
+                state->renderDataDirty = true;
                 box->refreshLayout();
                 box->update();
             }
@@ -5621,13 +6355,20 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
             }
         }
 
-        if (!targetBox && m_iconShowRule.autoArrange) {
-            QStringList draggedPaths;
-            for (const auto& ghost : m_ghosts) {
-                if (!ghost.filePath.isEmpty() && !draggedPaths.contains(ghost.filePath)) {
-                    draggedPaths.append(ghost.filePath);
-                }
+        QStringList draggedPaths;
+        for (const auto& ghost : m_ghosts) {
+            if (!ghost.filePath.isEmpty() && !draggedPaths.contains(ghost.filePath)) {
+                draggedPaths.append(ghost.filePath);
             }
+        }
+
+        const Qt::KeyboardModifiers modifiers = event ? event->modifiers() : QApplication::keyboardModifiers();
+        const bool copyMode = (modifiers & Qt::ControlModifier);
+        const bool preferShortcut = shouldPreferShortcutForDrop(draggedPaths, modifiers, false);
+        const bool desktopBackgroundFileOperation = !targetBox && !dropTargetState && !draggedPaths.isEmpty() &&
+            (copyMode || preferShortcut);
+
+        if (!targetBox && m_iconShowRule.autoArrange && !desktopBackgroundFileOperation) {
             const QStringList activeDesktopDragPaths = orderedDraggedPaths(draggedPaths);
             if (m_iconShowRule.sortType == SortOrderType::SortByCustom && !activeDesktopDragPaths.isEmpty()) {
                 const int customInsertIndex = m_desktopReorderInsertIndex >= 0
@@ -5675,6 +6416,24 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 
 		bool hasCollision = false;
 		QVector<QPoint> targetPositions;
+
+        if (!targetBox && !dropTargetState && m_iconShowRule.gridAlignment && !draggedPaths.isEmpty() &&
+            !desktopBackgroundFileOperation) {
+            if (applyGridAlignedDesktopDropLayout(draggedPaths, releasePos)) {
+                for (auto& ghost : m_ghosts) {
+                    if (ghost.widget) {
+                        ghost.widget->hide();
+                        ghost.widget->deleteLater();
+                    }
+                }
+                m_ghosts.clear();
+                m_isDragging = false;
+                m_draggedDesktopPath.clear();
+                m_draggedBoxPath.clear();
+                clearDesktopAutoArrangeReorderPreview();
+                return;
+            }
+        }
 
 		// 1. Calculate target positions and check collisions for desktop icons
 		if (!targetBox) {
@@ -5724,15 +6483,11 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 		}
 
 		// 2. Apply movement
-        QStringList draggedPaths;
 		int idx = 0;
 		for (auto& ghost : m_ghosts) {
             DesktopRootItemState* draggedState = ghost.filePath.isEmpty()
                 ? nullptr
                 : findDesktopStateByPath(ghost.filePath);
-            if (!ghost.filePath.isEmpty() && !draggedPaths.contains(ghost.filePath)) {
-                draggedPaths.append(ghost.filePath);
-            }
 			if (ghost.widget && draggedState) {
 				if (!hasCollision) {
 					QPoint finalPos = this->mapFromGlobal(ghost.widget->pos());
@@ -5742,10 +6497,11 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 					
 					// Only move if it's a desktop icon (parent is ListView)
 					// Items in box stay where they are (refreshLayout handles them)
-					if (!targetBox) {
+					if (!targetBox && !desktopBackgroundFileOperation) {
                         if (draggedState) {
                             draggedState->model.position = finalPos;
                             draggedState->model.renderData.itemRect.moveTopLeft(finalPos);
+                            markDesktopRenderDataDirty(draggedState);
                         }
 					}
 				}
@@ -5761,8 +6517,6 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
         m_draggedDesktopPath.clear();
         m_draggedBoxPath.clear();
         if (dropTargetState && !draggedPaths.isEmpty()) {
-            const bool copyMode = (event->modifiers() & Qt::ControlModifier);
-            const bool preferShortcut = shouldPreferShortcutForDrop(draggedPaths, event->modifiers(), false);
             if (handleDroppedPathsOnDesktopTarget(
                     draggedPaths,
                     dropTargetState->model,
@@ -5779,10 +6533,34 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
             }
             updateAllItemRenderData();
             update();
+        } else if (desktopBackgroundFileOperation) {
+            if (!m_iconShowRule.autoArrange) {
+                for (const QString& localPath : draggedPaths) {
+                    if (localPath.isEmpty()) {
+                        continue;
+                    }
+                    const QString reservedPath = preferShortcut
+                        ? ListViewFileOpsHelper::uniqueShortcutPathForTarget(localPath, m_desktopDir)
+                        : ListViewFileOpsHelper::uniquePasteDestinationPath(localPath, m_desktopDir);
+                    reserveCreatedItemPosition(reservedPath, releasePos);
+                }
+            }
+
+            bool ok = false;
+            if (preferShortcut) {
+                ok = createShortcutsInFolder(draggedPaths, m_desktopDir);
+            } else {
+                ok = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
+            }
+
+            if (ok) {
+                applyAutoArrangeAfterDesktopMutation(false, false);
+            } else {
+                updateAllItemRenderData();
+                update();
+            }
         } else if (targetBox && !draggedPaths.isEmpty()) {
             if (targetBox->isFolderMapped()) {
-                const bool copyMode = (event->modifiers() & Qt::ControlModifier);
-                const bool preferShortcut = shouldPreferShortcutForDrop(draggedPaths, event->modifiers(), false);
                 const QString targetFolder = normalizeMappedFolderPathForLookup(targetBox->mappedFolderPath());
                 const bool canWriteMappedFolder =
                     !targetFolder.isEmpty() &&
@@ -6211,7 +6989,9 @@ void ListView::loadBoxes(bool autoUpdateState) {
                     DesktopRootItemState restoredState = boxedState;
                     restoredState.model.boxId.clear();
                     restoredState.model.visible = true;
+                    restoredState.renderDataDirty = true;
                     m_itemStates.push_back(restoredState);
+                    markDesktopStateIndexDirty();
                 }
             }
             box->deleteLater();
@@ -6370,7 +7150,9 @@ void ListView::onMenuDestroyBox(LinBox* box) {
         if (!m_iconShowRule.autoArrange) {
             restoredState.model.position = generateItemPosition();
         }
+        restoredState.renderDataDirty = true;
         m_itemStates.push_back(restoredState);
+        markDesktopStateIndexDirty();
     }
     
     BoxManager::instance()->destroyBox(box, this);
@@ -7059,6 +7841,7 @@ QString ListView::dumpHiddenItemsJson() const
 void ListView::setShortcutArrowVisible(bool visible) {
     m_iconShowRule.showShortCutArrow = visible;
     
+    markAllDesktopRenderDataDirty();
     updateAllItemRenderData();
     rebuildSpatialIndex();
     update();
@@ -7093,6 +7876,7 @@ void ListView::loadPersistentLayout() {
                     boxedState.model.visible = true;
                     targetBox->addItemState(boxedState, false);
                     m_itemStates.removeAt(i);
+                    markDesktopStateIndexDirty();
                     boxesToRefresh.insert(targetBox);
                     continue;
                 }
@@ -7130,6 +7914,7 @@ void ListView::loadPersistentLayout() {
             box->raise();
         }
 
+        markAllDesktopRenderDataDirty();
         updateAllItemRenderData();
         rebuildSpatialIndex();
         update();
@@ -7153,7 +7938,9 @@ void ListView::setPersistenceEnabled(bool enabled) {
                 DesktopRootItemState restoredState = boxedState;
                 restoredState.model.boxId.clear();
                 restoredState.model.visible = true;
+                restoredState.renderDataDirty = true;
                 m_itemStates.push_back(restoredState);
+                markDesktopStateIndexDirty();
             }
             box->deleteLater();
         }

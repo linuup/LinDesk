@@ -29,6 +29,9 @@ public:
     static QStringList draggedLocalFilePaths(const QMimeData* mimeData);
     static QStringList clipboardLocalFilePaths();
     static bool clipboardContainsCutItems();
+    static bool clipboardHasVirtualFileItems();
+    static QString clipboardDebugDump();
+    static int pasteVirtualClipboardFilesToDirectory(const QString& targetDir, QStringList* savedPaths = nullptr);
     static void writeUrlsToClipboard(const QList<QUrl>& urls, bool cutOperation);
     static QString uniquePasteDestinationPath(const QString& sourcePath, const QString& destDir);
     static QString uniqueNewFolderPath(const QString& targetDir, const QString& baseName = QString());

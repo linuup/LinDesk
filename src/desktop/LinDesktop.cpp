@@ -1,5 +1,6 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/RenameManager.h"
+#include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "app/LanguageManager.h"
 #include <QCoreApplication>
@@ -58,8 +59,10 @@ LinDesktop::LinDesktop(QWidget* parent)
     });
 
     loadBackImage();
-    selectArea = new SelectArea(this);
     listView = ListView::instance(this);
+    selectArea = new SelectArea(listView);
+    selectArea->syncToRect(listView->rect());
+    selectArea->lower();
     setFocusProxy(listView);
 
     embedToDesktop();
@@ -286,9 +289,29 @@ void LinDesktop::handleDpiOrScreenMetricsChanged()
 
     rebuildScaledWallpaperPixmaps();
     if (selectArea) {
-        selectArea->syncToRect(rect());
+        selectArea->syncToRect(listView ? listView->rect() : rect());
     }
     update();
+}
+
+void LinDesktop::clearSelectionOverlay()
+{
+    if (!selectArea) {
+        return;
+    }
+
+    const QRect previousRect = selectArea->selectionRect();
+    selectArea->clearAndHide();
+    if (!previousRect.isNull()) {
+        if (listView) {
+            const QRect dirtyRect = previousRect.adjusted(-2, -2, 2, 2);
+            listView->update(dirtyRect);
+            const QPoint topLeft = listView->mapTo(this, dirtyRect.topLeft());
+            update(QRect(topLeft, dirtyRect.size()));
+        } else {
+            update(previousRect.adjusted(-2, -2, 2, 2));
+        }
+    }
 }
 
 void LinDesktop::checkFirstLaunchPrompt()
@@ -441,6 +464,11 @@ void LinDesktop::mousePressEvent(QMouseEvent* event)
         listView->beginBackgroundSelection(event->pos());
         m_lastSelectRect = QRect();
         listView->setFocus(Qt::MouseFocusReason);
+        if (!mouseGrabber()) {
+            grabMouse();
+        }
+        event->accept();
+        return;
     }
     QWidget::mousePressEvent(event);
 }
@@ -461,7 +489,6 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event)
     const bool shouldShowSelection = listView->updateBackgroundSelection(event->pos(), &rect);
 
     if (selectArea) {
-        selectArea->syncToRect(this->rect());
         selectArea->setSelectionRect(rect);
     }
 
@@ -469,23 +496,27 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event)
         if (!selectArea->isVisible()) {
             selectArea->show();
         }
-        selectArea->raise();
-    } else if (selectArea->isVisible()) {
-        selectArea->hide();
+        selectArea->lower();
+    } else {
+        clearSelectionOverlay();
     }
 
     m_lastSelectRect = rect;
-    QWidget::mouseMoveEvent(event);
+    event->accept();
 }
 
 void LinDesktop::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (listView) {
+    if (listView && listView->isBackgroundSelectionActive()) {
+        clearSelectionOverlay();
         listView->endBackgroundSelection();
+        if (mouseGrabber() == this) {
+            releaseMouse();
+        }
+        m_lastSelectRect = QRect();
+        event->accept();
+        return;
     }
-    selectArea->hide();
-    selectArea->setSelectionRect(QRect());
-    m_lastSelectRect = QRect();
     QWidget::mouseReleaseEvent(event);
 }
 
@@ -511,7 +542,7 @@ void LinDesktop::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     rebuildScaledWallpaperPixmaps();
     if (selectArea) {
-        selectArea->syncToRect(rect());
+        selectArea->syncToRect(listView ? listView->rect() : rect());
     }
     update();
 }

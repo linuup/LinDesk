@@ -29,6 +29,8 @@ public:
         return &instance;
     }
 
+    ~RightMenu() override;
+
     void initializeCustomMenu();
     void showMenu(QPoint pos, const DesktopRootItemModel& model) const;
     void showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models) const;
@@ -51,6 +53,8 @@ public:
 
     ShellContextMenu* sContextMenu = nullptr;
     QMenu* getCustomMenu() const { return m_customMenu; }
+    const std::vector<ShellContextMenu::CustomMenuItem>& desktopCustomMenuItems() const;
+    const std::vector<ShellContextMenu::CustomMenuItem>& sharedBoxCustomMenuItems() const;
 
     void setLargeIconsChecked(bool checked);
     void setMediumIconsChecked(bool checked);
@@ -114,6 +118,12 @@ public slots:
     void onLinDesk();
 
 private:
+    struct CachedCustomMenuData {
+        std::vector<ShellContextMenu::CustomMenuItem> items;
+        std::vector<HBITMAP> bitmaps;
+        bool valid = false;
+    };
+
     RightMenu()
     {
         connect(&LanguageManager::instance(), &LanguageManager::languageChanged, this, [this](const QString&) {
@@ -128,6 +138,11 @@ private:
     QMenu* createSortBySubMenu();
     QMenu* createViewSubMenu();
     QMenu* createUndoDeleteMenu() const;
+    void connectMenuActionInvalidation(QMenu* menu);
+    void invalidateCustomMenuCaches();
+    QList<QAction*> filteredCustomMenuActions(bool includeCreateBox, bool includeLinDeskMenu) const;
+    void clearCachedCustomMenuItems(CachedCustomMenuData& cache);
+    void ensureCachedCustomMenuData(CachedCustomMenuData& cache, bool includeCreateBox, bool includeLinDeskMenu) const;
 
     ShellContextMenu* shellContextMenu = nullptr;
     HWND hwnd = nullptr;
@@ -153,4 +168,6 @@ private:
     QAction* pasteShortcutAction = nullptr;
     QAction* m_embedToDesktopAction = nullptr;
     QActionGroup* m_sortByActionGroup = nullptr;
+    mutable CachedCustomMenuData m_cachedDesktopMenuData;
+    mutable CachedCustomMenuData m_cachedSharedBoxMenuData;
 };

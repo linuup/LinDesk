@@ -624,9 +624,9 @@ QWidget* SettingUI::createDesktopPage() {
     layout->addWidget(selectionColorSection);
     updateDesktopSelectionPreview();
 
+    ListView* lv = ListView::instance();
     FluentToggleSwitch* arrowToggle = new FluentToggleSwitch(page);
 
-    ListView* lv = ListView::instance();
     bool showArrow = lv ? lv->shortcutArrowVisible() : true;
 
     arrowToggle->setChecked(showArrow);

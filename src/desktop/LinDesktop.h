@@ -62,6 +62,7 @@ public:
     void exitFromTray();
     void connectScreenSignals(QScreen* screen);
     void handleDpiOrScreenMetricsChanged();
+    void clearSelectionOverlay();
     
     void embedToDesktop();
     void unembedFromDesktop();

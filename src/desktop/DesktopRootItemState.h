@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/DesktopItemRenderCacheHelper.h"
 #include "desktop/DesktopRootItemModel.h"
 #include "monitor/DesktopInfoMonitor.h"
 
@@ -10,6 +11,7 @@
 struct DesktopRootItemState
 {
     DesktopRootItemModel model;
+    bool renderDataDirty = true;
 };
 
 DesktopRootItemRenderData buildDesktopRootItemRenderData(
@@ -50,5 +52,3 @@ DesktopRootItemRenderData buildRenderDataFromModel(
     const DesktopRenderParams& params);
 
 bool openDesktopRootItem(const DesktopRootItemModel& model);
-
-void paintDesktopRootItem(QPainter& painter, const DesktopRootItemRenderData& item);

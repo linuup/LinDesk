@@ -23,6 +23,7 @@
 #include <QUrl>
 #include <QtMath>
 #include <QCoreApplication>
+#include <QHash>
 #include <limits>
 #include <climits>
 #include <vector>
@@ -74,6 +75,26 @@ QString normalizeMappedFolderPath(const QString& path)
         normalized.chop(1);
     }
     return normalized;
+}
+
+HBITMAP cachedMenuBitmap(const QString& cacheKey, const QIcon& icon, const QWidget* widget)
+{
+    static QHash<QString, HBITMAP> cache;
+
+    if (icon.isNull()) {
+        return nullptr;
+    }
+
+    const QString key = cacheKey + QLatin1Char('|') + QString::number(scaledPx(widget, 16));
+    const auto it = cache.constFind(key);
+    if (it != cache.constEnd()) {
+        return it.value();
+    }
+
+    const int iconSize = scaledPx(widget, 16);
+    const HBITMAP bitmap = QtWin::toHBITMAP(icon.pixmap(iconSize, iconSize), QtWin::HBitmapPremultipliedAlpha);
+    cache.insert(key, bitmap);
+    return bitmap;
 }
 
 constexpr int kBaseBoxBorderWidth = 8;
@@ -245,6 +266,7 @@ void translateRenderData(DesktopRootItemRenderData& renderData, const QPoint& de
     renderData.textRect.translate(delta);
     renderData.renameEditorRect.translate(delta);
     renderData.shortcutArrowRect.translate(delta);
+    renderData.staticContentRect.translate(delta);
     renderData.selectionContentRect.translate(delta);
     renderData.outerHighlightRect.translate(delta);
     renderData.innerHighlightRect.translate(delta);
@@ -715,6 +737,7 @@ void LinBox::setShowType(BoxShowType type) {
     } else {
         m_viewSwitchBtn->setIcon(buildWhiteSvgIcon(":/Assets/grid.svg", m_viewSwitchBtn->iconSize()));
     }
+    markAllItemRenderDataDirty();
     refreshLayout();
     QTimer::singleShot(0, this, [this]() {
         m_lastLayoutContentWidth = -1;
@@ -737,6 +760,7 @@ void LinBox::insertItemState(const DesktopRootItemState& state, int index, bool 
     DesktopRootItemState stateCopy = state;
     stateCopy.model.boxId = m_id;
     stateCopy.model.visible = true;
+    stateCopy.renderDataDirty = true;
 
     removeItemState(stateCopy.model.filePath, false);
     const int clampedIndex = qBound(0, index, m_itemStates.size());
@@ -803,8 +827,54 @@ bool LinBox::containsItemPath(const QString& filePath) const
     return findItemStateByPath(filePath) != nullptr;
 }
 
+void LinBox::markItemRenderDataDirty(DesktopRootItemState* state)
+{
+    if (!state) {
+        return;
+    }
+
+    state->renderDataDirty = true;
+}
+
+void LinBox::markAllItemRenderDataDirty()
+{
+    for (DesktopRootItemState& state : m_itemStates) {
+        state.renderDataDirty = true;
+    }
+}
+
+bool LinBox::hasDirtyItemRenderData() const
+{
+    for (const DesktopRootItemState& state : m_itemStates) {
+        if (state.renderDataDirty) {
+            return true;
+        }
+    }
+    return false;
+}
+
+quint64 LinBox::currentLayoutVisualSignature() const
+{
+    quint64 visualSignature = 1469598103934665603ULL;
+    for (const DesktopRootItemState& state : m_itemStates) {
+        const quint64 textHeight = static_cast<quint64>(qMax(0, state.model.visibleTextHeight));
+        const quint64 expanded = state.model.isFullNameExpanded ? 0x9e3779b97f4a7c15ULL : 0ULL;
+        const quint64 renaming = state.model.isRenaming ? 0xbf58476d1ce4e5b9ULL : 0ULL;
+        const quint64 previewHash = static_cast<quint64>(qHash(state.model.expandedPreviewText));
+        visualSignature ^= textHeight + expanded + renaming + previewHash + 0x9e3779b97f4a7c15ULL + (visualSignature << 6) + (visualSignature >> 2);
+    }
+    return visualSignature;
+}
+
+void LinBox::rebuildItemRenderData(DesktopRootItemState& state, const DesktopRenderParams& params)
+{
+    state.model.renderData = buildRenderDataFromModel(state.model, params);
+    state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+    state.renderDataDirty = false;
+}
+
 void LinBox::refreshLayout() {
-    if (m_isRefreshingLayout || m_itemStates.isEmpty()) return;
+    if (m_isRefreshingLayout) return;
     const int itemW = scaledPx(this, kBaseItemWidth);
     const int itemH = scaledPx(this, kBaseItemHeight);
     const int colSpacing = scaledPx(this, kBaseItemGap);
@@ -820,64 +890,114 @@ void LinBox::refreshLayout() {
     const int viewportW = (m_scrollArea && m_scrollArea->viewport()) ? m_scrollArea->viewport()->width() : 0;
     const int fallbackContentW = qMax(1, width() - (m_borderWidth * 2));
     const int contentW = qMax(1, viewportW > 0 ? viewportW : fallbackContentW);
-    quint64 visualSignature = 1469598103934665603ULL;
-    for (const DesktopRootItemState& state : m_itemStates) {
-        const quint64 textHeight = static_cast<quint64>(qMax(0, state.model.visibleTextHeight));
-        const quint64 expanded = state.model.isFullNameExpanded ? 0x9e3779b97f4a7c15ULL : 0ULL;
-        visualSignature ^= textHeight + expanded + 0x9e3779b97f4a7c15ULL + (visualSignature << 6) + (visualSignature >> 2);
-    }
+    const quint64 visualSignature = currentLayoutVisualSignature();
     const bool layoutUnchanged =
         m_lastLayoutContentWidth == contentW &&
         m_lastLayoutItemCount == m_itemStates.size() &&
         m_lastLayoutShowType == m_showType &&
         m_lastLayoutVisualSignature == visualSignature;
+    const bool hasDirtyRenderData = hasDirtyItemRenderData();
 
-    if (layoutUnchanged) {
+    if (m_itemStates.isEmpty()) {
+        if (m_contentArea) {
+            m_contentArea->setMinimumWidth(contentW);
+            m_contentArea->setMinimumHeight(1);
+            m_contentArea->resize(contentW, 1);
+            m_contentArea->update();
+        }
+        m_lastLayoutContentWidth = contentW;
+        m_lastLayoutItemCount = 0;
+        m_lastLayoutShowType = m_showType;
+        m_lastLayoutVisualSignature = visualSignature;
+        return;
+    }
+
+    if (layoutUnchanged && !hasDirtyRenderData) {
         return;
     }
 
     m_isRefreshingLayout = true;
+    bool needsFullLayout = !layoutUnchanged;
 
     if (m_showType == BoxShowType::Icon_ShowType) {
         DesktopRenderParams params = buildBoxRenderParams(this, m_showType, itemW, itemH);
+        if (!needsFullLayout && hasDirtyRenderData) {
+            for (DesktopRootItemState& state : m_itemStates) {
+                if (!state.renderDataDirty) {
+                    continue;
+                }
+
+                const int oldHeight = state.model.renderData.itemRect.height();
+                const int oldVisibleTextHeight = state.model.visibleTextHeight;
+                state.model.layoutMode = DesktopLayoutMode::IconMode;
+                if (!state.model.effectiveSize.isValid()) {
+                    state.model.effectiveSize = QSize(itemW, itemH);
+                }
+                rebuildItemRenderData(state, params);
+                if (state.model.renderData.itemRect.height() != oldHeight ||
+                    state.model.visibleTextHeight != oldVisibleTextHeight) {
+                    needsFullLayout = true;
+                    break;
+                }
+            }
+        }
+
         const int cols = qMax(1, (contentW - 2 * marginLeft + colSpacing) / (itemW + colSpacing));
         const int rows = (m_itemStates.size() + cols - 1) / cols;
         QVector<int> rowHeights(rows, itemH);
 
-        for (int i = 0; i < m_itemStates.size(); ++i) {
-            const int row = i / cols;
-            DesktopRootItemState& state = m_itemStates[i];
-            state.model.layoutMode = DesktopLayoutMode::IconMode;
-            state.model.position = QPoint(0, 0);
-            state.model.effectiveSize = QSize(itemW, itemH);
-            state.model.renderData = buildRenderDataFromModel(state.model, params);
-            state.model.visibleTextHeight = state.model.renderData.selectionContentRect.height();
-            rowHeights[row] = qMax(rowHeights[row], state.model.renderData.itemRect.height());
-        }
+        if (needsFullLayout) {
+            for (int i = 0; i < m_itemStates.size(); ++i) {
+                const int row = i / cols;
+                DesktopRootItemState& state = m_itemStates[i];
+                state.model.layoutMode = DesktopLayoutMode::IconMode;
+                state.model.position = QPoint(0, 0);
+                state.model.effectiveSize = QSize(itemW, itemH);
+                rebuildItemRenderData(state, params);
+                rowHeights[row] = qMax(rowHeights[row], state.model.renderData.itemRect.height());
+            }
 
-        QVector<int> rowTops(rows, marginTop);
-        for (int row = 1; row < rows; ++row) {
-            rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + rowSpacing;
-        }
+            QVector<int> rowTops(rows, marginTop);
+            for (int row = 1; row < rows; ++row) {
+                rowTops[row] = rowTops[row - 1] + rowHeights[row - 1] + rowSpacing;
+            }
 
-        for (int i = 0; i < m_itemStates.size(); ++i) {
-            const int row = i / cols;
-            const int col = i % cols;
-            const int x = marginLeft + col * (itemW + colSpacing);
-            const int y = rowTops[row];
-            DesktopRootItemState& state = m_itemStates[i];
-            const QPoint targetPos(x, y);
-            state.model.position = targetPos;
-            state.model.effectiveSize = QSize(itemW, qMax(itemH, rowHeights[row]));
-            state.model.renderData = buildRenderDataFromModel(state.model, params);
-            state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+            for (int i = 0; i < m_itemStates.size(); ++i) {
+                const int row = i / cols;
+                const int col = i % cols;
+                const int x = marginLeft + col * (itemW + colSpacing);
+                const int y = rowTops[row];
+                DesktopRootItemState& state = m_itemStates[i];
+                const QPoint targetPos(x, y);
+                state.model.position = targetPos;
+                state.model.effectiveSize = QSize(itemW, qMax(itemH, rowHeights[row]));
+                rebuildItemRenderData(state, params);
+            }
         }
     } else {
         const int listItemH = scaledPx(this, kBaseItemListHeight);
-        DesktopRenderParams baseParams = buildBoxRenderParams(this, m_showType, qMax(1, contentW - 2 * marginLeft), listItemH);
+        const int maxListItemW = qMax(1, contentW - 2 * marginLeft);
+        DesktopRenderParams baseParams = buildBoxRenderParams(this, m_showType, maxListItemW, listItemH);
+        const QFontMetrics listMetrics(baseParams.labelFont);
+        const int leftPadding = scaledPx(this, kBaseItemListPadding);
+        const int rightPadding = scaledPx(this, kBaseItemListRightPadding);
+        const int iconSide = qMax(1, listItemH - scaledPx(this, 6));
+        const int gapAfterIcon = qMax(1, baseParams.iconTextGap + 1);
+        const int minListItemW = leftPadding + iconSide + gapAfterIcon + rightPadding + scaledPx(this, 24);
         for (int i = 0; i < m_itemStates.size(); ++i) {
             DesktopRootItemState& state = m_itemStates[i];
-            const int listItemW = qMax(1, contentW - 2 * marginLeft);
+            if (!needsFullLayout && !state.renderDataDirty) {
+                continue;
+            }
+
+            const QString renderText = state.model.expandedPreviewText.isEmpty()
+                ? state.model.displayName
+                : state.model.expandedPreviewText;
+            const int textWidth = qMax(scaledPx(this, 10), listMetrics.horizontalAdvance(renderText));
+            const int listItemW = qBound(
+                minListItemW,
+                leftPadding + iconSide + gapAfterIcon + textWidth + rightPadding,
+                maxListItemW);
             const int x = marginLeft;
             const int y = marginTop + i * (listItemH + scaledPx(this, 2));
             const QPoint targetPos(x, y);
@@ -886,11 +1006,9 @@ void LinBox::refreshLayout() {
             state.model.layoutMode = DesktopLayoutMode::ListMode;
             state.model.position = targetPos;
             state.model.effectiveSize = QSize(listItemW, listItemH);
-            state.model.renderData = buildRenderDataFromModel(state.model, params);
-            state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+            rebuildItemRenderData(state, params);
         }
     }
-    m_contentArea->update();
     
     // Update content area height to enable scroll area
     int totalHeight = 0;
@@ -910,18 +1028,18 @@ void LinBox::refreshLayout() {
     } else {
         totalHeight = marginTop + m_itemStates.size() * (scaledPx(this, kBaseItemListHeight) + scaledPx(this, 2)) + scaledPx(this, 10);
     }
-    m_contentArea->setMinimumWidth(contentW);
-    m_contentArea->setMinimumHeight(totalHeight);
-    m_contentArea->resize(contentW, totalHeight);
+    if (m_contentArea) {
+        m_contentArea->setMinimumWidth(contentW);
+        m_contentArea->setMinimumHeight(totalHeight);
+        m_contentArea->resize(contentW, totalHeight);
+        m_contentArea->update();
+    }
 
     m_lastLayoutContentWidth = contentW;
     m_lastLayoutItemCount = m_itemStates.size();
     m_lastLayoutShowType = m_showType;
-    m_lastLayoutVisualSignature = visualSignature;
+    m_lastLayoutVisualSignature = currentLayoutVisualSignature();
     m_isRefreshingLayout = false;
-    
-    // Ensure structural layout changes are persisted
-    emit geometryChanged(this);
 }
 
 QRect LinBox::globalRenameEditorRectForPath(const QString& filePath) const
@@ -1328,6 +1446,25 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
         watched == m_contentArea ||
         (m_scrollArea && watched == m_scrollArea->viewport());
 
+    if (isTrackedCursorWidget) {
+        if (ListView* lv = ListView::instance()) {
+            if (lv->isBackgroundSelectionActive()) {
+                if (event->type() == QEvent::Enter ||
+                    event->type() == QEvent::Leave ||
+                    event->type() == QEvent::HoverEnter ||
+                    event->type() == QEvent::HoverLeave ||
+                    event->type() == QEvent::HoverMove ||
+                    event->type() == QEvent::MouseMove ||
+                    event->type() == QEvent::MouseButtonPress ||
+                    event->type() == QEvent::MouseButtonRelease ||
+                    event->type() == QEvent::MouseButtonDblClick ||
+                    event->type() == QEvent::Wheel) {
+                    return true;
+                }
+            }
+        }
+    }
+
     if (watched == m_titleBar && event->type() == QEvent::Paint) {
         if (!m_titleEdit->isVisible()) {
             QPainter p(m_titleBar);
@@ -1647,7 +1784,6 @@ bool LinBox::handleItemMousePress(QMouseEvent* event, const QPoint& boxPos)
         lv->setSelectedItemPaths({ itemPath }, itemPath, true);
     }
 
-    lv->setFocusedItemPath(itemPath);
     m_pressedItemPath = itemPath;
     m_pressedItemBoxPos = boxPos;
     m_itemPressArmed = true;
@@ -1768,9 +1904,9 @@ bool LinBox::handleItemContextMenu(const QPoint& globalPos, const QPoint& boxPos
 }
 
 void LinBox::paintEvent(QPaintEvent* event) {
-    Q_UNUSED(event);
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
+    const QRegion dirtyRegion = event->region();
 
     const QRect contentRect = rect().adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth);
 
@@ -1829,7 +1965,11 @@ void LinBox::paintEvent(QPaintEvent* event) {
         for (const DesktopRootItemState& state : m_itemStates) {
             DesktopRootItemRenderData renderData = state.model.renderData;
             translateRenderData(renderData, contentOrigin);
-            paintDesktopRootItem(p, renderData);
+            if (!dirtyRegion.intersects(renderData.itemRect)) {
+                continue;
+            }
+            paintDesktopRootItemDynamic(p, renderData);
+            paintDesktopRootItemStatic(p, renderData);
         }
         p.restore();
     }
@@ -1878,17 +2018,44 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
     }
 
     if (ListView* listView = ListView::instance()) {
-        listView->setSelectedItemPaths(selectedPaths, selectedPaths.isEmpty() ? QString() : selectedPaths.last(), false);
+        const QString focusedPath = selectedPaths.isEmpty() ? QString() : selectedPaths.last();
+        const QStringList currentSelectedPaths = listView->selectedItemPaths();
+        const QString currentFocusedPath = listView->focusedItemPath();
+
+        if (selectedPaths.isEmpty()) {
+            if (currentSelectedPaths.isEmpty() && currentFocusedPath.isEmpty()) {
+                return;
+            }
+            listView->clearCheckedItem();
+            return;
+        }
+
+        if (currentSelectedPaths == selectedPaths &&
+            currentFocusedPath == focusedPath) {
+            return;
+        }
+
+        listView->setSelectedItemPaths(selectedPaths, focusedPath, false);
+    }
+}
+
+void LinBox::clearSelectionOverlay()
+{
+    if (!m_selectionArea) {
+        return;
+    }
+
+    const QRect previousRect = m_selectionArea->selectionRect();
+    m_selectionArea->clearAndHide();
+    if (m_contentArea && !previousRect.isNull()) {
+        m_contentArea->update(previousRect.adjusted(-2, -2, 2, 2));
     }
 }
 
 void LinBox::finishItemSelection()
 {
     m_isSelectingItems = false;
-    if (m_selectionArea) {
-        m_selectionArea->setSelectionRect(QRect());
-        m_selectionArea->hide();
-    }
+    clearSelectionOverlay();
 }
 
 void LinBox::updateHoveredItem(const QPoint& boxPos)
@@ -3257,17 +3424,14 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
         scm.setFilesystemDirectory(contextPath.toStdString());
     }
 
-    std::vector<HBITMAP> tempBitmaps;
     std::vector<ShellContextMenu::CustomMenuItem> items;
     std::vector<ShellContextMenu::CustomMenuItem> boxItems;
 
     // 1. Add Box-specific context actions
     // Rename Box
     ShellContextMenu::CustomMenuItem renameItem;
-        QIcon renameIcon(":/Assets/rename.svg");
-    HBITMAP hRenameBmp = QtWin::toHBITMAP(renameIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
-    renameItem.hBitmap = hRenameBmp;
-    tempBitmaps.push_back(hRenameBmp);
+    QIcon renameIcon(":/Assets/rename.svg");
+    renameItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.rename"), renameIcon, this);
     renameItem.text = tr("Rename Box").toStdWString();
     renameItem.callback = [this]() { this->beginTitleEditing(); };
     boxItems.push_back(renameItem);
@@ -3275,9 +3439,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     if (isFolderMapped()) {
         ShellContextMenu::CustomMenuItem remapItem;
         QIcon remapIcon(":/Assets/change_Mapped_Folder.svg");
-        HBITMAP hRemapBmp = QtWin::toHBITMAP(remapIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
-        remapItem.hBitmap = hRemapBmp;
-        tempBitmaps.push_back(hRemapBmp);
+        remapItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.remap"), remapIcon, this);
         remapItem.text = tr("Change Mapped Folder").toStdWString();
         remapItem.callback = [this]() {
             remapMappedFolderInteractively();
@@ -3293,9 +3455,10 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     }else{
         viewIcon = QIcon(":/Assets/grid.svg");
     }
-    HBITMAP hViewBmp = QtWin::toHBITMAP(viewIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
-    viewItem.hBitmap = hViewBmp;
-    tempBitmaps.push_back(hViewBmp);
+    viewItem.hBitmap = cachedMenuBitmap(
+        m_showType == BoxShowType::List_ShowType ? QStringLiteral("box.view.list") : QStringLiteral("box.view.grid"),
+        viewIcon,
+        this);
     viewItem.text = (m_showType == BoxShowType::Icon_ShowType ? tr("List View") : tr("Icon View")).toStdWString();
     viewItem.callback = [this]() {
         this->setShowType(this->m_showType == BoxShowType::Icon_ShowType
@@ -3307,9 +3470,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     // Settings
     ShellContextMenu::CustomMenuItem settingsItem;
     QIcon settingsIcon(":/Assets/settings.svg");
-    HBITMAP hSettingsBmp = QtWin::toHBITMAP(settingsIcon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
-    settingsItem.hBitmap = hSettingsBmp;
-    tempBitmaps.push_back(hSettingsBmp);
+    settingsItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.settings"), settingsIcon, this);
     settingsItem.text = tr("Box Settings").toStdWString();
     settingsItem.callback = [this]() {
         if (ListView::instance()) {
@@ -3322,18 +3483,14 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     ShellContextMenu::CustomMenuItem destroyItem;
     destroyItem.text = tr("Destroy Box").toStdWString();
     QIcon icon(":/Assets/destroy.svg");
-    HBITMAP hBmp = QtWin::toHBITMAP(icon.pixmap(scaledPx(this, 16), scaledPx(this, 16)), QtWin::HBitmapPremultipliedAlpha);
-    destroyItem.hBitmap = hBmp;
-    tempBitmaps.push_back(hBmp);
+    destroyItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.destroy"), icon, this);
     destroyItem.callback = [this]() { emit destroyRequested(this); };
     boxItems.push_back(destroyItem);
 
     // 2. Get shared actions from RightMenu and convert them
-    if (QMenu* sharedMenu = RightMenu::getInstance()->getCustomMenu()) {
-        auto sharedItems = RightMenu::exportCustomMenuItems(sharedMenu, tempBitmaps, false, false);
-        if (!sharedItems.empty()) {
-            items.insert(items.end(), sharedItems.begin(), sharedItems.end());
-        }
+    const auto& sharedItems = RightMenu::getInstance()->sharedBoxCustomMenuItems();
+    if (!sharedItems.empty()) {
+        items.insert(items.end(), sharedItems.begin(), sharedItems.end());
     }
 
     if (!items.empty() && !boxItems.empty()) {
@@ -3349,11 +3506,6 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     // Set custom items and show the native menu
     scm.setCustomMenuItems(items);
     scm.ShowMenu(ownerHwnd, position, nullptr);
-
-    // Clean up temporary bitmaps used for icons
-    for (HBITMAP h : tempBitmaps) {
-        DeleteObject(h);
-    }
 }
 
 void LinBox::updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut) {
