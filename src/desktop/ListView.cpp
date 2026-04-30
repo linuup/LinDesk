@@ -7129,6 +7129,8 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
 void ListView::onMenuDestroyBox(LinBox* box) {
     if (!box) return;
 
+    clearDestroyedBoxRuntimeState(box);
+
     if (box->isFolderMapped()) {
         if (LinDirectoryMonitor* monitor = box->mappedFolderMonitor()) {
             monitor->stopListening();
@@ -7158,6 +7160,55 @@ void ListView::onMenuDestroyBox(LinBox* box) {
     BoxManager::instance()->destroyBox(box, this);
     applyAutoArrangeAfterDesktopMutation(true, false);
     update();
+}
+
+void ListView::clearDestroyedBoxRuntimeState(LinBox* box)
+{
+    if (!box) {
+        return;
+    }
+
+    const QString boxId = box->boxId();
+    const QVector<DesktopRootItemState> currentStates = box->itemStates();
+
+    if (m_pendingShellNewTargetBox == box) {
+        clearPendingShellNewTargetBox();
+    }
+
+    if (!boxId.isEmpty()) {
+        m_mappedBoxLoadRequestIds.remove(boxId);
+        m_mappedBoxFilePaths.remove(boxId);
+    }
+
+    for (auto it = m_pendingCreatedItemBoxes.begin(); it != m_pendingCreatedItemBoxes.end(); ) {
+        if (it.value() == box) {
+            m_pendingCreatedItemInsertIndices.remove(it.key());
+            it = m_pendingCreatedItemBoxes.erase(it);
+            continue;
+        }
+        ++it;
+    }
+
+    for (const DesktopRootItemState& state : currentStates) {
+        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
+        if (normalizedPath.isEmpty()) {
+            continue;
+        }
+
+        m_selectedBoxPaths.removeAll(normalizedPath);
+        if (m_focusedBoxPath == normalizedPath) {
+            m_focusedBoxPath.clear();
+        }
+        if (m_anchorBoxPath == normalizedPath) {
+            m_anchorBoxPath.clear();
+        }
+        if (m_lastClickedBoxPath == normalizedPath) {
+            m_lastClickedBoxPath.clear();
+        }
+        if (m_draggedBoxPath == normalizedPath) {
+            m_draggedBoxPath.clear();
+        }
+    }
 }
 
 void ListView::onMenuCustomBox(LinBox* box) {

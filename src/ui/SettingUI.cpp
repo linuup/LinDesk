@@ -496,7 +496,32 @@ QWidget* SettingUI::createGeneralPage() {
     m_trayOnlyCard = new FluentCard(u8"\uE921", tr("Minimize to Tray"), tr("Keep LinDesk running in the system tray when window is closed"), trayOnly, page);
     layout->addWidget(m_trayOnlyCard);
 
-    // 3. Language
+    // 3. OpenGL rendering
+    m_openGLToggle = new FluentToggleSwitch(page);
+    m_openGLToggle->setChecked(settings.value("General/UseOpenGL", false).toBool());
+    connect(m_openGLToggle, &FluentToggleSwitch::toggled, this, [this, configPath](bool checked) {
+        QSettings s(configPath, QSettings::IniFormat);
+        const bool previousValue = s.value("General/UseOpenGL", false).toBool();
+        if (previousValue == checked) {
+            return;
+        }
+
+        s.setValue("General/UseOpenGL", checked);
+        s.sync();
+        FluentDialog::showInfo(
+            this,
+            tr("Restart Required"),
+            tr("Restart LinDesk to apply the OpenGL rendering change."));
+    });
+    m_openGLCard = new FluentCard(
+        u8"\uE7F8",
+        tr("OpenGL Rendering"),
+        tr("Use OpenGL to accelerate rendering. Restart LinDesk to apply changes."),
+        m_openGLToggle,
+        page);
+    layout->addWidget(m_openGLCard);
+
+    // 4. Language
     m_languageCombo = new FluentComboBox(page);
     m_languageCombo->addItem(tr("English (United States)"), QStringLiteral("en_US"));
     m_languageCombo->addItem(tr("Chinese (Simplified)"), QStringLiteral("zh_CN"));
@@ -1381,6 +1406,10 @@ void SettingUI::retranslateUi() {
     if (m_languageCard) {
         m_languageCard->setTitle(tr("Display Language"));
         m_languageCard->setSubtitle(tr("Choose which language is used in the interface. Restart LinDesk to apply changes."));
+    }
+    if (m_openGLCard) {
+        m_openGLCard->setTitle(tr("OpenGL Rendering"));
+        m_openGLCard->setSubtitle(tr("Use OpenGL to accelerate rendering. Restart LinDesk to apply changes."));
     }
     if (m_selectionColorSectionTitle) m_selectionColorSectionTitle->setText(tr("Selection Rectangle Color"));
     if (m_selectionColorSectionSubtitle) m_selectionColorSectionSubtitle->setText(tr("Adjust the drag selection color and preview the result in real time"));

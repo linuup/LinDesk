@@ -93,6 +93,7 @@ private:
     FluentCard* m_autoStartCard = nullptr;
     FluentCard* m_trayOnlyCard = nullptr;
     FluentCard* m_languageCard = nullptr;
+    FluentCard* m_openGLCard = nullptr;
     FluentCard* m_selectionColorCard = nullptr;
     FluentCard* m_shortcutArrowCard = nullptr;
     FluentCard* m_hideIconsCard = nullptr;
@@ -103,6 +104,7 @@ private:
 
     FluentComboBox* m_languageCombo = nullptr;
     FluentToggleSwitch* m_autoStartToggle = nullptr;
+    FluentToggleSwitch* m_openGLToggle = nullptr;
     FluentToggleSwitch* m_windows11ContextMenuToggle = nullptr;
     FluentColorWheel* m_selectionColorWheel = nullptr;
     QLineEdit* m_selectionColorValueEdit = nullptr;

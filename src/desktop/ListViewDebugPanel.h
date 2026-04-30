@@ -20,6 +20,7 @@ public:
 private:
     void initUI();
     void updateLabels();
+    void updateOpenGLStatus();
     void applyTextPreviewOptions();
     QPushButton* createActionButton(const QString& text, bool accent = false, bool destructive = false) const;
     QWidget* createSliderSettingRow(const QString& labelText,
@@ -49,6 +50,7 @@ private:
     // Toggles
     FluentToggleSwitch* m_embedToggle = nullptr;
     FluentToggleSwitch* m_persistToggle = nullptr;
+    QLabel* m_openGLStatusLabel = nullptr;
 
     // Text preview
     SoftDesktopTextPreview* m_textPreview = nullptr;

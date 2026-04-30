@@ -18,6 +18,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSettings>
 #include <QSlider>
 #include <QVBoxLayout>
 
@@ -49,6 +50,11 @@ QString debugPanelStyleSheet()
         "}"
         "QTabBar::tab:hover { color: #111827; }"
         "QTabBar::tab:selected { color: #0f6cbd; border-bottom: 3px solid #0f6cbd; font-weight: 600; }");
+}
+
+QString debugConfigPath()
+{
+    return QCoreApplication::applicationDirPath() + "/config.ini";
 }
 }
 
@@ -284,6 +290,18 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
     });
     grid->addWidget(new FluentCard(u8"\uE8AB", "Export Debug", "Dump state to debug.json", exportBtn), 3, 0, 1, 2);
 
+    m_openGLStatusLabel = new QLabel(page);
+    m_openGLStatusLabel->setWordWrap(true);
+    m_openGLStatusLabel->setStyleSheet(QStringLiteral(
+        "font-family: %1; font-size: 13px; color: #374151; line-height: 1.5;")
+        .arg(AppFonts::uiCssFamily()));
+    updateOpenGLStatus();
+    grid->addWidget(new FluentCard(
+        u8"\uE7F8",
+        "OpenGL Status",
+        "Shows the saved setting and whether this launch is using the OpenGL startup path.",
+        m_openGLStatusLabel), 4, 0, 1, 2);
+
     layout->addLayout(grid);
     layout->addStretch();
     return page;
@@ -364,6 +382,8 @@ QWidget* ListViewDebugPanel::createTextDiagnosticsPage() {
 
 void ListViewDebugPanel::updateLabels()
 {
+    updateOpenGLStatus();
+
     if (m_rowValueLabel) {
         m_rowValueLabel->setText(QString::number(m_rowSlider ? m_rowSlider->value() : 0));
     }
@@ -394,6 +414,31 @@ void ListViewDebugPanel::updateLabels()
     if (m_innerOffsetYValueLabel) {
         m_innerOffsetYValueLabel->setText(QString::number(m_innerOffsetYSlider ? m_innerOffsetYSlider->value() : 0));
     }
+}
+
+void ListViewDebugPanel::updateOpenGLStatus()
+{
+    if (!m_openGLStatusLabel) {
+        return;
+    }
+
+    QSettings settings(debugConfigPath(), QSettings::IniFormat);
+    const bool configuredEnabled = settings.value("General/UseOpenGL", false).toBool();
+    const bool activeForCurrentLaunch = QCoreApplication::testAttribute(Qt::AA_UseDesktopOpenGL);
+
+    QStringList lines;
+    lines << QString("Configured in settings: %1").arg(configuredEnabled ? "Enabled" : "Disabled");
+    lines << QString("Active for current launch: %1").arg(activeForCurrentLaunch ? "Yes" : "No");
+
+    if (configuredEnabled != activeForCurrentLaunch) {
+        lines << "State mismatch detected. A restart is still needed.";
+    } else if (configuredEnabled) {
+        lines << "OpenGL startup acceleration is active.";
+    } else {
+        lines << "The application is running on the default Qt rendering path.";
+    }
+
+    m_openGLStatusLabel->setText(lines.join("\n"));
 }
 
 void ListViewDebugPanel::applyTextPreviewOptions()
