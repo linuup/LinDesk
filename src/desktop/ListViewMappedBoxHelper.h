@@ -8,6 +8,8 @@
 #include <QSet>
 #include <QPointer>
 #include <QObject>
+#include <QThread>
+#include <QTimer>
 
 #include "desktop/ListView.h"
 #include "box/LinBox.h"
@@ -103,6 +105,7 @@ public:
             return;
         }
 
+        static quint64 s_nextMappedLoadRequestId = 1;
         box->setMappedFolderPath(box->mappedFolderPath());
         clearMappedFolderItemsForBox(view, box);
 
@@ -116,20 +119,6 @@ public:
             box->refreshLayout();
             box->raise();
             return;
-        }
-
-        const QStringList paths = mappedFolderEntryPaths(box->mappedFolderPath(), view.m_showHiddenFiles);
-        view.m_mappedBoxFilePaths[box->boxId()] = paths;
-        for (const QString& path : paths) {
-            DesktopRootItemState state;
-            initDesktopRootItemModel(state.model, DesktopItemLoader().loadItem(path), view.currentDesktopItemInitContext());
-            state.model.layoutMode = DesktopLayoutMode::IconMode;
-            state.model.baseSize = QSize(view.m_iconWidth, view.m_iconHeight);
-            state.model.effectiveSize = state.model.baseSize;
-            state.model.boxId = box->boxId();
-            state.model.visible = true;
-            state.model.position = QPoint(0, 0);
-            box->addItemState(state, false);
         }
 
         if (LinDirectoryMonitor* oldMonitor = box->mappedFolderMonitor()) {
@@ -148,8 +137,83 @@ public:
         monitor->startListening();
         box->setMappedFolderMonitor(monitor);
 
-        box->refreshLayout();
-        box->raise();
+        const QString boxId = box->boxId();
+        const QString mappedFolderPath = box->mappedFolderPath();
+        const bool showHiddenFiles = view.m_showHiddenFiles;
+        const quint64 requestId = s_nextMappedLoadRequestId++;
+        view.m_mappedBoxLoadRequestIds[boxId] = requestId;
+
+        QPointer<ListView> viewPtr(&view);
+        QPointer<LinBox> boxPtr(box);
+
+        QThread* workerThread = QThread::create([mappedFolderPath, showHiddenFiles, viewPtr, boxPtr, boxId, requestId]() {
+            const QStringList paths = mappedFolderEntryPaths(mappedFolderPath, showHiddenFiles);
+            QMetaObject::invokeMethod(
+                viewPtr.data(),
+                [viewPtr, boxPtr, boxId, requestId, paths]() {
+                    if (!viewPtr || !boxPtr) {
+                        return;
+                    }
+                    if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
+                        return;
+                    }
+                    if (!boxPtr->isFolderMapped()) {
+                        return;
+                    }
+
+                    viewPtr->m_mappedBoxFilePaths[boxId] = paths;
+                    if (paths.isEmpty()) {
+                        boxPtr->refreshLayout();
+                        boxPtr->raise();
+                        return;
+                    }
+
+                    DesktopItemInitContext context = viewPtr->currentDesktopItemInitContext();
+                    const QSize baseSize(viewPtr->m_iconWidth, viewPtr->m_iconHeight);
+                    auto pathsPtr = std::make_shared<QStringList>(paths);
+                    auto nextIndex = std::make_shared<int>(0);
+                    auto processChunk = std::make_shared<std::function<void()>>();
+
+                    *processChunk = [viewPtr, boxPtr, boxId, requestId, context, baseSize, pathsPtr, nextIndex, processChunk]() mutable {
+                        if (!viewPtr || !boxPtr) {
+                            return;
+                        }
+                        if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
+                            return;
+                        }
+
+                        const int chunkSize = 24;
+                        const int end = qMin(*nextIndex + chunkSize, pathsPtr->size());
+                        for (int i = *nextIndex; i < end; ++i) {
+                            const QString& path = pathsPtr->at(i);
+                            DesktopRootItemState state;
+                            initDesktopRootItemModel(state.model, DesktopItemLoader().loadItem(path), context);
+                            state.model.layoutMode = DesktopLayoutMode::IconMode;
+                            state.model.baseSize = baseSize;
+                            state.model.effectiveSize = state.model.baseSize;
+                            state.model.boxId = boxId;
+                            state.model.visible = true;
+                            state.model.position = QPoint(0, 0);
+                            boxPtr->addItemState(state, false);
+                        }
+                        *nextIndex = end;
+
+                        boxPtr->refreshLayout();
+                        boxPtr->raise();
+
+                        if (*nextIndex < pathsPtr->size()) {
+                            QTimer::singleShot(0, boxPtr.data(), [processChunk]() {
+                                (*processChunk)();
+                            });
+                        }
+                    };
+
+                    (*processChunk)();
+                },
+                Qt::QueuedConnection);
+        });
+        QObject::connect(workerThread, &QThread::finished, workerThread, &QObject::deleteLater);
+        workerThread->start();
     }
 
     static inline LinBox* findMappedFolderBox(const ListView& view, const QString& folderPath, const LinBox* excludeBox = nullptr)

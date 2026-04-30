@@ -1,7 +1,6 @@
 #include "desktop/DesktopRootItemRenderData.h"
 #include "desktop/DesktopRootItemModel.h"
 #include "desktop/DesktopRootItemState.h"
-#include "desktop/ListItem.h"
 #include "models/data/ListItemData.h"
 #include "services/DpiScaleHelper.h"
 #include "ui/SoftDesktopTextRenderer.h"
@@ -188,53 +187,6 @@ QPixmap applyOpacityEffect(const QPixmap& source, qreal opacity)
 
 } // anonymous namespace
 
-DesktopRootItemState buildDesktopRootItemState(const ListItem& item)
-{
-    DesktopRootItemState state;
-    auto& m = state.model;
-    m.filePath = item.filePath();
-    m.normalizedPath = item.normalizedPath();
-    m.objectType = item.type();
-    m.itemData = item.getItemData();
-    m.fileInfo = item.fileInfo();
-    m.displayName = item.displayName();
-    m.sortName = item.getSortName();
-    m.isShortcut = isShortcutSuffix(m.fileInfo);
-    m.sourceIcon = item.icon();
-    m.position = item.getLocationInfo();
-    m.effectiveSize = item.size();
-    m.isSelected = item.isSelected;
-    m.isHovered = item.isHovered;
-    m.isCutMarked = item.property("cutMarked").toBool();
-    m.isFullNameExpanded = item.isFullNameExpanded();
-    m.isHiddenFileVisual = item.hiddenFileVisual();
-    m.visible = item.isVisible();
-    m.renderData = buildDesktopRootItemRenderData(item);
-    return state;
-}
-
-DesktopRootItemRenderData buildDesktopRootItemRenderData(const ListItem& item, bool forceSelected, bool useParentCoordinates)
-{
-    DesktopRootItemRenderData rd;
-    const QPoint topLeft = useParentCoordinates ? item.geometry().topLeft() : QPoint(0, 0);
-    rd.filePath = item.filePath();
-    rd.displayName = item.displayName();
-    rd.itemRect = useParentCoordinates ? item.geometry() : QRect(QPoint(0, 0), item.size());
-    rd.iconRect = item.currentIconDrawRect().translated(topLeft);
-    rd.textRect = item.textRect().translated(topLeft);
-    rd.selectionContentRect = item.selectionContentRect().translated(topLeft);
-    rd.iconPixmap = item.currentIconPixmap();
-    rd.labelFont = item.labelFont();
-    rd.selected = item.isSelected || forceSelected;
-    rd.hovered = item.isHovered && !rd.selected;
-    rd.cutMarked = item.property("cutMarked").toBool();
-    const int outerInset = DpiScaleHelper::scalePx(&item, 3);
-    const int innerInset = DpiScaleHelper::scalePx(&item, 1);
-    rd.outerHighlightRect = rd.selectionContentRect.adjusted(-outerInset, -outerInset, outerInset, outerInset);
-    rd.innerHighlightRect = rd.selectionContentRect.adjusted(innerInset, innerInset, -innerInset, -innerInset);
-    return rd;
-}
-
 DesktopRootItemRenderData buildDesktopRootItemRenderData(const DesktopRootItemState& state, bool forceSelected)
 {
     DesktopRootItemRenderData rd = state.model.renderData;
@@ -282,11 +234,24 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     const int itemWidth = params.iconWidth;
     const int itemHeight = params.iconHeight;
     const int iconSide = qBound(sp(16), fixedIconSideForParams(params, model.layoutMode, itemWidth), sp(128));
-    const int clampedIconSide = qMin(iconSide, itemWidth - sp(4));
-    rd.iconRect = QRect(model.position.x() + (itemWidth - clampedIconSide) / 2, model.position.y() + sp(4), clampedIconSide, clampedIconSide);
-    const int textTop = rd.iconRect.bottom() + sp(params.iconTextGap);
-    const int textWidth = qMax(sp(10), itemWidth - sp(4));
-    rd.textRect = QRect(model.position.x() + sp(2), textTop, textWidth, qMax(sp(18), itemHeight - (textTop - model.position.y())));
+    const bool listMode = model.layoutMode == DesktopLayoutMode::ListMode;
+    const int clampedIconSide = qMin(iconSide, listMode ? (itemHeight - sp(6)) : (itemWidth - sp(4)));
+    int textTop = 0;
+    if (listMode) {
+        const int leftPadding = sp(8);
+        const int rightPadding = sp(12);
+        const int iconY = model.position.y() + qMax(0, (itemHeight - clampedIconSide) / 2);
+        rd.iconRect = QRect(model.position.x() + leftPadding, iconY, clampedIconSide, clampedIconSide);
+        const int textLeft = rd.iconRect.right() + 1 + sp(params.iconTextGap);
+        const int textWidth = qMax(sp(10), itemWidth - (textLeft - model.position.x()) - rightPadding);
+        textTop = model.position.y() + sp(2);
+        rd.textRect = QRect(textLeft, textTop, textWidth, qMax(sp(18), itemHeight - sp(4)));
+    } else {
+        rd.iconRect = QRect(model.position.x() + (itemWidth - clampedIconSide) / 2, model.position.y() + sp(4), clampedIconSide, clampedIconSide);
+        textTop = rd.iconRect.bottom() + sp(params.iconTextGap);
+        const int textWidth = qMax(sp(10), itemWidth - sp(4));
+        rd.textRect = QRect(model.position.x() + sp(2), textTop, textWidth, qMax(sp(18), itemHeight - (textTop - model.position.y())));
+    }
     QPixmap rawPix;
     if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isFile() && !model.isShortcut) {
         const QString pKey = QString("image_preview:%1|%2|%3").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(model.fileInfo.lastModified().toMSecsSinceEpoch()).arg(clampedIconSide);
@@ -307,11 +272,15 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     if (model.isHiddenFileVisual && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.45);
     rd.iconPixmap = rawPix;
     if (model.isShortcut && params.showShortcutArrow) {
-        const int as = sp(32);
+        const int as = listMode ? sp(12) : sp(32);
         rd.shortcutArrowPixmap = IconCacheManager::instance().getPixmap(QString("shortcut_arrow|%1").arg(as), [as]() {
             QIcon ai = SysInfoUtil::SysFileIconByDLL(155, 32, "imageres.dll"); if (ai.isNull()) ai = SysInfoUtil::SysFileIconByDLL(30, 32, "shell32.dll"); return ai.pixmap(as, as);
         });
-        rd.shortcutArrowRect = QRect(rd.iconRect.left(), rd.iconRect.bottom() - as, as, as);
+        if (listMode) {
+            rd.shortcutArrowRect = QRect(rd.iconRect.right() - as + 1, rd.iconRect.bottom() - as + 1, as, as);
+        } else {
+            rd.shortcutArrowRect = QRect(rd.iconRect.left(), rd.iconRect.bottom() - as, as, as);
+        }
     }
     rd.labelFont = params.labelFont;
     const QFontMetrics fm(rd.labelFont);
@@ -325,7 +294,7 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
         rd.textOptions.alignment = Qt::AlignHCenter | Qt::AlignTop; rd.textOptions.outlineWidth = 1;
     } else {
         if (!model.isRenaming) {
-            rd.textLines << fm.elidedText(model.displayName, Qt::ElideRight, rd.textRect.width());
+            rd.textLines << fm.elidedText(renderText, Qt::ElideRight, rd.textRect.width());
             visibleTextHeight = fm.lineSpacing();
         }
         rd.textOptions.alignment = Qt::AlignVCenter | Qt::AlignLeft; rd.textOptions.outlineWidth = 0;
@@ -415,7 +384,16 @@ void paintDesktopRootItem(QPainter& painter, const DesktopRootItemRenderData& da
         painter.setPen(dp); painter.setBrush(Qt::NoBrush); painter.drawRoundedRect(data.innerHighlightRect, data.innerHighlightRadius, data.innerHighlightRadius);
     }
     if (data.cutMarked) painter.setOpacity(0.55);
-    if (!data.iconPixmap.isNull()) painter.drawPixmap(data.iconRect.topLeft(), data.iconPixmap);
+    if (!data.iconPixmap.isNull()) {
+        QPoint iconPos = data.iconRect.topLeft();
+        if (data.iconPixmap.width() < data.iconRect.width()) {
+            iconPos.setX(data.iconRect.x() + (data.iconRect.width() - data.iconPixmap.width()) / 2);
+        }
+        if (data.iconPixmap.height() < data.iconRect.height()) {
+            iconPos.setY(data.iconRect.y() + (data.iconRect.height() - data.iconPixmap.height()) / 2);
+        }
+        painter.drawPixmap(iconPos, data.iconPixmap);
+    }
     if (data.cutMarked) painter.setOpacity(1.0);
     if (!data.shortcutArrowPixmap.isNull()) painter.drawPixmap(data.shortcutArrowRect.topLeft(), data.shortcutArrowPixmap);
     if (!data.textLines.isEmpty()) SoftDesktopTextRenderer::drawText(&painter, data.textRect, data.textLines, data.labelFont, data.textOptions);

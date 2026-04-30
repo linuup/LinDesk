@@ -7,8 +7,6 @@
 #include "desktop/DesktopRootItemState.h"
 #include "models/data/ListItemData.h"
 
-class ListItem;
-
 class DesktopItemLoader {
 public:
     std::vector<ListItemData> loadAllItems() const;

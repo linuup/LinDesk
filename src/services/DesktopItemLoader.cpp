@@ -7,7 +7,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
-#include "desktop/ListItem.h"
 #include <SystemApi.h>
 
 namespace {
@@ -65,42 +64,6 @@ QJsonObject toJsonObject(const ListItemData& data)
     obj["targetKind"] = targetKindToString(data.targetKind());
     obj["targetKindValue"] = static_cast<int>(data.targetKind());
     obj["specialFolderType"] = static_cast<int>(data.specialFolderType());
-    obj["exists"] = fileInfo.exists();
-    obj["isDir"] = fileInfo.isDir();
-    obj["suffix"] = fileInfo.suffix();
-    obj["size"] = static_cast<qint64>(fileInfo.exists() ? fileInfo.size() : 0);
-    obj["lastModified"] = fileInfo.exists() ? fileInfo.lastModified().toString(Qt::ISODate) : QString();
-    return obj;
-}
-
-QJsonObject toJsonObject(const ListItem* item)
-{
-    QJsonObject obj;
-    if (!item) {
-        obj["isNull"] = true;
-        return obj;
-    }
-
-    const QFileInfo fileInfo = item->fileInfo();
-    const ListItemData data = item->getItemData();
-    obj["name"] = item->baseName();
-    obj["path"] = item->filePath();
-    obj["normalizedPath"] = item->normalizedPath();
-    obj["clsid"] = data.getCLSID();
-    obj["type"] = objectTypeToString(item->type());
-    obj["typeValue"] = static_cast<int>(item->type());
-    obj["fileForm"] = fileFormToString(data.fileForm());
-    obj["fileFormValue"] = static_cast<int>(data.fileForm());
-    obj["targetKind"] = targetKindToString(data.targetKind());
-    obj["targetKindValue"] = static_cast<int>(data.targetKind());
-    obj["boxId"] = item->boxId();
-    obj["visible"] = item->isVisible();
-    obj["selected"] = item->isSelected;
-    obj["ready"] = item->isReady;
-    obj["positionX"] = item->x();
-    obj["positionY"] = item->y();
-    obj["width"] = item->width();
-    obj["height"] = item->height();
     obj["exists"] = fileInfo.exists();
     obj["isDir"] = fileInfo.isDir();
     obj["suffix"] = fileInfo.suffix();

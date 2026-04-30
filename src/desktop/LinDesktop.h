@@ -6,7 +6,6 @@
 #include <QScreen>
 #include <QList>
 #include <QDir>
-#include "desktop/ListItem.h"
 #include <QUuid>
 #include <QVector>
 #include <QSharedPointer>

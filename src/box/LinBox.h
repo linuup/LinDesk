@@ -21,6 +21,7 @@
 #include <QPixmap>
 #include <QScopedPointer>
 #include <QPointer>
+#include <QElapsedTimer>
 #include <QtGlobal>
 
 class LinDirectoryMonitor;
@@ -53,6 +54,8 @@ public:
     int resizeBorderWidth() const { return m_borderWidth; }
     void refreshLayout();
     QRect globalRenameEditorRectForPath(const QString& filePath) const;
+    void previewGhostDropAt(const QPoint& boxPos, const QStringList& draggedPaths, Qt::KeyboardModifiers modifiers);
+    void clearDropPreview();
 
     QString boxId() const { return m_id; }
     void setBoxId(const QString& id) { m_id = id; }
@@ -142,6 +145,14 @@ private:
     void updateItemSelection(const QPoint& contentPos);
     void finishItemSelection();
     void activateForKeyboardFocus();
+    void updateHoveredItem(const QPoint& boxPos);
+    void clearHoveredItem();
+    bool handleItemMousePress(QMouseEvent* event, const QPoint& boxPos);
+    bool handleItemMouseMove(QMouseEvent* event, const QPoint& boxPos);
+    bool handleItemMouseRelease(QMouseEvent* event, const QPoint& boxPos);
+    bool handleItemMouseDoubleClick(QMouseEvent* event, const QPoint& boxPos);
+    bool handleItemContextMenu(const QPoint& globalPos, const QPoint& boxPos);
+    bool startItemDrag(const QPoint& boxPos);
     QString mappedFolderDisplayText() const;
     QString sanitizedTitleText(const QString& title) const;
     QRect mappedTitleIconRect() const;
@@ -200,7 +211,11 @@ private:
     bool m_isRefreshingLayout = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
+    QString m_hoveredItemPath;
     QString m_pressedItemPath;
+    QPoint m_pressedItemBoxPos;
+    bool m_itemPressArmed = false;
+    QElapsedTimer m_itemClickTimer;
     QPointer<SelectArea> m_selectionArea;
     int m_lastLayoutContentWidth = -1;
     int m_lastLayoutItemCount = -1;

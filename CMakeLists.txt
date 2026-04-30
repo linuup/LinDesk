@@ -69,6 +69,8 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.qrc"
 )
 
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
+
 # 添加可执行文件
 set(WIN32_RESOURCES)
 if(WIN32)

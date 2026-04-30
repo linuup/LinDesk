@@ -18,8 +18,14 @@ public:
     explicit ListViewDebugPanel(ListView* listView, QWidget* parent = nullptr);
 
 private:
+    void initUI();
     void updateLabels();
     void applyTextPreviewOptions();
+
+    QWidget* createGeneralPage();
+    QWidget* createLayoutPage();
+    QWidget* createTextDiagnosticsPage();
+    QWidget* wrapScrollablePage(QWidget* content);
 
     ListView* m_listView = nullptr;
 
@@ -28,6 +34,9 @@ private:
     QSlider* m_colSlider = nullptr;
     QLabel* m_rowValueLabel = nullptr;
     QLabel* m_colValueLabel = nullptr;
+
+    class QTabBar* m_tabBar = nullptr;
+    class QStackedWidget* m_contentStack = nullptr;
 
     // Toggles
     FluentToggleSwitch* m_embedToggle = nullptr;

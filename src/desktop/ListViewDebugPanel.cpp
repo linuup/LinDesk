@@ -21,225 +21,77 @@
 #include <QSlider>
 #include <QVBoxLayout>
 
+#include <QListWidget>
+#include <QStackedWidget>
+#include <QStyledItemDelegate>
+#include <QPainterPath>
+
+// Custom delegate to draw the Fluent Design 2 style sidebar
+#include <QTabBar>
+#include <QStackedWidget>
+#include <QPainterPath>
+
 ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
-    : QWidget(parent),
-      m_listView(listView)
+    : QWidget(parent), m_listView(listView)
 {
-    setWindowTitle("ListView Debug");
+    initUI();
+}
+
+void ListViewDebugPanel::initUI() {
+    setWindowTitle("ListView Debug Console");
     setAttribute(Qt::WA_DeleteOnClose, false);
-    setMinimumSize(720, 640);
-    resize(820, 720);
+    setMinimumSize(820, 720);
+    resize(920, 800);
+    setStyleSheet("background-color: #ffffff;");
 
-    // --- Scrollable root ---
-    auto* outerLayout = new QVBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
 
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setStyleSheet("QScrollArea { background: transparent; border: none; }");
-
-    auto* scrollContent = new QWidget();
-    auto* root = new QVBoxLayout(scrollContent);
-    root->setContentsMargins(26, 22, 26, 24);
-    root->setSpacing(14);
-
-    // --- Page Title ---
-    auto* headerLayout = new QHBoxLayout();
-    headerLayout->setContentsMargins(0, 0, 0, 0);
+    // --- Header & Navigation ---
+    auto* headerContainer = new QWidget(this);
+    headerContainer->setFixedHeight(120);
+    headerContainer->setStyleSheet("background-color: #f8f9fa; border-bottom: 1px solid #e5e7eb;");
+    auto* headerLayout = new QVBoxLayout(headerContainer);
+    headerLayout->setContentsMargins(32, 24, 32, 0);
     headerLayout->setSpacing(12);
 
-    auto* title = new QLabel("Debug Console", scrollContent);
-    title->setStyleSheet(QStringLiteral(
-        "font-family: %1; "
-        "font-size: 28px; font-weight: 600; color: #1f2937; margin-bottom: 4px; letter-spacing: -0.01em;"
-    ).arg(AppFonts::uiCssFamily()));
-    headerLayout->addWidget(title, 1);
+    auto* titleLabel = new QLabel("Debug Console", headerContainer);
+    titleLabel->setStyleSheet("font-size: 28px; font-weight: 600; color: #111827;");
+    headerLayout->addWidget(titleLabel);
 
-    QPushButton* restartBtn = new QPushButton("Restart App", scrollContent);
-    restartBtn->setFixedSize(120, 34);
-    restartBtn->setCursor(Qt::PointingHandCursor);
-    restartBtn->setStyleSheet("background: #0f766e; border: none; border-radius: 7px; font-weight: 600; color: #ffffff;");
-    connect(restartBtn, &QPushButton::clicked, this, []() {
-        const QString appPath = QCoreApplication::applicationFilePath();
-        QStringList args = QCoreApplication::arguments();
-        if (!args.isEmpty()) {
-            args.removeFirst();
-        }
-        QProcess::startDetached(appPath, args, QCoreApplication::applicationDirPath());
-        QCoreApplication::quit();
-    });
-    headerLayout->addWidget(restartBtn);
-    root->addLayout(headerLayout);
+    m_tabBar = new QTabBar(headerContainer);
+    m_tabBar->addTab("General Tools");
+    m_tabBar->addTab("Layout Settings");
+    m_tabBar->addTab("Text Diagnostics");
+    m_tabBar->setDrawBase(false);
+    m_tabBar->setStyleSheet(
+        "QTabBar::tab { "
+        "   height: 40px; min-width: 120px; "
+        "   padding: 0 20px; margin-right: 12px; "
+        "   background: transparent; border: none; "
+        "   font-family: 'Microsoft YaHei UI'; font-size: 14px; font-weight: 500; color: #6b7280; "
+        "} "
+        "QTabBar::tab:hover { color: #111827; } "
+        "QTabBar::tab:selected { "
+        "   color: #0078d4; border-bottom: 3px solid #0078d4; "
+        "   font-weight: 600; "
+        "} "
+    );
+    headerLayout->addWidget(m_tabBar);
+    mainLayout->addWidget(headerContainer);
 
-    auto* subtitle = new QLabel("Quick tools, layout controls, and desktop text rendering diagnostics.", scrollContent);
-    subtitle->setWordWrap(true);
-    subtitle->setStyleSheet("font-size: 12px; color: #6b7280;");
-    root->addWidget(subtitle);
+    // --- Content Area ---
+    m_contentStack = new QStackedWidget(this);
+    m_contentStack->addWidget(wrapScrollablePage(createGeneralPage()));
+    m_contentStack->addWidget(wrapScrollablePage(createLayoutPage()));
+    m_contentStack->addWidget(wrapScrollablePage(createTextDiagnosticsPage()));
+    mainLayout->addWidget(m_contentStack);
 
-    auto* quickGrid = new QGridLayout();
-    quickGrid->setContentsMargins(0, 4, 0, 2);
-    quickGrid->setHorizontalSpacing(12);
-    quickGrid->setVerticalSpacing(12);
+    connect(m_tabBar, &QTabBar::currentChanged, m_contentStack, &QStackedWidget::setCurrentIndex);
+    m_tabBar->setCurrentIndex(0);
 
-    // ========== 1. Open Windows Desktop Icon Settings ==========
-    QPushButton* deskIconBtn = new QPushButton("Open Settings", scrollContent);
-    deskIconBtn->setFixedSize(120, 32);
-    deskIconBtn->setCursor(Qt::PointingHandCursor);
-    deskIconBtn->setStyleSheet("background: #0078d4; border: none; border-radius: 6px; font-weight: 500; color: #ffffff;");
-    connect(deskIconBtn, &QPushButton::clicked, this, []() {
-        QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,0");
-    });
-    quickGrid->addWidget(new FluentCard(u8"\uE71D", "Desktop Icon Settings", "Control native Windows desktop system icons", deskIconBtn, scrollContent), 0, 0);
-
-    // ========== 2. Open QML Test ==========
-    QPushButton* qmlTestBtn = new QPushButton("Open QML Test", scrollContent);
-    qmlTestBtn->setFixedSize(140, 32);
-    qmlTestBtn->setCursor(Qt::PointingHandCursor);
-    qmlTestBtn->setStyleSheet("background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-weight: 500; color: #0078d4;");
-    connect(qmlTestBtn, &QPushButton::clicked, this, []() {
-        auto* window = new QmlTestWindow();
-        window->show();
-        window->raise();
-        window->activateWindow();
-    });
-    quickGrid->addWidget(new FluentCard(u8"\uE943", "QML Test Page", "Verify Qt Quick availability inside the project", qmlTestBtn, scrollContent), 0, 1);
-
-    // ========== 3. Embedded Desktop Mode ==========
-    LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
-
-    m_embedToggle = new FluentToggleSwitch(scrollContent);
-    m_embedToggle->setCursor(Qt::PointingHandCursor);
-    if (desk) m_embedToggle->setChecked(desk->isEmbedded(), false);
-
-    connect(m_embedToggle, &FluentToggleSwitch::toggled, this, [desk](bool checked){
-        if (desk) {
-            if (checked) desk->embedToDesktop();
-            else desk->unembedFromDesktop();
-        }
-    });
-
-    quickGrid->addWidget(new FluentCard(u8"\uE7F4", "Embedded Desktop Mode", "Attach window to the Windows worker window layer", m_embedToggle, scrollContent), 1, 0);
-
-    // ========== 4. Refresh Desktop ==========
-    QPushButton* refreshBtn = new QPushButton("Refresh", scrollContent);
-    refreshBtn->setFixedSize(80, 32);
-    refreshBtn->setCursor(Qt::PointingHandCursor);
-    refreshBtn->setStyleSheet("background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-weight: 500; color: #0078d4;");
-    connect(refreshBtn, &QPushButton::clicked, this, [this](){
-        if (m_listView) {
-            m_listView->onMenuRefresh();
-        }
-    });
-
-    quickGrid->addWidget(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render the desktop layout", refreshBtn, scrollContent), 1, 1);
-
-    // ========== 5. Persistence Toggle ==========
-    m_persistToggle = new FluentToggleSwitch(scrollContent);
-    m_persistToggle->setCursor(Qt::PointingHandCursor);
-    m_persistToggle->setChecked(m_listView ? m_listView->persistenceEnabled() : true, false);
-
-    connect(m_persistToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
-        if (m_listView) m_listView->setPersistenceEnabled(checked);
-    });
-    quickGrid->addWidget(new FluentCard(u8"\uE71B", "Data Persistence", "Load and save box and icon info from storage", m_persistToggle, scrollContent), 2, 0);
-
-    // ========== 6. Export Debug JSON ==========
-    QPushButton* exportDebugBtn = new QPushButton("Export", scrollContent);
-    exportDebugBtn->setFixedSize(86, 32);
-    exportDebugBtn->setCursor(Qt::PointingHandCursor);
-    exportDebugBtn->setStyleSheet("background: #0891b2; border: none; border-radius: 6px; font-weight: 600; color: #ffffff;");
-    connect(exportDebugBtn, &QPushButton::clicked, this, [this]() {
-        QString outputPath;
-        QString errorMessage;
-        if (DebugInfoExporter::exportToApplicationDir(m_listView, &outputPath, &errorMessage)) {
-            QMessageBox::information(this, "Export Debug JSON", QString("Exported to:\n%1").arg(outputPath));
-        } else {
-            QMessageBox::warning(this, "Export Debug JSON", QString("Export failed:\n%1").arg(errorMessage));
-        }
-    });
-    quickGrid->addWidget(new FluentCard(u8"\uE8AB", "Export debug.json", "Dump ListView state and visible item data", exportDebugBtn, scrollContent), 2, 1);
-    quickGrid->setColumnStretch(0, 1);
-    quickGrid->setColumnStretch(1, 1);
-    root->addLayout(quickGrid);
-
-    // ========== 7. Row Spacing Slider ==========
-    root->addSpacing(6);
-    root->addWidget(new QLabel("Row Spacing", scrollContent));
-    auto* rowLayout = new QHBoxLayout();
-    m_rowSlider = new QSlider(Qt::Horizontal, scrollContent);
-    m_rowSlider->setRange(0, 40);
-    m_rowValueLabel = new QLabel(scrollContent);
-    m_rowValueLabel->setFixedWidth(40);
-    rowLayout->addWidget(m_rowSlider, 1);
-    rowLayout->addWidget(m_rowValueLabel);
-    root->addLayout(rowLayout);
-
-    // ========== 8. Column Spacing Slider ==========
-    root->addWidget(new QLabel("Column Spacing", scrollContent));
-    auto* colLayout = new QHBoxLayout();
-    m_colSlider = new QSlider(Qt::Horizontal, scrollContent);
-    m_colSlider->setRange(0, 30);
-    m_colValueLabel = new QLabel(scrollContent);
-    m_colValueLabel->setFixedWidth(40);
-    colLayout->addWidget(m_colSlider, 1);
-    colLayout->addWidget(m_colValueLabel);
-    root->addLayout(colLayout);
-
-    // ========== 9. Desktop Text Blend Test ==========
-    auto* previewTitle = new QLabel("Desktop Text Blend Test", scrollContent);
-    previewTitle->setStyleSheet("font-size: 14px; font-weight: 600; color: #111827; margin-top: 6px;");
-    root->addWidget(previewTitle);
-
-    auto* previewDesc = new QLabel("Preview a softer Windows-style icon label effect with dark inner and outer blending.", scrollContent);
-    previewDesc->setWordWrap(true);
-    previewDesc->setStyleSheet("font-size: 12px; color: #6b7280; margin-bottom: 2px;");
-    root->addWidget(previewDesc);
-
-    m_textPreview = new SoftDesktopTextPreview(scrollContent);
-    QFont previewFont("Segoe UI");
-    previewFont.setPixelSize(36);
-    m_textPreview->setPreviewFont(previewFont);
-    m_textPreview->setText("New Text Document.txt");
-    root->addWidget(m_textPreview);
-
-    auto addPreviewSlider = [scrollContent, root](const QString& title,
-                                                  int minValue,
-                                                  int maxValue,
-                                                  QSlider*& sliderOut,
-                                                  QLabel*& valueLabelOut) {
-        auto* titleLabel = new QLabel(title, scrollContent);
-        titleLabel->setStyleSheet("font-size: 12px; color: #111827;");
-        root->addWidget(titleLabel);
-
-        auto* layout = new QHBoxLayout();
-        sliderOut = new QSlider(Qt::Horizontal, scrollContent);
-        sliderOut->setRange(minValue, maxValue);
-        valueLabelOut = new QLabel(scrollContent);
-        valueLabelOut->setFixedWidth(44);
-        valueLabelOut->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        layout->addWidget(sliderOut, 1);
-        layout->addWidget(valueLabelOut);
-        root->addLayout(layout);
-    };
-
-    addPreviewSlider("Large Glow Radius", 0, 16, m_largeGlowSlider, m_largeGlowValueLabel);
-    addPreviewSlider("Tight Glow Radius", 0, 12, m_tightGlowSlider, m_tightGlowValueLabel);
-    addPreviewSlider("Glow Alpha", 0, 255, m_glowAlphaSlider, m_glowAlphaValueLabel);
-    addPreviewSlider("Inner Shadow Alpha", 0, 255, m_innerAlphaSlider, m_innerAlphaValueLabel);
-    addPreviewSlider("Glow Offset X", -8, 8, m_glowOffsetXSlider, m_glowOffsetXValueLabel);
-    addPreviewSlider("Glow Offset Y", -8, 8, m_glowOffsetYSlider, m_glowOffsetYValueLabel);
-    addPreviewSlider("Inner Offset X", -8, 8, m_innerOffsetXSlider, m_innerOffsetXValueLabel);
-    addPreviewSlider("Inner Offset Y", -8, 8, m_innerOffsetYSlider, m_innerOffsetYValueLabel);
-
-    root->addStretch();
-
-    // --- Finish scrollable area ---
-    scrollArea->setWidget(scrollContent);
-    outerLayout->addWidget(scrollArea);
-
-    // --- Initialize slider values ---
+    // Initialize values
     if (m_listView) {
         m_rowSlider->setValue(m_listView->rowSpacing());
         m_colSlider->setValue(m_listView->colSpacing());
@@ -252,38 +104,198 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
     m_glowOffsetYSlider->setValue(1);
     m_innerOffsetXSlider->setValue(0);
     m_innerOffsetYSlider->setValue(1);
+    
     updateLabels();
     applyTextPreviewOptions();
+}
 
-    connect(m_rowSlider, &QSlider::valueChanged, this, [this](int value) {
+QWidget* ListViewDebugPanel::wrapScrollablePage(QWidget* content) {
+    auto* scroll = new QScrollArea();
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setStyleSheet("background: #ffffff;");
+    scroll->setWidget(content);
+    return scroll;
+}
+
+QWidget* ListViewDebugPanel::createGeneralPage() {
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(32, 32, 32, 32);
+    layout->setSpacing(20);
+
+    auto* title = new QLabel("General Tools");
+    title->setStyleSheet("font-size: 24px; font-weight: 600; color: #111827;");
+    layout->addWidget(title);
+
+    auto* grid = new QGridLayout();
+    grid->setSpacing(12);
+
+    // Restart
+    QPushButton* restartBtn = new QPushButton("Restart App");
+    restartBtn->setFixedSize(100, 32);
+    restartBtn->setStyleSheet("background: #dc2626; color: white; border-radius: 6px; font-weight: 600;");
+    connect(restartBtn, &QPushButton::clicked, this, []() {
+        QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments(), QCoreApplication::applicationDirPath());
+        QCoreApplication::quit();
+    });
+    grid->addWidget(new FluentCard(u8"\uE777", "Restart", "Relaunch the application", restartBtn), 0, 0);
+
+    // Windows Icons
+    QPushButton* deskIconBtn = new QPushButton("Open");
+    deskIconBtn->setFixedSize(80, 32);
+    connect(deskIconBtn, &QPushButton::clicked, this, []() {
+        QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,0");
+    });
+    grid->addWidget(new FluentCard(u8"\uE71D", "Desktop Icons", "Native OS icon settings", deskIconBtn), 0, 1);
+
+    // QML Test
+    QPushButton* qmlTestBtn = new QPushButton("Verify");
+    qmlTestBtn->setFixedSize(80, 32);
+    connect(qmlTestBtn, &QPushButton::clicked, this, []() {
+        auto* w = new QmlTestWindow();
+        w->show(); w->raise(); w->activateWindow();
+    });
+    grid->addWidget(new FluentCard(u8"\uE943", "QML Test", "Verify Qt Quick availability", qmlTestBtn), 1, 0);
+
+    // Refresh
+    QPushButton* refreshBtn = new QPushButton("Refresh");
+    refreshBtn->setFixedSize(80, 32);
+    connect(refreshBtn, &QPushButton::clicked, this, [this](){
+        if (m_listView) m_listView->onMenuRefresh();
+    });
+    grid->addWidget(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render", refreshBtn), 1, 1);
+
+    // Persistence
+    m_persistToggle = new FluentToggleSwitch();
+    m_persistToggle->setChecked(m_listView ? m_listView->persistenceEnabled() : true, false);
+    connect(m_persistToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+        if (m_listView) m_listView->setPersistenceEnabled(checked);
+    });
+    grid->addWidget(new FluentCard(u8"\uE71B", "Persistence", "Save box and icon data", m_persistToggle), 2, 0);
+
+    // Export
+    QPushButton* exportBtn = new QPushButton("Export");
+    exportBtn->setFixedSize(80, 32);
+    connect(exportBtn, &QPushButton::clicked, this, [this]() {
+        QString path;
+        if (DebugInfoExporter::exportToApplicationDir(m_listView, &path))
+            QMessageBox::information(this, "Export", "Exported to " + path);
+    });
+    grid->addWidget(new FluentCard(u8"\uE8AB", "Export Debug", "Dump state to debug.json", exportBtn), 2, 1);
+
+    layout->addLayout(grid);
+    layout->addStretch();
+    return page;
+}
+
+QWidget* ListViewDebugPanel::createLayoutPage() {
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(32, 32, 32, 32);
+    layout->setSpacing(24);
+
+    auto* title = new QLabel("Layout & Behavior");
+    title->setStyleSheet("font-size: 24px; font-weight: 600; color: #111827;");
+    layout->addWidget(title);
+
+    // Embedded Mode
+    LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
+    m_embedToggle = new FluentToggleSwitch();
+    if (desk) m_embedToggle->setChecked(desk->isEmbedded(), false);
+    connect(m_embedToggle, &FluentToggleSwitch::toggled, this, [desk](bool checked){
+        if (desk) { if (checked) desk->embedToDesktop(); else desk->unembedFromDesktop(); }
+    });
+    layout->addWidget(new FluentCard(u8"\uE7F4", "Embedded Desktop Mode", "Attach window to WorkerW layer", m_embedToggle));
+
+    // Row Spacing
+    auto* rowBox = new QWidget();
+    auto* rowL = new QVBoxLayout(rowBox);
+    rowL->setContentsMargins(0,0,0,0);
+    rowL->addWidget(new QLabel("Row Spacing"));
+    auto* rowSL = new QHBoxLayout();
+    m_rowSlider = new QSlider(Qt::Horizontal);
+    m_rowSlider->setRange(0, 40);
+    m_rowValueLabel = new QLabel("0");
+    rowSL->addWidget(m_rowSlider, 1);
+    rowSL->addWidget(m_rowValueLabel);
+    rowL->addLayout(rowSL);
+    layout->addWidget(rowBox);
+
+    connect(m_rowSlider, &QSlider::valueChanged, this, [this](int v) {
         updateLabels();
-        if (m_listView) {
-            m_listView->setDebugGridSpacing(value, m_colSlider->value());
-        }
+        if (m_listView) m_listView->setDebugGridSpacing(v, m_colSlider->value());
     });
 
-    connect(m_colSlider, &QSlider::valueChanged, this, [this](int value) {
+    // Col Spacing
+    auto* colBox = new QWidget();
+    auto* colL = new QVBoxLayout(colBox);
+    colL->setContentsMargins(0,0,0,0);
+    colL->addWidget(new QLabel("Column Spacing"));
+    auto* colSL = new QHBoxLayout();
+    m_colSlider = new QSlider(Qt::Horizontal);
+    m_colSlider->setRange(0, 30);
+    m_colValueLabel = new QLabel("0");
+    colSL->addWidget(m_colSlider, 1);
+    colSL->addWidget(m_colValueLabel);
+    colL->addLayout(colSL);
+    layout->addWidget(colBox);
+
+    connect(m_colSlider, &QSlider::valueChanged, this, [this](int v) {
         updateLabels();
-        if (m_listView) {
-            m_listView->setDebugGridSpacing(m_rowSlider->value(), value);
-        }
+        if (m_listView) m_listView->setDebugGridSpacing(m_rowSlider->value(), v);
     });
 
-    const auto bindPreviewSlider = [this](QSlider* slider) {
-        connect(slider, &QSlider::valueChanged, this, [this](int) {
-            updateLabels();
-            applyTextPreviewOptions();
+    layout->addStretch();
+    return page;
+}
+
+QWidget* ListViewDebugPanel::createTextDiagnosticsPage() {
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(32, 32, 32, 32);
+    layout->setSpacing(16);
+
+    auto* title = new QLabel("Text Rendering Diagnostics");
+    title->setStyleSheet("font-size: 24px; font-weight: 600; color: #111827;");
+    layout->addWidget(title);
+
+    m_textPreview = new SoftDesktopTextPreview();
+    QFont previewFont("Segoe UI");
+    previewFont.setPixelSize(36);
+    m_textPreview->setPreviewFont(previewFont);
+    m_textPreview->setText("New Text Document.txt");
+    m_textPreview->setMinimumHeight(100);
+    layout->addWidget(m_textPreview);
+
+    auto addSlider = [&](const QString& label, int min, int max, QSlider*& slider, QLabel*& val) {
+        layout->addWidget(new QLabel(label));
+        auto* hl = new QHBoxLayout();
+        slider = new QSlider(Qt::Horizontal);
+        slider->setRange(min, max);
+        val = new QLabel("0");
+        val->setFixedWidth(30);
+        hl->addWidget(slider, 1);
+        hl->addWidget(val);
+        layout->addLayout(hl);
+
+        connect(slider, &QSlider::valueChanged, this, [this](int){ 
+            updateLabels(); 
+            applyTextPreviewOptions(); 
         });
     };
 
-    bindPreviewSlider(m_largeGlowSlider);
-    bindPreviewSlider(m_tightGlowSlider);
-    bindPreviewSlider(m_glowAlphaSlider);
-    bindPreviewSlider(m_innerAlphaSlider);
-    bindPreviewSlider(m_glowOffsetXSlider);
-    bindPreviewSlider(m_glowOffsetYSlider);
-    bindPreviewSlider(m_innerOffsetXSlider);
-    bindPreviewSlider(m_innerOffsetYSlider);
+    addSlider("Large Glow Radius", 0, 16, m_largeGlowSlider, m_largeGlowValueLabel);
+    addSlider("Tight Glow Radius", 0, 12, m_tightGlowSlider, m_tightGlowValueLabel);
+    addSlider("Glow Alpha", 0, 255, m_glowAlphaSlider, m_glowAlphaValueLabel);
+    addSlider("Inner Shadow Alpha", 0, 255, m_innerAlphaSlider, m_innerAlphaValueLabel);
+    addSlider("Glow Offset X", -8, 8, m_glowOffsetXSlider, m_glowOffsetXValueLabel);
+    addSlider("Glow Offset Y", -8, 8, m_glowOffsetYSlider, m_glowOffsetYValueLabel);
+    addSlider("Inner Offset X", -8, 8, m_innerOffsetXSlider, m_innerOffsetXValueLabel);
+    addSlider("Inner Offset Y", -8, 8, m_innerOffsetYSlider, m_innerOffsetYValueLabel);
+
+    layout->addStretch();
+    return page;
 }
 
 void ListViewDebugPanel::updateLabels()
