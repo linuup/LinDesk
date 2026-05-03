@@ -4859,6 +4859,89 @@ bool ListView::refreshDesktopModelItemPath(const QString& oldPath, const QString
     return true;
 }
 
+void ListView::invalidateFolderItemIconCache(const QString& folderPath)
+{
+    const QString normalizedPath = normalizeDesktopItemPath(folderPath);
+    if (normalizedPath.isEmpty()) {
+        return;
+    }
+
+    const QString iconKey = QString("dir:v3:%1").arg(normalizedPath);
+    IconCacheManager::instance().invalidateIcon(
+        QString("%1|base|%2").arg(iconKey).arg(ListItemData::s_targetIconSize));
+    IconCacheManager::instance().invalidatePixmapsByPrefix(QString("%1|render|").arg(iconKey));
+}
+
+bool ListView::refreshBoxModelItemPath(LinBox* box, const QString& oldPath, const QString& newPath)
+{
+    if (!box) {
+        return false;
+    }
+
+    DesktopRootItemState* state = box->findItemStateByPath(oldPath);
+    if (!state) {
+        return false;
+    }
+
+    const QString oldNormalizedPath = normalizeDesktopItemPath(state->model.filePath);
+    const ListItemData data = DesktopItemLoader().loadItem(newPath);
+    DesktopRootItemModel updatedModel;
+    initDesktopRootItemModel(updatedModel, data, currentDesktopItemInitContext());
+    updatedModel.layoutMode = state->model.layoutMode;
+    updatedModel.position = state->model.position;
+    updatedModel.baseSize = state->model.baseSize;
+    updatedModel.effectiveSize = state->model.effectiveSize;
+    updatedModel.visibleTextHeight = state->model.visibleTextHeight;
+    updatedModel.isSelected = state->model.isSelected;
+    updatedModel.isHovered = state->model.isHovered;
+    updatedModel.focused = state->model.focused;
+    updatedModel.isCutMarked = state->model.isCutMarked;
+    updatedModel.isFullNameExpanded = state->model.isFullNameExpanded;
+    updatedModel.customSortOrder = state->model.customSortOrder;
+    updatedModel.expandedPreviewText = state->model.expandedPreviewText;
+    updatedModel.isRenaming = state->model.isRenaming;
+    updatedModel.isReady = true;
+    state->model = updatedModel;
+    state->renderDataDirty = true;
+
+    const QString newNormalizedPath = normalizeDesktopItemPath(state->model.filePath);
+    for (QString& selectedPath : m_selectedBoxPaths) {
+        if (selectedPath == oldNormalizedPath) {
+            selectedPath = newNormalizedPath;
+        }
+    }
+    if (m_focusedBoxPath == oldNormalizedPath) {
+        m_focusedBoxPath = newNormalizedPath;
+    }
+    if (m_anchorBoxPath == oldNormalizedPath) {
+        m_anchorBoxPath = newNormalizedPath;
+    }
+
+    box->refreshLayout();
+    box->update();
+    return true;
+}
+
+bool ListView::refreshFolderItemByPath(const QString& folderPath)
+{
+    const QString normalizedPath = normalizeDesktopItemPath(folderPath);
+    if (normalizedPath.isEmpty()) {
+        return false;
+    }
+
+    invalidateFolderItemIconCache(normalizedPath);
+
+    if (refreshDesktopModelItemPath(normalizedPath, normalizedPath)) {
+        return true;
+    }
+
+    if (LinBox* box = BoxManager::instance()->findBoxContainingItem(normalizedPath)) {
+        return refreshBoxModelItemPath(box, normalizedPath, normalizedPath);
+    }
+
+    return false;
+}
+
 DesktopRootItemState* ListView::findDesktopStateAt(const QPoint& pos)
 {
     for (auto it = m_itemStates.rbegin(); it != m_itemStates.rend(); ++it) {
@@ -6159,6 +6242,10 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 
             if (oldDir == newDir) {
                 if (refreshDesktopModelItemPath(oldPath, newPath)) {
+                    if (eventInfo.eventType == FileSystemEvent::DirectoryRenamed) {
+                        invalidateFolderItemIconCache(oldPath);
+                        invalidateFolderItemIconCache(newPath);
+                    }
                     const DesktopRootItemState* updatedState = findDesktopStateByPath(newPath);
                     if (updatedState && !updatedState->model.visible) {
                         refreshVisibilityForWindowsConfig();
@@ -6178,43 +6265,11 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             const QString newDir = QFileInfo(newPath).absolutePath();
 
             if (oldDir == newDir) {
-                if (DesktopRootItemState* state = sourceBox->findItemStateByPath(oldPath)) {
-                    const QString oldNormalizedPath = normalizeDesktopItemPath(state->model.filePath);
-                    const ListItemData data = DesktopItemLoader().loadItem(newPath);
-                    DesktopRootItemModel updatedModel;
-                    initDesktopRootItemModel(updatedModel, data, currentDesktopItemInitContext());
-                    updatedModel.layoutMode = state->model.layoutMode;
-                    updatedModel.position = state->model.position;
-                    updatedModel.baseSize = state->model.baseSize;
-                    updatedModel.effectiveSize = state->model.effectiveSize;
-                    updatedModel.visibleTextHeight = state->model.visibleTextHeight;
-                    updatedModel.isSelected = state->model.isSelected;
-                    updatedModel.isHovered = state->model.isHovered;
-                    updatedModel.focused = state->model.focused;
-                    updatedModel.isCutMarked = state->model.isCutMarked;
-                    updatedModel.isFullNameExpanded = state->model.isFullNameExpanded;
-                    updatedModel.customSortOrder = state->model.customSortOrder;
-                    updatedModel.expandedPreviewText = state->model.expandedPreviewText;
-                    updatedModel.isRenaming = state->model.isRenaming;
-                    updatedModel.isReady = true;
-                    state->model = updatedModel;
-                    state->renderDataDirty = true;
-
-                    const QString newNormalizedPath = normalizeDesktopItemPath(state->model.filePath);
-                    for (QString& selectedPath : m_selectedBoxPaths) {
-                        if (selectedPath == oldNormalizedPath) {
-                            selectedPath = newNormalizedPath;
-                        }
-                    }
-                    if (m_focusedBoxPath == oldNormalizedPath) {
-                        m_focusedBoxPath = newNormalizedPath;
-                    }
-                    if (m_anchorBoxPath == oldNormalizedPath) {
-                        m_anchorBoxPath = newNormalizedPath;
-                    }
-                    sourceBox->refreshLayout();
-                    sourceBox->update();
+                if (eventInfo.eventType == FileSystemEvent::DirectoryRenamed) {
+                    invalidateFolderItemIconCache(oldPath);
+                    invalidateFolderItemIconCache(newPath);
                 }
+                refreshBoxModelItemPath(sourceBox, oldPath, newPath);
             } else {
                 sourceBox->removeItemState(oldPath, true);
             }
@@ -6249,9 +6304,15 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     }
     case FileSystemEvent::FileUpdated:
     case FileSystemEvent::FileAttributesChanged:
+    case FileSystemEvent::DirectoryUpdated:
     {
         const QString& updatePath = !newPath.isEmpty() ? newPath : oldPath;
         if (updatePath.isEmpty()) break;
+
+        if (eventInfo.eventType == FileSystemEvent::DirectoryUpdated) {
+            refreshFolderItemByPath(updatePath);
+            break;
+        }
 
         if (findDesktopStateByPath(updatePath)) {
             refreshDesktopModelItemPath(updatePath, updatePath);
@@ -6259,29 +6320,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 update();
             }
         } else if (LinBox* box = BoxManager::instance()->findBoxContainingItem(updatePath)) {
-            if (DesktopRootItemState* state = box->findItemStateByPath(updatePath)) {
-                const ListItemData data = DesktopItemLoader().loadItem(updatePath);
-                DesktopRootItemModel updatedModel;
-                initDesktopRootItemModel(updatedModel, data, currentDesktopItemInitContext());
-                updatedModel.layoutMode = state->model.layoutMode;
-                updatedModel.position = state->model.position;
-                updatedModel.baseSize = state->model.baseSize;
-                updatedModel.effectiveSize = state->model.effectiveSize;
-                updatedModel.visibleTextHeight = state->model.visibleTextHeight;
-                updatedModel.isSelected = state->model.isSelected;
-                updatedModel.isHovered = state->model.isHovered;
-                updatedModel.focused = state->model.focused;
-                updatedModel.isCutMarked = state->model.isCutMarked;
-                updatedModel.isFullNameExpanded = state->model.isFullNameExpanded;
-                updatedModel.customSortOrder = state->model.customSortOrder;
-                updatedModel.expandedPreviewText = state->model.expandedPreviewText;
-                updatedModel.isRenaming = state->model.isRenaming;
-                updatedModel.isReady = true;
-                state->model = updatedModel;
-                state->renderDataDirty = true;
-                box->refreshLayout();
-                box->update();
-            }
+            refreshBoxModelItemPath(box, updatePath, updatePath);
         }
         break;
     }

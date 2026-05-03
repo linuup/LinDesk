@@ -360,6 +360,9 @@ private:
 	DesktopItemInitContext currentDesktopItemInitContext() const;
 	bool addDesktopModelItemFromPath(const QString& filePath);
 	bool refreshDesktopModelItemPath(const QString& oldPath, const QString& newPath);
+	void invalidateFolderItemIconCache(const QString& folderPath);
+	bool refreshBoxModelItemPath(LinBox* box, const QString& oldPath, const QString& newPath);
+	bool refreshFolderItemByPath(const QString& folderPath);
 	void removeItemsBatch(const QStringList& paths, bool refresh = true);
 	void setItemsTransientHidden(const QStringList& paths, bool hidden);
 	void trackPendingExternalRemovals(const QStringList& paths);
