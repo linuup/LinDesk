@@ -214,6 +214,23 @@ bool shouldCreateShortcutForMappedFolderDrop(ListView* lv,
     return lv && lv->shouldPreferShortcutForDrop(paths, modifiers, true);
 }
 
+Qt::KeyboardModifiers effectiveDragModifiers(Qt::KeyboardModifiers modifiers)
+{
+    Qt::KeyboardModifiers effective = modifiers | QGuiApplication::keyboardModifiers();
+
+    if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+        effective |= Qt::ControlModifier;
+    }
+    if (GetAsyncKeyState(VK_MENU) & 0x8000) {
+        effective |= Qt::AltModifier;
+    }
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+        effective |= Qt::ShiftModifier;
+    }
+
+    return effective;
+}
+
 bool areAllPathsDirectChildrenOfFolder(const QStringList& paths, const QString& folderPath)
 {
     const QString normalizedFolder = QDir::cleanPath(QDir::fromNativeSeparators(folderPath));
@@ -760,6 +777,15 @@ void LinBox::insertItemState(const DesktopRootItemState& state, int index, bool 
     DesktopRootItemState stateCopy = state;
     stateCopy.model.boxId = m_id;
     stateCopy.model.visible = true;
+    stateCopy.model.layoutMode = (m_showType == BoxShowType::List_ShowType)
+        ? DesktopLayoutMode::ListMode
+        : DesktopLayoutMode::IconMode;
+    stateCopy.model.position = QPoint();
+    stateCopy.model.baseSize = QSize();
+    stateCopy.model.effectiveSize = QSize();
+    stateCopy.model.visibleTextHeight = 0;
+    stateCopy.model.renderData = DesktopRootItemRenderData();
+    stateCopy.model.isHovered = false;
     stateCopy.renderDataDirty = true;
 
     removeItemState(stateCopy.model.filePath, false);
@@ -825,6 +851,11 @@ QVector<QString> LinBox::itemPaths() const
 bool LinBox::containsItemPath(const QString& filePath) const
 {
     return findItemStateByPath(filePath) != nullptr;
+}
+
+QString LinBox::hoveredItemPath() const
+{
+    return m_hoveredItemPath;
 }
 
 void LinBox::markItemRenderDataDirty(DesktopRootItemState* state)
@@ -1161,6 +1192,15 @@ void LinBox::clearMappedFolderPath()
 void LinBox::setMappedFolderMonitor(LinDirectoryMonitor* monitor)
 {
     m_mappedFolderMonitor.reset(monitor);
+}
+
+void LinBox::refreshSelectionOverlayColor()
+{
+    if (!m_selectionArea) {
+        return;
+    }
+
+    m_selectionArea->reloadColorsFromSettings();
 }
 
 void LinBox::beginTitleEditing() {
@@ -2543,7 +2583,8 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     }
 
     ListView* lv = ListView::instance();
-    const bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
+    const Qt::KeyboardModifiers effectiveModifiers = effectiveDragModifiers(event->keyboardModifiers());
+    const bool isCtrl = (effectiveModifiers & Qt::ControlModifier);
     const bool isInternalDrag = isDesktopOrBoxDragSource(event->source());
     const QStringList paths = lv ? lv->resolveDraggedLocalPaths(event->mimeData()) : QStringList();
     const DesktopRootItemState* hitState = hitItemStateAt(event->pos());
@@ -2551,8 +2592,8 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
         ? lv->orderedDraggedPaths(paths)
         : QStringList();
     const bool preferShortcutForDrop = (isFolderMapped() && lv)
-        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, event->keyboardModifiers())
-        : (lv && lv->shouldPreferShortcutForDrop(paths, event->keyboardModifiers(), !isInternalDrag));
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, effectiveModifiers)
+        : (lv && lv->shouldPreferShortcutForDrop(paths, effectiveModifiers, !isInternalDrag));
     const QString dropTargetText = isFolderMapped() ? mappedFolderDisplayText() : boxTitle();
     auto pathSetContains = [this](const QStringList& valuePaths, const QString& targetPath) {
         const QString normalizedTarget = normalizeBoxItemPath(targetPath);
@@ -2661,12 +2702,13 @@ void LinBox::previewGhostDropAt(const QPoint& boxPos, const QStringList& dragged
         return;
     }
 
-    const bool isCtrl = (modifiers & Qt::ControlModifier);
+    const Qt::KeyboardModifiers effectiveModifiers = effectiveDragModifiers(modifiers);
+    const bool isCtrl = (effectiveModifiers & Qt::ControlModifier);
     const DesktopRootItemState* hitState = hitItemStateAt(boxPos);
     const QStringList orderedPaths = lv->orderedDraggedPaths(draggedPaths);
     const bool preferShortcutForDrop = isFolderMapped()
-        ? shouldCreateShortcutForMappedFolderDrop(lv, true, orderedPaths, draggedPaths, modifiers)
-        : lv->shouldPreferShortcutForDrop(draggedPaths, modifiers, false);
+        ? shouldCreateShortcutForMappedFolderDrop(lv, true, orderedPaths, draggedPaths, effectiveModifiers)
+        : lv->shouldPreferShortcutForDrop(draggedPaths, effectiveModifiers, false);
 
     auto pathSetContains = [this](const QStringList& valuePaths, const QString& targetPath) {
         const QString normalizedTarget = normalizeBoxItemPath(targetPath);
@@ -2723,7 +2765,8 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     }
 
     ListView* lv = ListView::instance();
-    const bool isCtrl = (event->keyboardModifiers() & Qt::ControlModifier);
+    const Qt::KeyboardModifiers effectiveModifiers = effectiveDragModifiers(event->keyboardModifiers());
+    const bool isCtrl = (effectiveModifiers & Qt::ControlModifier);
     const bool isInternalDrag = isDesktopOrBoxDragSource(event->source());
     const QStringList paths = lv ? lv->resolveDraggedLocalPaths(event->mimeData()) : QStringList();
     const DesktopRootItemState* hitState = hitItemStateAt(event->pos());
@@ -2731,8 +2774,8 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
         ? lv->orderedDraggedPaths(paths)
         : QStringList();
     const bool preferShortcutForDrop = (isFolderMapped() && lv)
-        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, event->keyboardModifiers())
-        : (lv && lv->shouldPreferShortcutForDrop(paths, event->keyboardModifiers(), !isInternalDrag));
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, effectiveModifiers)
+        : (lv && lv->shouldPreferShortcutForDrop(paths, effectiveModifiers, !isInternalDrag));
     const QString dropTargetText = isFolderMapped() ? mappedFolderDisplayText() : boxTitle();
     auto pathSetContains = [this](const QStringList& valuePaths, const QString& targetPath) {
         const QString normalizedTarget = normalizeBoxItemPath(targetPath);
@@ -2838,13 +2881,15 @@ void LinBox::dropEvent(QDropEvent* event) {
     }
 
     const bool isInternalDrag = isDesktopOrBoxDragSource(event->source());
-    const bool copyMode = (event->keyboardModifiers() & Qt::ControlModifier);
+    const Qt::KeyboardModifiers effectiveModifiers = effectiveDragModifiers(event->keyboardModifiers());
+    const bool copyMode = (effectiveModifiers & Qt::ControlModifier);
     const QStringList orderedPaths = isInternalDrag
         ? lv->orderedDraggedPaths(paths)
         : QStringList();
+    const QStringList operationPaths = orderedPaths.isEmpty() ? paths : orderedPaths;
     const bool preferShortcutForDrop = isFolderMapped()
-        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, event->keyboardModifiers())
-        : lv->shouldPreferShortcutForDrop(paths, event->keyboardModifiers(), !isInternalDrag);
+        ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, effectiveModifiers)
+        : lv->shouldPreferShortcutForDrop(paths, effectiveModifiers, !isInternalDrag);
     const DesktopRootItemState* hitState = hitItemStateAt(event->pos());
     auto pathSetContains = [this](const QStringList& valuePaths, const QString& targetPath) {
         const QString normalizedTarget = normalizeBoxItemPath(targetPath);
@@ -2863,9 +2908,9 @@ void LinBox::dropEvent(QDropEvent* event) {
             (hitState->model.objectType == ObjectType::Folder_ObjectType ||
              hitState->model.objectType == ObjectType::SpecialFolder ||
              hitState->model.objectType == ObjectType::DiskLetter);
-        if (lv->handleDroppedPathsOnModel(paths, hitState->model, copyMode, preferShortcutForDrop)) {
+        if (lv->handleDroppedPathsOnModel(operationPaths, hitState->model, copyMode, preferShortcutForDrop)) {
             if (isFolderMapped() && !copyMode && !preferShortcutForDrop && targetPerformsFileMove) {
-                lv->finalizeMovedModelSourcesAfterFileOp(paths);
+                lv->finalizeMovedModelSourcesAfterFileOp(operationPaths);
                 lv->reloadMappedFolderBox(this);
                 refreshLayout();
                 update();
@@ -2890,7 +2935,7 @@ void LinBox::dropEvent(QDropEvent* event) {
             event->accept();
             return;
         }
-        const std::vector<std::wstring> srcPaths = toNativeWStringPaths(paths);
+        const std::vector<std::wstring> srcPaths = toNativeWStringPaths(operationPaths);
         if (targetFolder.isEmpty() || srcPaths.empty()) {
             event->ignore();
             return;
@@ -2898,7 +2943,7 @@ void LinBox::dropEvent(QDropEvent* event) {
 
         bool ok = false;
         if (preferShortcutForDrop) {
-            ok = lv->createShortcutsInFolder(paths, targetFolder);
+            ok = lv->createShortcutsInFolder(operationPaths, targetFolder);
         } else if (copyMode) {
             ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
         } else {
@@ -2906,7 +2951,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         if (ok && !copyMode && !preferShortcutForDrop) {
-            lv->finalizeMovedModelSourcesAfterFileOp(paths);
+            lv->finalizeMovedModelSourcesAfterFileOp(operationPaths);
         }
 
         if (ok) {
@@ -2929,7 +2974,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         clearReorderPreview();
 
         if (preferShortcutForDrop) {
-            if (lv->importPathsToBox(paths, this, true, insertIndex, true)) {
+            if (lv->importPathsToBox(operationPaths, this, true, insertIndex, true)) {
                 event->setDropAction(Qt::LinkAction);
                 event->accept();
             } else {
@@ -2949,7 +2994,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         if (draggedPathsContainMappedSource) {
-            if (lv->importPathsToBox(paths, this, copyMode, insertIndex, preferShortcutForDrop)) {
+            if (lv->importPathsToBox(operationPaths, this, copyMode, insertIndex, preferShortcutForDrop)) {
                 refreshLayout();
                 update();
                 raise();
@@ -2963,7 +3008,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         if (copyMode) {
-            if (lv->importPathsToBox(paths, this, true, insertIndex, false)) {
+            if (lv->importPathsToBox(operationPaths, this, true, insertIndex, false)) {
                 event->setDropAction(Qt::CopyAction);
                 event->accept();
             } else {
@@ -2973,7 +3018,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         }
 
         bool allFromThisBox = true;
-        for (const QString& path : paths) {
+          for (const QString& path : operationPaths) {
             if (!findItemStateByPath(path)) {
                 allFromThisBox = false;
                 break;
@@ -2983,7 +3028,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         if (allFromThisBox) {
             QSet<QString> draggedPathSet;
             QVector<DesktopRootItemState> draggedStates;
-            for (const QString& path : paths) {
+              for (const QString& path : operationPaths) {
                 draggedPathSet.insert(normalizeBoxItemPath(path));
             }
             for (int i = 0; i < m_itemStates.size();) {
@@ -3006,9 +3051,9 @@ void LinBox::dropEvent(QDropEvent* event) {
             return;
         }
 
-        for (int i = 0; i < paths.size(); ++i) {
-            lv->moveItemToBox(paths[i], this, false, insertIndex >= 0 ? insertIndex + i : -1);
-        }
+          for (int i = 0; i < operationPaths.size(); ++i) {
+              lv->moveItemToBox(operationPaths[i], this, false, insertIndex >= 0 ? insertIndex + i : -1);
+          }
         refreshLayout();
         raise();
         lv->requestSaveBoxes();
@@ -3017,7 +3062,7 @@ void LinBox::dropEvent(QDropEvent* event) {
         return;
     }
 
-    if (lv->importPathsToBox(paths, this, copyMode, -1, preferShortcutForDrop)) {
+    if (lv->importPathsToBox(operationPaths, this, copyMode, -1, preferShortcutForDrop)) {
         event->accept();
     } else {
         event->ignore();
@@ -3162,6 +3207,20 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             }
             event->accept();
             return;
+        }
+        if (event->key() == Qt::Key_Space) {
+            const DesktopRootItemState* hoveredState = m_hoveredItemPath.isEmpty()
+                ? nullptr
+                : findItemStateByPath(m_hoveredItemPath);
+            const QString targetPath = hoveredState
+                ? hoveredState->model.filePath
+                : (!lv->focusedItemPath().isEmpty()
+                    ? lv->focusedItemPath()
+                    : (lv->selectedItemPaths().isEmpty() ? QString() : lv->selectedItemPaths().first()));
+            if (!targetPath.isEmpty() && lv->sendPreviewRequestByPath(targetPath)) {
+                event->accept();
+                return;
+            }
         }
         if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
             const QString targetPath = !lv->focusedItemPath().isEmpty()

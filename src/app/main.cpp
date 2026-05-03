@@ -19,6 +19,7 @@
 #include "desktop/LinDesktop.h"
 #include "app/AppLaunchOptions.h"
 #include "app/LanguageManager.h"
+#include "services/LinDeskHoveredItemServer.h"
 using namespace ShortcutArrowManager;
 
 namespace {
@@ -71,8 +72,10 @@ int main(int argc, char *argv[])
     //LinDesk *lindesk = LinDesk::instance();
     //lindesk->show();
     LinDesktop linDesktop;
+    LinDeskHoveredItemServer hoveredItemServer;
     launchOptions.apply(&linDesktop);
     linDesktop.show();
+    hoveredItemServer.startListening();
     qDebug() << isShortcutArrowEnabled();
     qDebug() << isUACShieldEnabled();
     return app.exec();

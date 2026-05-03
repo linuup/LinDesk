@@ -1,4 +1,9 @@
 {
+    "cmake.useCMakePresets": "always",
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.configureOnOpen": true,
+    "cmake.automaticReconfigure": true,
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "files.associations": {
         "*.embeddedhtml": "html",
         "*.txt": "cmake",

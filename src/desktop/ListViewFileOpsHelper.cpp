@@ -62,8 +62,32 @@ bool hasSystemAttribute(const QString& sourcePath)
 QString shortcutBaseNameForSource(const QString& sourcePath)
 {
     const QString normalizedSourcePath = QDir::toNativeSeparators(sourcePath);
-    if (normalizedSourcePath.startsWith("::")) {
-        const IconItem item = CSystemApi::CreateIconItem(normalizedSourcePath.toStdWString().c_str());
+    auto shellParsingPathForSource = [](const QString& path) -> QString {
+        const QString normalizedPath = QDir::toNativeSeparators(path).trimmed();
+        if (normalizedPath.isEmpty()) {
+            return QString();
+        }
+        if (normalizedPath.startsWith(QStringLiteral("::")) ||
+            normalizedPath.startsWith(QStringLiteral("shell:"), Qt::CaseInsensitive)) {
+            return normalizedPath;
+        }
+        if (normalizedPath.startsWith(QStringLiteral("special:"), Qt::CaseInsensitive)) {
+            const QString clsid = normalizedPath.mid(QStringLiteral("special:").size()).trimmed();
+            if (!clsid.isEmpty()) {
+                return clsid.startsWith(QLatin1Char('{'))
+                    ? QStringLiteral("::") + clsid
+                    : QStringLiteral("::%1").arg(clsid);
+            }
+        }
+        if (normalizedPath.startsWith(QLatin1Char('{')) && normalizedPath.endsWith(QLatin1Char('}'))) {
+            return QStringLiteral("::") + normalizedPath;
+        }
+        return QString();
+    };
+
+    const QString shellParsingPath = shellParsingPathForSource(normalizedSourcePath);
+    if (!shellParsingPath.isEmpty()) {
+        const IconItem item = CSystemApi::CreateIconItem(shellParsingPath.toStdWString().c_str());
         const QString shellDisplayName = QString::fromStdString(item.name);
         if (!shellDisplayName.trimmed().isEmpty()) {
             return shellDisplayName.trimmed();
@@ -1339,13 +1363,45 @@ bool ListViewFileOpsHelper::createShellShortcut(const QString& sourcePath, const
     }
 
     const std::wstring source = QDir::toNativeSeparators(sourcePath).toStdWString();
-    shellLink->SetPath(source.c_str());
-    shellLink->SetWorkingDirectory(QFileInfo(sourcePath).absolutePath().toStdWString().c_str());
+    bool pathAssigned = false;
+    QString shellParsingPath;
+    const QString normalizedSourcePath = QDir::toNativeSeparators(sourcePath).trimmed();
+    if (normalizedSourcePath.startsWith(QStringLiteral("::")) ||
+        normalizedSourcePath.startsWith(QStringLiteral("shell:"), Qt::CaseInsensitive)) {
+        shellParsingPath = normalizedSourcePath;
+    } else if (normalizedSourcePath.startsWith(QStringLiteral("special:"), Qt::CaseInsensitive)) {
+        const QString clsid = normalizedSourcePath.mid(QStringLiteral("special:").size()).trimmed();
+        if (!clsid.isEmpty()) {
+            shellParsingPath = clsid.startsWith(QLatin1Char('{'))
+                ? QStringLiteral("::") + clsid
+                : QStringLiteral("::%1").arg(clsid);
+        }
+    } else if (normalizedSourcePath.startsWith(QLatin1Char('{')) &&
+               normalizedSourcePath.endsWith(QLatin1Char('}'))) {
+        shellParsingPath = QStringLiteral("::") + normalizedSourcePath;
+    }
+
+    if (!shellParsingPath.isEmpty()) {
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        const std::wstring shellSource = shellParsingPath.toStdWString();
+        if (SUCCEEDED(SHParseDisplayName(shellSource.c_str(), nullptr, &pidl, 0, nullptr)) && pidl) {
+            pathAssigned = SUCCEEDED(shellLink->SetIDList(pidl));
+            CoTaskMemFree(pidl);
+        }
+    }
+
+    if (!pathAssigned) {
+        pathAssigned = SUCCEEDED(shellLink->SetPath(source.c_str()));
+        const QString workingDirectory = QFileInfo(sourcePath).absolutePath();
+        if (!workingDirectory.isEmpty()) {
+            shellLink->SetWorkingDirectory(workingDirectory.toStdWString().c_str());
+        }
+    }
 
     IPersistFile* persistFile = nullptr;
     hr = shellLink->QueryInterface(IID_IPersistFile, reinterpret_cast<void**>(&persistFile));
     bool ok = false;
-    if (SUCCEEDED(hr) && persistFile) {
+    if (pathAssigned && SUCCEEDED(hr) && persistFile) {
         const std::wstring shortcut = QDir::toNativeSeparators(shortcutPath).toStdWString();
         ok = SUCCEEDED(persistFile->Save(shortcut.c_str(), TRUE));
         persistFile->Release();

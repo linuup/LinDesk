@@ -75,6 +75,13 @@ void SelectArea::syncToRect(const QRect& rect)
     setGeometry(rect);
 }
 
+void SelectArea::reloadColorsFromSettings()
+{
+    loadColors();
+    updateVisuals();
+    update();
+}
+
 void SelectArea::loadColors()
 {
     QSettings settings(QCoreApplication::applicationDirPath() + "/config.ini", QSettings::IniFormat);

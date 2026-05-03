@@ -54,7 +54,7 @@ project("LinDesk")
 add_compile_options("/utf-8")
 
 # 查找 Qt5 库
-find_package(Qt5 COMPONENTS Widgets WinExtras Core OpenGL Svg Qml Quick QuickWidgets LinguistTools REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools REQUIRED)
 # 包含 Qt 的 MOC 生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -97,6 +97,7 @@ target_link_libraries(LinDesk
         dwmapi
         Qt5::Widgets
         Qt5::Core
+        Qt5::Network
         Qt5::WinExtras
         Qt5::OpenGL
         Qt5::Svg
@@ -138,9 +139,6 @@ add_custom_command(TARGET LinDesk POST_BUILD
         "$<TARGET_FILE_DIR:LinDesk>/translations"
     COMMENT "Copying translation files to output directory..."
 )
-
-# Plugins Support
-add_subdirectory(Plugins/OCRModule)
 
 # Post-build: Copy OpenSSL DLLs to executable directory
 add_custom_command(TARGET LinDesk POST_BUILD

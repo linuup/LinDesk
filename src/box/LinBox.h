@@ -67,6 +67,7 @@ public:
     QVector<QString> itemPaths() const;
     const QVector<DesktopRootItemState>& itemStates() const { return m_itemStates; }
     bool containsItemPath(const QString& filePath) const;
+    QString hoveredItemPath() const;
     DesktopRootItemState* findItemStateByPath(const QString& filePath);
     const DesktopRootItemState* findItemStateByPath(const QString& filePath) const;
     bool isFolderMapped() const { return !m_mappedFolderPath.isEmpty(); }
@@ -86,6 +87,7 @@ public:
     void setGlassEffect(bool enabled);
 
     void refreshStyles();
+    void refreshSelectionOverlayColor();
 
 signals:
     void geometryChanged(LinBox* box);

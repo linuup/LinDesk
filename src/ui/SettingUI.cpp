@@ -620,6 +620,22 @@ QWidget* SettingUI::createDesktopPage() {
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionRectangleColor", color.name());
         settings.sync();
+
+        if (ListView* lv = ListView::instance()) {
+            if (LinDesktop* desktop = qobject_cast<LinDesktop*>(lv->parentWidget())) {
+                if (desktop->selectArea) {
+                    desktop->selectArea->reloadColorsFromSettings();
+                }
+            }
+
+            const QVector<LinBox*> allBoxes = lv->boxes();
+            for (LinBox* box : allBoxes) {
+                if (box) {
+                    box->refreshSelectionOverlayColor();
+                }
+            }
+        }
+
         updateDesktopSelectionPreview();
     });
 

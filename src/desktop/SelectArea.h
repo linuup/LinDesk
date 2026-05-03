@@ -15,6 +15,7 @@ public:
     void clearAndHide();
     void syncToParent();
     void syncToRect(const QRect& rect);
+    void reloadColorsFromSettings();
 
 private:
     void loadColors();

@@ -212,6 +212,7 @@ public:
 	void setFocusedItemPath(const QString& filePath);
 	void moveFocusInHost(LinBox* box, FocusMoveDirection direction, bool extendSelection, bool focusOnly);
 	QString focusedItemPath() const;
+	QString currentSpaceLookHoveredPath() const;
 	QString anchorItemPath() const;
 	QString draggedItemPath() const;
 	void setDraggedItemPath(const QString& filePath, bool fromBox);
@@ -233,6 +234,7 @@ public:
 	bool handleDroppedPathsOnModel(const QStringList& sourcePaths, const DesktopRootItemModel& targetModel, bool copyMode, bool preferShortcut = false);
 	bool resolveItemModelByPath(const QString& filePath, DesktopRootItemModel& modelOut) const;
 	QRect globalRenameEditorRectForPath(const QString& filePath) const;
+	bool sendPreviewRequestByPath(const QString& filePath);
 	bool openItemByPath(const QString& filePath);
 	bool showPropertiesForPath(const QString& filePath) const;
 
