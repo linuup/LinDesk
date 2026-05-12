@@ -110,6 +110,15 @@ bool LanguageManager::setLanguage(QApplication& app, const QString& languageCode
     return true;
 }
 
+bool LanguageManager::setConfiguredLanguageCode(const QString& languageCode)
+{
+    const QString normalizedCode = normalizeLanguageCode(languageCode);
+    QSettings settings(configPath(), QSettings::IniFormat);
+    settings.setValue("General/Language", normalizedCode);
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
 QString LanguageManager::currentLanguageCode() const
 {
     return m_currentLanguageCode;

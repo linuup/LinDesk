@@ -351,6 +351,11 @@ HWND CSystemApi::global_realDesktop = nullptr;
 //https://github.com/Puellaquae/Desktop-Snake
 void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize)
 {
+    if (!MMEListViewProcess || !hwnd || !buffer || bufferSize <= 0) {
+        return;
+    }
+    buffer[0] = 0;
+
     LVITEM curItem{};
     curItem.cchTextMax = bufferSize;
     curItem.iSubItem = column;
@@ -375,7 +380,11 @@ void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int 
                 // Handle the error accordingly
             }
         }
+    }
+    if (tempItem) {
         VirtualFreeEx(MMEListViewProcess, tempItem, 0, MEM_RELEASE);
+    }
+    if (stringBuffer) {
         VirtualFreeEx(MMEListViewProcess, stringBuffer, 0, MEM_RELEASE);
     }
 }
@@ -624,12 +633,19 @@ vector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
     DWORD processId;
     GetWindowThreadProcessId(sysListView32, &processId);
     HANDLE hProcess = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION, FALSE, processId);
+    if (!hProcess) {
+        return iconItemList;
+    }
     LPVOID ori = VirtualAllocEx(hProcess, NULL, sizeof(POINT), MEM_COMMIT, PAGE_READWRITE);
+    if (!ori) {
+        CloseHandle(hProcess);
+        return iconItemList;
+    }
     POINT point = {};
     for (int i = 0; i < ListView_GetItemCount(sysListView32); i++)
     {
         //閸ョ偓鐖ｉ崥宥囆?
-        TCHAR Object[512];
+        TCHAR Object[512] = {};
         //閸ョ偓鐖ｆ担宥囩枂
         ListView_GetItemPosition(sysListView32, i, ori);
         ReadProcessMemory(hProcess, ori, &point, sizeof(POINT), NULL);
@@ -891,6 +907,10 @@ void CSystemApi::GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid
 
 const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
 {
+    if (!filePath || filePath[0] == '\0') {
+        return nullptr;
+    }
+
     // 閸旂姾娴?DLL 閺傚洣娆?
     HMODULE hModule = LoadLibraryA(filePath);
     if (hModule == NULL) {
@@ -922,6 +942,9 @@ const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
 
 const char* CSystemApi::GetTextFromDll(const char* input)
 {
+    if (!input || input[0] == '\0') {
+        return nullptr;
+    }
     
     const char* str = nullptr;
     ResourceInfo ri = Tool::GetResourceInfo(input);
@@ -1127,6 +1150,10 @@ bool CSystemApi::DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm)
 
 PathType CSystemApi::GetPathType(const wchar_t* filePath)
 {
+    if (!filePath || filePath[0] == L'\0') {
+        return InvalidPath;
+    }
+
     // Check for virtual Shell CLSID paths (e.g., ::{20D04FE0-3AEA-1069-A2D8-08002B30309D})
     if (filePath && wcsncmp(filePath, L"::", 2) == 0) {
         return DirectoryPath; // Virtual folders behave like directories for most Shell operations
@@ -1179,8 +1206,10 @@ void CSystemApi::File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_
         break;
     case Z_CREATE_SHORTCUT:
         shell.lpVerb = TEXT("create shortcut");
+        break;
     case Z_DELETE:
         shell.lpVerb = TEXT("delete");
+        break;
     case Z_PROPERTIES:
         shell.lpVerb = TEXT("properties");
         break;

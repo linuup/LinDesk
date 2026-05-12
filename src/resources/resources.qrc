@@ -1,7 +1,14 @@
 <RCC>
     <qresource prefix="/">
         <file>Assets/BoxPreview.png</file>
+        <file>Assets/DesktopLivePreview.png</file>
         <file>Assets/icon.png</file>
+        <file>Assets/Segoe Fluent Icons.ttf</file>
+        <file>Assets/sidebar-general.png</file>
+        <file>Assets/sidebar-desktop.png</file>
+        <file>Assets/sidebar-box.png</file>
+        <file>Assets/sidebar-plugins.png</file>
+        <file>Assets/sidebar-about.png</file>
         <file>Assets/folder-share.svg</file>
         <file>Assets/folder-share1.svg</file>
         <file>Assets/settings.svg</file>

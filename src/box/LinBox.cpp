@@ -29,6 +29,7 @@
 #include <vector>
 #include "ui/SettingUI.h"
 #include "desktop/ListView.h"
+#include "desktop/FilenameEditor.h"
 #include "desktop/DesktopRootItemState.h"
 #include "app/AppFonts.h"
 #include "desktop/ListViewFileOpsHelper.h"
@@ -77,9 +78,32 @@ QString normalizeMappedFolderPath(const QString& path)
     return normalized;
 }
 
-HBITMAP cachedMenuBitmap(const QString& cacheKey, const QIcon& icon, const QWidget* widget)
+QHash<QString, HBITMAP>& menuBitmapCache()
 {
     static QHash<QString, HBITMAP> cache;
+    return cache;
+}
+
+void clearMenuBitmapCache()
+{
+    QHash<QString, HBITMAP>& cache = menuBitmapCache();
+    for (HBITMAP bitmap : cache) {
+        if (bitmap) {
+            DeleteObject(bitmap);
+        }
+    }
+    cache.clear();
+}
+
+HBITMAP cachedMenuBitmap(const QString& cacheKey, const QIcon& icon, const QWidget* widget)
+{
+    static bool cleanupRegistered = false;
+    if (!cleanupRegistered) {
+        qAddPostRoutine(clearMenuBitmapCache);
+        cleanupRegistered = true;
+    }
+
+    QHash<QString, HBITMAP>& cache = menuBitmapCache();
 
     if (icon.isNull()) {
         return nullptr;
@@ -183,6 +207,26 @@ bool isDesktopOrBoxDragSource(const QObject* source)
 bool isRealSystemIconModel(const DesktopRootItemModel& model)
 {
     return model.itemData.isRealSpecialFolderIcon();
+}
+
+bool isForbiddenDropTarget(const DesktopRootItemModel& model)
+{
+    const QString clsid = model.itemData.getCLSID();
+    return clsid == APP_MY_COMPUTER_CLS ||
+        clsid == APP_NETWORK_CLS ||
+        clsid == APP_CONTROL_PANEL_CLS;
+}
+
+bool isRecycleBinDropTarget(const DesktopRootItemModel& model)
+{
+    return model.itemData.getCLSID() == APP_RECYCLE_BIN_CLS;
+}
+
+bool isFolderDropTarget(const DesktopRootItemModel& model)
+{
+    return model.objectType == ObjectType::Folder_ObjectType ||
+        model.objectType == ObjectType::SpecialFolder ||
+        model.objectType == ObjectType::DiskLetter;
 }
 
 bool shouldCreateShortcutForMappedFolderDrop(ListView* lv,
@@ -900,7 +944,28 @@ quint64 LinBox::currentLayoutVisualSignature() const
 void LinBox::rebuildItemRenderData(DesktopRootItemState& state, const DesktopRenderParams& params)
 {
     state.model.renderData = buildRenderDataFromModel(state.model, params);
-    state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+    if (state.model.isRenaming) {
+        const QString editorText = state.model.expandedPreviewText.isEmpty()
+            ? state.model.displayName
+            : state.model.expandedPreviewText;
+        QRect editorRect = state.model.renderData.renameEditorRect;
+        editorRect.setHeight(FilenameEditor::heightForText(
+            editorText,
+            state.model.renderData.labelFont,
+            editorRect.width(),
+            0));
+        state.model.renderData.renameEditorRect = editorRect;
+        state.model.renderData.selectionContentRect = editorRect;
+        const qreal dpiScale = devicePixelRatioF();
+        auto sp = [dpiScale](int value) {
+            return qMax(1, qRound(value * dpiScale));
+        };
+        state.model.renderData.outerHighlightRect = editorRect.adjusted(-sp(3), -sp(3), sp(3), sp(3));
+        state.model.renderData.innerHighlightRect = editorRect.adjusted(sp(1), sp(1), -sp(1), -sp(1));
+        state.model.visibleTextHeight = QFontMetrics(state.model.renderData.labelFont).lineSpacing();
+    } else {
+        state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
+    }
     state.renderDataDirty = false;
 }
 
@@ -916,6 +981,11 @@ void LinBox::refreshLayout() {
         m_mainLayout->activate();
     }
     if (m_scrollArea) {
+        const bool renameActive = hasActiveItemRename();
+        m_scrollArea->setVerticalScrollBarPolicy(renameActive ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded);
+        if (QScrollBar* bar = m_scrollArea->verticalScrollBar()) {
+            bar->setEnabled(!renameActive);
+        }
         m_scrollArea->updateGeometry();
     }
     const int viewportW = (m_scrollArea && m_scrollArea->viewport()) ? m_scrollArea->viewport()->width() : 0;
@@ -1503,6 +1573,9 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                 }
             }
         }
+        if (hasActiveItemRename() && event->type() == QEvent::Wheel) {
+            return true;
+        }
     }
 
     if (watched == m_titleBar && event->type() == QEvent::Paint) {
@@ -1867,6 +1940,63 @@ bool LinBox::startItemDrag(const QPoint& boxPos)
     lv->setDraggedItemPath(m_pressedItemPath, true);
     QDrag drag(this);
     drag.setMimeData(mimeData);
+
+    QSet<QString> dragPathSet;
+    for (const QString& path : dragPaths) {
+        dragPathSet.insert(normalizeBoxItemPath(path));
+    }
+
+    QVector<DesktopRootItemRenderData> ghostItems;
+    QRect ghostBounds;
+    for (const DesktopRootItemState& state : m_itemStates) {
+        if (!dragPathSet.contains(normalizeBoxItemPath(state.model.filePath))) {
+            continue;
+        }
+
+        const DesktopRootItemRenderData& renderData = state.model.renderData;
+        if (renderData.itemRect.isNull() || !renderData.itemRect.size().isValid()) {
+            continue;
+        }
+
+        ghostItems.append(renderData);
+        ghostBounds = ghostBounds.isNull()
+            ? renderData.itemRect
+            : ghostBounds.united(renderData.itemRect);
+    }
+
+    if (ghostItems.isEmpty()) {
+        const DesktopRootItemState* dragState = findItemStateByPath(m_pressedItemPath);
+        if (dragState && !dragState->model.renderData.itemRect.isNull() && dragState->model.renderData.itemRect.size().isValid()) {
+            ghostItems.append(dragState->model.renderData);
+            ghostBounds = dragState->model.renderData.itemRect;
+        }
+    }
+
+    if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
+        QPixmap ghostPixmap(ghostBounds.size());
+        ghostPixmap.fill(Qt::transparent);
+
+        QPainter painter(&ghostPixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.setRenderHint(QPainter::TextAntialiasing);
+        painter.translate(-ghostBounds.topLeft());
+        for (const DesktopRootItemRenderData& renderData : ghostItems) {
+            paintDesktopRootItemGhost(painter, renderData);
+        }
+        painter.end();
+
+        QPoint contentPressPos = m_contentArea
+            ? m_contentArea->mapFrom(this, m_pressedItemBoxPos)
+            : m_pressedItemBoxPos;
+        QPoint hotSpot = contentPressPos - ghostBounds.topLeft();
+        hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, ghostPixmap.width() - 1)));
+        hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, ghostPixmap.height() - 1)));
+
+        drag.setPixmap(ghostPixmap);
+        drag.setHotSpot(hotSpot);
+    }
+
     drag.exec(Qt::CopyAction | Qt::MoveAction | Qt::LinkAction, Qt::MoveAction);
     lv->clearDraggedItemPath(true);
     return true;
@@ -2301,6 +2431,40 @@ const DesktopRootItemState* LinBox::hitItemStateAt(const QPoint& boxPos) const
     return nullptr;
 }
 
+const DesktopRootItemState* LinBox::dropTargetItemStateAt(const QPoint& boxPos) const
+{
+    if (!m_contentArea) {
+        return nullptr;
+    }
+
+    const QPoint contentPos = m_contentArea->mapFromGlobal(mapToGlobal(boxPos));
+    for (int i = m_itemStates.size() - 1; i >= 0; --i) {
+        const DesktopRootItemState& state = m_itemStates[i];
+        QRect targetRect = state.model.renderData.selectionContentRect
+            .united(state.model.renderData.itemRect);
+        if (m_showType == BoxShowType::List_ShowType) {
+            const int marginLeft = scaledPx(this, kBaseItemMarginLeft);
+            const int rightEdge = qMax(targetRect.right(), m_contentArea->width() - marginLeft - 1);
+            targetRect.setLeft(qMin(targetRect.left(), marginLeft));
+            targetRect.setRight(rightEdge);
+        }
+        if (targetRect.contains(contentPos)) {
+            return &state;
+        }
+    }
+    return nullptr;
+}
+
+bool LinBox::hasActiveItemRename() const
+{
+    for (const DesktopRootItemState& state : m_itemStates) {
+        if (state.model.isRenaming) {
+            return true;
+        }
+    }
+    return false;
+}
+
 DesktopRootItemState* LinBox::findItemStateByPath(const QString& filePath)
 {
     return const_cast<DesktopRootItemState*>(
@@ -2576,6 +2740,142 @@ void LinBox::showDropTipForItem(const DesktopRootItemState* state, const QPoint&
     m_dragTip->showAt(mapToGlobal(targetPos));
 }
 
+bool LinBox::handleMappedBoxItemTargetDrop(const QStringList& sourcePaths,
+                                           const DesktopRootItemState* targetState,
+                                           bool copyMode,
+                                           bool preferShortcut,
+                                           QDropEvent* event)
+{
+    ListView* lv = ListView::instance();
+    if (!lv || !event || !isFolderMapped() || !targetState) {
+        return false;
+    }
+
+    const DesktopRootItemModel& targetModel = targetState->model;
+    const QString targetPath = QDir::toNativeSeparators(targetModel.filePath);
+    const QStringList operationPaths = sourcePaths;
+    const QString operationName = preferShortcut
+        ? QStringLiteral("shortcut")
+        : (copyMode ? QStringLiteral("copy") : QStringLiteral("move"));
+    const auto finishIgnored = [&]() {
+        qDebug() << "[MappedBoxDrop] result=ignored";
+        event->ignore();
+        return true;
+    };
+
+    qDebug() << "[MappedBoxDrop] target item"
+             << "sources=" << operationPaths
+             << "target=" << targetPath
+             << "type=" << static_cast<int>(targetModel.objectType)
+             << "operation=" << operationName;
+
+    if (operationPaths.isEmpty() || targetPath.isEmpty()) {
+        qDebug() << "[MappedBoxDrop] ignored empty source or target";
+        return finishIgnored();
+    }
+
+    if (isForbiddenDropTarget(targetModel)) {
+        qDebug() << "[MappedBoxDrop] forbidden target"
+                 << "operation=" << operationName;
+        event->setDropAction(Qt::IgnoreAction);
+        return finishIgnored();
+    }
+
+    for (const QString& sourcePath : operationPaths) {
+        if (normalizeBoxItemPath(sourcePath) == normalizeBoxItemPath(targetPath)) {
+            qDebug() << "[MappedBoxDrop] ignored self target" << targetPath;
+            return finishIgnored();
+        }
+    }
+
+    const Qt::DropAction dropAction = preferShortcut
+        ? Qt::LinkAction
+        : (copyMode ? Qt::CopyAction : Qt::MoveAction);
+
+    if (isRecycleBinDropTarget(targetModel)) {
+        ListView::DropInteractionOptions options;
+        options.copyMode = copyMode;
+        options.preferShortcut = preferShortcut;
+        options.finalizeMovedSourcesAfterSuccess = true;
+        const bool ok = lv->handleDroppedPathsOnItemTarget(operationPaths, targetModel, options);
+        qDebug() << "[MappedBoxDrop] recycle operation result"
+                 << "target=" << targetPath
+                 << "operation=" << operationName
+                 << "result=" << ok;
+
+        if (!ok) {
+            return finishIgnored();
+        }
+
+        lv->reloadMappedFolderBox(this);
+        refreshLayout();
+        update();
+        raise();
+        lv->requestSaveBoxes();
+        event->setDropAction(dropAction);
+        event->accept();
+        return true;
+    }
+
+    if (isFolderDropTarget(targetModel)) {
+        const QString targetFolder = normalizeMappedFolderPath(targetPath);
+        const std::vector<std::wstring> srcPaths = toNativeWStringPaths(operationPaths);
+        if (targetFolder.isEmpty() || srcPaths.empty()) {
+            qDebug() << "[MappedBoxDrop] ignored invalid folder operation"
+                     << "targetFolder=" << targetFolder;
+            return finishIgnored();
+        }
+
+        bool ok = false;
+        if (preferShortcut) {
+            ok = lv->createShortcutsInFolder(operationPaths, targetFolder);
+        } else if (copyMode) {
+            ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
+        } else {
+            ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
+        }
+
+        qDebug() << "[MappedBoxDrop] folder operation result"
+                 << "targetFolder=" << targetFolder
+                 << "operation=" << operationName
+                 << "result=" << ok;
+
+        if (!ok) {
+            return finishIgnored();
+        }
+
+        if (!copyMode && !preferShortcut) {
+            lv->finalizeMovedModelSourcesAfterFileOp(operationPaths);
+        }
+        lv->reloadMappedFolderBox(this);
+        refreshLayout();
+        update();
+        raise();
+        lv->requestSaveBoxes();
+        event->setDropAction(dropAction);
+        event->accept();
+        return true;
+    }
+
+    ListView::DropInteractionOptions options;
+    options.copyMode = copyMode;
+    options.preferShortcut = preferShortcut;
+    options.finalizeMovedSourcesAfterSuccess = true;
+    const bool ok = lv->handleDroppedPathsOnItemTarget(operationPaths, targetModel, options);
+    qDebug() << "[MappedBoxDrop] generic item operation result"
+             << "target=" << targetPath
+             << "operation=" << operationName
+             << "result=" << ok;
+
+    if (!ok) {
+        return finishIgnored();
+    }
+
+    event->setDropAction(dropAction);
+    event->accept();
+    return true;
+}
+
 void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     if (!event->mimeData()->hasUrls()) {
         event->ignore();
@@ -2587,7 +2887,7 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
     const bool isCtrl = (effectiveModifiers & Qt::ControlModifier);
     const bool isInternalDrag = isDesktopOrBoxDragSource(event->source());
     const QStringList paths = lv ? lv->resolveDraggedLocalPaths(event->mimeData()) : QStringList();
-    const DesktopRootItemState* hitState = hitItemStateAt(event->pos());
+    const DesktopRootItemState* hitState = dropTargetItemStateAt(event->pos());
     const QStringList orderedPaths = (isInternalDrag && lv)
         ? lv->orderedDraggedPaths(paths)
         : QStringList();
@@ -2704,7 +3004,7 @@ void LinBox::previewGhostDropAt(const QPoint& boxPos, const QStringList& dragged
 
     const Qt::KeyboardModifiers effectiveModifiers = effectiveDragModifiers(modifiers);
     const bool isCtrl = (effectiveModifiers & Qt::ControlModifier);
-    const DesktopRootItemState* hitState = hitItemStateAt(boxPos);
+    const DesktopRootItemState* hitState = dropTargetItemStateAt(boxPos);
     const QStringList orderedPaths = lv->orderedDraggedPaths(draggedPaths);
     const bool preferShortcutForDrop = isFolderMapped()
         ? shouldCreateShortcutForMappedFolderDrop(lv, true, orderedPaths, draggedPaths, effectiveModifiers)
@@ -2769,7 +3069,7 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
     const bool isCtrl = (effectiveModifiers & Qt::ControlModifier);
     const bool isInternalDrag = isDesktopOrBoxDragSource(event->source());
     const QStringList paths = lv ? lv->resolveDraggedLocalPaths(event->mimeData()) : QStringList();
-    const DesktopRootItemState* hitState = hitItemStateAt(event->pos());
+    const DesktopRootItemState* hitState = dropTargetItemStateAt(event->pos());
     const QStringList orderedPaths = (isInternalDrag && lv)
         ? lv->orderedDraggedPaths(paths)
         : QStringList();
@@ -2890,7 +3190,7 @@ void LinBox::dropEvent(QDropEvent* event) {
     const bool preferShortcutForDrop = isFolderMapped()
         ? shouldCreateShortcutForMappedFolderDrop(lv, isInternalDrag, orderedPaths, paths, effectiveModifiers)
         : lv->shouldPreferShortcutForDrop(paths, effectiveModifiers, !isInternalDrag);
-    const DesktopRootItemState* hitState = hitItemStateAt(event->pos());
+    const DesktopRootItemState* hitState = dropTargetItemStateAt(event->pos());
     auto pathSetContains = [this](const QStringList& valuePaths, const QString& targetPath) {
         const QString normalizedTarget = normalizeBoxItemPath(targetPath);
         for (const QString& path : valuePaths) {
@@ -2901,20 +3201,31 @@ void LinBox::dropEvent(QDropEvent* event) {
         return false;
     };
 
+    if (isFolderMapped() && hitState) {
+        clearReorderPreview();
+        if (pathSetContains(paths, hitState->model.filePath)) {
+            qDebug() << "[MappedBoxDrop] ignored selected target"
+                     << "sources=" << paths
+                     << "target=" << hitState->model.filePath;
+            event->ignore();
+            return;
+        }
+        handleMappedBoxItemTargetDrop(operationPaths, hitState, copyMode, preferShortcutForDrop, event);
+        return;
+    }
+
     if (hitState && !pathSetContains(paths, hitState->model.filePath)) {
         clearReorderPreview();
-        const QString clsid = hitState->model.itemData.getCLSID();
-        const bool targetPerformsFileMove = (clsid == APP_RECYCLE_BIN_CLS) ||
-            (hitState->model.objectType == ObjectType::Folder_ObjectType ||
-             hitState->model.objectType == ObjectType::SpecialFolder ||
-             hitState->model.objectType == ObjectType::DiskLetter);
-        if (lv->handleDroppedPathsOnModel(operationPaths, hitState->model, copyMode, preferShortcutForDrop)) {
-            if (isFolderMapped() && !copyMode && !preferShortcutForDrop && targetPerformsFileMove) {
-                lv->finalizeMovedModelSourcesAfterFileOp(operationPaths);
-                lv->reloadMappedFolderBox(this);
-                refreshLayout();
-                update();
-            }
+        ListView::DropInteractionOptions options;
+        options.copyMode = copyMode;
+        options.preferShortcut = preferShortcutForDrop;
+        options.finalizeMovedSourcesAfterSuccess = isInternalDrag;
+        if (lv->handleDroppedPathsOnItemTarget(operationPaths, hitState->model, options)) {
+            refreshLayout();
+            update();
+            raise();
+            lv->requestSaveBoxes();
+            event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
             event->accept();
         } else {
             event->ignore();
@@ -2925,18 +3236,39 @@ void LinBox::dropEvent(QDropEvent* event) {
     if (isFolderMapped()) {
         clearReorderPreview();
         if (mappedFolderState() != MappedFolderState::Normal) {
+            qDebug() << "[MappedBoxDrop] target background"
+                     << "sources=" << operationPaths
+                     << "target=" << mappedFolderPath()
+                     << "type=background"
+                     << "operation=ignored"
+                     << "result=invalid mapped folder";
             event->ignore();
             return;
         }
 
         const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
+        const QString operationName = preferShortcutForDrop
+            ? QStringLiteral("shortcut")
+            : (copyMode ? QStringLiteral("copy") : QStringLiteral("move"));
         const bool isInternalSameFolderMove = isInternalDrag && !copyMode && !preferShortcutForDrop && areAllPathsDirectChildrenOfFolder(paths, targetFolder);
         if (isInternalSameFolderMove) {
+            qDebug() << "[MappedBoxDrop] target background"
+                     << "sources=" << operationPaths
+                     << "target=" << targetFolder
+                     << "type=background"
+                     << "operation=noop"
+                     << "result=same mapped root";
             event->accept();
             return;
         }
         const std::vector<std::wstring> srcPaths = toNativeWStringPaths(operationPaths);
         if (targetFolder.isEmpty() || srcPaths.empty()) {
+            qDebug() << "[MappedBoxDrop] target background"
+                     << "sources=" << operationPaths
+                     << "target=" << targetFolder
+                     << "type=background"
+                     << "operation=" << operationName
+                     << "result=invalid paths";
             event->ignore();
             return;
         }
@@ -2949,6 +3281,13 @@ void LinBox::dropEvent(QDropEvent* event) {
         } else {
             ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
         }
+
+        qDebug() << "[MappedBoxDrop] target background"
+                 << "sources=" << operationPaths
+                 << "target=" << targetFolder
+                 << "type=background"
+                 << "operation=" << operationName
+                 << "result=" << ok;
 
         if (ok && !copyMode && !preferShortcutForDrop) {
             lv->finalizeMovedModelSourcesAfterFileOp(operationPaths);
@@ -3473,8 +3812,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     const POINT* position = &p;
     HWND ownerHwnd = (HWND)this->winId();
 
-    // Update paste state before showing menu
-    RightMenu::getInstance()->updatePasteActionsState();
+    RightMenu::getInstance()->preparePasteActionsForMenu();
     scm.DisplayBoxBackgroundContextMenu();
     const QString contextPath = isFolderMapped()
         ? normalizeMappedFolderPath(mappedFolderPath())
@@ -3485,6 +3823,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 
     std::vector<ShellContextMenu::CustomMenuItem> items;
     std::vector<ShellContextMenu::CustomMenuItem> boxItems;
+    const QPointer<LinBox> boxGuard(this);
 
     // 1. Add Box-specific context actions
     // Rename Box
@@ -3492,7 +3831,11 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     QIcon renameIcon(":/Assets/rename.svg");
     renameItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.rename"), renameIcon, this);
     renameItem.text = tr("Rename Box").toStdWString();
-    renameItem.callback = [this]() { this->beginTitleEditing(); };
+    renameItem.callback = [boxGuard]() {
+        if (boxGuard) {
+            boxGuard->beginTitleEditing();
+        }
+    };
     boxItems.push_back(renameItem);
 
     if (isFolderMapped()) {
@@ -3500,8 +3843,10 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
         QIcon remapIcon(":/Assets/change_Mapped_Folder.svg");
         remapItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.remap"), remapIcon, this);
         remapItem.text = tr("Change Mapped Folder").toStdWString();
-        remapItem.callback = [this]() {
-            remapMappedFolderInteractively();
+        remapItem.callback = [boxGuard]() {
+            if (boxGuard) {
+                boxGuard->remapMappedFolderInteractively();
+            }
         };
         boxItems.push_back(remapItem);
     }
@@ -3519,10 +3864,12 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
         viewIcon,
         this);
     viewItem.text = (m_showType == BoxShowType::Icon_ShowType ? tr("List View") : tr("Icon View")).toStdWString();
-    viewItem.callback = [this]() {
-        this->setShowType(this->m_showType == BoxShowType::Icon_ShowType
+    viewItem.callback = [boxGuard]() {
+        if (boxGuard) {
+            boxGuard->setShowType(boxGuard->m_showType == BoxShowType::Icon_ShowType
                         ? BoxShowType::List_ShowType
                         : BoxShowType::Icon_ShowType);
+        }
     };
     boxItems.push_back(viewItem);
 
@@ -3531,9 +3878,9 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     QIcon settingsIcon(":/Assets/settings.svg");
     settingsItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.settings"), settingsIcon, this);
     settingsItem.text = tr("Box Settings").toStdWString();
-    settingsItem.callback = [this]() {
-        if (ListView::instance()) {
-            ListView::instance()->showSettings(this);
+    settingsItem.callback = [boxGuard]() {
+        if (boxGuard && ListView::instance()) {
+            ListView::instance()->showSettings(boxGuard.data());
         }
     };
     boxItems.push_back(settingsItem);
@@ -3543,7 +3890,11 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     destroyItem.text = tr("Destroy Box").toStdWString();
     QIcon icon(":/Assets/destroy.svg");
     destroyItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.destroy"), icon, this);
-    destroyItem.callback = [this]() { emit destroyRequested(this); };
+    destroyItem.callback = [boxGuard]() {
+        if (boxGuard) {
+            emit boxGuard->destroyRequested(boxGuard.data());
+        }
+    };
     boxItems.push_back(destroyItem);
 
     // 2. Get shared actions from RightMenu and convert them

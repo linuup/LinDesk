@@ -17,11 +17,13 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QAction>
+#include <QPointer>
 #include "ui/Fluent/FluentBaseWidget.h"
 #include <QCloseEvent>
 
 class LinBox;
 class QStackedWidget;
+class QTimer;
 class FluentToggleSwitch;
 class FluentCard;
 class FluentComboBox;
@@ -37,11 +39,18 @@ protected:
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void initUI();
     void setupStyles();
-    void retranslateUi();
+    void updateSidebarItemHeights();
+    void scheduleResizeRefresh(int delayMs = 24);
+    void refreshAfterResize();
+    int livePreviewHeightForWindow() const;
+    void updateLivePreviewHeights();
+    void syncScrollablePageWidths();
+    void updateWindowControlButtons();
     QString startupShortcutPath() const;
     bool isLaunchAtLoginEnabled() const;
     bool setLaunchAtLoginEnabled(bool enabled);
@@ -62,8 +71,8 @@ private:
     void restoreFromTray();
     void exitFromTray();
 
-    LinBox* m_targetBox;
-    QVector<LinBox*> m_allBoxes;
+    QPointer<LinBox> m_targetBox;
+    QVector<QPointer<LinBox>> m_allBoxes;
 
     QLabel* m_titleBarTitle = nullptr;
     QListWidget* m_sidebar = nullptr;
@@ -85,10 +94,14 @@ private:
     QLabel* m_previewLabel = nullptr;
     QLabel* m_previewBackground = nullptr;
     QLabel* m_desktopSelectionPreview = nullptr;
+    QWidget* m_desktopPreviewContainer = nullptr;
+    QWidget* m_boxPreviewContainer = nullptr;
+    QWidget* m_desktopSelectionPanel = nullptr;
     QLabel* m_selectionColorSectionTitle = nullptr;
     QLabel* m_selectionColorSectionSubtitle = nullptr;
     QLabel* m_boxColorSectionTitle = nullptr;
     QLabel* m_boxColorSectionSubtitle = nullptr;
+    QWidget* m_boxColorPresetsRow = nullptr;
 
     FluentCard* m_autoStartCard = nullptr;
     FluentCard* m_trayOnlyCard = nullptr;
@@ -108,6 +121,7 @@ private:
     FluentToggleSwitch* m_windows11ContextMenuToggle = nullptr;
     FluentColorWheel* m_selectionColorWheel = nullptr;
     QLineEdit* m_selectionColorValueEdit = nullptr;
+    QLineEdit* m_boxColorValueEdit = nullptr;
 
     QSlider* m_opacitySlider = nullptr;
     QLabel* m_opacityLabelValue = nullptr;
@@ -121,6 +135,10 @@ private:
     QMenu* m_trayMenu = nullptr;
     QAction* m_showTrayAction = nullptr;
     QAction* m_exitTrayAction = nullptr;
+    QPushButton* m_settingsMinBtn = nullptr;
+    QPushButton* m_settingsMaxBtn = nullptr;
+    QPushButton* m_settingsCloseBtn = nullptr;
+    QTimer* m_resizeRefreshTimer = nullptr;
     bool m_isQuittingFromTray = false;
     bool m_hasShownTrayHint = false;
 };

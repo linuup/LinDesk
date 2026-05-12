@@ -1,7 +1,22 @@
 # CMakeLists.txt for a Qt project that creates a window and draws text with QPainter
 cmake_minimum_required(VERSION 3.31)
 
-#C++17 标准
+# ========== 版本定义 - 单一源 ==========
+# 修改版本号只需改这里
+set(LINDESK_VERSION_MAJOR 1)
+set(LINDESK_VERSION_MINOR 0)
+set(LINDESK_VERSION_PATCH 1)
+set(LINDESK_VERSION_TAG "Stable")  # 可选: Alpha, Beta, RC, Stable 等
+
+# 生成完整版本字符串
+set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
+set(LINDESK_VERSION_FULL "${LINDESK_VERSION} ${LINDESK_VERSION_TAG}")
+
+# 设置安装器输出目录（可自定义）
+set(LINDESK_OUTPUT_DIR "${CMAKE_BINARY_DIR}")
+set(LINDESK_INSTALLER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/installer")
+
+# ========== C++ 标准 ==========
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 使用 Unicode
@@ -49,7 +64,21 @@ if(NOT CMAKE_TOOLCHAIN_FILE OR NOT EXISTS "${CMAKE_TOOLCHAIN_FILE}")
 endif()
 # -------------------------
 
-project("LinDesk")
+project(LinDesk VERSION "${LINDESK_VERSION}")
+
+# 配置 Version.h
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/app/Version.h.in"
+    "${CMAKE_BINARY_DIR}/include/LinDesk/Version.h"
+    @ONLY
+)
+
+# 配置 package.iss（输出到 installer 目录）
+configure_file(
+    "${CMAKE_SOURCE_DIR}/installer/package.iss.in"
+    "${CMAKE_SOURCE_DIR}/installer/package.iss"
+    @ONLY
+)
 
 add_compile_options("/utf-8")
 
@@ -108,6 +137,7 @@ target_link_libraries(LinDesk
 )
 target_include_directories(LinDesk
     PRIVATE
+        ${CMAKE_BINARY_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/app
@@ -122,12 +152,30 @@ target_include_directories(LinDesk
         ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins
 )
 
+option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)
+if(LINDESK_BUILD_OCR_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/OCRModule/CMakeLists.txt")
+    add_subdirectory("Plugins/OCRModule")
+endif()
+
 set(TS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_en_US.ts
     ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_zh_CN.ts
 )
 
-qt5_add_translation(QM_FILES ${TS_FILES})
+# 复制并配置 ts 文件（替换版本号占位符）
+set(TS_FILES_CONFIGURED)
+foreach(TS_FILE ${TS_FILES})
+    get_filename_component(TS_NAME ${TS_FILE} NAME)
+    set(CONFIGURED_TS_FILE "${CMAKE_BINARY_DIR}/translations/${TS_NAME}")
+    configure_file(
+        ${TS_FILE}
+        ${CONFIGURED_TS_FILE}
+        @ONLY
+    )
+    list(APPEND TS_FILES_CONFIGURED ${CONFIGURED_TS_FILE})
+endforeach()
+
+qt5_add_translation(QM_FILES ${TS_FILES_CONFIGURED})
 
 add_custom_target(translations ALL DEPENDS ${QM_FILES})
 add_dependencies(LinDesk translations)
@@ -139,6 +187,9 @@ add_custom_command(TARGET LinDesk POST_BUILD
         "$<TARGET_FILE_DIR:LinDesk>/translations"
     COMMENT "Copying translation files to output directory..."
 )
+
+# 确保构建目录存在（用于 ts 文件配置）
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/translations")
 
 # Post-build: Copy OpenSSL DLLs to executable directory
 add_custom_command(TARGET LinDesk POST_BUILD

@@ -129,3 +129,22 @@ inline void paintDesktopRootItem(QPainter& painter, const DesktopRootItemRenderD
     desktop_render_cache_helper::paintDesktopRootItemStaticElements(painter, item);
     painter.restore();
 }
+
+inline void paintDesktopRootItemGhost(QPainter& painter, const DesktopRootItemRenderData& item)
+{
+    if (item.itemRect.isNull()) return;
+
+    DesktopRootItemRenderData ghostItem = item;
+    ghostItem.selected = false;
+    ghostItem.hovered = false;
+    ghostItem.cutMarked = false;
+    ghostItem.shortcutArrowRect = QRect();
+    ghostItem.shortcutArrowPixmap = QPixmap();
+    ghostItem.staticContentPixmap = QPixmap();
+
+    painter.save();
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, painter.renderHints().testFlag(QPainter::SmoothPixmapTransform));
+    painter.setRenderHint(QPainter::TextAntialiasing, painter.renderHints().testFlag(QPainter::TextAntialiasing));
+    desktop_render_cache_helper::paintDesktopRootItemStaticElements(painter, ghostItem);
+    painter.restore();
+}

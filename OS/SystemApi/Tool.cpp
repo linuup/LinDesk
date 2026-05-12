@@ -41,6 +41,10 @@ unique_pidl_absolute Tool::GetRootPidl()
 
 HRESULT Tool::BindToIdl(PIDLIST_ABSOLUTE pidl, REFIID riid, void** ppv)
 {
+    if (!pidl || !ppv) {
+        return E_INVALIDARG;
+    }
+
     wil::com_ptr_nothrow<IShellFolder> desktop;
     HRESULT hr = SHGetDesktopFolder(&desktop);
     if (FAILED(hr))
@@ -79,6 +83,9 @@ ResourceInfo Tool::GetResourceInfo(const char* input)
 {
     //std::unique_ptr<ResourceInfo> uptr(new ResourceInfo());
     ResourceInfo ri;
+    if (!input || input[0] == '\0') {
+        return ri;
+    }
     //ResourceInfo* uptr = nullptr;
     // Find the last occurrence of ',' in the input string  
     const char* commaPos = strrchr(input, ',');

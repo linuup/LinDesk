@@ -44,6 +44,7 @@ class DesktopQuadTree;
 class FluentInfoTip;
 class ListViewSelectionController;
 class ListViewMappedBoxHelper;
+class ListViewDebugPanel;
 
 class ListView : public QWidget {
 	Q_OBJECT
@@ -225,6 +226,15 @@ public:
 	bool shouldPreferShortcutForDrop(const QStringList& sourcePaths, Qt::KeyboardModifiers modifiers, bool isExternalSource) const;
 	bool createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const;
 	QStringList resolveDraggedLocalPaths(const QMimeData* mimeData) const;
+	struct DropInteractionOptions {
+		bool copyMode = false;
+		bool preferShortcut = false;
+		bool preHideDesktopSources = false;
+		bool finalizeMovedSourcesAfterSuccess = false;
+	};
+	bool handleDroppedPathsOnItemTarget(const QStringList& sourcePaths,
+	                                    const DesktopRootItemModel& targetModel,
+	                                    const DropInteractionOptions& options);
 	bool handleDroppedPathsOnDesktopTarget(const QStringList& sourcePaths,
 	                                       const DesktopRootItemModel& targetModel,
 	                                       bool copyMode,
@@ -291,6 +301,7 @@ public:
 	void refreshCheckedItem(QRect rect);
 	void showSettings(LinBox* target = nullptr);
 	void showTransientTip(const QString& message, int autoHideMs = 2500);
+	void showDebugPanel();
 
 	// 调试工具
 	QString dumpAllItemsJson() const;
@@ -319,7 +330,7 @@ protected:
 	void dropEvent(QDropEvent* event) override;
 	void enterEvent(QEvent* event) override;
 	void leaveEvent(QEvent* event) override;
-	//bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
+	bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
 	void handleHotkey(int id);
 
 private:
@@ -472,6 +483,7 @@ private:
 	// UI组件
 	RightMenu* rightMenu;
 	QPointer<SettingUI> m_settingsWindow;
+	QPointer<ListViewDebugPanel> m_debugPanel;
 	QLabel* m_dragTip = nullptr;
 	FluentInfoTip* m_infoTip = nullptr;
 

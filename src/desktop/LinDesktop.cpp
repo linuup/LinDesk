@@ -2,7 +2,6 @@
 #include "desktop/RenameManager.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
-#include "app/LanguageManager.h"
 #include <QCoreApplication>
 #include <QFutureWatcher>
 #include <QSettings>
@@ -45,19 +44,6 @@ LinDesktop::LinDesktop(QWidget* parent)
     connect(m_transitionAnimation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
         setTransitionOpacity(value.toFloat());
     });
-    connect(&LanguageManager::instance(), &LanguageManager::languageChanged, this, [this](const QString&) {
-        setWindowTitle(tr("LinDesk"));
-        if (m_trayIcon) {
-            m_trayIcon->setToolTip(tr("LinDesk"));
-        }
-        if (m_showAction) {
-            m_showAction->setText(tr("Show LinDesk"));
-        }
-        if (m_exitAction) {
-            m_exitAction->setText(tr("Exit"));
-        }
-    });
-
     loadBackImage();
     listView = ListView::instance(this);
     selectArea = new SelectArea(listView);

@@ -18,6 +18,7 @@
 #include <QStandardPaths>
 #include <QGraphicsOpacityEffect>
 #include <QGuiApplication>
+#include <QScreen>
 #include <QClipboard>
 #include "SystemApi/SystemApi.h"
 #include <QDrag>
@@ -99,6 +100,73 @@ float normalizedSavedBoxOpacity(const QVariant& value)
     }
 
     return static_cast<float>(qBound(0.0, rawOpacity, 1.0));
+}
+
+float clampedRestoredBoxOpacity(float opacity)
+{
+    if (!qIsFinite(opacity)) {
+        return 0.45f;
+    }
+    return qBound(0.0f, opacity, 1.0f);
+}
+
+LinBox::BoxShowType restoredBoxShowType(int showType)
+{
+    if (showType == static_cast<int>(LinBox::BoxShowType::List_ShowType)) {
+        return LinBox::BoxShowType::List_ShowType;
+    }
+    return LinBox::BoxShowType::Icon_ShowType;
+}
+
+QRect clampedRestoredBoxGeometry(const QRect& geometry)
+{
+    constexpr int kMinBoxWidth = 180;
+    constexpr int kMinBoxHeight = 120;
+    constexpr int kFallbackBoxWidth = 360;
+    constexpr int kFallbackBoxHeight = 260;
+    constexpr int kScreenMargin = 8;
+
+    QRect safeGeometry = geometry;
+    if (!safeGeometry.isValid() || safeGeometry.width() <= 0 || safeGeometry.height() <= 0) {
+        safeGeometry = QRect(QPoint(80, 80), QSize(kFallbackBoxWidth, kFallbackBoxHeight));
+    }
+
+    safeGeometry.setWidth(qMax(kMinBoxWidth, safeGeometry.width()));
+    safeGeometry.setHeight(qMax(kMinBoxHeight, safeGeometry.height()));
+
+    QScreen* screen = QGuiApplication::screenAt(safeGeometry.center());
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (!screen) {
+        return safeGeometry;
+    }
+
+    QRect bounds = screen->availableGeometry().adjusted(kScreenMargin, kScreenMargin, -kScreenMargin, -kScreenMargin);
+    if (bounds.width() < kMinBoxWidth || bounds.height() < kMinBoxHeight) {
+        bounds = screen->availableGeometry();
+    }
+
+    safeGeometry.setWidth(qMin(safeGeometry.width(), qMax(kMinBoxWidth, bounds.width())));
+    safeGeometry.setHeight(qMin(safeGeometry.height(), qMax(kMinBoxHeight, bounds.height())));
+
+    if (!bounds.intersects(safeGeometry)) {
+        safeGeometry.moveCenter(bounds.center());
+    }
+    if (safeGeometry.left() < bounds.left()) {
+        safeGeometry.moveLeft(bounds.left());
+    }
+    if (safeGeometry.top() < bounds.top()) {
+        safeGeometry.moveTop(bounds.top());
+    }
+    if (safeGeometry.right() > bounds.right()) {
+        safeGeometry.moveRight(bounds.right());
+    }
+    if (safeGeometry.bottom() > bounds.bottom()) {
+        safeGeometry.moveBottom(bounds.bottom());
+    }
+
+    return safeGeometry;
 }
 
 quint64 packGridCell(int gridX, int gridY)
@@ -433,10 +501,19 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         this->onMenuRefresh();
         this->raise();
 
-        // Open debug panel on startup
-        auto* debugPanel = new ListViewDebugPanel(this);
-        debugPanel->show();
     });
+}
+
+void ListView::showDebugPanel()
+{
+    if (!m_debugPanel) {
+        m_debugPanel = new ListViewDebugPanel(this);
+        m_debugPanel->setAttribute(Qt::WA_DeleteOnClose, true);
+    }
+
+    m_debugPanel->show();
+    m_debugPanel->raise();
+    m_debugPanel->activateWindow();
 }
 
 void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
@@ -540,31 +617,20 @@ void ListView::startListeningSpecialIcon()
         this, &ListView::updateSystemIconVisibility);
 }
 
-//bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* result) {
-//    MSG* msg = static_cast<MSG*>(message);
-//    if (msg->message == WM_HOTKEY) {
-//        handleHotkey(static_cast<int>(msg->wParam));
-//        return true; // We handled it
-//    }
-//    if (msg->wParam == VK_SHIFT &&
-//        (GetKeyState(VK_DELETE) & 0x8000) != 0) {
-//        this->onMenuDelete(true);
-//        if (result) {
-//            *result = 0;
-//        }
-//        return true;
-//    }
-//    if (msg->message == WM_LINDESK_START_INLINE_RENAME) {
-//        if (m_selectedItems.size() == 1 && m_selectedItems.first()) {
-//            RenameManager::instance()->startRename(m_selectedItems.first());
-//            if (result) {
-//                *result = 0;
-//            }
-//            return true;
-//        }
-//    }
-//    return QWidget::nativeEvent(eventType, message, result);
-//}
+bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* result)
+{
+    Q_UNUSED(eventType);
+    MSG* msg = static_cast<MSG*>(message);
+    if (msg && msg->message == WM_HOTKEY) {
+        handleHotkey(static_cast<int>(msg->wParam));
+        if (result) {
+            *result = 0;
+        }
+        return true;
+    }
+
+    return QWidget::nativeEvent(eventType, message, result);
+}
 
 void ListView::handleHotkey(int id) {
     QString actionId = HotkeyManager::instance()->getActionId(id);
@@ -2542,12 +2608,12 @@ void ListView::dropEvent(QDropEvent* event)
         const bool isCopyAction = (event->keyboardModifiers() & Qt::ControlModifier);
         const bool preferShortcutForDrop = shouldPreferShortcutForDrop(
             draggedPaths, event->keyboardModifiers(), externalSource || mappedBoxSource);
-        const bool handled = handleDroppedPathsOnDesktopTarget(
-            draggedPaths,
-            hitItem->model,
-            isCopyAction,
-            preferShortcutForDrop,
-            desktopSource);
+        DropInteractionOptions options;
+        options.copyMode = isCopyAction;
+        options.preferShortcut = preferShortcutForDrop;
+        options.preHideDesktopSources = desktopSource;
+        options.finalizeMovedSourcesAfterSuccess = boxSource || mappedBoxSource;
+        const bool handled = handleDroppedPathsOnItemTarget(draggedPaths, hitItem->model, options);
         if (handled) {
             event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCopyAction ? Qt::CopyAction : Qt::MoveAction));
             event->accept();
@@ -4743,7 +4809,7 @@ DesktopRenderParams ListView::currentRenderParams() const
     params.iconTextGap = kDesktopIconTextGap;
     params.dpiScale = currentDpiScale();
     params.labelFont = font();
-    params.showShortcutArrow = ShortcutArrowManager::isShortcutArrowEnabled();
+    params.showShortcutArrow = m_iconShowRule.showShortCutArrow;
     return params;
 }
 
@@ -6772,7 +6838,7 @@ void ListView::createDragGhosts(const QPoint& clickPos)
         painter.setRenderHint(QPainter::Antialiasing);
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         painter.translate(-renderData.itemRect.topLeft());
-        paintDesktopRootItem(painter, renderData);
+        paintDesktopRootItemGhost(painter, renderData);
         painter.end();
 
         ghostWidget->setPixmap(pixmap);
@@ -7191,6 +7257,9 @@ void ListView::loadBoxes(bool autoUpdateState) {
 
 void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId, const QString& mappedFolderPath, bool refresh) {
     LinBox* box = new LinBox(this);
+    const QRect safeGeometry = clampedRestoredBoxGeometry(geom);
+    const float safeOpacity = clampedRestoredBoxOpacity(opacity);
+    const LinBox::BoxShowType safeShowType = restoredBoxShowType(showType);
     if (explicitId.isEmpty()) {
         box->setBoxId(QUuid::createUuid().toString());
     } else {
@@ -7209,15 +7278,15 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     }
     
     if (color.isValid()) box->setBackgroundColor(color);
-    box->setBackgroundOpacity(opacity);
+    box->setBackgroundOpacity(safeOpacity);
     box->setGlassEffect(glass);
     
     // Connect to BoxManager and ListView
     BoxManager::instance()->setupConnections(box, this);
     BoxManager::instance()->addBox(box);
     
-    box->setGeometry(geom);
-    box->setShowType((LinBox::BoxShowType)showType);
+    box->setGeometry(safeGeometry);
+    box->setShowType(safeShowType);
     if (collapsed) box->toggleCollapse();
 
     box->show();
@@ -7277,12 +7346,28 @@ void ListView::clearDestroyedBoxRuntimeState(LinBox* box)
 
     const QString boxId = box->boxId();
     const QVector<DesktopRootItemState> currentStates = box->itemStates();
+    QStringList pathsToClear;
+    auto rememberPath = [this, &pathsToClear](const QString& path) {
+        const QString normalizedPath = normalizeDesktopItemPath(path);
+        if (!normalizedPath.isEmpty() && !pathsToClear.contains(normalizedPath)) {
+            pathsToClear.append(normalizedPath);
+        }
+    };
+
+    if (LinDirectoryMonitor* monitor = box->mappedFolderMonitor()) {
+        monitor->stopListening();
+        box->setMappedFolderMonitor(nullptr);
+    }
 
     if (m_pendingShellNewTargetBox == box) {
         clearPendingShellNewTargetBox();
     }
 
     if (!boxId.isEmpty()) {
+        const QStringList mappedPaths = m_mappedBoxFilePaths.value(boxId);
+        for (const QString& mappedPath : mappedPaths) {
+            rememberPath(mappedPath);
+        }
         m_mappedBoxLoadRequestIds.remove(boxId);
         m_mappedBoxFilePaths.remove(boxId);
     }
@@ -7297,11 +7382,10 @@ void ListView::clearDestroyedBoxRuntimeState(LinBox* box)
     }
 
     for (const DesktopRootItemState& state : currentStates) {
-        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
-        if (normalizedPath.isEmpty()) {
-            continue;
-        }
+        rememberPath(state.model.filePath);
+    }
 
+    for (const QString& normalizedPath : pathsToClear) {
         m_selectedBoxPaths.removeAll(normalizedPath);
         if (m_focusedBoxPath == normalizedPath) {
             m_focusedBoxPath.clear();
@@ -7854,11 +7938,9 @@ bool ListView::finalizeMovedModelSourcesAfterFileOp(const QStringList& sourcePat
     return removedAny;
 }
 
-bool ListView::handleDroppedPathsOnDesktopTarget(const QStringList& sourcePaths,
-                                                 const DesktopRootItemModel& targetModel,
-                                                 bool copyMode,
-                                                 bool preferShortcut,
-                                                 bool preHideDesktopSources)
+bool ListView::handleDroppedPathsOnItemTarget(const QStringList& sourcePaths,
+                                              const DesktopRootItemModel& targetModel,
+                                              const DropInteractionOptions& options)
 {
     if (sourcePaths.isEmpty()) {
         return false;
@@ -7869,29 +7951,39 @@ bool ListView::handleDroppedPathsOnDesktopTarget(const QStringList& sourcePaths,
         return false;
     }
 
-    const QStringList orderedPaths = preHideDesktopSources
+    const bool targetConsumesSources =
+        !options.copyMode &&
+        !options.preferShortcut &&
+        (clsid == APP_RECYCLE_BIN_CLS ||
+         targetModel.objectType == ObjectType::Folder_ObjectType ||
+         targetModel.objectType == ObjectType::SpecialFolder ||
+         targetModel.objectType == ObjectType::DiskLetter);
+
+    const QStringList orderedPaths = options.preHideDesktopSources
         ? orderedDraggedPaths(sourcePaths)
         : QStringList();
 
     if (clsid == APP_RECYCLE_BIN_CLS) {
-        if (preHideDesktopSources && !orderedPaths.isEmpty()) {
+        if (options.preHideDesktopSources && !orderedPaths.isEmpty()) {
             setItemPathsTransientHidden(orderedPaths, true);
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         }
 
-        const bool ok = handleDroppedPathsOnModel(sourcePaths, targetModel, copyMode, preferShortcut);
+        const bool ok = handleDroppedPathsOnModel(sourcePaths, targetModel, options.copyMode, options.preferShortcut);
         if (!ok) {
-            if (preHideDesktopSources && !orderedPaths.isEmpty()) {
+            if (options.preHideDesktopSources && !orderedPaths.isEmpty()) {
                 setItemPathsTransientHidden(orderedPaths, false);
                 QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
             }
             return false;
         }
 
-        if (preHideDesktopSources && !orderedPaths.isEmpty()) {
+        if (options.preHideDesktopSources && !orderedPaths.isEmpty()) {
             trackPendingExternalRemovalPaths(orderedPaths);
             removeItemPathsBatch(orderedPaths);
             requestSaveBoxes();
+        } else if (options.finalizeMovedSourcesAfterSuccess && targetConsumesSources) {
+            finalizeMovedModelSourcesAfterFileOp(sourcePaths);
         }
         return true;
     }
@@ -7899,29 +7991,44 @@ bool ListView::handleDroppedPathsOnDesktopTarget(const QStringList& sourcePaths,
     if (targetModel.objectType == ObjectType::Folder_ObjectType ||
         targetModel.objectType == ObjectType::SpecialFolder ||
         targetModel.objectType == ObjectType::DiskLetter) {
-        if (!copyMode && !preferShortcut && preHideDesktopSources && !orderedPaths.isEmpty()) {
+        if (targetConsumesSources && options.preHideDesktopSources && !orderedPaths.isEmpty()) {
             setItemPathsTransientHidden(orderedPaths, true);
             QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
         }
 
-        const bool ok = handleDroppedPathsOnModel(sourcePaths, targetModel, copyMode, preferShortcut);
+        const bool ok = handleDroppedPathsOnModel(sourcePaths, targetModel, options.copyMode, options.preferShortcut);
         if (!ok) {
-            if (!copyMode && !preferShortcut && preHideDesktopSources && !orderedPaths.isEmpty()) {
+            if (targetConsumesSources && options.preHideDesktopSources && !orderedPaths.isEmpty()) {
                 setItemPathsTransientHidden(orderedPaths, false);
                 QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
             }
             return false;
         }
 
-        if (!copyMode && !preferShortcut && preHideDesktopSources && !orderedPaths.isEmpty()) {
+        if (targetConsumesSources && options.preHideDesktopSources && !orderedPaths.isEmpty()) {
             trackPendingExternalRemovalPaths(orderedPaths);
             removeItemPathsBatch(orderedPaths);
             requestSaveBoxes();
+        } else if (options.finalizeMovedSourcesAfterSuccess && targetConsumesSources) {
+            finalizeMovedModelSourcesAfterFileOp(sourcePaths);
         }
         return true;
     }
 
-    return handleDroppedPathsOnModel(sourcePaths, targetModel, copyMode, preferShortcut);
+    return handleDroppedPathsOnModel(sourcePaths, targetModel, options.copyMode, options.preferShortcut);
+}
+
+bool ListView::handleDroppedPathsOnDesktopTarget(const QStringList& sourcePaths,
+                                                 const DesktopRootItemModel& targetModel,
+                                                 bool copyMode,
+                                                 bool preferShortcut,
+                                                 bool preHideDesktopSources)
+{
+    DropInteractionOptions options;
+    options.copyMode = copyMode;
+    options.preferShortcut = preferShortcut;
+    options.preHideDesktopSources = preHideDesktopSources;
+    return handleDroppedPathsOnItemTarget(sourcePaths, targetModel, options);
 }
 
 bool ListView::shouldCreateShortcutForExternalDrop(const QStringList& sourcePaths) const

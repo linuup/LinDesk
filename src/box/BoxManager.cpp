@@ -1,6 +1,7 @@
 ﻿#include "box/BoxManager.h"
 #include "box/LinBox.h"
 #include "desktop/ListView.h"
+#include "monitor/LinDirectoryMonitor.h"
 #include <QWidget>
 #include <QFile>
 #include <QJsonDocument>
@@ -15,6 +16,9 @@
 
 namespace {
 
+constexpr int kMaxPersistedBoxes = 4096;
+constexpr int kMaxPersistedIconPositions = 100000;
+
 QString normalizeMappedFolderPathValue(const QString& path)
 {
     QString normalized = QDir::toNativeSeparators(path.trimmed());
@@ -22,6 +26,18 @@ QString normalizeMappedFolderPathValue(const QString& path)
         normalized.chop(1);
     }
     return normalized;
+}
+
+QVector<LinBox*> liveBoxesFrom(const QVector<QPointer<LinBox>>& boxes)
+{
+    QVector<LinBox*> liveBoxes;
+    liveBoxes.reserve(boxes.size());
+    for (const QPointer<LinBox>& ptr : boxes) {
+        if (LinBox* box = ptr.data()) {
+            liveBoxes.append(box);
+        }
+    }
+    return liveBoxes;
 }
 
 }
@@ -81,6 +97,10 @@ void BoxManager::destroyBox(LinBox* box, ListView* listView) {
 
     // 閫氱煡澶栭儴澶勭悊锛堟仮澶嶅浘鏍囧埌妗岄潰绛夛級
     emit boxDestroyed(box);
+    if (LinDirectoryMonitor* monitor = box->mappedFolderMonitor()) {
+        monitor->stopListening();
+        box->setMappedFolderMonitor(nullptr);
+    }
     
     m_boxes.removeAll(QPointer<LinBox>(box));
     box->hide();
@@ -232,10 +252,9 @@ void BoxManager::saveAll() {
     file.write(QJsonDocument(rootObj).toJson());
 #else
     QDataStream out(&file);
-    out << (int)m_boxes.size();
-    for (auto& ptr : m_boxes) {
-        LinBox* box = ptr.data();
-        if (!box) continue;
+    const QVector<LinBox*> boxesToSave = liveBoxesFrom(m_boxes);
+    out << boxesToSave.size();
+    for (LinBox* box : boxesToSave) {
         out << box->boxId() << box->boxTitle() << box->geometry() 
             << box->isCollapsed() << box->originalHeight() << (int)box->showType() 
             << box->backgroundColor() << (double)box->backgroundOpacity() << box->glassEffect()
@@ -326,10 +345,9 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
     file.write(QJsonDocument(rootObj).toJson());
 #else
     QDataStream out(&file);
-    out << (int)m_boxes.size();
-    for (auto& ptr : m_boxes) {
-        LinBox* box = ptr.data();
-        if (!box) continue;
+    const QVector<LinBox*> boxesToSave = liveBoxesFrom(m_boxes);
+    out << boxesToSave.size();
+    for (LinBox* box : boxesToSave) {
         out << box->boxId() << box->boxTitle() << box->geometry() 
             << box->isCollapsed() << box->originalHeight() << (int)box->showType() 
             << box->backgroundColor() << (double)box->backgroundOpacity() << box->glassEffect()
@@ -438,8 +456,13 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
     }
 #else
     QDataStream in(&file);
-    int count;
+    int count = 0;
     in >> count;
+    if (in.status() != QDataStream::Ok || count < 0 || count > kMaxPersistedBoxes) {
+        qWarning() << "[BoxManager] Invalid persisted box count:" << count << "path:" << persistencePath;
+        file.close();
+        return;
+    }
     for (int i = 0; i < count; ++i) {
         QString boxId, title;
         QRect geom;
@@ -450,6 +473,10 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
         QColor color;
         double opacity;
         in >> boxId >> title >> geom >> collapsed >> origH >> showType >> color >> opacity >> glass >> mappedFolderPath >> files;
+        if (in.status() != QDataStream::Ok) {
+            qWarning() << "[BoxManager] Stopped loading boxes due to invalid stream at index:" << i;
+            break;
+        }
         
         QMap<QString, QVariant> data;
         data["id"] = boxId;
@@ -468,13 +495,22 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
         boxData.append(data);
     }
     // Load settings
-    in >> enablePersistence >> viewMode >> sortType >> preAutoSort >> iconPosMode
-       >> autoArrange >> gridAlignment >> showDesktopIcons 
-       >> doubleClickHideIcons >> showShortCutArrow;
+    if (in.status() == QDataStream::Ok && !in.atEnd()) {
+        in >> enablePersistence >> viewMode >> sortType >> preAutoSort >> iconPosMode
+           >> autoArrange >> gridAlignment >> showDesktopIcons
+           >> doubleClickHideIcons >> showShortCutArrow;
+        if (in.status() != QDataStream::Ok) {
+            qWarning() << "[BoxManager] Invalid settings stream. Keeping default settings.";
+        }
+    }
 
-    if (!in.atEnd()) {
+    if (in.status() == QDataStream::Ok && !in.atEnd()) {
         int iconPosCount = 0;
         in >> iconPosCount;
+        if (in.status() != QDataStream::Ok || iconPosCount < 0 || iconPosCount > kMaxPersistedIconPositions) {
+            qWarning() << "[BoxManager] Invalid icon position count:" << iconPosCount;
+            iconPosCount = 0;
+        }
         for (int i = 0; i < iconPosCount; ++i) {
             QString path;
             int x = 0;
@@ -482,6 +518,13 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
             int customSortOrder = -1;
             QString boxId;
             in >> path >> x >> y >> boxId >> customSortOrder;
+            if (in.status() != QDataStream::Ok) {
+                qWarning() << "[BoxManager] Stopped loading icon positions at index:" << i;
+                break;
+            }
+            if (path.isEmpty()) {
+                continue;
+            }
 
             QMap<QString, QVariant> posMap;
             posMap["x"] = x;
@@ -539,8 +582,13 @@ void BoxManager::loadAll(bool autoUpdateState) {
     }
 #else
     QDataStream in(&file);
-    int count;
+    int count = 0;
     in >> count;
+    if (in.status() != QDataStream::Ok || count < 0 || count > kMaxPersistedBoxes) {
+        qWarning() << "[BoxManager] Invalid persisted box count:" << count << "path:" << m_persistencePath;
+        file.close();
+        return;
+    }
     for (int i = 0; i < count; ++i) {
         QString boxId;
         QString title;
@@ -554,6 +602,10 @@ void BoxManager::loadAll(bool autoUpdateState) {
         double opacity;
         bool glass;
         in >> boxId >> title >> geom >> collapsed >> origH >> showType >> color >> opacity >> glass >> mappedFolderPath >> files;
+        if (in.status() != QDataStream::Ok) {
+            qWarning() << "[BoxManager] Stopped loading boxes due to invalid stream at index:" << i;
+            break;
+        }
         emit boxCreated(nullptr); // Placeholder
         Q_UNUSED(boxId);
         Q_UNUSED(title);

@@ -30,7 +30,8 @@ public:
     static QStringList clipboardLocalFilePaths();
     static bool clipboardContainsCutItems();
     static bool clipboardHasVirtualFileItems();
-    static QString clipboardDebugDump();
+    static QString clipboardFormatListDump();
+    static QString clipboardDebugDump(bool includeVirtualContents = true);
     static int pasteVirtualClipboardFilesToDirectory(const QString& targetDir, QStringList* savedPaths = nullptr);
     static void writeUrlsToClipboard(const QList<QUrl>& urls, bool cutOperation);
     static QString uniquePasteDestinationPath(const QString& sourcePath, const QString& destDir);

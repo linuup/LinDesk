@@ -197,6 +197,22 @@ QString clipboardFormatName(UINT format)
     return QStringLiteral("Format#%1").arg(format);
 }
 
+bool clipboardFormatUsesGlobalMemory(UINT format)
+{
+    switch (format) {
+    case CF_BITMAP:
+    case CF_PALETTE:
+    case CF_ENHMETAFILE:
+    case CF_DSPBITMAP:
+    case CF_DSPENHMETAFILE:
+        return false;
+    default:
+        break;
+    }
+
+    return true;
+}
+
 QString preferredDropEffectDescription(DWORD effect)
 {
     QStringList parts;
@@ -929,7 +945,51 @@ bool ListViewFileOpsHelper::clipboardHasVirtualFileItems()
     return !entries.isEmpty();
 }
 
-QString ListViewFileOpsHelper::clipboardDebugDump()
+QString ListViewFileOpsHelper::clipboardFormatListDump()
+{
+    QString output;
+    QTextStream stream(&output);
+
+    appendClipboardLine(stream, QStringLiteral("[ClipboardFormats] begin"));
+
+    const QClipboard* clipboard = QGuiApplication::clipboard();
+    const QMimeData* mimeData = clipboard ? clipboard->mimeData() : nullptr;
+    if (!mimeData) {
+        appendClipboardLine(stream, QStringLiteral("[ClipboardFormats][Qt] mimeData unavailable"));
+    } else {
+        const QStringList formats = mimeData->formats();
+        appendClipboardLine(stream, QStringLiteral("[ClipboardFormats][Qt] formats: %1").arg(formats.size()));
+        for (const QString& format : formats) {
+            appendClipboardLine(stream, QStringLiteral("[ClipboardFormats][Qt] format: %1").arg(format));
+        }
+        appendClipboardLine(stream,
+            QStringLiteral("[ClipboardFormats][Qt] hasText=%1 hasUrls=%2 hasImage=%3")
+                .arg(mimeData->hasText())
+                .arg(mimeData->hasUrls())
+                .arg(mimeData->hasImage()));
+    }
+
+    if (!OpenClipboard(nullptr)) {
+        appendClipboardLine(stream, QStringLiteral("[ClipboardFormats][Win32] OpenClipboard failed"));
+        appendClipboardLine(stream, QStringLiteral("[ClipboardFormats] end"));
+        return output;
+    }
+
+    appendClipboardLine(stream, QStringLiteral("[ClipboardFormats][Win32] formats:"));
+    UINT format = 0;
+    while ((format = EnumClipboardFormats(format)) != 0) {
+        appendClipboardLine(stream,
+            QStringLiteral("[ClipboardFormats][Win32] format=%1 name=%2")
+                .arg(format)
+                .arg(clipboardFormatName(format)));
+    }
+
+    CloseClipboard();
+    appendClipboardLine(stream, QStringLiteral("[ClipboardFormats] end"));
+    return output;
+}
+
+QString ListViewFileOpsHelper::clipboardDebugDump(bool includeVirtualContents)
 {
     QString output;
     QTextStream stream(&output);
@@ -956,7 +1016,17 @@ QString ListViewFileOpsHelper::clipboardDebugDump()
             }
         }
 
+        if (mimeData->hasImage()) {
+            appendClipboardLine(stream, QStringLiteral("[ClipboardDump][Qt] image: available"));
+        }
+
         for (const QString& format : mimeData->formats()) {
+            if (format.compare(QStringLiteral("application/x-qt-image"), Qt::CaseInsensitive) == 0) {
+                appendClipboardLine(stream,
+                    QStringLiteral("[ClipboardDump][Qt] format: %1 image payload skipped").arg(format));
+                continue;
+            }
+
             const QByteArray data = mimeData->data(format);
             appendClipboardLine(stream,
                 QStringLiteral("[ClipboardDump][Qt] format: %1 size=%2 hex=%3")
@@ -996,8 +1066,11 @@ QString ListViewFileOpsHelper::clipboardDebugDump()
         }
     }
 
-    const QVector<ClipboardVirtualFileEntry> virtualFiles = clipboardVirtualFiles(true);
+    const QVector<ClipboardVirtualFileEntry> virtualFiles = clipboardVirtualFiles(includeVirtualContents);
     appendClipboardLine(stream, QStringLiteral("[ClipboardDump][OLE] virtual files: %1").arg(virtualFiles.size()));
+    if (!includeVirtualContents) {
+        appendClipboardLine(stream, QStringLiteral("[ClipboardDump][OLE] content read skipped"));
+    }
     for (const ClipboardVirtualFileEntry& entry : virtualFiles) {
         const QString parsedName = parsedVirtualTargetName(entry);
         const QString parsedValue = parsedVirtualTargetValue(entry);
@@ -1060,7 +1133,17 @@ QString ListViewFileOpsHelper::clipboardDebugDump()
             continue;
         }
 
-        SIZE_T rawSize = GlobalSize(clipboardData);
+        if (!clipboardFormatUsesGlobalMemory(format)) {
+            appendClipboardLine(stream, QStringLiteral("  raw: skipped non HGLOBAL clipboard handle"));
+            continue;
+        }
+
+        const SIZE_T rawSize = GlobalSize(clipboardData);
+        if (rawSize == 0) {
+            appendClipboardLine(stream, QStringLiteral("  raw: unavailable"));
+            continue;
+        }
+
         const void* rawData = GlobalLock(clipboardData);
         if (!rawData) {
             appendClipboardLine(stream, QStringLiteral("  raw: unavailable"));

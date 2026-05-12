@@ -1,12 +1,21 @@
 #pragma once
 #include <QDir>
+#include <QApplication>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QEventLoop>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QUrl>
 #include <QSettings>
 #include <QCoreApplication>
 #include <QDialog>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <functional>
 #include "../../src/ui/Fluent/FluentBaseDialog.h"
@@ -158,6 +167,96 @@ public:
         m_hotkeyInput->setText(m_currentHotkey);
         m_hotkeyInput->setRecording(false); // Apply initial styles
 
+        // --- Credential Test ---
+        QHBoxLayout* testLayout = new QHBoxLayout();
+        testLayout->setSpacing(8);
+        m_testBtn = new FluentButton("Test API Key", container());
+        m_testBtn->setAccent(false);
+        m_testBtn->setFixedSize(110, 32);
+        m_testStatus = new QLabel(container());
+        m_testStatus->setStyleSheet("font-size: 12px; color: #666;");
+        m_testStatus->setText("Click to verify credentials");
+
+        connect(m_testBtn, &QPushButton::clicked, this, [this]() {
+            const QString apiKey = m_keyInput->text().trimmed();
+            const QString secretKey = m_secretInput->text().trimmed();
+
+            auto setStatus = [this](const QString& text, const QString& color) {
+                m_testStatus->setStyleSheet(QString("font-size: 12px; color: %1;").arg(color));
+                m_testStatus->setText(text);
+            };
+
+            if (apiKey.isEmpty() || secretKey.isEmpty()) {
+                setStatus("Please fill API Key and Secret Key first", "#d14343");
+                return;
+            }
+
+            m_testBtn->setEnabled(false);
+            m_testBtn->setText("Testing...");
+            setStatus("Verifying credentials...", "#666");
+            QApplication::processEvents();
+
+            QNetworkAccessManager manager;
+            const QUrl url(QString("https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=%1&client_secret=%2")
+                           .arg(apiKey, secretKey));
+            QNetworkRequest request(url);
+            request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+
+            QNetworkReply* reply = manager.post(request, QByteArray());
+            QEventLoop loop;
+            connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+            bool timedOut = false;
+            QTimer timeoutTimer;
+            timeoutTimer.setSingleShot(true);
+            connect(&timeoutTimer, &QTimer::timeout, &loop, [&]() {
+                timedOut = true;
+                if (reply && reply->isRunning()) {
+                    reply->abort();
+                }
+                loop.quit();
+            });
+            timeoutTimer.start(15000);
+            loop.exec();
+
+            if (timedOut) {
+                setStatus("Network request timed out", "#d14343");
+                reply->deleteLater();
+                m_testBtn->setEnabled(true);
+                m_testBtn->setText("Test API Key");
+                return;
+            }
+
+            if (reply->error() != QNetworkReply::NoError) {
+                setStatus("Network error: " + reply->errorString(), "#d14343");
+                reply->deleteLater();
+                m_testBtn->setEnabled(true);
+                m_testBtn->setText("Test API Key");
+                return;
+            }
+
+            const QByteArray responseData = reply->readAll();
+            reply->deleteLater();
+            const QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            const QJsonObject root = doc.object();
+            const QString token = root.value("access_token").toString();
+
+            if (!token.isEmpty()) {
+                setStatus("Credentials are valid", "#2e8b57");
+            } else {
+                const QString err = root.value("error_description").toString();
+                const QString fallback = root.value("error").toString();
+                const QString message = err.isEmpty() ? (fallback.isEmpty() ? "Invalid credentials" : fallback) : err;
+                setStatus("Validation failed: " + message, "#d14343");
+            }
+
+            m_testBtn->setEnabled(true);
+            m_testBtn->setText("Test API Key");
+        });
+
+        testLayout->addWidget(m_testBtn);
+        testLayout->addWidget(m_testStatus, 1);
+        layout->addLayout(testLayout);
+
         layout->addStretch();
 
         // 3. Actions
@@ -189,9 +288,11 @@ public:
     }
 
 private:
-    QLineEdit* m_keyInput;
-    QLineEdit* m_secretInput;
-    HotkeyRecorder* m_hotkeyInput;
-    FluentButton* m_modifyBtn;
+    QLineEdit* m_keyInput = nullptr;
+    QLineEdit* m_secretInput = nullptr;
+    HotkeyRecorder* m_hotkeyInput = nullptr;
+    FluentButton* m_modifyBtn = nullptr;
+    FluentButton* m_testBtn = nullptr;
+    QLabel* m_testStatus = nullptr;
     QString m_currentHotkey;
 };

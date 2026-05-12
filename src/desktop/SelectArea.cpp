@@ -86,10 +86,12 @@ void SelectArea::loadColors()
 {
     QSettings settings(QCoreApplication::applicationDirPath() + "/config.ini", QSettings::IniFormat);
     const QColor baseColor(settings.value("Desktop/SelectionRectangleColor", QStringLiteral("#64A0F0")).toString());
+    const int opacity = qBound(20, settings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100);
+    const int contrast = qBound(0, settings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100);
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
-    fillColor.setAlpha(70);
-    borderColor.setAlpha(180);
+    fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
+    borderColor.setAlpha(qBound(95, contrast * 230 / 100, 230));
     m_fillColor = fillColor;
     m_borderColor = borderColor;
     applyColors();

@@ -11,7 +11,6 @@
 
 #include <ShellContextMenu.h>
 #include "CommonEnum.h"
-#include "app/LanguageManager.h"
 #include "desktop/DesktopRootItemModel.h"
 
 #define HKEY_ROOT "HKEY_CLASSES_ROOT\\"
@@ -70,6 +69,7 @@ public:
 
     bool isAutoArrangeIconsChecked() const;
     bool isAlignIconsToGridChecked() const;
+    void preparePasteActionsForMenu() const;
     void updatePasteActionsState();
     bool clipboardHasFileItems() const;
     bool clipboardContainsCutItems() const;
@@ -126,10 +126,8 @@ private:
 
     RightMenu()
     {
-        connect(&LanguageManager::instance(), &LanguageManager::languageChanged, this, [this](const QString&) {
-            initializeCustomMenu();
-        });
         initializeCustomMenu();
+        connectClipboardStateRefresh();
     }
 
     RightMenu(const RightMenu&) = delete;
@@ -143,6 +141,9 @@ private:
     QList<QAction*> filteredCustomMenuActions(bool includeCreateBox, bool includeLinDeskMenu) const;
     void clearCachedCustomMenuItems(CachedCustomMenuData& cache);
     void ensureCachedCustomMenuData(CachedCustomMenuData& cache, bool includeCreateBox, bool includeLinDeskMenu) const;
+    void applyCachedPasteActionsState() const;
+    void refreshPasteActionsStateAsync() const;
+    void connectClipboardStateRefresh();
 
     ShellContextMenu* shellContextMenu = nullptr;
     HWND hwnd = nullptr;
@@ -170,4 +171,8 @@ private:
     QActionGroup* m_sortByActionGroup = nullptr;
     mutable CachedCustomMenuData m_cachedDesktopMenuData;
     mutable CachedCustomMenuData m_cachedSharedBoxMenuData;
+    mutable bool m_cachedPasteEnabled = false;
+    mutable bool m_cachedPasteShortcutEnabled = false;
+    mutable bool m_pasteStateRefreshPending = false;
+    bool m_clipboardRefreshConnected = false;
 };

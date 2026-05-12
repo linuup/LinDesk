@@ -31,6 +31,9 @@ void ensureDesktopDebugLogExists()
 AppLaunchOptions AppLaunchOptions::fromArguments(const QStringList& arguments)
 {
     AppLaunchOptions options;
+#ifdef QT_DEBUG
+    options.m_debugEnabled = true;
+#endif
 
     for (int i = 1; i < arguments.size(); ++i) {
         const QString argument = arguments[i].trimmed();
@@ -51,6 +54,8 @@ void AppLaunchOptions::apply(LinDesktop* linDesktop) const
 
 void AppLaunchOptions::handleDebugOption(LinDesktop* linDesktop) const
 {
-    Q_UNUSED(linDesktop);
     ensureDesktopDebugLogExists();
+    if (linDesktop && linDesktop->listView) {
+        linDesktop->listView->showDebugPanel();
+    }
 }

@@ -297,7 +297,7 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
             rd.textLines << fm.elidedText(renderText, Qt::ElideRight, rd.textRect.width());
             visibleTextHeight = fm.lineSpacing();
         }
-        rd.textOptions.alignment = Qt::AlignVCenter | Qt::AlignLeft; rd.textOptions.outlineWidth = 0;
+        rd.textOptions.alignment = Qt::AlignVCenter | Qt::AlignLeft; rd.textOptions.outlineWidth = 1;
     }
     if (visibleTextHeight <= 0) {
         visibleTextHeight = qMax(model.visibleTextHeight, fm.lineSpacing());

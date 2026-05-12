@@ -19,6 +19,7 @@ public:
 
     bool initialize(QApplication& app);
     bool setLanguage(QApplication& app, const QString& languageCode);
+    bool setConfiguredLanguageCode(const QString& languageCode);
     QString currentLanguageCode() const;
 
 signals:

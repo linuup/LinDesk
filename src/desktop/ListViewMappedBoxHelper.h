@@ -126,13 +126,18 @@ public:
         }
 
         auto* monitor = new LinDirectoryMonitor(box->mappedFolderPath(), false, box);
-        QObject::connect(monitor, &LinDirectoryMonitor::fileSystemChanged, &view, [&view, box](const FileSystemEventInfo&) {
-            if (!box) {
+        QPointer<ListView> monitorViewPtr(&view);
+        QPointer<LinBox> monitorBoxPtr(box);
+        QObject::connect(monitor, &LinDirectoryMonitor::fileSystemChanged, &view, [monitorViewPtr, monitorBoxPtr](const FileSystemEventInfo&) {
+            if (!monitorViewPtr || !monitorBoxPtr) {
                 return;
             }
-            ListViewMappedBoxHelper::loadMappedFolderItemsForBox(view, box);
-            box->refreshLayout();
-            box->raise();
+            ListViewMappedBoxHelper::loadMappedFolderItemsForBox(*monitorViewPtr, monitorBoxPtr.data());
+            if (!monitorBoxPtr) {
+                return;
+            }
+            monitorBoxPtr->refreshLayout();
+            monitorBoxPtr->raise();
         }, Qt::UniqueConnection);
         monitor->startListening();
         box->setMappedFolderMonitor(monitor);
@@ -148,6 +153,9 @@ public:
 
         QThread* workerThread = QThread::create([mappedFolderPath, showHiddenFiles, viewPtr, boxPtr, boxId, requestId]() {
             const QStringList paths = mappedFolderEntryPaths(mappedFolderPath, showHiddenFiles);
+            if (!viewPtr || !boxPtr) {
+                return;
+            }
             QMetaObject::invokeMethod(
                 viewPtr.data(),
                 [viewPtr, boxPtr, boxId, requestId, paths]() {
@@ -181,6 +189,9 @@ public:
                         if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
                             return;
                         }
+                        if (!boxPtr->isFolderMapped()) {
+                            return;
+                        }
 
                         const int chunkSize = 24;
                         const int end = qMin(*nextIndex + chunkSize, pathsPtr->size());
@@ -202,8 +213,14 @@ public:
                         boxPtr->raise();
 
                         if (*nextIndex < pathsPtr->size()) {
-                            QTimer::singleShot(0, boxPtr.data(), [processChunk]() {
-                                (*processChunk)();
+                            LinBox* timerContext = boxPtr.data();
+                            if (!timerContext) {
+                                return;
+                            }
+                            QTimer::singleShot(0, timerContext, [processChunk]() {
+                                if (processChunk && *processChunk) {
+                                    (*processChunk)();
+                                }
                             });
                         }
                     };

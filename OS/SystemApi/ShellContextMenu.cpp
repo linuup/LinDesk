@@ -46,8 +46,19 @@ std::wstring BuildTimestamp()
     return timeBuffer;
 }
 
+bool IsBoxMenuDebugEnabled()
+{
+    wchar_t value[8] = {};
+    const DWORD length = GetEnvironmentVariableW(L"LINDESK_BOX_MENU_DEBUG", value, ARRAYSIZE(value));
+    return length > 0 && value[0] != L'0';
+}
+
 void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
 {
+    if (!IsBoxMenuDebugEnabled()) {
+        return;
+    }
+
     const std::wstring line = BuildTimestamp() + L"-" + (moduleName ? moduleName : L"Menu") + L"-" + info + L"\n";
     OutputDebugStringW(line.c_str());
 
@@ -75,7 +86,7 @@ void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
 
 void DebugLogTopLevelMenuItems(HMENU menu, const wchar_t* tag)
 {
-    if (!menu) {
+    if (!menu || !IsBoxMenuDebugEnabled()) {
         return;
     }
 
@@ -217,20 +228,29 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
 
 void ShellContextMenu::DisplayDesktopContextMenu()
 {
+    m_contextMenu = nullptr;
     operationType = OperationType::BackGround;
-    SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent));
+    if (FAILED(SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent)))) {
+        m_pidlParent.reset();
+    }
 }
 
 void ShellContextMenu::DisplayBoxBackgroundContextMenu()
 {
+    m_contextMenu = nullptr;
     operationType = OperationType::boxBackground;
-    SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent));
+    if (FAILED(SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent)))) {
+        m_pidlParent.reset();
+    }
 }
 
 void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
 {
+    m_contextMenu = nullptr;
     if (pidl && operationType != OperationType::BackGround && operationType != OperationType::boxBackground) {
-        GetDesktop_IshellFolder();
+        if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
+            return;
+        }
         wil::com_ptr_nothrow<IContextMenu> contextMenu;
         HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, contextMenu.put_void());
         if (FAILED(hr))
@@ -244,10 +264,11 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
 }
 
 void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
+    m_contextMenu = nullptr;
     operationType = OperationType::link;
     //
     m_pShellFolder = GetIshellFolderByPath(path);
-    if (!m_pShellFolder) {
+    if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
         return;
     }
     wil::com_ptr_nothrow<IContextMenu> contextMenu;
@@ -264,10 +285,11 @@ void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
 
 void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
 {
+    m_contextMenu = nullptr;
     operationType = OperationType::file;
     //鑾峰彇ShellFolder鎺ュ彛
     m_pShellFolder = GetIshellFolderByPath(path);
-    if (!m_pShellFolder) {
+    if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
         return;
     }
     wil::com_ptr_nothrow<IContextMenu> contextMenu;
@@ -284,10 +306,11 @@ void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
 
 void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
 {
+    m_contextMenu = nullptr;
     operationType = OperationType::folder;
     //鑾峰彇ShellFolder鎺ュ彛
     m_pShellFolder = GetIshellFolderByPath(folderPath);
-    if (!m_pShellFolder) {
+    if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
         return;
     }
     wil::com_ptr_nothrow<IContextMenu> contextMenu;
@@ -303,13 +326,14 @@ void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
 
 void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
 {
+    m_contextMenu = nullptr;
     operationType = OperationType::specialFolder;
     unique_pidl_absolute pidlsf;
     HRESULT hr;
     switch (sf)
     {
     case SpecialFolders::UnknownFolder:
-        break;
+        return;
     case SpecialFolders::ThisPc:
         hr= SHGetKnownFolderIDList(FOLDERID_ComputerFolder, 0, NULL, wil::out_param(pidlsf));
         break;
@@ -325,9 +349,16 @@ void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
     case SpecialFolders::UserFolder:
         hr = SHGetKnownFolderIDList(FOLDERID_UsersFiles, 0, NULL, wil::out_param(pidlsf));
         break;
+    default:
+        return;
+    }
+    if (FAILED(hr) || !pidlsf) {
+        return;
     }
     //鑾峰彇妗岄潰IShellFolder鎺ュ彛鍒癿_pDesktopFolder
-    GetDesktop_IshellFolder();
+    if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
+        return;
+    }
     wil::com_ptr_nothrow<IShellFolder> pThisPcShellFolder;
     // 鑾峰彇 IShellFolder 鎺ュ彛
     hr = m_pDesktopFolder->BindToObject(pidlsf.get(), nullptr, IID_IShellFolder, (void**)&pThisPcShellFolder);
@@ -336,13 +367,16 @@ void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
 }
 
 void ShellContextMenu::DisplayMultipleContextMenu(vector<LPITEMIDLIST> pidls) {
+    m_contextMenu = nullptr;
     if (pidls.size()==0) {
         return;
     }
     operationType = OperationType::MultObject;
     unique_pidl_absolute pidlsf;
     // 鑾峰彇涓婁笅鏂囪彍鍗?
-    GetDesktop_IshellFolder();
+    if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
+        return;
+    }
     wil::com_ptr_nothrow<IContextMenu> contextMenu;
     HRESULT hr = m_pDesktopFolder->GetUIObjectOf(nullptr, pidls.size(),
         (LPCITEMIDLIST*)pidls.data(), IID_IContextMenu, nullptr, contextMenu.put_void());
@@ -370,6 +404,9 @@ wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::MaybeGetShellContextMenu(H
     HRESULT hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidlDesktop));
     if (SUCCEEDED(hr))
     {
+        if (!m_pidlParent) {
+            return nullptr;
+        }
         // 鑾峰彇 IShellFolder 鎺ュ彛
         wil::com_ptr_nothrow<IShellFolder> shellFolder;
         wil::com_ptr_nothrow<IContextMenu> contextMenu;
@@ -470,6 +507,9 @@ void ShellContextMenu::RemoveTencentDeskGoMenu(HMENU hmenu)
 }
 
 void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flags flags) {
+    if (!hwnd || !pt) {
+        return;
+    }
     if(operationType == ShellContextMenu::OperationType::BackGround || operationType == ShellContextMenu::OperationType::boxBackground){
         m_contextMenu = MaybeGetShellContextMenu(hwnd);
     }
@@ -500,8 +540,11 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     // 鍒涘缓 WindowSubclassWrapper 瀹炰緥
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
-    m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
+    HRESULT queryHr = m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
         CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+    if (FAILED(queryHr)) {
+        return;
+    }
 
     if (operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
         RemoveTencentDeskGoMenu(hMenu.get());
@@ -651,23 +694,22 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
 
     if (cmd >= MIN_SHELL_MENU_ID && cmd <= MAX_SHELL_MENU_ID)
     {
-        TCHAR verb[64] = _T("");
-        HRESULT hr = m_contextMenu->GetCommandString(cmd - MIN_SHELL_MENU_ID, GCS_VERB, nullptr,
-            reinterpret_cast<LPSTR>(verb), static_cast<UINT>(std::size(verb)));
+        char verb[64] = "";
+        HRESULT hr = m_contextMenu->GetCommandString(cmd - MIN_SHELL_MENU_ID, GCS_VERBA, nullptr,
+            verb, static_cast<UINT>(std::size(verb)));
         bool handled = false;
         // Pass the menu back to the caller to give it the chance to handle it.
         if (SUCCEEDED(hr))
         {
-            // 浣跨敤瀹夊叏鐨勬瘮杈冨嚱鏁?
-            auto compareVerb = [](const TCHAR* verb, const TCHAR* target) -> bool {
-                return _wcsicmp(verb, target) == 0;  // 涓嶅尯鍒嗗ぇ灏忓啓鐨勫瀛楃姣旇緝
+            auto compareVerb = [](const char* verb, const char* target) -> bool {
+                return _stricmp(verb, target) == 0;
             };
 
             /*if (compareVerb(verb, L"open"))
             {
                 handled = true;
             }*/
-            if (compareVerb(verb,L"rename"))
+            if (compareVerb(verb, "rename"))
             {
                 handled = true;
                 if (hwnd) {
@@ -825,6 +867,10 @@ HRESULT GetRootPidl(PIDLIST_ABSOLUTE* pidl)
 
 HRESULT BindToIdl(PIDLIST_ABSOLUTE pidl, REFIID riid, void** ppv)
 {
+    if (!pidl || !ppv) {
+        return E_INVALIDARG;
+    }
+
     IShellFolder* pDesktop = nullptr;
     
     HRESULT hr = SHGetDesktopFolder(&pDesktop);

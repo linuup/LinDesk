@@ -1,4 +1,5 @@
 ﻿#include "ui/SettingUI.h"
+#include "LinDesk/Version.h"
 #include "box/LinBox.h"
 #include "box/BoxManager.h"
 #include "desktop/ListView.h"
@@ -43,6 +44,11 @@
 #include <QUrl>
 #include <QDir>
 #include <QShowEvent>
+#include <QResizeEvent>
+#include <QTimer>
+#include <QColorDialog>
+#include <QFontDatabase>
+#include <QGridLayout>
 #include "desktop/RightMenu.h"
 
 // Custom delegate to draw the Fluent Design 2 style sidebar
@@ -61,64 +67,64 @@ public:
         bool isSelected = (opt.state & QStyle::State_Selected);
         bool isHovered = (opt.state & QStyle::State_MouseOver);
 
-        // Fluent Design 2 Colors
-        const QColor accentColor(0, 120, 212);  // Fluent Blue #0078d4
-        const QColor selectedBg(243, 245, 249);
-        const QColor hoverBg(246, 248, 250);
-        const QColor textPrimary(31, 41, 55);
-        const QColor textSecondary(75, 85, 99);
-        const QColor iconSelected(0, 120, 212);
-        const QColor iconNormal(75, 85, 99);
-        const QColor iconHover(55, 65, 81);
+        const QColor accentColor(24, 112, 255);
+        const QColor selectedBg(232, 242, 255);
+        const QColor selectedBorder(214, 228, 247);
+        const QColor hoverBg(246, 250, 255);
+        const QColor textPrimary(32, 45, 69);
+        const QColor textSecondary(72, 86, 112);
+        const QColor iconSelected(24, 112, 255);
+        const QColor iconNormal(72, 86, 112);
+        const QColor iconHover(42, 58, 86);
 
         const int itemHeight = opt.rect.height();
-        const int iconSize = 20;
-        const int leftMargin = 10;
-        const int iconLeftPadding = 22;
-        const int textLeftPadding = iconLeftPadding + iconSize + 14;
+        const int iconSize = 40;
+        const int itemLeft = 12;
+        const int itemRight = 10;
+        const int iconLeftPadding = 34;
+        const int textLeftPadding = 76;
 
-        // Draw a soft rounded highlight similar to the mockup.
         if (isSelected || isHovered) {
-            QRect bgRect = opt.rect.adjusted(leftMargin, 4, -leftMargin, -4);
+            QRect bgRect = opt.rect.adjusted(itemLeft, 3, -itemRight, -3);
             QPainterPath path;
-            path.addRoundedRect(bgRect, 8, 8);
+            path.addRoundedRect(bgRect, 9, 9);
             
             if (isSelected) {
                 painter->fillPath(path, selectedBg);
+                painter->setPen(QPen(selectedBorder, 1));
+                painter->drawPath(path);
             } else if (isHovered) {
                 painter->fillPath(path, hoverBg);
             }
         }
 
-        // Accent rail for the active item.
         if (isSelected) {
             const int barWidth = 3;
-            const int barHeight = itemHeight - 14;
-            QRect barRect(opt.rect.left() + leftMargin + 1,
+            const int barHeight = qMin(24, itemHeight - 30);
+            QRect barRect(opt.rect.left() + iconLeftPadding - 10,
                          opt.rect.top() + (itemHeight - barHeight) / 2, 
                          barWidth, barHeight);
             painter->setBrush(accentColor);
             painter->setPen(Qt::NoPen);
-            painter->drawRoundedRect(barRect, 1.5, 1.5);
+            painter->drawRoundedRect(barRect, 2, 2);
         }
 
-        // Draw the icon glyph directly to keep it sharp on every DPI scale.
-        const QString iconGlyph = index.data(Qt::UserRole).toString();
+        const QString glyphText = index.data(Qt::UserRole + 1).toString();
         QRect iconRect(opt.rect.left() + iconLeftPadding, 
                        opt.rect.top() + (itemHeight - iconSize) / 2, 
                        iconSize, iconSize);
 
-        if (!iconGlyph.isEmpty()) {
+        const QColor iconColor = isSelected ? iconSelected : (isHovered ? iconHover : iconNormal);
+        if (!glyphText.isEmpty()) {
             QFont iconFont("Segoe Fluent Icons");
             if (!QFontInfo(iconFont).exactMatch()) {
                 iconFont.setFamily("Segoe MDL2 Assets");
             }
-            iconFont.setPixelSize(iconSize);
-            iconFont.setWeight(QFont::DemiBold);
-            iconFont.setBold(true);
+            iconFont.setPixelSize(28);
+            iconFont.setWeight(QFont::Normal);
             painter->setFont(iconFont);
-            painter->setPen(isSelected ? iconSelected : (isHovered ? iconHover : iconNormal));
-            painter->drawText(iconRect, Qt::AlignCenter, iconGlyph);
+            painter->setPen(iconColor);
+            painter->drawText(iconRect, Qt::AlignCenter, glyphText);
         }
 
         QString text = index.data(Qt::DisplayRole).toString();
@@ -126,8 +132,8 @@ public:
         
         QFont font = painter->font();
         font.setFamily(AppFonts::uiFamily());
-        font.setPixelSize(14);
-        font.setWeight(isSelected ? QFont::Weight::Medium : QFont::Weight::Normal);
+        font.setPixelSize(13);
+        font.setWeight(QFont::Weight::Medium);
         painter->setFont(font);
         
         QRect textRect(opt.rect.left() + textLeftPadding, opt.rect.top(), 
@@ -139,6 +145,16 @@ public:
 };
 
 namespace {
+void ensureSegoeFluentIconsLoaded()
+{
+    static bool loaded = false;
+    if (loaded) {
+        return;
+    }
+    loaded = true;
+    QFontDatabase::addApplicationFont(QStringLiteral(":/Assets/Segoe Fluent Icons.ttf"));
+}
+
 QString settingsConfigPath()
 {
     return QCoreApplication::applicationDirPath() + "/config.ini";
@@ -153,36 +169,316 @@ QColor readDesktopSelectionColor()
 
 QColor desktopSelectionFillColor(const QColor& baseColor)
 {
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const int opacity = qBound(20, settings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100);
     QColor fill = baseColor;
-    fill.setAlpha(70);
+    fill.setAlpha(qBound(35, opacity * 140 / 100, 180));
     return fill;
 }
 
 QColor desktopSelectionBorderColor(const QColor& baseColor)
 {
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const int contrast = qBound(0, settings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100);
     QColor border = baseColor.darker(110);
-    border.setAlpha(180);
+    border.setAlpha(qBound(95, contrast * 230 / 100, 230));
     return border;
+}
+
+void reloadSelectionOverlays()
+{
+    if (ListView* lv = ListView::instance()) {
+        if (LinDesktop* desktop = qobject_cast<LinDesktop*>(lv->parentWidget())) {
+            if (desktop->selectArea) {
+                desktop->selectArea->reloadColorsFromSettings();
+            }
+        }
+
+        const QVector<LinBox*> allBoxes = lv->boxes();
+        for (LinBox* box : allBoxes) {
+            if (box) {
+                box->refreshSelectionOverlayColor();
+            }
+        }
+    }
+}
+
+QString glyph(char16_t code)
+{
+    return QString(QChar(code));
+}
+
+QRect centeredPreviewImageRect(const QSize& size)
+{
+    const int imageWidth = qMax(1, size.width() * 90 / 100);
+    return QRect((size.width() - imageWidth) / 2, 0, imageWidth, size.height());
+}
+
+QLabel* createPageTitle(const QString& text, QWidget* parent)
+{
+    QLabel* label = new QLabel(text, parent);
+    label->setObjectName("pageTitle");
+    return label;
+}
+
+QLabel* createPageSubtitle(const QString& text, QWidget* parent)
+{
+    QLabel* label = new QLabel(text, parent);
+    label->setObjectName("pageSubtitle");
+    label->setWordWrap(true);
+    return label;
+}
+
+QLabel* createCardTitle(const QString& text, QWidget* parent)
+{
+    QLabel* label = new QLabel(text, parent);
+    label->setObjectName("cardTitle");
+    label->setWordWrap(true);
+    label->setMinimumWidth(0);
+    label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    return label;
+}
+
+QLabel* createCardSubtitle(const QString& text, QWidget* parent)
+{
+    QLabel* label = new QLabel(text, parent);
+    label->setObjectName("cardSubtitle");
+    label->setWordWrap(true);
+    return label;
+}
+
+QWidget* createPanel(QWidget* parent, const QString& objectName = QStringLiteral("settingsPanel"))
+{
+    QWidget* panel = new QWidget(parent);
+    panel->setObjectName(objectName);
+    panel->setMinimumWidth(0);
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    auto* shadow = new QGraphicsDropShadowEffect(panel);
+    shadow->setBlurRadius(24);
+    shadow->setXOffset(0);
+    shadow->setYOffset(8);
+    shadow->setColor(QColor(15, 23, 42, 18));
+    panel->setGraphicsEffect(shadow);
+    return panel;
+}
+
+QLabel* createGlyphLabel(const QString& glyphText, QWidget* parent, int pixelSize = 20, const QColor& color = QColor(0, 120, 212))
+{
+    QLabel* label = new QLabel(glyphText, parent);
+    label->setObjectName("glyphLabel");
+    label->setAlignment(Qt::AlignCenter);
+    label->setFixedSize(pixelSize + 18, pixelSize + 18);
+    label->setStyleSheet(QString(
+        "QLabel#glyphLabel {"
+        " background: transparent;"
+        " color: %1;"
+        " font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+        " font-size: %2px;"
+        "}").arg(color.name()).arg(pixelSize));
+    return label;
+}
+
+QFrame* createDivider(QWidget* parent)
+{
+    QFrame* divider = new QFrame(parent);
+    divider->setFrameShape(QFrame::HLine);
+    divider->setFixedHeight(1);
+    divider->setObjectName("softDivider");
+    return divider;
+}
+
+QWidget* createSwitchRow(const QString& icon,
+                         const QString& title,
+                         const QString& subtitle,
+                         FluentToggleSwitch* toggle,
+                         QWidget* parent)
+{
+    QWidget* row = new QWidget(parent);
+    row->setObjectName("settingsRow");
+    row->setMinimumWidth(0);
+    row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* layout = new QHBoxLayout(row);
+    layout->setContentsMargins(14, 10, 14, 10);
+    layout->setSpacing(14);
+
+    layout->addWidget(createGlyphLabel(icon, row, 20), 0, Qt::AlignVCenter);
+
+    QVBoxLayout* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(2);
+
+    QLabel* titleLabel = new QLabel(title, row);
+    titleLabel->setObjectName("rowTitle");
+    titleLabel->setWordWrap(true);
+    titleLabel->setMinimumWidth(0);
+    titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    QLabel* subtitleLabel = new QLabel(subtitle, row);
+    subtitleLabel->setObjectName("rowSubtitle");
+    subtitleLabel->setWordWrap(true);
+    subtitleLabel->setMinimumWidth(0);
+    subtitleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    textLayout->addWidget(titleLabel);
+    textLayout->addWidget(subtitleLabel);
+
+    layout->addLayout(textLayout, 1);
+    if (toggle) {
+        layout->addWidget(toggle, 0, Qt::AlignVCenter);
+    }
+
+    return row;
+}
+
+QPushButton* createColorPreset(const QColor& color, QWidget* parent)
+{
+    QPushButton* button = new QPushButton(parent);
+    button->setObjectName("colorPreset");
+    button->setFixedSize(28, 28);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setProperty("presetColor", color.name());
+    button->setStyleSheet(QString(
+        "QPushButton#colorPreset {"
+        " background: %1;"
+        " border: 2px solid rgba(255,255,255,0.96);"
+        " border-radius: 7px;"
+        "}"
+        "QPushButton#colorPreset:hover {"
+        " border: 2px solid #0078d4;"
+        "}").arg(color.name()));
+    return button;
+}
+
+void updateColorPresetIndicators(QWidget* container, const QColor& selectedColor)
+{
+    if (!container) {
+        return;
+    }
+
+    const QString selectedName = selectedColor.name().toLower();
+    const QList<QLabel*> indicators = container->findChildren<QLabel*>(QStringLiteral("colorPresetIndicator"));
+    bool matchedPreset = false;
+    for (QLabel* indicator : indicators) {
+        const QString presetName = indicator->property("presetColor").toString().toLower();
+        const bool isPresetMatch = !presetName.isEmpty() && presetName == selectedName;
+        if (isPresetMatch) {
+            matchedPreset = true;
+        }
+        indicator->setVisible(isPresetMatch);
+    }
+
+    for (QLabel* indicator : indicators) {
+        if (indicator->property("customColorIndicator").toBool()) {
+            indicator->setVisible(!matchedPreset);
+        }
+    }
+}
+
+QWidget* createHomeTile(const QString& icon, const QString& title, const QString& subtitle, QWidget* parent)
+{
+    QWidget* tile = new QWidget(parent);
+    tile->setObjectName("homeTile");
+    tile->setMinimumHeight(142);
+    QVBoxLayout* layout = new QVBoxLayout(tile);
+    layout->setContentsMargins(16, 18, 16, 16);
+    layout->setSpacing(8);
+    layout->addWidget(createGlyphLabel(icon, tile, 34), 0, Qt::AlignHCenter);
+
+    QLabel* titleLabel = new QLabel(title, tile);
+    titleLabel->setObjectName("homeTileTitle");
+    titleLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(titleLabel);
+
+    QLabel* subtitleLabel = new QLabel(subtitle, tile);
+    subtitleLabel->setObjectName("homeTileSubtitle");
+    subtitleLabel->setWordWrap(true);
+    subtitleLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(subtitleLabel);
+    layout->addStretch();
+    return tile;
+}
+
+QWidget* createQuickAction(const QString& icon, const QString& title, const QString& subtitle, QWidget* parent)
+{
+    QWidget* action = new QWidget(parent);
+    action->setObjectName("quickAction");
+    QHBoxLayout* layout = new QHBoxLayout(action);
+    layout->setContentsMargins(14, 12, 12, 12);
+    layout->setSpacing(12);
+    layout->addWidget(createGlyphLabel(icon, action, 22), 0, Qt::AlignVCenter);
+
+    QVBoxLayout* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(2);
+    QLabel* titleLabel = new QLabel(title, action);
+    titleLabel->setObjectName("rowTitle");
+    QLabel* subtitleLabel = new QLabel(subtitle, action);
+    subtitleLabel->setObjectName("rowSubtitle");
+    subtitleLabel->setWordWrap(true);
+    textLayout->addWidget(titleLabel);
+    textLayout->addWidget(subtitleLabel);
+    layout->addLayout(textLayout, 1);
+    layout->addWidget(createGlyphLabel(glyph(0xE974), action, 16, QColor("#27344c")), 0, Qt::AlignVCenter);
+    return action;
+}
+
+QWidget* createPluginBadge(const QString& icon, const QString& text, QWidget* parent, const QColor& color)
+{
+    QWidget* badge = new QWidget(parent);
+    badge->setObjectName("pluginBadge");
+    badge->setStyleSheet(QString(
+        "QWidget#pluginBadge { background: %1; border: 1px solid %2; border-radius: 7px; }")
+        .arg(color.lighter(185).name())
+        .arg(color.lighter(145).name()));
+    QHBoxLayout* layout = new QHBoxLayout(badge);
+    layout->setContentsMargins(8, 4, 8, 4);
+    layout->setSpacing(5);
+    layout->addWidget(createGlyphLabel(icon, badge, 12, color), 0, Qt::AlignVCenter);
+    QLabel* label = new QLabel(text, badge);
+    label->setObjectName("badgeLabel");
+    label->setStyleSheet(QStringLiteral("color: %1; font-size: 12px; font-weight: 700;").arg(color.darker(130).name()));
+    layout->addWidget(label);
+    return badge;
+}
+
+QWidget* createPluginFeature(const QString& icon, const QString& title, const QString& subtitle, QWidget* parent)
+{
+    QWidget* feature = new QWidget(parent);
+    feature->setObjectName("pluginFeature");
+    QHBoxLayout* layout = new QHBoxLayout(feature);
+    layout->setContentsMargins(18, 14, 18, 14);
+    layout->setSpacing(14);
+    layout->addWidget(createGlyphLabel(icon, feature, 24), 0, Qt::AlignVCenter);
+
+    QVBoxLayout* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(3);
+    QLabel* titleLabel = new QLabel(title, feature);
+    titleLabel->setObjectName("rowTitle");
+    QLabel* subtitleLabel = new QLabel(subtitle, feature);
+    subtitleLabel->setObjectName("rowSubtitle");
+    subtitleLabel->setWordWrap(true);
+    textLayout->addWidget(titleLabel);
+    textLayout->addWidget(subtitleLabel);
+    layout->addLayout(textLayout, 1);
+    return feature;
 }
 }
 
 SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidget* parent)
-    : FluentBaseWidget(parent), m_targetBox(targetBox), m_allBoxes(allBoxes)
+    : FluentBaseWidget(parent), m_targetBox(targetBox)
 {
-    resize(720, 520);
-    setMinimumSize(520, 340);
+    m_allBoxes.reserve(allBoxes.size());
+    for (LinBox* box : allBoxes) {
+        if (box) {
+            m_allBoxes.append(QPointer<LinBox>(box));
+        }
+    }
+
+    resize(1024, 720);
+    setMinimumSize(880, 620);
     setWindowTitle(tr("LinDesk"));
     setResizable(true);
-    setWindowBtnMode(All); // Show Minimize, Maximize, and Close buttons
-
-    // Add title bar text (left side of title bar) - Fluent Design Title
-    m_titleBarTitle = new QLabel(tr("LinDesk"), this);
-    m_titleBarTitle->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI'; "
-        "font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: #1f2937; "
-        "margin-left: 8px; margin-right: 20px;"
-    );
-    addTitleBarWidget(m_titleBarTitle);
+    setWindowBtnMode(None);
 
     m_selectionPreviewColor = readDesktopSelectionColor();
 
@@ -193,60 +489,79 @@ SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidge
     QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
     QSettings settings(configPath, QSettings::IniFormat);
     if (settings.contains("SettingUI/Size")) {
-        resize(settings.value("SettingUI/Size").toSize());
+        resize(settings.value("SettingUI/Size").toSize().expandedTo(minimumSize()));
     } else {
-        resize(720, 520); // Default
+        resize(1024, 720);
     }
 
     // Always center on screen or near box (don't persist position as requested)
     if (m_targetBox) {
-        move(m_targetBox->mapToGlobal(QPoint(m_targetBox->width()/2 - width()/2, m_targetBox->height()/2 - height()/2)));
+        LinBox* targetBoxPtr = m_targetBox.data();
+        move(targetBoxPtr->mapToGlobal(QPoint(targetBoxPtr->width()/2 - width()/2, targetBoxPtr->height()/2 - height()/2)));
     }
 
     ensureTrayIcon();
 }
 
 void SettingUI::initUI() {
+    ensureSegoeFluentIconsLoaded();
+
     QHBoxLayout* mainLayout = new QHBoxLayout();
     centralLayout()->addLayout(mainLayout);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // --- Sidebar (Left) ---
     QWidget* sidebarContainer = new QWidget(container());
     sidebarContainer->setObjectName("sidebarContainer");
-    sidebarContainer->setMinimumWidth(220);
-    sidebarContainer->setMaximumWidth(280);
+    sidebarContainer->setMinimumWidth(155);
+    sidebarContainer->setMaximumWidth(195);
+    sidebarContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     QVBoxLayout* sidebarLayout = new QVBoxLayout(sidebarContainer);
-    sidebarLayout->setContentsMargins(16, 14, 16, 18);
+    sidebarLayout->setContentsMargins(0, 18, 0, 28);
     sidebarLayout->setSpacing(0);
     sidebarLayout->setAlignment(Qt::AlignTop);
 
-    // Sidebar Branding Header (minimal spacer to align with title bar)
-    QWidget* headerSpacer = new QWidget(sidebarContainer);
-    headerSpacer->setFixedHeight(18);
-    sidebarLayout->addWidget(headerSpacer);
+    QWidget* sidebarBrand = new QWidget(sidebarContainer);
+    sidebarBrand->setObjectName("sidebarBrand");
+    QHBoxLayout* sidebarBrandLayout = new QHBoxLayout(sidebarBrand);
+    sidebarBrandLayout->setContentsMargins(22, 0, 16, 0);
+    sidebarBrandLayout->setSpacing(12);
+    sidebarBrandLayout->setAlignment(Qt::AlignVCenter);
+
+    QLabel* sidebarBrandIcon = new QLabel(sidebarBrand);
+    sidebarBrandIcon->setObjectName("sidebarBrandIcon");
+    sidebarBrandIcon->setFixedSize(38, 38);
+    sidebarBrandIcon->setPixmap(QIcon(":/Assets/icon.png").pixmap(38, 38));
+    sidebarBrandLayout->addWidget(sidebarBrandIcon);
+
+    m_titleBarTitle = new QLabel(tr("LinDesk"), sidebarBrand);
+    m_titleBarTitle->setObjectName("sidebarBrandTitle");
+    sidebarBrandLayout->addWidget(m_titleBarTitle);
+    sidebarBrandLayout->addStretch(1);
+
+    sidebarLayout->addWidget(sidebarBrand);
+    sidebarLayout->addSpacing(28);
 
     m_sidebar = new QListWidget(sidebarContainer);
     m_sidebar->setObjectName("sidebar");
     m_sidebar->setFrameShape(QFrame::NoFrame);
-    m_sidebar->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_sidebar->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_sidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     
     struct TabInfo { char16_t icon; QString text; };
     QVector<TabInfo> tabs = {
-        {0xE80F, tr("General")},
-        {0xE7F4, tr("Desktop")},
-        {0xEA37, tr("Box")},
-        {0xE74C, tr("Plugins")},
+        {0xE713, tr("General")},
+        {0xE7F8, tr("Window")},
+        {0xF133, tr("Box")},
+        {0xF22C, tr("Plugins")},
         {0xE946, tr("About")}
     };
 
     for (const auto& tab : tabs) {
         QListWidgetItem* item = new QListWidgetItem(m_sidebar);
         item->setText(tab.text);
-        item->setSizeHint(QSize(208, 44));
-        item->setData(Qt::UserRole, QString(tab.icon));
+        item->setSizeHint(QSize(230, 50));
+        item->setData(Qt::UserRole + 1, QString(QChar(tab.icon)));
         switch (m_sidebar->count() - 1) {
         case 0: m_generalTabItem = item; break;
         case 1: m_desktopTabItem = item; break;
@@ -258,17 +573,61 @@ void SettingUI::initUI() {
     }
 
     m_sidebar->setItemDelegate(new SidebarDelegate(m_sidebar));
-    m_sidebar->setSpacing(6);
+    m_sidebar->setSpacing(3);
+    m_sidebar->setMinimumHeight(320);
+    m_sidebar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     sidebarLayout->addWidget(m_sidebar);
 
-    // --- Content Area (Right) ---
+    QLabel* versionBadge = new QLabel(QString("v%1").arg(LINDESK_VERSION_STRING), sidebarContainer);
+    versionBadge->setObjectName("versionBadge");
+    versionBadge->setAlignment(Qt::AlignCenter);
+    versionBadge->setFixedSize(92, 36);
+    sidebarLayout->addWidget(versionBadge, 0, Qt::AlignHCenter);
+
     QWidget* rightArea = new QWidget(container());
     rightArea->setObjectName("rightArea");
+    rightArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout* rightLayout = new QVBoxLayout(rightArea);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(0);
 
+    QWidget* windowControls = new QWidget(rightArea);
+    windowControls->setObjectName("settingsWindowControls");
+    windowControls->setFixedHeight(32);
+    QHBoxLayout* windowControlsLayout = new QHBoxLayout(windowControls);
+    windowControlsLayout->setContentsMargins(0, 0, 0, 0);
+    windowControlsLayout->setSpacing(0);
+    windowControlsLayout->addStretch(1);
+
+    auto createWindowControlButton = [windowControls](const QString& text, const QString& objectName) {
+        QPushButton* button = new QPushButton(text, windowControls);
+        button->setObjectName(objectName);
+        button->setFixedSize(45, 32);
+        button->setCursor(Qt::ArrowCursor);
+        return button;
+    };
+
+    m_settingsMinBtn = createWindowControlButton(QString::fromUtf8(u8"\uE921"), QStringLiteral("settingsMinBtn"));
+    m_settingsMaxBtn = createWindowControlButton(QString::fromUtf8(u8"\uE922"), QStringLiteral("settingsMaxBtn"));
+    m_settingsCloseBtn = createWindowControlButton(QString::fromUtf8(u8"\uE8BB"), QStringLiteral("settingsCloseBtn"));
+    windowControlsLayout->addWidget(m_settingsMinBtn);
+    windowControlsLayout->addWidget(m_settingsMaxBtn);
+    windowControlsLayout->addWidget(m_settingsCloseBtn);
+
+    connect(m_settingsMinBtn, &QPushButton::clicked, this, &QWidget::showMinimized);
+    connect(m_settingsMaxBtn, &QPushButton::clicked, this, [this]() {
+        if (windowState() & Qt::WindowMaximized) {
+            setWindowState(Qt::WindowNoState);
+        } else {
+            setWindowState(Qt::WindowMaximized);
+        }
+        updateWindowControlButtons();
+    });
+    connect(m_settingsCloseBtn, &QPushButton::clicked, this, &QWidget::close);
+    rightLayout->addWidget(windowControls);
+
     m_contentStack = new QStackedWidget(container());
+    m_contentStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_contentStack->addWidget(wrapScrollablePage(createGeneralPage()));
     m_contentStack->addWidget(wrapScrollablePage(createDesktopPage()));
     m_contentStack->addWidget(wrapScrollablePage(createGridPage()));
@@ -277,12 +636,12 @@ void SettingUI::initUI() {
 
     rightLayout->addWidget(m_contentStack);
 
-    // Apply proportional stretch (2:7) for modern Fluent feel
-    mainLayout->addWidget(sidebarContainer, 2);
-    mainLayout->addWidget(rightArea, 7);
+    mainLayout->addWidget(sidebarContainer, 15);
+    mainLayout->addWidget(rightArea, 85);
 
     connect(m_sidebar, &QListWidget::currentRowChanged, m_contentStack, &QStackedWidget::setCurrentIndex);
-    m_sidebar->setCurrentRow(0); // Default to General as requested
+    m_sidebar->setCurrentRow(1);
+    updateSidebarItemHeights();
 }
 
 QWidget* SettingUI::wrapScrollablePage(QWidget* content) {
@@ -292,12 +651,18 @@ QWidget* SettingUI::wrapScrollablePage(QWidget* content) {
 
     QScrollArea* scroll = new QScrollArea(container());
     scroll->setWidgetResizable(true);
+    scroll->setMinimumWidth(0);
+    scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scroll->setStyleSheet("QScrollArea { background: transparent; border: none; }");
 
-    content->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    content->setMinimumWidth(0);
+    content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::MinimumExpanding);
+    if (QLayout* contentLayout = content->layout()) {
+        contentLayout->setSizeConstraint(QLayout::SetNoConstraint);
+    }
     scroll->setWidget(content);
     return scroll;
 }
@@ -455,17 +820,44 @@ void SettingUI::exitFromTray()
 QWidget* SettingUI::createGeneralPage() {
     QWidget* page = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(35, 25, 35, 25);
-    layout->setSpacing(12);
+    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
 
     QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
     QSettings settings(configPath, QSettings::IniFormat);
 
-    m_generalPageTitle = new QLabel(tr("General Settings"), page);
-    m_generalPageTitle->setObjectName("pageTitle");
-    layout->addWidget(m_generalPageTitle);
+    m_generalPageTitle = createPageTitle(tr("Settings Home"), page);
+    m_generalPageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(m_generalPageTitle, 0, Qt::AlignLeft);
+    layout->addSpacing(8);
+    layout->addWidget(createPageSubtitle(tr("Manage LinDesk preferences, desktop behavior, and plugins from one place."), page));
+    layout->addSpacing(8);
 
-    // 1. Auto Start
+    QWidget* tileGrid = new QWidget(page);
+    QGridLayout* tileLayout = new QGridLayout(tileGrid);
+    tileLayout->setContentsMargins(0, 0, 0, 0);
+    tileLayout->setHorizontalSpacing(16);
+    tileLayout->setVerticalSpacing(16);
+    tileLayout->addWidget(createHomeTile(glyph(0xE80F), tr("General"), tr("Configure core application behavior and preferences."), tileGrid), 0, 0);
+    tileLayout->addWidget(createHomeTile(glyph(0xE7F4), tr("Desktop"), tr("Customize desktop experience and settings."), tileGrid), 0, 1);
+    tileLayout->addWidget(createHomeTile(glyph(0xEA37), tr("Box"), tr("Adjust Box interface and interaction."), tileGrid), 0, 2);
+    tileLayout->addWidget(createHomeTile(glyph(0xE74C), tr("Plugins"), tr("Browse, install, and manage plugins."), tileGrid), 0, 3);
+    for (int column = 0; column < 4; ++column) {
+        tileLayout->setColumnStretch(column, 1);
+    }
+    layout->addWidget(tileGrid);
+
+    QLabel* statusTitle = createCardTitle(tr("System Status"), page);
+    layout->addSpacing(16);
+    layout->addWidget(statusTitle);
+    layout->addSpacing(8);
+
+    QWidget* statusPanel = createPanel(page);
+    QVBoxLayout* statusLayout = new QVBoxLayout(statusPanel);
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(0);
+
     m_autoStartToggle = new FluentToggleSwitch(page);
     const bool autoStartEnabled = isLaunchAtLoginEnabled();
     m_autoStartToggle->setChecked(autoStartEnabled);
@@ -483,20 +875,20 @@ QWidget* SettingUI::createGeneralPage() {
         QSettings s(configPath, QSettings::IniFormat);
         s.setValue("General/AutoStart", checked);
     });
-    m_autoStartCard = new FluentCard(u8"\uE7E6", tr("Launch at Login"), tr("Automatically start LinDesk when you sign in to Windows"), m_autoStartToggle, page);
-    layout->addWidget(m_autoStartCard);
+    m_autoStartCard = nullptr;
+    statusLayout->addWidget(createSwitchRow(glyph(0xE7E6), tr("Launch at Login"), tr("Automatically start LinDesk when you sign in to Windows."), m_autoStartToggle, statusPanel));
+    statusLayout->addWidget(createDivider(statusPanel));
 
-    // 2. Tray Only
     FluentToggleSwitch* trayOnly = new FluentToggleSwitch(page);
     trayOnly->setChecked(settings.value("General/MinimizeToTray", true).toBool());
     connect(trayOnly, &FluentToggleSwitch::toggled, this, [configPath](bool checked){
         QSettings s(configPath, QSettings::IniFormat);
         s.setValue("General/MinimizeToTray", checked);
     });
-    m_trayOnlyCard = new FluentCard(u8"\uE921", tr("Minimize to Tray"), tr("Keep LinDesk running in the system tray when window is closed"), trayOnly, page);
-    layout->addWidget(m_trayOnlyCard);
+    m_trayOnlyCard = nullptr;
+    statusLayout->addWidget(createSwitchRow(glyph(0xE921), tr("Minimize to Tray"), tr("Keep LinDesk running in the system tray when the window closes."), trayOnly, statusPanel));
+    statusLayout->addWidget(createDivider(statusPanel));
 
-    // 3. OpenGL rendering
     m_openGLToggle = new FluentToggleSwitch(page);
     m_openGLToggle->setChecked(settings.value("General/UseOpenGL", false).toBool());
     connect(m_openGLToggle, &FluentToggleSwitch::toggled, this, [this, configPath](bool checked) {
@@ -513,15 +905,27 @@ QWidget* SettingUI::createGeneralPage() {
             tr("Restart Required"),
             tr("Restart LinDesk to apply the OpenGL rendering change."));
     });
-    m_openGLCard = new FluentCard(
-        u8"\uE7F8",
-        tr("OpenGL Rendering"),
-        tr("Use OpenGL to accelerate rendering. Restart LinDesk to apply changes."),
-        m_openGLToggle,
-        page);
-    layout->addWidget(m_openGLCard);
+    m_openGLCard = nullptr;
+    statusLayout->addWidget(createSwitchRow(glyph(0xE7F8), tr("OpenGL Rendering"), tr("Use OpenGL to accelerate rendering."), m_openGLToggle, statusPanel));
+    statusLayout->addWidget(createDivider(statusPanel));
 
-    // 4. Language
+    QWidget* languageRow = new QWidget(statusPanel);
+    languageRow->setObjectName("settingsRow");
+    QHBoxLayout* languageRowLayout = new QHBoxLayout(languageRow);
+    languageRowLayout->setContentsMargins(14, 10, 14, 10);
+    languageRowLayout->setSpacing(14);
+    languageRowLayout->addWidget(createGlyphLabel(glyph(0xE774), languageRow, 20), 0, Qt::AlignVCenter);
+    QVBoxLayout* languageText = new QVBoxLayout();
+    languageText->setContentsMargins(0, 0, 0, 0);
+    languageText->setSpacing(2);
+    QLabel* languageTitle = new QLabel(tr("Display Language"), languageRow);
+    languageTitle->setObjectName("rowTitle");
+    QLabel* languageSub = new QLabel(tr("Choose which language is used in the interface. Restart LinDesk to apply changes."), languageRow);
+    languageSub->setObjectName("rowSubtitle");
+    languageText->addWidget(languageTitle);
+    languageText->addWidget(languageSub);
+    languageRowLayout->addLayout(languageText, 1);
+
     m_languageCombo = new FluentComboBox(page);
     m_languageCombo->addItem(tr("English (United States)"), QStringLiteral("en_US"));
     m_languageCombo->addItem(tr("Chinese (Simplified)"), QStringLiteral("zh_CN"));
@@ -532,13 +936,58 @@ QWidget* SettingUI::createGeneralPage() {
     }
     m_languageCombo->setCurrentIndex(languageIndex);
     m_languageCombo->setMinimumWidth(180);
-    connect(m_languageCombo, QOverload<int>::of(&FluentComboBox::currentIndexChanged), this, [configPath](int index){
-        Q_UNUSED(configPath);
-        const QString languageCode = index == 1 ? QStringLiteral("zh_CN") : QStringLiteral("en_US");
-        LanguageManager::instance().setLanguage(*qApp, languageCode);
+    connect(m_languageCombo, QOverload<int>::of(&FluentComboBox::currentIndexChanged), this, [this](int index){
+        if (index < 0) {
+            return;
+        }
+
+        const QString languageCode = LanguageManager::normalizeLanguageCode(m_languageCombo->itemData(index));
+        if (languageCode == LanguageManager::configuredLanguageCode()) {
+            return;
+        }
+
+        if (!LanguageManager::instance().setConfiguredLanguageCode(languageCode)) {
+            FluentDialog::showInfo(this, tr("Display Language"), tr("LinDesk could not save the language setting."));
+            return;
+        }
+
+        if (languageCode == LanguageManager::instance().currentLanguageCode()) {
+            return;
+        }
+
+        FluentDialog dlg(this);
+        dlg.setDialogTitle(tr("Restart Required"));
+        dlg.setMessage(tr("Restart LinDesk to apply the display language change."));
+        dlg.addActionButton(tr("Restart Now"), FluentDialog::ActionType::Primary, [this]() {
+            const bool started = QProcess::startDetached(
+                QCoreApplication::applicationFilePath(),
+                QCoreApplication::arguments(),
+                QCoreApplication::applicationDirPath());
+            if (started) {
+                QCoreApplication::quit();
+            } else {
+                FluentDialog::showInfo(this, tr("Restart Required"), tr("LinDesk could not restart automatically. Please restart it manually."));
+            }
+        });
+        dlg.addActionButton(tr("Later"), FluentDialog::ActionType::Close);
+        dlg.exec();
     });
-    m_languageCard = new FluentCard(u8"\uE774", tr("Display Language"), tr("Choose which language is used in the interface. Restart LinDesk to apply changes."), m_languageCombo, page);
-    layout->addWidget(m_languageCard);
+    languageRowLayout->addWidget(m_languageCombo);
+    statusLayout->addWidget(languageRow);
+    m_languageCard = nullptr;
+    layout->addWidget(statusPanel);
+    layout->addSpacing(16);
+
+    QWidget* tipPanel = createPanel(page);
+    QHBoxLayout* tipLayout = new QHBoxLayout(tipPanel);
+    tipLayout->setContentsMargins(16, 12, 16, 12);
+    tipLayout->setSpacing(12);
+    tipLayout->addWidget(createGlyphLabel(glyph(0xE82F), tipPanel, 22), 0, Qt::AlignVCenter);
+    QLabel* tipText = new QLabel(tr("Tip: You can find more settings in each section. Explore the categories above to personalize your LinDesk experience."), tipPanel);
+    tipText->setObjectName("rowSubtitle");
+    tipText->setWordWrap(true);
+    tipLayout->addWidget(tipText, 1);
+    layout->addWidget(tipPanel);
 
     layout->addStretch();
     return page;
@@ -547,72 +996,145 @@ QWidget* SettingUI::createGeneralPage() {
 QWidget* SettingUI::createDesktopPage() {
     QWidget* page = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(35, 25, 35, 25);
-    layout->setSpacing(12);
+    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
 
-    m_desktopPageTitle = new QLabel(tr("Desktop Customization"), page);
-    m_desktopPageTitle->setObjectName("pageTitle");
-    layout->addWidget(m_desktopPageTitle);
+    m_desktopPageTitle = createPageTitle(tr("Desktop Customization"), page);
+    m_desktopPageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(m_desktopPageTitle, 0, Qt::AlignLeft);
+    layout->addSpacing(8);
 
-    QWidget* previewContainer = new QWidget(page);
-    previewContainer->setFixedHeight(138);
-    previewContainer->setStyleSheet("background: #f8f9fa; border-radius: 8px;");
-
+    QWidget* previewContainer = createPanel(page);
+    m_desktopPreviewContainer = previewContainer;
+    previewContainer->setFixedHeight(livePreviewHeightForWindow());
+    previewContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
-    previewLayout->setContentsMargins(16, 12, 16, 12);
-    previewLayout->setSpacing(8);
+    previewLayout->setContentsMargins(22, 10, 22, 20);
+    previewLayout->setSpacing(6);
 
-    QLabel* previewTitle = new QLabel(tr("Preview"), previewContainer);
-    previewTitle->setStyleSheet("font-size: 12px; font-weight: 600; color: #6b7280;");
+    QLabel* previewTitle = createCardTitle(tr("Live Preview"), previewContainer);
     previewLayout->addWidget(previewTitle);
+    previewLayout->addWidget(createCardSubtitle(tr("Preview the desktop selection rectangle color, contrast, and opacity."), previewContainer));
 
     m_desktopSelectionPreview = new QLabel(previewContainer);
-    m_desktopSelectionPreview->setMinimumHeight(88);
+    m_desktopSelectionPreview->setMinimumHeight(124);
     m_desktopSelectionPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_desktopSelectionPreview->setAlignment(Qt::AlignCenter);
-    m_desktopSelectionPreview->setStyleSheet("border-radius: 10px; background: transparent;");
+    m_desktopSelectionPreview->setAlignment(Qt::AlignCenter | Qt::AlignHCenter);
+    m_desktopSelectionPreview->setObjectName("previewSurface");
     previewLayout->addWidget(m_desktopSelectionPreview);
 
-    layout->addWidget(previewContainer);
+    layout->addWidget(previewContainer, 0);
 
-    QWidget* selectionActionSide = new QWidget(page);
-    QHBoxLayout* selectionActionLayout = new QHBoxLayout(selectionActionSide);
-    selectionActionLayout->setContentsMargins(0, 0, 0, 0);
-    selectionActionLayout->setSpacing(16);
+    QWidget* selectionPanel = createPanel(page);
+    m_desktopSelectionPanel = selectionPanel;
+    selectionPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* selectionLayout = new QVBoxLayout(selectionPanel);
+    selectionLayout->setContentsMargins(22, 18, 22, 18);
+    selectionLayout->setSpacing(0);
 
-    m_selectionColorWheel = new FluentColorWheel(selectionActionSide);
-    m_selectionColorWheel->setColor(m_selectionPreviewColor);
+    m_selectionColorSectionTitle = createCardTitle(tr("Selection Rectangle Color"), selectionPanel);
+    selectionLayout->addWidget(m_selectionColorSectionTitle);
+    selectionLayout->addSpacing(12);
 
-    m_selectionColorValueEdit = new QLineEdit(selectionActionSide);
+    QWidget* presetsRow = new QWidget(selectionPanel);
+    presetsRow->setObjectName("settingsInnerRow");
+    presetsRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* presetsLayout = new QHBoxLayout(presetsRow);
+    presetsLayout->setContentsMargins(12, 8, 12, 8);
+    presetsLayout->setSpacing(8);
+    QLabel* presetsLabel = new QLabel(tr("Presets"), presetsRow);
+    presetsLabel->setObjectName("rowTitle");
+    presetsLayout->addWidget(presetsLabel);
+    presetsLayout->addStretch();
+
+    m_selectionColorValueEdit = new QLineEdit(presetsRow);
     m_selectionColorValueEdit->setReadOnly(true);
     m_selectionColorValueEdit->setAlignment(Qt::AlignCenter);
-    m_selectionColorValueEdit->setFixedWidth(112);
-    m_selectionColorValueEdit->setFixedHeight(34);
+    m_selectionColorValueEdit->setMinimumWidth(72);
+    m_selectionColorValueEdit->setMaximumWidth(84);
+    m_selectionColorValueEdit->setFixedHeight(30);
     m_selectionColorValueEdit->setText(m_selectionPreviewColor.name().toUpper());
-    m_selectionColorValueEdit->setStyleSheet(
-        "QLineEdit {"
-        " background: #ffffff;"
-        " border: 1px solid rgba(0, 0, 0, 0.14);"
-        " border-radius: 8px;"
-        " color: #374151;"
-        " font-family: 'Segoe UI Mono', 'Consolas';"
-        " font-size: 13px;"
-        " padding: 0 10px;"
-        "}"
-    );
+    m_selectionColorValueEdit->setObjectName("valueEdit");
+    presetsLayout->addWidget(m_selectionColorValueEdit);
 
-    QVBoxLayout* selectionValueLayout = new QVBoxLayout();
-    selectionValueLayout->setContentsMargins(0, 0, 0, 0);
-    selectionValueLayout->setSpacing(0);
-    selectionValueLayout->addStretch();
-    selectionValueLayout->addWidget(m_selectionColorValueEdit, 0, Qt::AlignVCenter);
-    selectionValueLayout->addStretch();
+    const QVector<QColor> presets = {
+        QColor("#F0CF24"),
+        QColor("#63A8F5"),
+        QColor("#00C853"),
+        QColor("#8B45E6"),
+        QColor("#E94B98"),
+        QColor("#FF8A24"),
+        QColor("#AEB4BE")
+    };
+    for (const QColor& preset : presets) {
+        QWidget* presetContainer = new QWidget(presetsRow);
+        presetContainer->setObjectName("colorPresetContainer");
+        QVBoxLayout* presetContainerLayout = new QVBoxLayout(presetContainer);
+        presetContainerLayout->setContentsMargins(0, 0, 0, 0);
+        presetContainerLayout->setSpacing(3);
 
-    selectionActionLayout->addWidget(m_selectionColorWheel);
-    selectionActionLayout->addLayout(selectionValueLayout);
-    selectionActionLayout->addStretch();
+        QPushButton* button = createColorPreset(preset, presetContainer);
+        button->setFixedSize(24, 24);
+        QLabel* indicator = new QLabel(presetContainer);
+        indicator->setObjectName("colorPresetIndicator");
+        indicator->setProperty("presetColor", preset.name());
+        indicator->setFixedSize(6, 6);
+        indicator->setStyleSheet(QStringLiteral(
+            "QLabel#colorPresetIndicator {"
+            " background: #1870ff;"
+            " border-radius: 3px;"
+            "}"));
+        indicator->setVisible(false);
 
-    connect(m_selectionColorWheel, &FluentColorWheel::colorChanged, this, [this](const QColor& color){
+        presetContainerLayout->addWidget(button, 0, Qt::AlignHCenter);
+        presetContainerLayout->addWidget(indicator, 0, Qt::AlignHCenter);
+        connect(button, &QPushButton::clicked, this, [this, presetsRow, preset]() {
+            m_selectionPreviewColor = preset;
+            if (m_selectionColorValueEdit) {
+                m_selectionColorValueEdit->setText(preset.name().toUpper());
+            }
+            QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+            settings.setValue("Desktop/SelectionRectangleColor", preset.name());
+            settings.sync();
+            reloadSelectionOverlays();
+            updateColorPresetIndicators(presetsRow, preset);
+            updateDesktopSelectionPreview();
+        });
+        presetsLayout->addWidget(presetContainer);
+    }
+
+    QWidget* pickerContainer = new QWidget(presetsRow);
+    pickerContainer->setObjectName("colorPresetContainer");
+    QVBoxLayout* pickerContainerLayout = new QVBoxLayout(pickerContainer);
+    pickerContainerLayout->setContentsMargins(0, 0, 0, 0);
+    pickerContainerLayout->setSpacing(3);
+
+    QPushButton* pickerButton = new QPushButton(glyph(0xE790), pickerContainer);
+    pickerButton->setObjectName("colorPickerButton");
+    pickerButton->setFixedSize(24, 24);
+    pickerButton->setCursor(Qt::PointingHandCursor);
+    QLabel* pickerIndicator = new QLabel(pickerContainer);
+    pickerIndicator->setObjectName("colorPresetIndicator");
+    pickerIndicator->setProperty("customColorIndicator", true);
+    pickerIndicator->setFixedSize(6, 6);
+    pickerIndicator->setStyleSheet(QStringLiteral(
+        "QLabel#colorPresetIndicator {"
+        " background: #1870ff;"
+        " border-radius: 3px;"
+        "}"));
+    pickerIndicator->setVisible(false);
+    pickerContainerLayout->addWidget(pickerButton, 0, Qt::AlignHCenter);
+    pickerContainerLayout->addWidget(pickerIndicator, 0, Qt::AlignHCenter);
+    presetsLayout->addWidget(pickerContainer);
+    updateColorPresetIndicators(presetsRow, m_selectionPreviewColor);
+    selectionLayout->addWidget(presetsRow);
+    selectionLayout->addWidget(createDivider(selectionPanel));
+
+    auto applySelectionColor = [this, presetsRow](const QColor& color) {
+        if (!color.isValid()) {
+            return;
+        }
         m_selectionPreviewColor = color;
         if (m_selectionColorValueEdit) {
             m_selectionColorValueEdit->setText(color.name().toUpper());
@@ -620,49 +1142,106 @@ QWidget* SettingUI::createDesktopPage() {
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionRectangleColor", color.name());
         settings.sync();
-
-        if (ListView* lv = ListView::instance()) {
-            if (LinDesktop* desktop = qobject_cast<LinDesktop*>(lv->parentWidget())) {
-                if (desktop->selectArea) {
-                    desktop->selectArea->reloadColorsFromSettings();
-                }
-            }
-
-            const QVector<LinBox*> allBoxes = lv->boxes();
-            for (LinBox* box : allBoxes) {
-                if (box) {
-                    box->refreshSelectionOverlayColor();
-                }
-            }
-        }
-
+        reloadSelectionOverlays();
+        updateColorPresetIndicators(presetsRow, color);
         updateDesktopSelectionPreview();
+    };
+
+    connect(pickerButton, &QPushButton::clicked, this, [this, applySelectionColor]() {
+        QColorDialog* dialog = new QColorDialog(m_selectionPreviewColor, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(tr("Selection Rectangle Color"));
+        dialog->setOption(QColorDialog::NoButtons, true);
+        connect(dialog, &QColorDialog::currentColorChanged, this, [applySelectionColor](const QColor& color) {
+            applySelectionColor(color);
+        });
+        connect(dialog, &QColorDialog::colorSelected, this, [applySelectionColor](const QColor& color) {
+            applySelectionColor(color);
+        });
+        dialog->open();
     });
 
-    QWidget* selectionColorSection = new QWidget(page);
-    QVBoxLayout* selectionColorSectionLayout = new QVBoxLayout(selectionColorSection);
-    selectionColorSectionLayout->setContentsMargins(8, 4, 8, 4);
-    selectionColorSectionLayout->setSpacing(8);
+    QWidget* contrastRow = new QWidget(selectionPanel);
+    contrastRow->setObjectName("settingsInnerRow");
+    contrastRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* contrastLayout = new QHBoxLayout(contrastRow);
+    contrastLayout->setContentsMargins(14, 8, 14, 8);
+    contrastLayout->setSpacing(12);
+    QVBoxLayout* contrastText = new QVBoxLayout();
+    contrastText->setContentsMargins(0, 0, 0, 0);
+    contrastText->setSpacing(2);
+    QLabel* contrastTitle = new QLabel(tr("Contrast"), contrastRow);
+    contrastTitle->setObjectName("rowTitle");
+    contrastTitle->setWordWrap(true);
+    contrastTitle->setMinimumWidth(0);
+    contrastTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    contrastText->addWidget(contrastTitle);
+    contrastLayout->addLayout(contrastText, 1);
+    contrastLayout->addWidget(createGlyphLabel(glyph(0xE706), contrastRow, 18, QColor("#5b6b86")));
+    QSlider* contrastSlider = new QSlider(Qt::Horizontal, contrastRow);
+    contrastSlider->setRange(0, 100);
+    QSettings desktopSettings(settingsConfigPath(), QSettings::IniFormat);
+    contrastSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100));
+    contrastSlider->setMinimumWidth(120);
+    contrastSlider->setMaximumWidth(160);
+    contrastSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    contrastLayout->addWidget(contrastSlider, 2);
+    QLabel* contrastValue = new QLabel(QStringLiteral("%1%").arg(contrastSlider->value()), contrastRow);
+    contrastValue->setObjectName("valueLabel");
+    contrastValue->setFixedWidth(44);
+    contrastValue->setAlignment(Qt::AlignCenter);
+    contrastLayout->addWidget(contrastValue);
+    connect(contrastSlider, &QSlider::valueChanged, this, [this, contrastValue](int value) {
+        contrastValue->setText(QStringLiteral("%1%").arg(value));
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleContrast", value);
+        settings.sync();
+        reloadSelectionOverlays();
+        updateDesktopSelectionPreview();
+    });
+    selectionLayout->addWidget(contrastRow);
+    selectionLayout->addWidget(createDivider(selectionPanel));
 
-    m_selectionColorSectionTitle = new QLabel(tr("Selection Rectangle Color"), selectionColorSection);
-    m_selectionColorSectionTitle->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI';"
-        "font-size: 14px;"
-        "font-weight: 600;"
-        "color: #1f2937;"
-    );
-    selectionColorSectionLayout->addWidget(m_selectionColorSectionTitle);
+    QWidget* strengthRow = new QWidget(selectionPanel);
+    strengthRow->setObjectName("settingsInnerRow");
+    strengthRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* strengthLayout = new QHBoxLayout(strengthRow);
+    strengthLayout->setContentsMargins(14, 8, 14, 8);
+    strengthLayout->setSpacing(12);
+    QVBoxLayout* strengthText = new QVBoxLayout();
+    strengthText->setContentsMargins(0, 0, 0, 0);
+    strengthText->setSpacing(2);
+    QLabel* strengthTitle = new QLabel(tr("Opacity / Strength"), strengthRow);
+    strengthTitle->setObjectName("rowTitle");
+    strengthTitle->setWordWrap(true);
+    strengthTitle->setMinimumWidth(0);
+    strengthTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    strengthText->addWidget(strengthTitle);
+    strengthLayout->addLayout(strengthText, 1);
+    strengthLayout->addWidget(createGlyphLabel(glyph(0xEB48), strengthRow, 18, QColor("#5b6b86")));
+    QSlider* strengthSlider = new QSlider(Qt::Horizontal, strengthRow);
+    strengthSlider->setRange(20, 100);
+    strengthSlider->setValue(qBound(20, desktopSettings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100));
+    strengthSlider->setMinimumWidth(120);
+    strengthSlider->setMaximumWidth(160);
+    strengthSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    strengthLayout->addWidget(strengthSlider, 2);
+    QLabel* strengthValue = new QLabel(QStringLiteral("%1%").arg(strengthSlider->value()), strengthRow);
+    strengthValue->setObjectName("valueLabel");
+    strengthValue->setFixedWidth(44);
+    strengthValue->setAlignment(Qt::AlignCenter);
+    strengthLayout->addWidget(strengthValue);
+    connect(strengthSlider, &QSlider::valueChanged, this, [this, strengthValue](int value) {
+        strengthValue->setText(QStringLiteral("%1%").arg(value));
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleOpacity", value);
+        settings.sync();
+        reloadSelectionOverlays();
+        updateDesktopSelectionPreview();
+    });
+    selectionLayout->addWidget(strengthRow);
 
-    m_selectionColorSectionSubtitle = new QLabel(tr("Adjust the drag selection color and preview the result in real time"), selectionColorSection);
-    m_selectionColorSectionSubtitle->setWordWrap(true);
-    m_selectionColorSectionSubtitle->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI';"
-        "font-size: 12px;"
-        "color: #616161;"
-    );
-    selectionColorSectionLayout->addWidget(m_selectionColorSectionSubtitle);
-    selectionColorSectionLayout->addWidget(selectionActionSide);
-    layout->addWidget(selectionColorSection);
+    layout->addWidget(selectionPanel, 0);
     updateDesktopSelectionPreview();
 
     ListView* lv = ListView::instance();
@@ -677,8 +1256,17 @@ QWidget* SettingUI::createDesktopPage() {
         if (lv) lv->setShortcutArrowVisible(checked);
     });
 
-    m_shortcutArrowCard = new FluentCard(u8"\uE724", tr("Shortcut Arrows"), tr("Toggle visibility of the small arrow on desktop shortcut icons"), arrowToggle, page);
-    layout->addWidget(m_shortcutArrowCard);
+    QWidget* behaviorPanel = createPanel(page);
+    behaviorPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* behaviorLayout = new QVBoxLayout(behaviorPanel);
+    behaviorLayout->setContentsMargins(22, 18, 22, 18);
+    behaviorLayout->setSpacing(0);
+    behaviorLayout->addWidget(createCardTitle(tr("Desktop Behavior"), behaviorPanel));
+    behaviorLayout->addSpacing(12);
+
+    m_shortcutArrowCard = nullptr;
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE724), tr("Shortcut Arrows"), tr("Toggle visibility of the small arrow on desktop shortcut icons."), arrowToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
 
     FluentToggleSwitch* hideToggle = new FluentToggleSwitch(page);
     bool doubleClickHide = lv ? lv->isDoubleClickHideIconsEnabled() : true;
@@ -687,8 +1275,9 @@ QWidget* SettingUI::createDesktopPage() {
         ListView* lv = ListView::instance();
         if (lv) lv->setDoubleClickHideIconsEnabled(checked);
     });
-    m_hideIconsCard = new FluentCard(u8"\uE949", tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces"), hideToggle, page);
-    layout->addWidget(m_hideIconsCard);
+    m_hideIconsCard = nullptr;
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE949), tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces."), hideToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
 
     m_windows11ContextMenuToggle = new FluentToggleSwitch(page);
     const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
@@ -708,157 +1297,244 @@ QWidget* SettingUI::createDesktopPage() {
 
         RightMenu::setWindows11SystemContextMenuEnabled(checked);
     });
-    m_windows11ContextMenuCard = new FluentCard(
-        u8"\uE8B8",
+    m_windows11ContextMenuCard = nullptr;
+    behaviorLayout->addWidget(createSwitchRow(
+        glyph(0xE8B8),
         tr("Windows 11 Context Menu"),
         windows11ContextMenuSupported
-            ? tr("Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView")
-            : tr("This option is available only on Windows 11"),
+            ? tr("Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView.")
+            : tr("This option is available only on Windows 11."),
         m_windows11ContextMenuToggle,
-        page);
-    layout->addWidget(m_windows11ContextMenuCard);
+        behaviorPanel));
 
-    layout->addStretch();
+    layout->addWidget(behaviorPanel, 0);
     return page;
 }
 
 QWidget* SettingUI::createGridPage() {
     QWidget* page = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(35, 25, 35, 25);
-    layout->setSpacing(8);
+    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
 
-    m_boxPageTitle = new QLabel(tr("Box UI"), page);
-    m_boxPageTitle->setObjectName("pageTitle");
-    layout->addWidget(m_boxPageTitle);
-    layout->addSpacing(10);
+    m_boxPageTitle = createPageTitle(tr("Box UI"), page);
+    m_boxPageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(m_boxPageTitle, 0, Qt::AlignLeft);
+    layout->addSpacing(8);
 
-    // Preview Box - New design with BoxPreview.png background and box overlay
-    QWidget* previewContainer = new QWidget(page);
-    previewContainer->setFixedHeight(200);
-    previewContainer->setStyleSheet("background: #f8f9fa; border-radius: 8px;");
+    QWidget* previewContainer = createPanel(page);
+    m_boxPreviewContainer = previewContainer;
+    previewContainer->setFixedHeight(livePreviewHeightForWindow());
+    previewContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     
     QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
-    previewLayout->setContentsMargins(16, 12, 16, 12);
-    previewLayout->setSpacing(8);
+    previewLayout->setContentsMargins(22, 10, 22, 20);
+    previewLayout->setSpacing(6);
     
-    m_previewLabel = new QLabel(tr("Preview"), previewContainer);
-    m_previewLabel->setStyleSheet("font-size: 12px; font-weight: 600; color: #6b7280;");
+    m_previewLabel = createCardTitle(tr("Live Preview"), previewContainer);
     previewLayout->addWidget(m_previewLabel);
+    previewLayout->addWidget(createCardSubtitle(tr("See how your desktop box surface reacts to the current style."), previewContainer));
     
-    // Preview surface fills the available preview area.
     m_previewBackground = new QLabel(previewContainer);
-    m_previewBackground->setMinimumHeight(145);
+    m_previewBackground->setMinimumHeight(124);
     m_previewBackground->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_previewBackground->setScaledContents(false);
-    m_previewBackground->setStyleSheet("border-radius: 12px;");
+    m_previewBackground->setObjectName("previewSurface");
     m_previewBackground->setAlignment(Qt::AlignCenter);
     previewLayout->addWidget(m_previewBackground);
-    
-    // Add preview to layout at TOP (not inside a card)
-    layout->addWidget(previewContainer);
+    previewLayout->addStretch();
 
-    // 1. Color Selection
-    QWidget* colorActionSide = new QWidget(page);
-    QHBoxLayout* colorActionLayout = new QHBoxLayout(colorActionSide);
-    colorActionLayout->setContentsMargins(0, 0, 0, 0);
-    colorActionLayout->setSpacing(16);
+    layout->addWidget(previewContainer, 0);
 
-    FluentColorWheel* colorWheel = new FluentColorWheel(colorActionSide);
+    QWidget* stylePanel = createPanel(page);
+    stylePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* styleLayout = new QVBoxLayout(stylePanel);
+    styleLayout->setContentsMargins(22, 18, 22, 18);
+    styleLayout->setSpacing(0);
 
-    QLineEdit* colorValueEdit = new QLineEdit(colorActionSide);
-    colorValueEdit->setReadOnly(true);
-    colorValueEdit->setAlignment(Qt::AlignCenter);
-    colorValueEdit->setFixedWidth(112);
-    colorValueEdit->setFixedHeight(34);
-    colorValueEdit->setStyleSheet(
-        "QLineEdit {"
-        " background: #ffffff;"
-        " border: 1px solid rgba(0, 0, 0, 0.14);"
-        " border-radius: 8px;"
-        " color: #374151;"
-        " font-family: 'Segoe UI Mono', 'Consolas';"
-        " font-size: 13px;"
-        " padding: 0 10px;"
-        "}"
-    );
+    m_boxColorSectionTitle = createCardTitle(tr("Accent Color"), stylePanel);
+    styleLayout->addWidget(m_boxColorSectionTitle);
+    styleLayout->addSpacing(12);
 
-    QVBoxLayout* colorValueLayout = new QVBoxLayout();
-    colorValueLayout->setContentsMargins(0, 0, 0, 0);
-    colorValueLayout->setSpacing(0);
-    colorValueLayout->addStretch();
-    colorValueLayout->addWidget(colorValueEdit, 0, Qt::AlignVCenter);
-    colorValueLayout->addStretch();
-
+    QColor initialBoxColor = QColor(40, 40, 40);
     if (LinBox* sourceBox = controlSourceBox()) {
-        colorWheel->setColor(sourceBox->backgroundColor());
-        colorValueEdit->setText(sourceBox->backgroundColor().name().toUpper());
-    } else {
-        colorValueEdit->setText(colorWheel->color().name().toUpper());
+        initialBoxColor = sourceBox->backgroundColor();
     }
 
-    connect(colorWheel, &FluentColorWheel::colorChanged, this, [colorValueEdit, this](const QColor& c){
-        for(auto b : m_allBoxes) b->setBackgroundColor(c); 
-        colorValueEdit->setText(c.name().toUpper());
-        m_previewColor = c;  // Sync preview color
+    QWidget* presetsRow = new QWidget(stylePanel);
+    presetsRow->setObjectName("settingsInnerRow");
+    presetsRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_boxColorPresetsRow = presetsRow;
+    QHBoxLayout* presetsLayout = new QHBoxLayout(presetsRow);
+    presetsLayout->setContentsMargins(12, 8, 12, 8);
+    presetsLayout->setSpacing(8);
+    QLabel* presetsLabel = new QLabel(tr("Presets"), presetsRow);
+    presetsLabel->setObjectName("rowTitle");
+    presetsLayout->addWidget(presetsLabel);
+    presetsLayout->addStretch();
+
+    m_boxColorValueEdit = new QLineEdit(presetsRow);
+    m_boxColorValueEdit->setReadOnly(true);
+    m_boxColorValueEdit->setAlignment(Qt::AlignCenter);
+    m_boxColorValueEdit->setMinimumWidth(72);
+    m_boxColorValueEdit->setMaximumWidth(84);
+    m_boxColorValueEdit->setFixedHeight(30);
+    m_boxColorValueEdit->setText(initialBoxColor.name().toUpper());
+    m_boxColorValueEdit->setObjectName("valueEdit");
+    presetsLayout->addWidget(m_boxColorValueEdit);
+
+    auto applyBoxColor = [this](const QColor& color) {
+        if (!color.isValid()) {
+            return;
+        }
+        for (const QPointer<LinBox>& boxPtr : m_allBoxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setBackgroundColor(color);
+            }
+        }
+        if (m_boxColorValueEdit) {
+            m_boxColorValueEdit->setText(color.name().toUpper());
+        }
+        updateColorPresetIndicators(m_boxColorPresetsRow, color);
+        m_previewColor = color;
         updatePreviewStyle();
-        ListView* lv = ListView::instance();
-        if (lv) lv->requestSaveBoxes();
+        if (ListView* lv = ListView::instance()) {
+            lv->requestSaveBoxes();
+        }
+    };
+
+    const QVector<QColor> boxPresets = {
+        QColor("#F0CF24"),
+        QColor("#63A8F5"),
+        QColor("#00C853"),
+        QColor("#8B45E6"),
+        QColor("#E94B98"),
+        QColor("#FF8A24"),
+        QColor("#AEB4BE")
+    };
+    for (const QColor& preset : boxPresets) {
+        QWidget* presetContainer = new QWidget(presetsRow);
+        presetContainer->setObjectName("colorPresetContainer");
+        QVBoxLayout* presetContainerLayout = new QVBoxLayout(presetContainer);
+        presetContainerLayout->setContentsMargins(0, 0, 0, 0);
+        presetContainerLayout->setSpacing(3);
+
+        QPushButton* button = createColorPreset(preset, presetContainer);
+        button->setFixedSize(24, 24);
+        QLabel* indicator = new QLabel(presetContainer);
+        indicator->setObjectName("colorPresetIndicator");
+        indicator->setProperty("presetColor", preset.name());
+        indicator->setFixedSize(6, 6);
+        indicator->setStyleSheet(QStringLiteral(
+            "QLabel#colorPresetIndicator {"
+            " background: #1870ff;"
+            " border-radius: 3px;"
+            "}"));
+        indicator->setVisible(false);
+
+        presetContainerLayout->addWidget(button, 0, Qt::AlignHCenter);
+        presetContainerLayout->addWidget(indicator, 0, Qt::AlignHCenter);
+        connect(button, &QPushButton::clicked, this, [applyBoxColor, preset]() {
+            applyBoxColor(preset);
+        });
+        presetsLayout->addWidget(presetContainer);
+    }
+
+    QWidget* pickerContainer = new QWidget(presetsRow);
+    pickerContainer->setObjectName("colorPresetContainer");
+    QVBoxLayout* pickerContainerLayout = new QVBoxLayout(pickerContainer);
+    pickerContainerLayout->setContentsMargins(0, 0, 0, 0);
+    pickerContainerLayout->setSpacing(3);
+
+    QPushButton* pickerButton = new QPushButton(glyph(0xE790), pickerContainer);
+    pickerButton->setObjectName("colorPickerButton");
+    pickerButton->setFixedSize(24, 24);
+    pickerButton->setCursor(Qt::PointingHandCursor);
+    QLabel* pickerIndicator = new QLabel(pickerContainer);
+    pickerIndicator->setObjectName("colorPresetIndicator");
+    pickerIndicator->setProperty("customColorIndicator", true);
+    pickerIndicator->setFixedSize(6, 6);
+    pickerIndicator->setStyleSheet(QStringLiteral(
+        "QLabel#colorPresetIndicator {"
+        " background: #1870ff;"
+        " border-radius: 3px;"
+        "}"));
+    pickerIndicator->setVisible(false);
+    pickerContainerLayout->addWidget(pickerButton, 0, Qt::AlignHCenter);
+    pickerContainerLayout->addWidget(pickerIndicator, 0, Qt::AlignHCenter);
+    presetsLayout->addWidget(pickerContainer);
+    updateColorPresetIndicators(presetsRow, initialBoxColor);
+
+    connect(pickerButton, &QPushButton::clicked, this, [this, applyBoxColor]() {
+        QColorDialog* dialog = new QColorDialog(m_previewColor, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(tr("Accent Color"));
+        dialog->setOption(QColorDialog::NoButtons, true);
+        connect(dialog, &QColorDialog::currentColorChanged, this, [applyBoxColor](const QColor& color) {
+            applyBoxColor(color);
+        });
+        connect(dialog, &QColorDialog::colorSelected, this, [applyBoxColor](const QColor& color) {
+            applyBoxColor(color);
+        });
+        dialog->open();
     });
 
-    colorActionLayout->addWidget(colorWheel);
-    colorActionLayout->addLayout(colorValueLayout);
+    styleLayout->addWidget(presetsRow);
+    styleLayout->addWidget(createDivider(stylePanel));
 
-    QWidget* boxColorSection = new QWidget(page);
-    QVBoxLayout* boxColorSectionLayout = new QVBoxLayout(boxColorSection);
-    boxColorSectionLayout->setContentsMargins(8, 4, 8, 4);
-    boxColorSectionLayout->setSpacing(8);
-
-    m_boxColorSectionTitle = new QLabel(tr("Accent Color"), boxColorSection);
-    m_boxColorSectionTitle->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI';"
-        "font-size: 14px;"
-        "font-weight: 600;"
-        "color: #1f2937;"
-    );
-    boxColorSectionLayout->addWidget(m_boxColorSectionTitle);
-
-    m_boxColorSectionSubtitle = new QLabel(tr("Define the primary theme color for your desktop boxes"), boxColorSection);
-    m_boxColorSectionSubtitle->setWordWrap(true);
-    m_boxColorSectionSubtitle->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI';"
-        "font-size: 12px;"
-        "color: #616161;"
-    );
-    boxColorSectionLayout->addWidget(m_boxColorSectionSubtitle);
-    boxColorSectionLayout->addWidget(colorActionSide);
-    layout->addWidget(boxColorSection);
-
-    // 2. Transparency Slider (create first for preview connections)
     m_opacitySlider = new QSlider(Qt::Horizontal, page);
     m_opacitySlider->setRange(5, 100);
-    m_opacitySlider->setFixedWidth(150);
+    m_opacitySlider->setMinimumWidth(120);
+    m_opacitySlider->setMaximumWidth(160);
+    m_opacitySlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     m_opacityLabelValue = new QLabel(page);
-    m_opacityLabelValue->setFixedWidth(35);
-    m_opacityLabelValue->setStyleSheet("color: #6b7280; font-weight: 500;");
+    m_opacityLabelValue->setObjectName("valueLabel");
+    m_opacityLabelValue->setFixedWidth(44);
+    m_opacityLabelValue->setAlignment(Qt::AlignCenter);
 
-    QWidget* opacActionSide = new QWidget(page);
-    QHBoxLayout* opacActionLayout = new QHBoxLayout(opacActionSide);
-    opacActionLayout->addWidget(m_opacitySlider);
-    opacActionLayout->addWidget(m_opacityLabelValue);
+    QWidget* opacityRow = new QWidget(stylePanel);
+    opacityRow->setObjectName("settingsInnerRow");
+    opacityRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* opacityLayout = new QHBoxLayout(opacityRow);
+    opacityLayout->setContentsMargins(14, 8, 14, 8);
+    opacityLayout->setSpacing(12);
+    QVBoxLayout* opacityTextLayout = new QVBoxLayout();
+    opacityTextLayout->setContentsMargins(0, 0, 0, 0);
+    opacityTextLayout->setSpacing(2);
+    QLabel* opacityTitle = new QLabel(tr("Background Opacity"), opacityRow);
+    opacityTitle->setObjectName("rowTitle");
+    opacityTitle->setWordWrap(true);
+    opacityTitle->setMinimumWidth(0);
+    opacityTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    QLabel* opacitySub = new QLabel(tr("Adjust the transparency of the box background."), opacityRow);
+    opacitySub->setObjectName("rowSubtitle");
+    opacitySub->setWordWrap(true);
+    opacitySub->setMinimumWidth(0);
+    opacitySub->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    opacityTextLayout->addWidget(opacityTitle);
+    opacityTextLayout->addWidget(opacitySub);
+    opacityLayout->addLayout(opacityTextLayout, 1);
+    opacityLayout->addWidget(createGlyphLabel(glyph(0xEB48), opacityRow, 18, QColor("#5b6b86")));
+    opacityLayout->addWidget(m_opacitySlider, 2);
+    opacityLayout->addWidget(m_opacityLabelValue);
 
     connect(m_opacitySlider, &QSlider::valueChanged, this, [this](int v){
-        for(auto b : m_allBoxes) b->setBackgroundOpacity(v/100.0f);
+        for (const QPointer<LinBox>& boxPtr : m_allBoxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setBackgroundOpacity(v / 100.0f);
+            }
+        }
         m_opacityLabelValue->setText(QString("%1%").arg(v));
         m_previewOpacity = v / 100.0f;  // Sync preview opacity
         updatePreviewStyle();
         ListView* lv = ListView::instance();
         if (lv) lv->requestSaveBoxes();
     });
-
-    m_opacityCard = new FluentCard(u8"\uE7E6", tr("Background Opacity"), tr("Adjust the semi-transparency level of the grid surface"), opacActionSide, page);
-    layout->addWidget(m_opacityCard);
+    m_opacityCard = nullptr;
+    styleLayout->addWidget(opacityRow);
+    styleLayout->addWidget(createDivider(stylePanel));
 
     int initialOpacity = qRound(m_previewOpacity * 100.0f);
     if (LinBox* sourceBox = controlSourceBox()) {
@@ -868,22 +1544,25 @@ QWidget* SettingUI::createGridPage() {
     m_opacitySlider->setValue(initialOpacity);
     m_opacityLabelValue->setText(QString("%1%").arg(initialOpacity));
 
-    // 3. Acrylic Toggle
     m_glassToggle = new FluentToggleSwitch(page);
     if (LinBox* sourceBox = controlSourceBox()) m_glassToggle->setChecked(sourceBox->glassEffect(), false);
     
     connect(m_glassToggle, &FluentToggleSwitch::toggled, this, [this](bool v){ 
-        for(auto b : m_allBoxes) b->setGlassEffect(v); 
+        for (const QPointer<LinBox>& boxPtr : m_allBoxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setGlassEffect(v);
+            }
+        }
         m_previewGlass = v;  // Sync preview glass
         updatePreviewStyle();
         ListView* lv = ListView::instance();
         if (lv) lv->requestSaveBoxes();
     });
 
-    m_glassCard = new FluentCard(u8"\uE91B", tr("Acrylic Glass Effect"), tr("Enable real-time DWM background blur for a translucent look"), m_glassToggle, page);
-    layout->addWidget(m_glassCard);
+    m_glassCard = nullptr;
+    styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Acrylic Glass Effect"), tr("Enable real-time DWM background blur for a translucent look."), m_glassToggle, stylePanel));
+    layout->addWidget(stylePanel);
 
-    // Initial preview style sync
     if (LinBox* sourceBox = controlSourceBox()) {
         m_previewColor = sourceBox->backgroundColor();
         m_previewOpacity = sourceBox->backgroundOpacity();
@@ -925,7 +1604,7 @@ QWidget* SettingUI::createAboutPage() {
     );
     layout->addWidget(m_aboutNameLabel, 0, Qt::AlignCenter);
 
-    m_aboutVersionLabel = new QLabel(tr("Version 1.0.0 Stable"), page);
+    m_aboutVersionLabel = new QLabel(tr("Version %1").arg(LINDESK_VERSION_STRING_WITH_TAG), page);
     m_aboutVersionLabel->setStyleSheet(
         "font-family: 'Microsoft YaHei UI'; "
         "font-size: 13px; "
@@ -949,61 +1628,141 @@ QWidget* SettingUI::createAboutPage() {
 
 QWidget* SettingUI::createPluginsPage() {
     QWidget* page = new QWidget();
-    QVBoxLayout* mainLayout = new QVBoxLayout(page);
-    mainLayout->setContentsMargins(40, 40, 40, 40);
-    mainLayout->setSpacing(24);
-
-    m_pluginsPageTitle = new QLabel(tr("Extending Your Universe"), page);
-    m_pluginsPageTitle->setObjectName("pageTitle");
-    mainLayout->addWidget(m_pluginsPageTitle);
+    QVBoxLayout* outerLayout = new QVBoxLayout(page);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->setSpacing(0);
 
     QScrollArea* scroll = new QScrollArea(page);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setStyleSheet("background: transparent;");
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // Remove unwanted horizontal scroll
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-    QWidget* listContainer = new QWidget();
-    QVBoxLayout* listLayout = new QVBoxLayout(listContainer);
-    listLayout->setContentsMargins(0, 0, 0, 0);
-    listLayout->setSpacing(12);
+    QWidget* content = new QWidget(scroll);
+    QVBoxLayout* mainLayout = new QVBoxLayout(content);
+    mainLayout->setContentsMargins(54, 34, 54, 36);
+    mainLayout->setSpacing(0);
+    mainLayout->setAlignment(Qt::AlignTop);
+
+    m_pluginsPageTitle = createPageTitle(tr("Plugins"), content);
+    m_pluginsPageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    mainLayout->addWidget(m_pluginsPageTitle, 0, Qt::AlignLeft);
+    mainLayout->addSpacing(8);
+    mainLayout->addWidget(createPageSubtitle(tr("Extend LinDesk with powerful plugins and integrations."), content));
+    mainLayout->addSpacing(8);
+
+    QLabel* installedTitle = createCardTitle(tr("Installed Plugins"), content);
+    mainLayout->addWidget(installedTitle);
+    mainLayout->addSpacing(8);
 
     auto allPlugins = PluginManager::instance()->allPlugins();
-    
+
     if (allPlugins.isEmpty()) {
-        m_pluginsEmptyLabel = new QLabel(tr("No plugins found in /plugins directory."), page);
-        m_pluginsEmptyLabel->setStyleSheet("color: #9ca3af; font-style: italic;");
-        listLayout->addWidget(m_pluginsEmptyLabel);
+        QWidget* emptyPanel = createPanel(content);
+        QHBoxLayout* emptyLayout = new QHBoxLayout(emptyPanel);
+        emptyLayout->setContentsMargins(22, 22, 22, 22);
+        emptyLayout->setSpacing(16);
+        emptyLayout->addWidget(createGlyphLabel(glyph(0xE74C), emptyPanel, 38, QColor("#8b96aa")), 0, Qt::AlignVCenter);
+        QVBoxLayout* emptyText = new QVBoxLayout();
+        emptyText->setContentsMargins(0, 0, 0, 0);
+        emptyText->setSpacing(4);
+        m_pluginsEmptyLabel = new QLabel(tr("No Installed Plugins"), emptyPanel);
+        m_pluginsEmptyLabel->setObjectName("pluginName");
+        QLabel* emptySub = new QLabel(tr("Install plugin packages to extend LinDesk capabilities."), emptyPanel);
+        emptySub->setObjectName("rowSubtitle");
+        emptySub->setWordWrap(true);
+        emptyText->addWidget(m_pluginsEmptyLabel);
+        emptyText->addWidget(emptySub);
+        emptyLayout->addLayout(emptyText, 1);
+        mainLayout->addWidget(emptyPanel);
     } else {
         for (auto* plugin : allPlugins) {
             if (!plugin) continue;
 
-            FluentToggleSwitch* toggle = new FluentToggleSwitch(page);
-            toggle->setChecked(PluginManager::instance()->isPluginEnabled(plugin->pluginId()), false);
+            QWidget* pluginPanel = createPanel(content);
+            QVBoxLayout* pluginLayout = new QVBoxLayout(pluginPanel);
+            pluginLayout->setContentsMargins(24, 22, 24, 22);
+            pluginLayout->setSpacing(18);
+
+            QHBoxLayout* topLayout = new QHBoxLayout();
+            topLayout->setContentsMargins(0, 0, 0, 0);
+            topLayout->setSpacing(18);
+
+            QLabel* pluginIcon = createGlyphLabel(glyph(0xE74C), pluginPanel, 42);
+            pluginIcon->setObjectName("pluginLargeIcon");
+            topLayout->addWidget(pluginIcon, 0, Qt::AlignTop);
+
+            QVBoxLayout* pluginText = new QVBoxLayout();
+            pluginText->setContentsMargins(0, 0, 0, 0);
+            pluginText->setSpacing(6);
+            QLabel* pluginName = new QLabel(plugin->pluginName(), pluginPanel);
+            pluginName->setObjectName("pluginName");
+            QLabel* pluginDescription = new QLabel(plugin->pluginDescription(), pluginPanel);
+            pluginDescription->setObjectName("pluginDescription");
+            pluginDescription->setWordWrap(true);
+            pluginText->addWidget(pluginName);
+            pluginText->addWidget(pluginDescription);
+
+            QHBoxLayout* badgeLayout = new QHBoxLayout();
+            badgeLayout->setContentsMargins(0, 0, 0, 0);
+            badgeLayout->setSpacing(8);
+            const bool pluginEnabled = PluginManager::instance()->isPluginEnabled(plugin->pluginId());
+            badgeLayout->addWidget(createPluginBadge(glyph(0xE73E), tr("Installed"), pluginPanel, QColor("#16a34a")));
+            badgeLayout->addWidget(createPluginBadge(glyph(0xEA3B), pluginEnabled ? tr("Enabled") : tr("Disabled"), pluginPanel, pluginEnabled ? QColor("#0078d4") : QColor("#6b7280")));
+            badgeLayout->addStretch();
+            pluginText->addLayout(badgeLayout);
+            topLayout->addLayout(pluginText, 1);
+
+            FluentToggleSwitch* toggle = new FluentToggleSwitch(pluginPanel);
+            toggle->setChecked(pluginEnabled, false);
             QString pId = plugin->pluginId();
             connect(toggle, &FluentToggleSwitch::toggled, this, [pId](bool checked) {
                 PluginManager::instance()->setPluginEnabled(pId, checked);
             });
+            topLayout->addWidget(toggle, 0, Qt::AlignVCenter);
 
-            FluentButton* settingsBtn = new FluentButton(tr("Settings"), page);
-            settingsBtn->setFixedSize(60, 28);
-            settingsBtn->setAccent(false); // Use neutral style
+            QPushButton* settingsBtn = new QPushButton(tr("Settings"), pluginPanel);
+            settingsBtn->setObjectName("pluginSettingsButton");
+            settingsBtn->setFixedSize(86, 36);
+            settingsBtn->setCursor(Qt::PointingHandCursor);
             connect(settingsBtn, &QPushButton::clicked, this, [plugin]() {
                 plugin->onSettingsRequested();
                 PluginManager::instance()->registerPluginHotkey(plugin);
             });
+            topLayout->addWidget(settingsBtn, 0, Qt::AlignVCenter);
+            pluginLayout->addLayout(topLayout);
 
-            FluentCard* pCard = new FluentCard(u8"\uE74C", plugin->pluginName(), plugin->pluginDescription(), nullptr, listContainer);
-            pCard->addActionWidget(toggle);
-            pCard->addActionWidget(settingsBtn);
-            
-            listLayout->addWidget(pCard);
+            mainLayout->addWidget(pluginPanel);
+            mainLayout->addSpacing(16);
         }
     }
 
-    listLayout->addStretch();
-    scroll->setWidget(listContainer);
-    mainLayout->addWidget(scroll);
+    mainLayout->addSpacing(12);
+    QLabel* availableTitle = createCardTitle(tr("Available Plugins"), content);
+    mainLayout->addWidget(availableTitle);
+    mainLayout->addSpacing(8);
+
+    QWidget* comingPanel = new QWidget(content);
+    comingPanel->setObjectName("comingSoonPanel");
+    QHBoxLayout* comingLayout = new QHBoxLayout(comingPanel);
+    comingLayout->setContentsMargins(26, 22, 26, 22);
+    comingLayout->setSpacing(18);
+    comingLayout->addWidget(createGlyphLabel(glyph(0xE74C), comingPanel, 34, QColor("#8b96aa")), 0, Qt::AlignVCenter);
+    QVBoxLayout* comingText = new QVBoxLayout();
+    comingText->setContentsMargins(0, 0, 0, 0);
+    comingText->setSpacing(4);
+    QLabel* comingTitle = new QLabel(tr("More Plugins Coming Soon"), comingPanel);
+    comingTitle->setObjectName("rowTitle");
+    QLabel* comingSubtitle = new QLabel(tr("We're working on more powerful plugins and integrations to enhance your LinDesk experience."), comingPanel);
+    comingSubtitle->setObjectName("rowSubtitle");
+    comingSubtitle->setWordWrap(true);
+    comingText->addWidget(comingTitle);
+    comingText->addWidget(comingSubtitle);
+    comingLayout->addLayout(comingText, 1);
+    mainLayout->addWidget(comingPanel);
+    scroll->setWidget(content);
+    outerLayout->addWidget(scroll);
 
     return page;
 }
@@ -1013,65 +1772,178 @@ void SettingUI::setupStyles() {
         "QWidget { "
         "   background-color: transparent; "
         "   border: none; "
-        "   color: #1f2937; "
-        "   font-family: 'Microsoft YaHei UI'; "
+        "   color: #142033; "
+        "   font-family: '" + AppFonts::uiFamily() + "', 'Segoe UI', 'Microsoft YaHei UI'; "
         "} "
         "QWidget#fluentBaseContainer { "
-        "   background-color: transparent; "
-        "   border: none; "
-        "} "
-        "SettingUI { "
-        "   background-color: #f3f4f6; " 
-        "   border: 1px solid rgba(0, 0, 0, 0.08); "
+        "   background-color: rgba(249, 251, 255, 0.96); "
+        "   border: 1px solid #cfd8e6; "
         "   border-radius: 12px; "
         "} "
+        "SettingUI { "
+        "   background-color: transparent; "
+        "} "
+        "QWidget#sidebarBrand { background: transparent; } "
+        "QLabel#sidebarBrandTitle { font-size: 16px; font-weight: 700; color: #111827; } "
+        "QLabel#sidebarBrandIcon { background: transparent; border-radius: 8px; } "
         "QWidget#sidebarContainer { "
-        "   background-color: #f8f9fa; "
-        "   border-bottom-left-radius: 11px; "
+        "   background: rgba(252, 254, 255, 0.92); "
+        "   border-right: 1px solid rgba(218, 226, 238, 0.78); "
+        "   border-top-left-radius: 12px; "
+        "   border-bottom-left-radius: 12px; "
         "} "
         "QWidget#rightArea { "
-        "   background-color: #ffffff; " 
-        "   border-bottom-right-radius: 11px; "
+        "   background: rgba(255, 255, 255, 0.72); "
+        "   border-top-right-radius: 12px; "
+        "   border-bottom-right-radius: 12px; "
         "} "
+        "QWidget#settingsWindowControls { "
+        "   background: transparent; "
+        "} "
+        "QPushButton#settingsMinBtn, QPushButton#settingsMaxBtn, QPushButton#settingsCloseBtn { "
+        "   background: transparent; border: none; font-family: 'Segoe MDL2 Assets'; font-size: 10px; color: #26324a; "
+        "} "
+        "QPushButton#settingsCloseBtn { border-top-right-radius: 12px; } "
+        "QPushButton#settingsMinBtn:hover, QPushButton#settingsMaxBtn:hover { background: rgba(33, 45, 69, 0.07); } "
+        "QPushButton#settingsCloseBtn:hover { background: #dc2626; color: white; border-top-right-radius: 12px; } "
         "QListWidget#sidebar { "
-        "   background: #f9fafb; "
+        "   background: transparent; "
         "   outline: none; "
-        "   border: 1px solid rgba(0, 0, 0, 0.08); "
-        "   border-radius: 22px; "
-        "   padding: 14px 0; "
+        "   border: none; "
+        "   padding: 0; "
         "} "
         "QListWidget#sidebar::item { "
-        "   height: 44px; "
         "   border: none; "
         "   background: transparent; "
         "   padding: 0; "
-        "   margin: 2px 10px; "
+        "   margin: 0; "
         "} "
         "QListWidget#sidebar::item:hover { background: transparent; } "
         "QListWidget#sidebar::item:selected { background: transparent; } "
         "QListWidget#sidebar::item:focus { background: transparent; outline: none; } "
+        "QLabel#versionBadge { "
+        "   background: #eef5ff; "
+        "   border: 1px solid #dce8f8; "
+        "   border-radius: 9px; "
+        "   color: #56647d; "
+        "   font-size: 14px; "
+        "   font-weight: 500; "
+        "} "
         "QScrollBar:vertical { "
-        "   border: none; background: transparent; width: 4px; margin: 12px 4px 12px 0; "
+        "   border: none; background: transparent; width: 6px; margin: 12px 4px 12px 0; "
         "} "
         "QScrollBar::handle:vertical { "
-        "   background: rgba(0, 0, 0, 0.12); border-radius: 2px; min-height: 20px; "
+        "   background: rgba(64, 76, 96, 0.18); border-radius: 3px; min-height: 24px; "
         "} "
-        "QScrollBar::handle:vertical:hover { background: rgba(0, 0, 0, 0.2); } "
+        "QScrollBar::handle:vertical:hover { background: rgba(64, 76, 96, 0.30); } "
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; } "
-        "QLabel#pageTitle { font-family: 'Microsoft YaHei UI'; font-size: 28px; font-weight: 600; color: #1f2937; margin-bottom: 4px; letter-spacing: -0.01em; } "
+        "QLabel#pageTitle { font-size: 31px; font-weight: 800; color: #101827; margin-bottom: 0; letter-spacing: -0.03em; } "
+        "QLabel#pageSubtitle { font-size: 15px; font-weight: 500; color: #66738c; margin-bottom: 8px; } "
+        "QLabel#cardTitle { font-size: 16px; font-weight: 800; color: #101827; } "
+        "QLabel#cardSubtitle { font-size: 14px; font-weight: 500; color: #63708a; } "
+        "QLabel#rowTitle { font-size: 14px; font-weight: 800; color: #142033; } "
+        "QLabel#rowSubtitle { font-size: 13px; font-weight: 500; color: #63708a; } "
+        "QLabel#valueLabel { color: #63708a; font-size: 14px; font-weight: 700; } "
+        "QLabel#homeTileTitle { font-size: 15px; font-weight: 800; color: #101827; } "
+        "QLabel#homeTileSubtitle { font-size: 13px; font-weight: 500; color: #56647d; } "
+        "QLabel#pluginName { font-size: 19px; font-weight: 800; color: #101827; } "
+        "QLabel#pluginDescription { font-size: 14px; font-weight: 500; color: #63708a; } "
+        "QLabel#badgeLabel { font-size: 12px; font-weight: 700; } "
+        "QLabel#learnMoreLabel { color: #0078d4; font-size: 13px; font-weight: 700; font-family: 'Segoe Fluent Icons', 'Segoe UI'; } "
         "QLabel#cardLabel { font-size: 13px; font-weight: 500; color: #1f2937; } "
-        "QWidget#settingCard { "
-        "   background: #ffffff; "
-        "   border: 1px solid rgba(0, 0, 0, 0.06); "
-        "   border-bottom: 1px solid rgba(0, 0, 0, 0.12); " // Subtle elevation shadow
-        "   border-radius: 8px; "
+        "QWidget#homeTile { "
+        "   background: rgba(255, 255, 255, 0.86); "
+        "   border: 1px solid rgba(203, 213, 229, 0.86); "
+        "   border-radius: 10px; "
         "} "
-        "QPushButton#closeBtn { background: transparent; border: none; font-family: 'Segoe MDL2 Assets'; font-size: 10px; } "
-        "QPushButton#closeBtn:hover { background: #c42b1c; color: white; } "
-        "QSlider::groove:horizontal { height: 4px; background: rgba(0, 0, 0, 0.1); border-radius: 2px; } "
-        "QSlider::handle:horizontal { background: #0078d4; border: 3px solid #ffffff; width: 14px; height: 14px; margin: -8px 0; border-radius: 10px; } "
+        "QWidget#quickAction { "
+        "   background: rgba(255, 255, 255, 0.52); "
+        "   border: none; "
+        "} "
+        "QWidget#settingsPanel { "
+        "   background: rgba(255, 255, 255, 0.94); "
+        "   border: 1px solid rgba(203, 213, 229, 0.82); "
+        "   border-radius: 13px; "
+        "} "
+        "QWidget#settingsInnerRow { "
+        "   background: rgba(255, 255, 255, 0.62); "
+        "   border: none; "
+        "} "
+        "QWidget#settingsRow { "
+        "   background: rgba(255, 255, 255, 0.58); "
+        "   border: none; "
+        "} "
+        "QFrame#softDivider { "
+        "   background: rgba(203, 213, 229, 0.68); "
+        "   border: none; "
+        "} "
+        "QFrame#verticalDivider { "
+        "   background: rgba(203, 213, 229, 0.72); "
+        "   border: none; "
+        "   min-width: 1px; "
+        "   max-width: 1px; "
+        "} "
+        "QLabel#pluginLargeIcon { "
+        "   background: rgba(255, 255, 255, 0.92); "
+        "   border: 1px solid #dbe4f1; "
+        "   border-radius: 12px; "
+        "   color: #0078d4; "
+        "   min-width: 74px; "
+        "   min-height: 74px; "
+        "} "
+        "QWidget#pluginFeatureBox { "
+        "   background: rgba(255, 255, 255, 0.76); "
+        "   border: 1px solid rgba(203, 213, 229, 0.72); "
+        "   border-radius: 10px; "
+        "} "
+        "QWidget#pluginFeature { background: transparent; border: none; } "
+        "QWidget#comingSoonPanel { "
+        "   background: rgba(255, 255, 255, 0.44); "
+        "   border: 1px dashed #c8d3e3; "
+        "   border-radius: 12px; "
+        "} "
+        "QLabel#previewSurface { "
+        "   background: #edf4ff; "
+        "   border-radius: 10px; "
+        "} "
+        "QLineEdit#valueEdit {"
+        "   background: #ffffff;"
+        "   border: 1px solid #d2dbe8;"
+        "   border-radius: 7px;"
+        "   color: #28344a;"
+        "   font-family: 'Consolas', 'Segoe UI Mono';"
+        "   font-size: 13px;"
+        "   font-weight: 700;"
+        "   padding: 0 8px;"
+        "} "
+        "QPushButton#colorPickerButton {"
+        "   color: white;"
+        "   border-radius: 7px;"
+        "   border: 2px solid rgba(255,255,255,0.96);"
+        "   font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+        "   font-size: 15px;"
+        "   background: qconicalgradient(cx:0.5, cy:0.5, angle:90, stop:0 #ff005c, stop:0.16 #ff8a00, stop:0.32 #ffe500, stop:0.48 #00d86f, stop:0.64 #00a2ff, stop:0.82 #7c3cff, stop:1 #ff005c);"
+        "} "
+        "QPushButton#colorPickerButton:hover { border: 2px solid #0078d4; } "
+        "QPushButton#pluginSettingsButton { "
+        "   background: #ffffff; "
+        "   border: 1px solid #cfd8e6; "
+        "   border-radius: 8px; "
+        "   color: #111827; "
+        "   font-size: 13px; "
+        "   font-weight: 700; "
+        "} "
+        "QPushButton#pluginSettingsButton:hover { background: #f5f9ff; border-color: #a9c7ef; } "
+        "QPushButton#minBtn, QPushButton#maxBtn, QPushButton#closeBtn { "
+        "   background: transparent; border: none; font-family: 'Segoe MDL2 Assets'; font-size: 10px; color: #26324a; "
+        "} "
+        "QPushButton#minBtn:hover, QPushButton#maxBtn:hover { background: rgba(33, 45, 69, 0.07); } "
+        "QPushButton#closeBtn:hover { background: #dc2626; color: white; } "
+        "QSlider::groove:horizontal { height: 5px; background: #d8dee8; border-radius: 3px; } "
+        "QSlider::sub-page:horizontal { height: 5px; background: #0078d4; border-radius: 3px; } "
+        "QSlider::handle:horizontal { background: #0078d4; border: 3px solid #ffffff; width: 15px; height: 15px; margin: -7px 0; border-radius: 9px; } "
         "QCheckBox::indicator { "
-        "   width: 40px; "      // Matches Fluent Switch size better
+        "   width: 40px; "
         "   height: 20px; "
         "   background: #6b7280; "
         "   border: 1px solid #6b7280; "
@@ -1107,6 +1979,10 @@ void SettingUI::updateControlsFromTarget() {
     if (m_glassToggle) {
         m_glassToggle->setChecked(sourceBox->glassEffect());
     }
+    if (m_boxColorValueEdit) {
+        m_boxColorValueEdit->setText(sourceBox->backgroundColor().name().toUpper());
+    }
+    updateColorPresetIndicators(m_boxColorPresetsRow, sourceBox->backgroundColor());
     // Sync preview state from target box
     m_previewColor = sourceBox->backgroundColor();
     m_previewOpacity = sourceBox->backgroundOpacity();
@@ -1116,11 +1992,17 @@ void SettingUI::updateControlsFromTarget() {
 
 LinBox* SettingUI::controlSourceBox() const {
     if (m_targetBox) {
-        return m_targetBox;
+        return m_targetBox.data();
     }
 
-    for (LinBox* box : m_allBoxes) {
-        if (box) {
+    for (const QPointer<LinBox>& boxPtr : m_allBoxes) {
+        if (LinBox* box = boxPtr.data()) {
+            return box;
+        }
+    }
+
+    for (const QPointer<LinBox>& boxPtr : BoxManager::instance()->allBoxes()) {
+        if (LinBox* box = boxPtr.data()) {
             return box;
         }
     }
@@ -1133,7 +2015,10 @@ void SettingUI::updateDesktopSelectionPreview()
         return;
     }
 
-    const QSize previewSize = m_desktopSelectionPreview->size().expandedTo(QSize(220, 88));
+    const QSize previewSize = m_desktopSelectionPreview->contentsRect().size();
+    if (previewSize.width() < 2 || previewSize.height() < 2) {
+        return;
+    }
     QPixmap canvas(previewSize);
     canvas.fill(Qt::transparent);
 
@@ -1141,29 +2026,78 @@ void SettingUI::updateDesktopSelectionPreview()
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    QLinearGradient background(0, 0, previewSize.width(), previewSize.height());
-    background.setColorAt(0.0, QColor(245, 248, 252));
-    background.setColorAt(1.0, QColor(233, 239, 247));
-    painter.fillRect(canvas.rect(), background);
+    const int minSide = qMin(previewSize.width(), previewSize.height());
+    const int cornerRadius = qBound(6, minSide / 18, 14);
+    const QRect imageRect = centeredPreviewImageRect(previewSize);
+    QPainterPath clipPath;
+    clipPath.addRoundedRect(imageRect.adjusted(0, 0, -1, -1), cornerRadius, cornerRadius);
+    painter.setClipPath(clipPath);
 
-    const QVector<QRect> iconRects = {
-        QRect(24, 18, 26, 26),
-        QRect(68, 24, 26, 26),
-        QRect(122, 16, 26, 26),
-        QRect(164, 28, 26, 26)
-    };
-    painter.setPen(Qt::NoPen);
-    for (const QRect& iconRect : iconRects) {
-        painter.setBrush(QColor(255, 255, 255, 145));
-        painter.drawRoundedRect(iconRect, 7, 7);
+    QRect contentRect = imageRect;
+    QPixmap bgPixmap(":/Assets/DesktopLivePreview.png");
+    if (!bgPixmap.isNull()) {
+        const QPixmap scaledBg = bgPixmap.scaled(imageRect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        painter.drawPixmap(imageRect, scaledBg);
+        painter.fillRect(contentRect, QColor(0, 0, 0, 22));
+    } else {
+        QLinearGradient background(imageRect.topLeft(), imageRect.bottomRight());
+        background.setColorAt(0.0, QColor(221, 235, 255));
+        background.setColorAt(0.52, QColor(241, 247, 255));
+        background.setColorAt(1.0, QColor(178, 205, 243));
+        painter.fillRect(imageRect, background);
+
+        painter.setPen(Qt::NoPen);
+        for (int i = 0; i < 5; ++i) {
+            QColor ribbon(255, 255, 255, 72 - i * 8);
+            painter.setBrush(ribbon);
+            QPainterPath ribbonPath;
+            const qreal y = imageRect.top() + imageRect.height() * (0.18 + i * 0.12);
+            ribbonPath.moveTo(imageRect.left() - 60, y + 70);
+            ribbonPath.cubicTo(imageRect.left() + imageRect.width() * 0.25, y - 35,
+                               imageRect.left() + imageRect.width() * 0.52, y + 90,
+                               imageRect.right() + 70, y - 15);
+            ribbonPath.lineTo(imageRect.right() + 70, y + 54);
+            ribbonPath.cubicTo(imageRect.left() + imageRect.width() * 0.54, y + 145,
+                               imageRect.left() + imageRect.width() * 0.20, y + 20,
+                               imageRect.left() - 60, y + 118);
+            ribbonPath.closeSubpath();
+            painter.fillPath(ribbonPath, ribbon);
+        }
+        painter.fillRect(imageRect, QColor(0, 0, 0, 48));
     }
 
     const QColor fillColor = desktopSelectionFillColor(m_selectionPreviewColor);
     const QColor borderColor = desktopSelectionBorderColor(m_selectionPreviewColor);
-    const QRect selectionRect(52, 14, 110, 54);
+    const QRect selectionRect(contentRect.left() + qRound(contentRect.width() * 0.36),
+                              contentRect.top() + qRound(contentRect.height() * 0.12),
+                              qRound(contentRect.width() * 0.32),
+                              qRound(contentRect.height() * 0.64));
     painter.fillRect(selectionRect, fillColor);
-    painter.setPen(QPen(borderColor, 1));
+    const int selectionBorderWidth = qBound(1, minSide / 90, 3);
+    painter.setPen(QPen(borderColor, selectionBorderWidth));
     painter.drawRect(selectionRect.adjusted(0, 0, -1, -1));
+
+    painter.setClipping(false);
+    painter.setPen(QPen(QColor(0, 0, 0, 32), 1));
+    painter.drawRoundedRect(imageRect.adjusted(0, 0, -1, -1), cornerRadius, cornerRadius);
+
+    painter.setPen(QPen(QColor(0, 0, 0, 38), 1));
+    painter.setBrush(QColor(255, 255, 255, 242));
+    const int handle = qBound(7, minSide / 14, 14);
+    const int handleRadius = qBound(2, handle / 3, 5);
+    const QVector<QPoint> handlePoints = {
+        selectionRect.topLeft(),
+        QPoint(selectionRect.center().x(), selectionRect.top()),
+        selectionRect.topRight(),
+        QPoint(selectionRect.left(), selectionRect.center().y()),
+        QPoint(selectionRect.right(), selectionRect.center().y()),
+        selectionRect.bottomLeft(),
+        QPoint(selectionRect.center().x(), selectionRect.bottom()),
+        selectionRect.bottomRight()
+    };
+    for (const QPoint& point : handlePoints) {
+        painter.drawRoundedRect(QRect(point.x() - handle / 2, point.y() - handle / 2, handle, handle), handleRadius, handleRadius);
+    }
 
     painter.end();
     m_desktopSelectionPreview->setPixmap(canvas);
@@ -1172,174 +2106,113 @@ void SettingUI::updateDesktopSelectionPreview()
 void SettingUI::updatePreviewStyle() {
     if (!m_previewBackground) return;
 
-    const QSize previewSize = m_previewBackground->size().expandedTo(QSize(320, 145));
+    QSize previewSize = m_previewBackground->contentsRect().size();
+    if (previewSize.width() < 2 || previewSize.height() < 2) {
+        previewSize = QSize(540, 202);
+    }
     const int canvasW = previewSize.width();
     const int canvasH = previewSize.height();
-    
-    int r = m_previewColor.red();
-    int g = m_previewColor.green();
-    int b = m_previewColor.blue();
-    int a = m_previewGlass ? 1 : (int)(m_previewOpacity * 255);
-    
-    if (a < 5) a = 20;
-    
-    // Create a new pixmap with BoxPreview.png as background and draw box on top
+    const QRect imageRect = centeredPreviewImageRect(previewSize);
+
     QPixmap canvas(canvasW, canvasH);
     canvas.fill(Qt::transparent);
-    
+
     QPainter painter(&canvas);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    
-    // Draw background image using Qt resource system
+
+    QPainterPath clipPath;
+    clipPath.addRoundedRect(imageRect.adjusted(0, 0, -1, -1), 10, 10);
+    painter.setClipPath(clipPath);
+
     QPixmap bgPixmap(":/Assets/BoxPreview.png");
     if (!bgPixmap.isNull()) {
-        painter.drawPixmap(0, 0, bgPixmap.scaled(canvasW, canvasH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+        painter.drawPixmap(imageRect, bgPixmap.scaled(imageRect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     } else {
-        // Fallback: draw gradient background
-        QLinearGradient grad(0, 0, canvasW, canvasH);
-        grad.setColorAt(0, QColor(45, 55, 72));
-        grad.setColorAt(1, QColor(30, 35, 45));
-        painter.fillRect(canvas.rect(), grad);
+        QLinearGradient grad(imageRect.topLeft(), imageRect.bottomRight());
+        grad.setColorAt(0, QColor(140, 205, 255));
+        grad.setColorAt(0.52, QColor(102, 178, 226));
+        grad.setColorAt(1, QColor(34, 118, 172));
+        painter.fillRect(imageRect, grad);
     }
-    
-    // Keep the preview box itself at a fixed size while the background fills
-    // the whole preview surface.
-    const int boxW = 200;
-    const int boxH = 120;
-    const int boxX = (canvasW - boxW) / 2;
-    const int boxY = (canvasH - boxH) / 2;
-    const int titleBarH = 28;
-    const int borderWidth = 4;
-    
+
+    const int boxMaxW = qMin(430, qMax(1, imageRect.width() - 24));
+    const int boxMinW = qMin(220, boxMaxW);
+    const int boxMaxH = qMin(160, qMax(1, imageRect.height() - 18));
+    const int boxMinH = qMin(92, boxMaxH);
+    const int boxW = qBound(boxMinW, imageRect.width() * 58 / 100, boxMaxW);
+    const int boxH = qBound(boxMinH, imageRect.height() * 58 / 100, boxMaxH);
+    const int boxX = imageRect.left() + (imageRect.width() - boxW) / 2;
+    const int boxY = imageRect.top() + (imageRect.height() - boxH) / 2;
+    const int titleBarH = 38;
+
     QRect boxRect(boxX, boxY, boxW, boxH);
-    
-    if (m_previewGlass) {
-        // Glass effect - semi-transparent dark overlay with blur hint
-        QColor glassColor(0, 0, 0, 180);
-        
-        // Draw title bar (solid dark)
-        painter.fillRect(boxRect.adjusted(0, 0, 0, -boxH + titleBarH), glassColor);
-        
-        // Draw content area (semi-transparent)
-        QColor contentColor(0, 0, 0, 120);
-        painter.fillRect(boxRect.adjusted(0, titleBarH, 0, 0), contentColor);
-        
-        // Draw border
-        painter.setPen(QPen(QColor(255, 255, 255, 80), 1));
-        painter.drawRect(boxRect.adjusted(0, 0, -1, -1));
-    } else {
-        // Solid color with opacity
-        QColor bgColor(r, g, b, a);
-        
-        // Draw title bar
-        QPainterPath titlePath;
-        titlePath.addRoundedRect(boxX, boxY, boxW, titleBarH, 4, 4);
-        // Cover bottom corners
-        titlePath.addRect(boxX, boxY + titleBarH - 4, boxW, 4);
-        painter.fillPath(titlePath, bgColor);
-        
-        // Draw content area with rounded bottom corners
-        QPainterPath contentPath;
-        contentPath.addRoundedRect(boxX, boxY + titleBarH - 4, boxW, boxH - titleBarH + 4, 4, 4);
-        // Cover top corners
-        contentPath.addRect(boxX, boxY + titleBarH - 4, boxW, 4);
-        painter.fillPath(contentPath, bgColor);
-        
-        // Draw border
-        painter.setPen(QPen(QColor(255, 255, 255, 50), 1));
-        painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), 4, 4);
-        
-        // Draw shadow effect (simple drop shadow)
-        QPixmap shadowCanvas(canvasW, canvasH);
-        shadowCanvas.fill(Qt::transparent);
-        QPainter shadowPainter(&shadowCanvas);
-        shadowPainter.setRenderHint(QPainter::Antialiasing);
-        shadowPainter.setPen(Qt::NoPen);
-        shadowPainter.setBrush(QColor(0, 0, 0, 40));
-        shadowPainter.drawRoundedRect(boxRect.adjusted(2, 4, -1, 1), 6, 6);
-        shadowPainter.end();
-        
-        // Composite shadow first, then the box
-        painter.drawPixmap(0, 0, shadowCanvas);
-        
-        // Redraw the box on top
-        shadowPainter.begin(&canvas);
-        shadowPainter.setRenderHint(QPainter::Antialiasing);
-        shadowPainter.setPen(Qt::NoPen);
-        shadowPainter.setBrush(QColor(0, 0, 0, 40));
-        shadowPainter.drawRoundedRect(boxRect.adjusted(2, 4, -1, 1), 6, 6);
-        shadowPainter.end();
-        
-        // Redraw title bar
-        QPainterPath titlePath2;
-        titlePath2.addRoundedRect(boxX, boxY, boxW, titleBarH, 4, 4);
-        titlePath2.addRect(boxX, boxY + titleBarH - 4, boxW, 4);
-        painter.fillPath(titlePath2, bgColor);
-        
-        // Redraw content area
-        QPainterPath contentPath2;
-        contentPath2.addRoundedRect(boxX, boxY + titleBarH - 4, boxW, boxH - titleBarH + 4, 4, 4);
-        contentPath2.addRect(boxX, boxY + titleBarH - 4, boxW, 4);
-        painter.fillPath(contentPath2, bgColor);
-        
-        // Redraw border
-        painter.setPen(QPen(QColor(255, 255, 255, 50), 1));
-        painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), 4, 4);
-    }
-    
-    // Draw title bar icons
-    painter.setPen(QColor(255, 255, 255, 180));
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(15, 23, 42, 54));
+    painter.drawRoundedRect(boxRect.adjusted(0, 8, 0, 12), 12, 12);
+
+    QColor boxColor = m_previewColor.isValid() ? m_previewColor : QColor(40, 40, 40);
+    boxColor.setAlpha(m_previewGlass ? 156 : qBound(70, static_cast<int>(m_previewOpacity * 255), 220));
+    painter.setBrush(boxColor);
+    painter.drawRoundedRect(boxRect, 12, 12);
+
+    QColor titleColor = boxColor.darker(128);
+    titleColor.setAlpha(qBound(120, boxColor.alpha() + 34, 235));
+    QPainterPath titlePath;
+    titlePath.addRoundedRect(QRect(boxX, boxY, boxW, titleBarH), 12, 12);
+    titlePath.addRect(boxX, boxY + titleBarH - 12, boxW, 12);
+    painter.fillPath(titlePath, titleColor);
+
+    painter.setPen(QPen(QColor(255, 255, 255, 70), 1));
+    painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), 12, 12);
+
     QFont iconFont("Segoe Fluent Icons");
     if (!QFontInfo(iconFont).exactMatch()) {
         iconFont.setFamily("Segoe MDL2 Assets");
     }
-    iconFont.setPixelSize(12);
+    iconFont.setPixelSize(15);
     painter.setFont(iconFont);
-    
-    // Collapse icon
-    painter.drawText(QRect(boxX + 6, boxY + 2, 24, 24), Qt::AlignCenter, u8"\uE70E");
-    // View icon  
-    painter.drawText(QRect(boxX + boxW - 30, boxY + 2, 24, 24), Qt::AlignCenter, u8"\uE8EF");
-    
-    // Title text
+    painter.setPen(QColor(255, 255, 255, 210));
+    painter.drawText(QRect(boxX + 12, boxY + 7, 24, 24), Qt::AlignCenter, glyph(0xE70E));
+    painter.drawText(QRect(boxX + boxW - 38, boxY + 7, 24, 24), Qt::AlignCenter, glyph(0xE712));
+
     painter.setPen(Qt::white);
-    QFont titleFont(AppFonts::uiFamily(), 9, QFont::Bold);
+    QFont titleFont(AppFonts::uiFamily(), 11, QFont::Bold);
     painter.setFont(titleFont);
     QFontMetrics fm(titleFont);
     QString title = tr("Preview Box");
     QString elidedTitle = fm.elidedText(title, Qt::ElideRight, boxW - 60);
-    painter.drawText(QRect(boxX + 30, boxY + 4, boxW - 60, 20), Qt::AlignCenter, elidedTitle);
-    
-    // Draw sample icons in content area
+    painter.drawText(QRect(boxX + 44, boxY + 7, boxW - 88, 24), Qt::AlignCenter, elidedTitle);
+
     painter.setPen(QColor(255, 255, 255, 200));
     iconFont.setPixelSize(18);
     painter.setFont(iconFont);
-    
-    const int iconSize = 36;
-    const int iconSpacing = 48;
-    const int startX = boxX + 10;
-    const int iconY = boxY + titleBarH + 10;
-    
-    QStringList iconSymbols = {u8"\uE7C3", u8"\uE8A5", u8"\uE721"};
+
+    const int iconSize = 48;
+    const int iconSpacing = 62;
+    const int startX = boxX + (boxW - iconSpacing * 3 - iconSize) / 2;
+    const int iconY = boxY + titleBarH + (boxH - titleBarH - iconSize) / 2;
+
+    QStringList iconSymbols = {glyph(0xE7C3), glyph(0xE8A5), glyph(0xE91B), glyph(0xE721)};
     for (int i = 0; i < iconSymbols.size(); ++i) {
         int ix = startX + i * iconSpacing;
         if (ix + iconSize <= boxX + boxW - 10) {
-            // Icon background
             painter.setPen(Qt::NoPen);
             painter.setBrush(QColor(255, 255, 255, 30));
-            painter.drawRoundedRect(ix, iconY, iconSize, iconSize, 6, 6);
-            
-            // Icon symbol
+            painter.drawRoundedRect(ix, iconY, iconSize, iconSize, 10, 10);
             painter.setPen(QColor(255, 255, 255, 200));
             painter.setFont(iconFont);
             painter.drawText(QRect(ix, iconY, iconSize, iconSize), Qt::AlignCenter, iconSymbols[i]);
         }
     }
-    
+
+    painter.setClipping(false);
+    painter.setPen(QPen(QColor(0, 0, 0, 36), 1));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRoundedRect(imageRect.adjusted(0, 0, -1, -1), 10, 10);
     painter.end();
-    
-    // Set the updated pixmap
+
     m_previewBackground->setPixmap(canvas);
 }
 
@@ -1368,11 +2241,10 @@ void SettingUI::closeEvent(QCloseEvent* event) {
 }
 
 void SettingUI::changeEvent(QEvent* event) {
-    if (event && event->type() == QEvent::LanguageChange) {
-        retranslateUi();
-    }
-
     FluentBaseWidget::changeEvent(event);
+    if (event && event->type() == QEvent::WindowStateChange) {
+        updateWindowControlButtons();
+    }
 }
 
 void SettingUI::showEvent(QShowEvent* event) {
@@ -1380,104 +2252,111 @@ void SettingUI::showEvent(QShowEvent* event) {
         m_trayIcon->hide();
     }
     FluentBaseWidget::showEvent(event);
+    scheduleResizeRefresh(0);
 }
 
-void SettingUI::retranslateUi() {
-    setWindowTitle(tr("LinDesk"));
-    if (m_titleBarTitle) m_titleBarTitle->setText(tr("LinDesk"));
+void SettingUI::resizeEvent(QResizeEvent* event)
+{
+    FluentBaseWidget::resizeEvent(event);
+    updateSidebarItemHeights();
+    scheduleResizeRefresh();
+}
 
-    if (m_generalTabItem) m_generalTabItem->setText(tr("General"));
-    if (m_desktopTabItem) m_desktopTabItem->setText(tr("Desktop"));
-    if (m_boxTabItem) m_boxTabItem->setText(tr("Box"));
-    if (m_pluginsTabItem) m_pluginsTabItem->setText(tr("Plugins"));
-    if (m_aboutTabItem) m_aboutTabItem->setText(tr("About"));
+void SettingUI::scheduleResizeRefresh(int delayMs)
+{
+    if (!m_resizeRefreshTimer) {
+        m_resizeRefreshTimer = new QTimer(this);
+        m_resizeRefreshTimer->setSingleShot(true);
+        connect(m_resizeRefreshTimer, &QTimer::timeout, this, &SettingUI::refreshAfterResize);
+    }
 
-    if (m_generalPageTitle) m_generalPageTitle->setText(tr("General Settings"));
-    if (m_desktopPageTitle) m_desktopPageTitle->setText(tr("Desktop Customization"));
-    if (m_boxPageTitle) m_boxPageTitle->setText(tr("Box UI"));
-    if (m_pluginsPageTitle) m_pluginsPageTitle->setText(tr("Extending Your Universe"));
-    if (m_pluginsEmptyLabel) m_pluginsEmptyLabel->setText(tr("No plugins found in /plugins directory."));
-    if (m_aboutNameLabel) m_aboutNameLabel->setText(tr("LinDesk"));
-    if (m_aboutVersionLabel) m_aboutVersionLabel->setText(tr("Version 1.0.0 Stable"));
-    if (m_aboutTaglineLabel) m_aboutTaglineLabel->setText(tr("Powered by Antigravity Design System"));
-    if (m_previewLabel) m_previewLabel->setText(tr("Preview"));
+    m_resizeRefreshTimer->start(delayMs);
+}
 
-    if (m_autoStartCard) {
-        m_autoStartCard->setTitle(tr("Launch at Login"));
-        m_autoStartCard->setSubtitle(tr("Automatically start LinDesk when you sign in to Windows"));
-    }
-    if (m_trayOnlyCard) {
-        m_trayOnlyCard->setTitle(tr("Minimize to Tray"));
-        m_trayOnlyCard->setSubtitle(tr("Keep LinDesk running in the system tray when window is closed"));
-    }
-    if (m_trayIcon) {
-        m_trayIcon->setToolTip(tr("LinDesk Settings"));
-    }
-    if (m_showTrayAction) {
-        m_showTrayAction->setText(tr("Show Settings"));
-    }
-    if (m_exitTrayAction) {
-        m_exitTrayAction->setText(tr("Exit"));
-    }
-    if (m_languageCard) {
-        m_languageCard->setTitle(tr("Display Language"));
-        m_languageCard->setSubtitle(tr("Choose which language is used in the interface. Restart LinDesk to apply changes."));
-    }
-    if (m_openGLCard) {
-        m_openGLCard->setTitle(tr("OpenGL Rendering"));
-        m_openGLCard->setSubtitle(tr("Use OpenGL to accelerate rendering. Restart LinDesk to apply changes."));
-    }
-    if (m_selectionColorSectionTitle) m_selectionColorSectionTitle->setText(tr("Selection Rectangle Color"));
-    if (m_selectionColorSectionSubtitle) m_selectionColorSectionSubtitle->setText(tr("Adjust the drag selection color and preview the result in real time"));
-    if (m_shortcutArrowCard) {
-        m_shortcutArrowCard->setTitle(tr("Shortcut Arrows"));
-        m_shortcutArrowCard->setSubtitle(tr("Toggle visibility of the small arrow on desktop shortcut icons"));
-    }
-    if (m_hideIconsCard) {
-        m_hideIconsCard->setTitle(tr("Double Click to Hide"));
-        m_hideIconsCard->setSubtitle(tr("Quickly show or hide all desktop icons by double-clicking on empty spaces"));
-    }
-    if (m_windows11ContextMenuCard) {
-        m_windows11ContextMenuCard->setTitle(tr("Windows 11 Context Menu"));
-        m_windows11ContextMenuCard->setSubtitle(RightMenu::isWindows11SystemContextMenuSupported()
-            ? tr("Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView")
-            : tr("This option is available only on Windows 11"));
-    }
-    if (m_windows11ContextMenuToggle && !RightMenu::isWindows11SystemContextMenuSupported()) {
-        m_windows11ContextMenuToggle->setToolTip(tr("This option is available only on Windows 11."));
-    }
-    if (m_boxColorSectionTitle) m_boxColorSectionTitle->setText(tr("Accent Color"));
-    if (m_boxColorSectionSubtitle) m_boxColorSectionSubtitle->setText(tr("Define the primary theme color for your desktop boxes"));
-    if (m_opacityCard) {
-        m_opacityCard->setTitle(tr("Background Opacity"));
-        m_opacityCard->setSubtitle(tr("Adjust the semi-transparency level of the grid surface"));
-    }
-    if (m_glassCard) {
-        m_glassCard->setTitle(tr("Acrylic Glass Effect"));
-        m_glassCard->setSubtitle(tr("Enable real-time DWM background blur for a translucent look"));
-    }
-    if (m_languageCombo) {
-        const QString currentCode = m_languageCombo->currentData().toString();
-        m_languageCombo->blockSignals(true);
-        m_languageCombo->clear();
-        m_languageCombo->addItem(tr("English (United States)"), QStringLiteral("en_US"));
-        m_languageCombo->addItem(tr("Chinese (Simplified)"), QStringLiteral("zh_CN"));
-        int languageIndex = m_languageCombo->findData(currentCode);
-        if (languageIndex < 0) {
-            languageIndex = 0;
-        }
-        m_languageCombo->setCurrentIndex(languageIndex);
-        m_languageCombo->blockSignals(false);
-    }
+void SettingUI::refreshAfterResize()
+{
+    updateLivePreviewHeights();
+    syncScrollablePageWidths();
+    updateDesktopSelectionPreview();
     updatePreviewStyle();
+}
+
+int SettingUI::livePreviewHeightForWindow() const
+{
+    constexpr int kBasePreviewHeight = 220;
+    constexpr int kTallWindowThreshold = 760;
+    constexpr int kMaxExtraHeight = 36;
+
+    const int extraHeight = qBound(0, (height() - kTallWindowThreshold) / 8, kMaxExtraHeight);
+    return kBasePreviewHeight + extraHeight;
+}
+
+void SettingUI::updateLivePreviewHeights()
+{
+    const int previewHeight = livePreviewHeightForWindow();
+
+    if (m_desktopPreviewContainer && m_desktopPreviewContainer->height() != previewHeight) {
+        m_desktopPreviewContainer->setFixedHeight(previewHeight);
+    }
+    if (m_boxPreviewContainer && m_boxPreviewContainer->height() != previewHeight) {
+        m_boxPreviewContainer->setFixedHeight(previewHeight);
+    }
+}
+
+void SettingUI::updateWindowControlButtons()
+{
+    if (m_settingsMaxBtn) {
+        m_settingsMaxBtn->setText((windowState() & Qt::WindowMaximized)
+            ? QString::fromUtf8(u8"\uE923")
+            : QString::fromUtf8(u8"\uE922"));
+    }
+}
+
+void SettingUI::syncScrollablePageWidths()
+{
+    if (!m_contentStack) {
+        return;
+    }
+
+    for (int i = 0; i < m_contentStack->count(); ++i) {
+        QScrollArea* scroll = qobject_cast<QScrollArea*>(m_contentStack->widget(i));
+        if (!scroll || !scroll->widget() || !scroll->viewport()) {
+            continue;
+        }
+
+        QWidget* content = scroll->widget();
+        const int viewportWidth = scroll->viewport()->width();
+        if (viewportWidth <= 0) {
+            continue;
+        }
+
+        content->setMinimumWidth(0);
+        content->setMaximumWidth(QWIDGETSIZE_MAX);
+        content->updateGeometry();
+        if (QLayout* layout = content->layout()) {
+            layout->activate();
+        }
+    }
+}
+
+void SettingUI::updateSidebarItemHeights()
+{
+    if (!m_sidebar || m_sidebar->count() <= 0) {
+        return;
+    }
+
+    const int itemCount = m_sidebar->count();
+    const int totalSpacing = qMax(0, itemCount - 1) * m_sidebar->spacing();
+    const int availableHeight = qMax(0, m_sidebar->viewport()->height() - totalSpacing - 2);
+    const int itemHeight = qBound(48, availableHeight / itemCount, 52);
+
+    for (int i = 0; i < itemCount; ++i) {
+        if (QListWidgetItem* item = m_sidebar->item(i)) {
+            item->setSizeHint(QSize(230, itemHeight));
+        }
+    }
 }
 
 // Legacy paint event removed - handled by FluentBaseWidget
 
 // NativeEvent has been gracefully moved to FluentBaseWidget
-
-
-
-
-
-

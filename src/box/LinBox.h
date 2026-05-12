@@ -136,10 +136,17 @@ private:
     void commitTitleEditing();
     DesktopRootItemState* hitItemStateAt(const QPoint& boxPos);
     const DesktopRootItemState* hitItemStateAt(const QPoint& boxPos) const;
+    const DesktopRootItemState* dropTargetItemStateAt(const QPoint& boxPos) const;
+    bool hasActiveItemRename() const;
     int insertionIndexForPos(const QPoint& boxPos, const QStringList& draggedPaths, bool* alignAfterPrev = nullptr) const;
     QRect insertionIndicatorRect() const;
     void clearReorderPreview();
     void showDropTipForItem(const DesktopRootItemState* state, const QPoint& boxPos, bool isCtrl, bool createShortcut = false);
+    bool handleMappedBoxItemTargetDrop(const QStringList& sourcePaths,
+                                       const DesktopRootItemState* targetState,
+                                       bool copyMode,
+                                       bool preferShortcut,
+                                       QDropEvent* event);
     void scheduleBlurRefresh();
     void updateBlurCache();
     QPixmap captureBackgroundPixmap() const;

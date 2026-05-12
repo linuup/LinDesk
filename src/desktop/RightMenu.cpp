@@ -18,6 +18,7 @@
 #include <QStyle>
 #include <QPainter>
 #include <QOperatingSystemVersion>
+#include <QTimer>
 #include <Windows.h>
 
 namespace {
@@ -48,6 +49,15 @@ QString shellMenuText(const char* englishSource, const char* chineseUtf8)
     return useChineseShellMenuText()
         ? QString::fromUtf8(chineseUtf8)
         : QString::fromUtf8(englishSource);
+}
+
+bool isSupportedSpecialFolderMenu(SpecialFolders folder)
+{
+    return folder == SpecialFolders::ThisPc ||
+        folder == SpecialFolders::RecycleBin ||
+        folder == SpecialFolders::ControlPanel ||
+        folder == SpecialFolders::Network ||
+        folder == SpecialFolders::UserFolder;
 }
 }
 
@@ -304,6 +314,7 @@ void RightMenu::initializeCustomMenu()
     m_customMenu->setFixedWidth(150);
     m_customMenu->setStyleSheet(QStringLiteral("QMenu { font-weight: bold; font-family: %1; }").arg(AppFonts::uiCssFamily()));
     connectMenuActionInvalidation(m_customMenu);
+    applyCachedPasteActionsState();
 }
 
 void RightMenu::onLargeIcons() { m_largeIconsAction->setChecked(true); emit LargeIconsTriggered(); }
@@ -375,19 +386,65 @@ bool RightMenu::clipboardContainsCutItems() const
 
 void RightMenu::updatePasteActionsState()
 {
-    qDebug().noquote() << ListViewFileOpsHelper::clipboardDebugDump();
-
     const bool hasFileItems = clipboardHasFileItems();
     const bool hasVirtualFileItems = ListViewFileOpsHelper::clipboardHasVirtualFileItems();
     const bool isCutOperation = hasFileItems && clipboardContainsCutItems();
 
+    m_cachedPasteEnabled = hasFileItems;
+    m_cachedPasteShortcutEnabled = hasFileItems && !isCutOperation && !hasVirtualFileItems;
+
     if (m_pasteAction) {
-        m_pasteAction->setEnabled(hasFileItems);
+        m_pasteAction->setEnabled(m_cachedPasteEnabled);
     }
     if (pasteShortcutAction) {
-        // Virtual clipboard items from remote providers are not suitable for shortcut creation.
-        pasteShortcutAction->setEnabled(hasFileItems && !isCutOperation && !hasVirtualFileItems);
+        pasteShortcutAction->setEnabled(m_cachedPasteShortcutEnabled);
     }
+}
+
+void RightMenu::preparePasteActionsForMenu() const
+{
+    const_cast<RightMenu*>(this)->updatePasteActionsState();
+}
+
+void RightMenu::applyCachedPasteActionsState() const
+{
+    if (m_pasteAction) {
+        m_pasteAction->setEnabled(m_cachedPasteEnabled);
+    }
+    if (pasteShortcutAction) {
+        pasteShortcutAction->setEnabled(m_cachedPasteShortcutEnabled);
+    }
+}
+
+void RightMenu::refreshPasteActionsStateAsync() const
+{
+    if (m_pasteStateRefreshPending) {
+        return;
+    }
+
+    m_pasteStateRefreshPending = true;
+    QTimer::singleShot(0, const_cast<RightMenu*>(this), [this]() {
+        auto* self = const_cast<RightMenu*>(this);
+        self->updatePasteActionsState();
+        m_pasteStateRefreshPending = false;
+    });
+}
+
+void RightMenu::connectClipboardStateRefresh()
+{
+    if (m_clipboardRefreshConnected) {
+        return;
+    }
+
+    m_clipboardRefreshConnected = true;
+
+    if (QClipboard* clipboard = QGuiApplication::clipboard()) {
+        connect(clipboard, &QClipboard::dataChanged, this, [this]() {
+            refreshPasteActionsStateAsync();
+        });
+    }
+
+    refreshPasteActionsStateAsync();
 }
 
 void RightMenu::connectMenuActionInvalidation(QMenu* menu)
@@ -499,7 +556,7 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
     POINT p = { pos.x(), pos.y() };
     const POINT* position = &p;
 	if (this->fileType == ObjectType::BackGround) {
-		const_cast<RightMenu*>(this)->updatePasteActionsState();
+		preparePasteActionsForMenu();
 		scm.DisplayDesktopContextMenu();
 		if (RightMenu::isWindows11SystemContextMenuEnabled()) {
 			scm.ShowMenu(this->hwnd, position, nullptr);
@@ -519,7 +576,11 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
 	}else if (this->fileType == ObjectType::SpecialFolder) {
 		scm.setOperationType(ShellContextMenu::OperationType::specialFolder);
 	}
-    scm.DisplayItemContextMenu(model.itemData.pidl());
+    if (this->fileType == ObjectType::SpecialFolder && isSupportedSpecialFolderMenu(model.specialFolder)) {
+        scm.DisplaySpecialFolderContextMenu(model.specialFolder);
+    } else {
+        scm.DisplayItemContextMenu(model.itemData.pidl());
+    }
     scm.ShowMenu(this->hwnd, position, nullptr);
 }
 #if 0
