@@ -2,8 +2,13 @@
 
 #include "app/AppFonts.h"
 
+#include <QDateTime>
 #include <QFontMetrics>
+#include <QLinearGradient>
+#include <QRadialGradient>
 #include <QtMath>
+
+#include <cmath>
 
 namespace {
 
@@ -36,30 +41,146 @@ QColor accentForTimer(const DesktopTimerState& timer)
     return QColor(74, 94, 120);
 }
 
-qreal timerProgress(const DesktopTimerState& timer)
+bool timerHasStarted(const DesktopTimerState& timer)
 {
-    if (timer.durationMs <= 0) {
-        return 0.0;
-    }
-    return qBound<qreal>(0.0, static_cast<qreal>(timer.remainingMs) / static_cast<qreal>(timer.durationMs), 1.0);
+    return timer.running || timer.finished || timer.remainingMs < timer.durationMs;
 }
 
-void paintProgressStrip(QPainter& painter, const QRect& rect, const QColor& accent, const DesktopTimerState& timer, qreal scale)
+QString statusTextForTimer(const DesktopTimerState& timer)
 {
-    const int h = sp(scale, 5);
-    QRect track(rect.left() + sp(scale, 18), rect.bottom() - sp(scale, 18), rect.width() - sp(scale, 36), h);
-    if (track.width() <= 0 || track.height() <= 0) {
-        return;
+    if (timer.finished) {
+        return QStringLiteral("Done");
     }
+    if (timer.running) {
+        return QStringLiteral("Running");
+    }
+    if (timerHasStarted(timer)) {
+        return QStringLiteral("Paused");
+    }
+    return QStringLiteral("Ready");
+}
+
+qreal breathingPhaseForTimer(const DesktopTimerState& timer)
+{
+    if (!timerHasStarted(timer)) {
+        return 0.36;
+    }
+
+    const qreal durationMs = 1000.0;
+    const qreal t = std::fmod(static_cast<qreal>(QDateTime::currentMSecsSinceEpoch()), durationMs) / durationMs;
+    const qreal wave = 0.5 - 0.5 * qCos(t * 2.0 * M_PI);
+    return wave * wave * (3.0 - 2.0 * wave);
+}
+
+qreal breathingRingPhase(const DesktopTimerState& timer)
+{
+    if (!timerHasStarted(timer)) {
+        return 0.0;
+    }
+
+    const qreal durationMs = 1000.0;
+    return std::fmod(static_cast<qreal>(QDateTime::currentMSecsSinceEpoch()), durationMs) / durationMs;
+}
+
+void paintSoftShadow(QPainter& painter, const QRect& rect, int radius, qreal scale)
+{
+    painter.save();
+    painter.setPen(Qt::NoPen);
+    const int layers = 4;
+    for (int i = layers; i >= 1; --i) {
+        const int spread = sp(scale, i * 2);
+        QRect shadowRect = rect.adjusted(-spread, sp(scale, 2), spread, sp(scale, 4 + i));
+        painter.setBrush(QColor(15, 23, 42, 8 + i * 4));
+        painter.drawRoundedRect(shadowRect, radius + spread, radius + spread);
+    }
+    painter.restore();
+}
+
+void paintFluentSurface(QPainter& painter, const QRect& rect, int radius, const QColor& accent, bool selected, qreal scale)
+{
+    paintSoftShadow(painter, rect, radius, scale);
 
     painter.save();
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(198, 210, 226, 120));
-    painter.drawRoundedRect(track, h / 2, h / 2);
-    QRect fill = track;
-    fill.setWidth(qRound(track.width() * timerProgress(timer)));
-    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 210));
-    painter.drawRoundedRect(fill, h / 2, h / 2);
+
+    QLinearGradient fill(rect.topLeft(), rect.bottomRight());
+    fill.setColorAt(0.0, QColor(255, 255, 255, 226));
+    fill.setColorAt(0.52, QColor(248, 252, 255, 208));
+    fill.setColorAt(1.0, QColor(236, 243, 252, 196));
+    painter.setBrush(fill);
+    painter.drawRoundedRect(rect, radius, radius);
+
+    QLinearGradient tint(rect.topLeft(), rect.bottomLeft());
+    tint.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), 22));
+    tint.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 5));
+    painter.setBrush(tint);
+    painter.drawRoundedRect(rect.adjusted(sp(scale, 5), sp(scale, 5), -sp(scale, 5), -sp(scale, 5)),
+                            qMax(1, radius - sp(scale, 5)),
+                            qMax(1, radius - sp(scale, 5)));
+
+    painter.setBrush(Qt::NoBrush);
+    painter.setPen(QPen(QColor(255, 255, 255, 210), sp(scale, 1)));
+    painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), radius, radius);
+    painter.setPen(QPen(QColor(24, 37, 56, 38), sp(scale, 1)));
+    painter.drawRoundedRect(rect, radius, radius);
+
+    if (selected) {
+        painter.setPen(QPen(QColor(accent.red(), accent.green(), accent.blue(), 190), sp(scale, 2)));
+        painter.drawRoundedRect(rect.adjusted(sp(scale, 2), sp(scale, 2), -sp(scale, 2), -sp(scale, 2)),
+                                qMax(1, radius - sp(scale, 2)),
+                                qMax(1, radius - sp(scale, 2)));
+    }
+
+    painter.restore();
+}
+
+void paintBreathingDot(QPainter& painter, const QPoint& center, int baseRadius, const DesktopTimerState& timer, const QColor& accent)
+{
+    const qreal phase = breathingPhaseForTimer(timer);
+    const qreal ringPhase = breathingRingPhase(timer);
+    const qreal pulseStrength = timer.finished ? 1.0 : (timer.running ? 0.72 : 0.46);
+    const qreal glowRadius = baseRadius * (2.1 + pulseStrength * 0.55 * phase);
+    const int glowAlpha = timerHasStarted(timer)
+        ? qRound(timer.finished ? 62 + 46 * phase : 28 + 28 * phase)
+        : 38;
+    const QPointF centerF(center);
+
+    painter.save();
+    painter.setPen(Qt::NoPen);
+
+    QRadialGradient glow(centerF, glowRadius);
+    glow.setColorAt(0.0, QColor(accent.red(), accent.green(), accent.blue(), glowAlpha));
+    glow.setColorAt(0.42, QColor(accent.red(), accent.green(), accent.blue(), qRound(glowAlpha * 0.34)));
+    glow.setColorAt(0.72, QColor(accent.red(), accent.green(), accent.blue(), qRound(glowAlpha * 0.10)));
+    glow.setColorAt(1.0, QColor(accent.red(), accent.green(), accent.blue(), 0));
+    painter.setBrush(glow);
+    painter.drawEllipse(centerF, glowRadius, glowRadius);
+
+    if (timerHasStarted(timer)) {
+        for (int i = 0; i < 2; ++i) {
+            const qreal shifted = std::fmod(ringPhase + i * 0.5, 1.0);
+            const qreal eased = shifted * shifted * (3.0 - 2.0 * shifted);
+            const qreal ringRadius = baseRadius * (1.15 + eased * (timer.finished ? 2.15 : 1.55));
+            const int ringAlpha = qRound((timer.finished ? 92 : 58) * (1.0 - eased));
+            if (ringAlpha <= 0) {
+                continue;
+            }
+            QPen ringPen(QColor(accent.red(), accent.green(), accent.blue(), ringAlpha), qMax<qreal>(1.0, baseRadius * 0.18));
+            ringPen.setCapStyle(Qt::RoundCap);
+            painter.setPen(ringPen);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawEllipse(centerF, ringRadius, ringRadius);
+        }
+        painter.setPen(Qt::NoPen);
+    }
+
+    const qreal innerRadius = baseRadius * (1.0 + 0.06 * phase);
+    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), timerHasStarted(timer) ? 225 : 176));
+    painter.drawEllipse(centerF, innerRadius, innerRadius);
+    painter.setBrush(QColor(255, 255, 255, 185));
+    painter.drawEllipse(centerF + QPointF(-innerRadius / 3.0, -innerRadius / 3.0),
+                        qMax<qreal>(1.0, innerRadius / 3.0),
+                        qMax<qreal>(1.0, innerRadius / 3.0));
     painter.restore();
 }
 
@@ -70,21 +191,28 @@ void paintCardTimer(QPainter& painter, const DesktopComponentItemModel& item, qr
     const QColor accent = accentForTimer(item.timer);
 
     painter.save();
-    painter.setPen(QPen(item.selected ? accent : QColor(255, 255, 255, 130), item.selected ? sp(scale, 2) : sp(scale, 1)));
-    painter.setBrush(QColor(248, 251, 255, 205));
-    painter.drawRoundedRect(outer, radius, radius);
+    paintFluentSurface(painter, outer, radius, accent, item.selected, scale);
 
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 34));
-    painter.drawRoundedRect(outer.adjusted(sp(scale, 8), sp(scale, 8), -sp(scale, 8), -sp(scale, 8)), sp(scale, 14), sp(scale, 14));
-
-    QFont timeFont = AppFonts::uiFont(42);
+    QFont timeFont = AppFonts::uiFont(50);
     timeFont.setWeight(QFont::Bold);
     painter.setFont(timeFont);
-    painter.setPen(accent);
-    painter.drawText(outer.adjusted(0, sp(scale, 12), 0, -sp(scale, 24)),
+    painter.setPen(QColor(17, 24, 39));
+    painter.drawText(outer.adjusted(0, sp(scale, 6), 0, -sp(scale, 20)),
                      Qt::AlignCenter,
                      timerText(item.timer.remainingMs));
+
+    const QPoint dotCenter(outer.center().x() - sp(scale, 30), outer.bottom() - sp(scale, 23));
+    paintBreathingDot(painter, dotCenter, sp(scale, 5), item.timer, accent);
+
+    if (outer.width() >= sp(scale, 150)) {
+        QFont statusFont = AppFonts::uiFont(10);
+        statusFont.setWeight(QFont::Medium);
+        painter.setFont(statusFont);
+        painter.setPen(QColor(71, 85, 105));
+        painter.drawText(QRect(dotCenter.x() + sp(scale, 12), outer.bottom() - sp(scale, 34), sp(scale, 86), sp(scale, 22)),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         statusTextForTimer(item.timer));
+    }
 
     painter.restore();
 }
@@ -96,22 +224,17 @@ void paintMiniTimer(QPainter& painter, const DesktopComponentItemModel& item, qr
     const QColor accent = accentForTimer(item.timer);
 
     painter.save();
-    painter.setPen(QPen(item.selected ? accent : QColor(255, 255, 255, 150), item.selected ? sp(scale, 2) : sp(scale, 1)));
-    painter.setBrush(QColor(248, 251, 255, 218));
-    painter.drawRoundedRect(pill, radius, radius);
+    paintFluentSurface(painter, pill, radius, accent, item.selected, scale);
 
-    const int dotSide = sp(scale, 10);
-    QRect dotRect(pill.left() + sp(scale, 16), pill.center().y() - dotSide / 2, dotSide, dotSide);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(accent);
-    painter.drawEllipse(dotRect);
+    const QPoint dotCenter(pill.left() + sp(scale, 22), pill.center().y());
+    paintBreathingDot(painter, dotCenter, sp(scale, 5), item.timer, accent);
 
-    QFont timeFont = AppFonts::uiFont(23);
+    QFont timeFont = AppFonts::uiFont(26);
     timeFont.setWeight(QFont::Bold);
     painter.setFont(timeFont);
-    painter.setPen(QColor(24, 37, 56));
-    painter.drawText(pill.adjusted(sp(scale, 36), 0, -sp(scale, 14), 0),
-                     Qt::AlignVCenter | Qt::AlignLeft,
+    painter.setPen(QColor(17, 24, 39));
+    painter.drawText(pill.adjusted(sp(scale, 44), 0, -sp(scale, 18), 0),
+                     Qt::AlignCenter,
                      timerText(item.timer.remainingMs));
     painter.restore();
 }
@@ -123,24 +246,33 @@ void paintExpandedTimer(QPainter& painter, const DesktopComponentItemModel& item
     const QColor accent = accentForTimer(item.timer);
 
     painter.save();
-    painter.setPen(QPen(item.selected ? accent : QColor(255, 255, 255, 130), item.selected ? sp(scale, 2) : sp(scale, 1)));
-    painter.setBrush(QColor(248, 251, 255, 214));
-    painter.drawRoundedRect(outer, radius, radius);
+    paintFluentSurface(painter, outer, radius, accent, item.selected, scale);
 
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 28));
-    painter.drawEllipse(QRect(outer.center().x() - sp(scale, 72),
-                              outer.center().y() - sp(scale, 72),
-                              sp(scale, 144),
-                              sp(scale, 144)));
+    painter.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 18));
+    painter.drawEllipse(QRect(outer.center().x() - sp(scale, 82),
+                              outer.center().y() - sp(scale, 76),
+                              sp(scale, 164),
+                              sp(scale, 152)));
 
-    QFont timeFont = AppFonts::uiFont(62);
+    QFont timeFont = AppFonts::uiFont(70);
     timeFont.setWeight(QFont::Bold);
     painter.setFont(timeFont);
-    painter.setPen(accent);
-    painter.drawText(outer.adjusted(0, sp(scale, 8), 0, -sp(scale, 32)),
+    painter.setPen(QColor(17, 24, 39));
+    painter.drawText(outer.adjusted(0, sp(scale, 4), 0, -sp(scale, 44)),
                      Qt::AlignCenter,
                      timerText(item.timer.remainingMs));
+
+    const QPoint dotCenter(outer.center().x() - sp(scale, 34), outer.bottom() - sp(scale, 34));
+    paintBreathingDot(painter, dotCenter, sp(scale, 7), item.timer, accent);
+
+    QFont statusFont = AppFonts::uiFont(12);
+    statusFont.setWeight(QFont::Medium);
+    painter.setFont(statusFont);
+    painter.setPen(QColor(71, 85, 105));
+    painter.drawText(QRect(dotCenter.x() + sp(scale, 16), outer.bottom() - sp(scale, 48), sp(scale, 100), sp(scale, 28)),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     statusTextForTimer(item.timer));
 
     painter.restore();
 }

@@ -1,7 +1,7 @@
 #define AppName "LinDesk"
 #define AppVersion "1.0.2"
 #define AppExeName "LinDesk.exe"
-#define BuildDir "D:/Desktop/LinDesk/build/build_64"
+#define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
 #define PackageOutputDir "D:/Desktop/LinDesk/installer"
 
 [Setup]
@@ -12,7 +12,7 @@ AppPublisherURL=https://github.com/linuup
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir={#PackageOutputDir}
-OutputBaseFilename={#AppName}_Setup_v{#AppVersion}
+OutputBaseFilename={#AppName}_Setup_{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin

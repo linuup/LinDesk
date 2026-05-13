@@ -68,37 +68,47 @@ void playTimerEndSound()
     PlaySoundW(reinterpret_cast<LPCWSTR>(soundPath.utf16()), nullptr, SND_ASYNC | SND_FILENAME | SND_NODEFAULT);
 }
 
+bool timerNeedsVisualTick(const DesktopTimerState& timer)
+{
+    return timer.running || timer.finished || timer.remainingMs < timer.durationMs;
+}
+
 }
 
 DesktopComponentManager::DesktopComponentManager(QObject* parent)
     : QObject(parent)
 {
-    m_tickTimer.setInterval(250);
+    m_tickTimer.setInterval(33);
     connect(&m_tickTimer, &QTimer::timeout, this, [this]() {
         bool changedAny = false;
-        bool hasRunning = false;
+        bool hasVisualTimer = false;
         for (DesktopComponentItemModel& item : m_items) {
-            if (item.type != DesktopComponentType::Timer || !item.timer.running) {
+            if (item.type != DesktopComponentType::Timer) {
                 continue;
             }
 
-            hasRunning = true;
-            item.timer.remainingMs = qMax<qint64>(0, item.timer.remainingMs - m_tickTimer.interval());
-            if (item.timer.remainingMs == 0) {
-                item.timer.running = false;
-                item.timer.finished = true;
-                ++item.timer.loopCount;
-                if (item.timer.soundEnabled) {
-                    playTimerEndSound();
-                }
+            if (timerNeedsVisualTick(item.timer)) {
+                hasVisualTimer = true;
             }
-            changedAny = true;
+
+            if (item.timer.running) {
+                item.timer.remainingMs = qMax<qint64>(0, item.timer.remainingMs - m_tickTimer.interval());
+                if (item.timer.remainingMs == 0) {
+                    item.timer.running = false;
+                    item.timer.finished = true;
+                    ++item.timer.loopCount;
+                    if (item.timer.soundEnabled) {
+                        playTimerEndSound();
+                    }
+                }
+                changedAny = true;
+            }
         }
 
-        if (changedAny) {
+        if (changedAny || hasVisualTimer) {
             emit changed();
         }
-        if (!hasRunning) {
+        if (!hasVisualTimer) {
             stopTickTimerIfIdle();
         }
     });
@@ -469,7 +479,7 @@ QSize DesktopComponentManager::gridSpanForMode(DesktopComponentMode mode) const
 {
     switch (mode) {
     case DesktopComponentMode::Mini:
-        return QSize(2, 1);
+        return QSize(3, 1);
     case DesktopComponentMode::Expanded:
         return QSize(4, 3);
     case DesktopComponentMode::Card:
@@ -537,7 +547,7 @@ void DesktopComponentManager::updateItemRect(DesktopComponentItemModel& item) co
 void DesktopComponentManager::ensureTickTimer()
 {
     for (const DesktopComponentItemModel& item : m_items) {
-        if (item.timer.running) {
+        if (item.type == DesktopComponentType::Timer && timerNeedsVisualTick(item.timer)) {
             if (!m_tickTimer.isActive()) {
                 m_tickTimer.start();
             }
@@ -549,7 +559,7 @@ void DesktopComponentManager::ensureTickTimer()
 void DesktopComponentManager::stopTickTimerIfIdle()
 {
     for (const DesktopComponentItemModel& item : m_items) {
-        if (item.timer.running) {
+        if (item.type == DesktopComponentType::Timer && timerNeedsVisualTick(item.timer)) {
             return;
         }
     }

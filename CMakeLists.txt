@@ -12,8 +12,9 @@ set(LINDESK_VERSION_TAG "Stable")  # 可选: Alpha, Beta, RC, Stable 等
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 set(LINDESK_VERSION_FULL "${LINDESK_VERSION} ${LINDESK_VERSION_TAG}")
 
-# 设置安装器输出目录（可自定义）
-set(LINDESK_OUTPUT_DIR "${CMAKE_BINARY_DIR}")
+# 设置安装器输入目录（可自定义）
+set(LINDESK_PACKAGE_CONFIG "Release" CACHE STRING "Build configuration used by the installer input directory")
+set(LINDESK_OUTPUT_DIR "${CMAKE_BINARY_DIR}/${LINDESK_PACKAGE_CONFIG}")
 set(LINDESK_INSTALLER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/installer")
 
 # ========== C++ 标准 ==========
