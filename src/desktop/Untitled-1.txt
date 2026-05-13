@@ -1,9 +1,0 @@
-3. 给桌面选中态再加一套指针级缓存
-现在 D:\Desktop\LinDesk\src\desktop/ListView.cpp:1505 到 D:\Desktop\LinDesk\src\desktop/ListView.cpp:1578 这段，虽然已经做了活跃候选缓存，后面仍然是基于 QString path 在做很多集合判断和状态同步。
-
-还能继续压一层：
-
-框选会话里维护 QSet<DesktopRootItemState*> activeSelectedStates
-diff 时先按指针集合算增删
-最后只在真正提交选中结果时同步路径集合
-这样可以再减少字符串归一化、哈希和路径查找成本。

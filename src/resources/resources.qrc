@@ -23,6 +23,7 @@
         <file>Assets/change_Mapped_Folder.svg</file>
         <file>Assets/accessDeny-Cat.svg</file>
         <file>Assets/empty_Cat.svg</file>
+        <file>TimeEnd.wav</file>
         <file>qml/QmlTestPage.qml</file>
     </qresource>
 </RCC>

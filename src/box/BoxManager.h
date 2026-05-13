@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QTimer>
 #include <QPointer>
+#include <QVariant>
 
 class LinBox;
 class ListView;
@@ -39,6 +40,7 @@ public:
     void saveAll();
     void saveAll(const QString& persistencePath, bool enablePersistence,
                  const QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                 const QVector<QMap<QString, QVariant>>& desktopComponents,
                  int viewMode, int sortType, int preAutoSort, int iconPosMode,
                  bool autoArrange, bool gridAlignment,
                  bool showDesktopIcons, bool doubleClickHideIcons,
@@ -51,7 +53,8 @@ public:
                  bool& showDesktopIcons, bool& doubleClickHideIcons,
                  bool& showShortCutArrow,
                  QVector<QMap<QString, QVariant>>& boxData,
-                 QMap<QString, QMap<QString, QVariant>>& iconPositions);
+                 QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                 QVector<QMap<QString, QVariant>>& desktopComponents);
     void requestSave();
     void setPersistencePath(const QString& path);
     QString persistencePath() const { return m_persistencePath; }

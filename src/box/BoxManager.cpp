@@ -18,6 +18,7 @@ namespace {
 
 constexpr int kMaxPersistedBoxes = 4096;
 constexpr int kMaxPersistedIconPositions = 100000;
+constexpr int kMaxPersistedDesktopComponents = 1024;
 
 QString normalizeMappedFolderPathValue(const QString& path)
 {
@@ -276,6 +277,7 @@ void BoxManager::saveAll() {
 
 void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
                          const QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                         const QVector<QMap<QString, QVariant>>& desktopComponents,
                          int viewMode, int sortType, int preAutoSort, int iconPosMode,
                          bool autoArrange, bool gridAlignment,
                          bool showDesktopIcons, bool doubleClickHideIcons,
@@ -311,6 +313,16 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
         iconPosArray.append(posObj);
     }
     rootObj["iconPositions"] = iconPosArray;
+
+    QJsonArray componentArray;
+    for (const QMap<QString, QVariant>& component : desktopComponents) {
+        QJsonObject componentObj;
+        for (auto it = component.constBegin(); it != component.constEnd(); ++it) {
+            componentObj[it.key()] = QJsonValue::fromVariant(it.value());
+        }
+        componentArray.append(componentObj);
+    }
+    rootObj["desktopComponents"] = componentArray;
     
     QJsonArray boxArray;
     for (auto& ptr : m_boxes) {
@@ -373,6 +385,28 @@ void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
             << it.value().value("boxId").toString()
             << it.value().value("ord").toInt();
     }
+    out << desktopComponents.size();
+    for (const QMap<QString, QVariant>& component : desktopComponents) {
+        out << component.value("id").toString()
+            << component.value("type").toInt()
+            << component.value("mode").toInt()
+            << component.value("x").toInt()
+            << component.value("y").toInt()
+            << component.value("gridW").toInt()
+            << component.value("gridH").toInt()
+            << component.value("title").toString()
+            << component.value("durationMs").toLongLong()
+            << component.value("remainingMs").toLongLong()
+            << component.value("running").toBool()
+            << component.value("finished").toBool()
+            << component.value("soundEnabled").toBool()
+            << component.value("loopCount").toInt()
+            << component.value("presetName").toString()
+            << component.value("pinned").toBool()
+            << component.value("hasPinnedPosition").toBool()
+            << component.value("pinnedX").toInt()
+            << component.value("pinnedY").toInt();
+    }
 #endif
     
     file.close();
@@ -386,7 +420,8 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
                          bool& showDesktopIcons, bool& doubleClickHideIcons,
                          bool& showShortCutArrow,
                          QVector<QMap<QString, QVariant>>& boxData,
-                         QMap<QString, QMap<QString, QVariant>>& iconPositions) {
+                         QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                         QVector<QMap<QString, QVariant>>& desktopComponents) {
     QFile file(persistencePath);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
         qDebug() << "[BoxManager] No persistence file found:" << persistencePath;
@@ -426,6 +461,16 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
         posMap["boxId"] = posObj["boxId"].toString();
         posMap["ord"] = posObj["ord"].toInt();
         iconPositions[path] = posMap;
+    }
+
+    QJsonArray componentArray = rootObj["desktopComponents"].toArray();
+    for (const QJsonValue& value : componentArray) {
+        const QJsonObject componentObj = value.toObject();
+        QMap<QString, QVariant> component;
+        for (auto it = componentObj.constBegin(); it != componentObj.constEnd(); ++it) {
+            component[it.key()] = it.value().toVariant();
+        }
+        desktopComponents.append(component);
     }
     
     // Load boxes
@@ -532,6 +577,64 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
             posMap["boxId"] = boxId;
             posMap["ord"] = customSortOrder;
             iconPositions[path] = posMap;
+        }
+    }
+    if (in.status() == QDataStream::Ok && !in.atEnd()) {
+        int componentCount = 0;
+        in >> componentCount;
+        if (in.status() != QDataStream::Ok || componentCount < 0 || componentCount > kMaxPersistedDesktopComponents) {
+            qWarning() << "[BoxManager] Invalid desktop component count:" << componentCount;
+            componentCount = 0;
+        }
+        for (int i = 0; i < componentCount; ++i) {
+            QString id;
+            int type = 0;
+            int mode = 1;
+            int x = 0;
+            int y = 0;
+            int gridW = 3;
+            int gridH = 2;
+            QString title;
+            qint64 durationMs = 0;
+            qint64 remainingMs = 0;
+            bool running = false;
+            bool finished = false;
+            bool soundEnabled = true;
+            int loopCount = 0;
+            QString presetName;
+            bool pinned = false;
+            bool hasPinnedPosition = false;
+            int pinnedX = 0;
+            int pinnedY = 0;
+            in >> id >> type >> mode >> x >> y >> gridW >> gridH >> title
+               >> durationMs >> remainingMs >> running >> finished >> soundEnabled
+               >> loopCount >> presetName >> pinned >> hasPinnedPosition >> pinnedX >> pinnedY;
+            if (in.status() != QDataStream::Ok) {
+                qWarning() << "[BoxManager] Stopped loading desktop components at index:" << i;
+                break;
+            }
+
+            QMap<QString, QVariant> component;
+            component["id"] = id;
+            component["type"] = type;
+            component["mode"] = mode;
+            component["x"] = x;
+            component["y"] = y;
+            component["gridW"] = gridW;
+            component["gridH"] = gridH;
+            component["title"] = title;
+            component["durationMs"] = durationMs;
+            component["remainingMs"] = remainingMs;
+            component["running"] = running;
+            component["finished"] = finished;
+            component["soundEnabled"] = soundEnabled;
+            component["loopCount"] = loopCount;
+            component["presetName"] = presetName;
+            component["pinned"] = pinned;
+            component["hasPinnedPosition"] = hasPinnedPosition;
+            component["pinnedX"] = pinnedX;
+            component["pinnedY"] = pinnedY;
+            desktopComponents.append(component);
         }
     }
 #endif

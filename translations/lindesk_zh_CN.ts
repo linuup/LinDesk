@@ -159,7 +159,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>This folder is already on the desktop┗( ▔, ▔ )┛</source>
-        <translation>此文件夹已经映射在了桌面 ┗( ▔, ▔ )┛</translation>
+        <translation type="vanished">此文件夹已经映射在了桌面 ┗( ▔, ▔ )┛</translation>
     </message>
     <message>
         <source>Desktop</source>
@@ -208,6 +208,70 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>New Folder</source>
         <translation>新建文件夹</translation>
+    </message>
+    <message>
+        <source>Start / Pause</source>
+        <translation>开始 / 暂停</translation>
+    </message>
+    <message>
+        <source>Reset</source>
+        <translation>重置</translation>
+    </message>
+    <message>
+        <source>Unpin</source>
+        <translation>取消固定</translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation>固定</translation>
+    </message>
+    <message>
+        <source>5 minutes</source>
+        <translation>5 分钟</translation>
+    </message>
+    <message>
+        <source>25 minutes</source>
+        <translation>25 分钟</translation>
+    </message>
+    <message>
+        <source>45 minutes</source>
+        <translation>45 分钟</translation>
+    </message>
+    <message>
+        <source>Custom minutes...</source>
+        <translation>自定义分钟...</translation>
+    </message>
+    <message>
+        <source>Mini mode</source>
+        <translation>迷你模式</translation>
+    </message>
+    <message>
+        <source>Card mode</source>
+        <translation>卡片模式</translation>
+    </message>
+    <message>
+        <source>Expanded mode</source>
+        <translation>展开模式</translation>
+    </message>
+    <message>
+        <source>Turn sound off</source>
+        <translation>关闭声音</translation>
+    </message>
+    <message>
+        <source>Turn sound on</source>
+        <translation>开启声音</translation>
+    </message>
+    <message>
+        <source>Remove timer</source>
+        <translation>移除计时器</translation>
+    </message>
+    <message>
+        <source>Custom Timer</source>
+        <translation>自定义计时器</translation>
+    </message>
+    <message>
+        <source>Minutes</source>
+        <translation>分钟</translation>
     </message>
 </context>
 <context>
@@ -280,23 +344,23 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Show desktop icons</source>
-        <translation>显示桌面图标</translation>
+        <translation type="vanished">显示桌面图标</translation>
     </message>
     <message>
         <source>Double-click to hide icons</source>
-        <translation>双击隐藏图标</translation>
+        <translation type="vanished">双击隐藏图标</translation>
     </message>
     <message>
         <source>Refresh</source>
-        <translation>刷新</translation>
+        <translation type="vanished">刷新</translation>
     </message>
     <message>
         <source>Paste</source>
-        <translation>粘贴</translation>
+        <translation type="vanished">粘贴</translation>
     </message>
     <message>
         <source>Paste shortcut</source>
-        <translation>粘贴快捷方式</translation>
+        <translation type="vanished">粘贴快捷方式</translation>
     </message>
     <message>
         <source>LinDesk</source>
@@ -321,6 +385,10 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Map Folder</source>
         <translation>映射文件夹</translation>
+    </message>
+    <message>
+        <source>New Timer</source>
+        <translation>新建计时器</translation>
     </message>
 </context>
 <context>
@@ -355,7 +423,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Automatically start LinDesk when you sign in to Windows</source>
-        <translation>登录 Windows 时自动启动 LinDesk</translation>
+        <translation type="vanished">登录 Windows 时自动启动 LinDesk</translation>
     </message>
     <message>
         <source>Minimize to Tray</source>
@@ -363,7 +431,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Keep LinDesk running in the system tray when window is closed</source>
-        <translation>关闭窗口时让 LinDesk 保持在系统托盘中运行</translation>
+        <translation type="vanished">关闭窗口时让 LinDesk 保持在系统托盘中运行</translation>
     </message>
     <message>
         <source>English (United States)</source>
@@ -391,7 +459,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Toggle visibility of the small arrow on desktop shortcut icons</source>
-        <translation>切换桌面快捷方式图标上小箭头的显示状态</translation>
+        <translation type="vanished">切换桌面快捷方式图标上小箭头的显示状态</translation>
     </message>
     <message>
         <source>Double Click to Hide</source>
@@ -399,7 +467,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Quickly show or hide all desktop icons by double-clicking on empty spaces</source>
-        <translation>双击桌面空白区域，快速显示或隐藏所有桌面图标</translation>
+        <translation type="vanished">双击桌面空白区域，快速显示或隐藏所有桌面图标</translation>
     </message>
     <message>
         <source>Box UI</source>
@@ -407,7 +475,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Preview</source>
-        <translation>预览</translation>
+        <translation type="vanished">预览</translation>
     </message>
     <message>
         <source>Accent Color</source>
@@ -415,7 +483,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Define the primary theme color for your desktop boxes</source>
-        <translation>设置桌面盒子的主色调</translation>
+        <translation type="vanished">设置桌面盒子的主色调</translation>
     </message>
     <message>
         <source>Background Opacity</source>
@@ -423,7 +491,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Adjust the semi-transparency level of the grid surface</source>
-        <translation>调整盒子背景的半透明程度</translation>
+        <translation type="vanished">调整盒子背景的半透明程度</translation>
     </message>
     <message>
         <source>Acrylic Glass Effect</source>
@@ -431,7 +499,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Enable real-time DWM background blur for a translucent look</source>
-        <translation>启用实时 DWM 背景模糊，获得通透的玻璃观感</translation>
+        <translation type="vanished">启用实时 DWM 背景模糊，获得通透的玻璃观感</translation>
     </message>
     <message>
         <source>Version 1.0.0 Stable</source>
@@ -491,31 +559,31 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Quick Actions</source>
-        <translation>快速操作</translation>
+        <translation type="vanished">快速操作</translation>
     </message>
     <message>
         <source>Open Desktop Settings</source>
-        <translation>打开桌面设置</translation>
+        <translation type="vanished">打开桌面设置</translation>
     </message>
     <message>
         <source>Configure wallpaper, display behavior, and more.</source>
-        <translation>配置壁纸、显示行为等。</translation>
+        <translation type="vanished">配置壁纸、显示行为等。</translation>
     </message>
     <message>
         <source>Customize Box UI</source>
-        <translation>自定义盒子界面</translation>
+        <translation type="vanished">自定义盒子界面</translation>
     </message>
     <message>
         <source>Adjust Box layout, appearance, and actions.</source>
-        <translation>调整盒子布局、外观和操作。</translation>
+        <translation type="vanished">调整盒子布局、外观和操作。</translation>
     </message>
     <message>
         <source>Manage Plugins</source>
-        <translation>管理插件</translation>
+        <translation type="vanished">管理插件</translation>
     </message>
     <message>
         <source>Enable, disable, or configure plugins.</source>
-        <translation>启用、禁用或配置插件。</translation>
+        <translation type="vanished">启用、禁用或配置插件。</translation>
     </message>
     <message>
         <source>System Status</source>
@@ -655,23 +723,47 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Use OpenGL to accelerate rendering. Restart LinDesk to apply changes.</source>
-        <translation>使用 OpenGL 来加速渲染。重启 LinDesk 以应用更改。</translation>
+        <translation type="vanished">使用 OpenGL 来加速渲染。重启 LinDesk 以应用更改。</translation>
     </message>
     <message>
         <source>Adjust the drag selection color and preview the result in real time</source>
-        <translation>调整拖拽选择颜色并在实时预览结果</translation>
+        <translation type="vanished">调整拖拽选择颜色并在实时预览结果</translation>
     </message>
     <message>
         <source>Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView</source>
-        <translation>在右键单击空白区域时使用Windows 11 桌面背景上下文菜单</translation>
+        <translation type="vanished">在右键单击空白区域时使用Windows 11 桌面背景上下文菜单</translation>
     </message>
     <message>
         <source>This option is available only on Windows 11</source>
-        <translation>此选项仅在 Windows 11 上可用</translation>
+        <translation type="vanished">此选项仅在 Windows 11 上可用</translation>
     </message>
     <message>
         <source>Version %1</source>
         <translation>版本 %1</translation>
+    </message>
+    <message>
+        <source>LinDesk could not save the language setting.</source>
+        <translation> LinDesk 无法保存语言设置。</translation>
+    </message>
+    <message>
+        <source>Restart LinDesk to apply the display language change.</source>
+        <translation>重启 LinDesk 以应用显示语言更改。</translation>
+    </message>
+    <message>
+        <source>Restart Now</source>
+        <translation>立即重启</translation>
+    </message>
+    <message>
+        <source>LinDesk could not restart automatically. Please restart it manually.</source>
+        <translation>LinDesk 无法自动重启。请手动重启它。</translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation>稍后</translation>
+    </message>
+    <message>
+        <source>Preview the desktop selection rectangle color, contrast, and opacity.</source>
+        <translation>预览桌面选择矩形的颜色、对比度和透明度。</translation>
     </message>
 </context>
 </TS>

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.31)
 # 修改版本号只需改这里
 set(LINDESK_VERSION_MAJOR 1)
 set(LINDESK_VERSION_MINOR 0)
-set(LINDESK_VERSION_PATCH 1)
+set(LINDESK_VERSION_PATCH 2)
 set(LINDESK_VERSION_TAG "Stable")  # 可选: Alpha, Beta, RC, Stable 等
 
 # 生成完整版本字符串
@@ -69,7 +69,7 @@ project(LinDesk VERSION "${LINDESK_VERSION}")
 # 配置 Version.h
 configure_file(
     "${CMAKE_SOURCE_DIR}/src/app/Version.h.in"
-    "${CMAKE_BINARY_DIR}/include/LinDesk/Version.h"
+    "${CMAKE_SOURCE_DIR}/src/app/Version.h"
     @ONLY
 )
 
@@ -124,6 +124,7 @@ target_link_libraries(LinDesk
         Uuid
         Comctl32
         dwmapi
+        Winmm
         Qt5::Widgets
         Qt5::Core
         Qt5::Network

@@ -25,6 +25,9 @@
     <ClCompile Include="D:\Desktop\LinDesk\src\desktop\DesktopRootItemState.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\Desktop\LinDesk\src\desktop\DesktopSnakeGame.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="D:\Desktop\LinDesk\src\desktop\FilenameEditor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -172,6 +175,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\Desktop\LinDesk\src\desktop\DesktopRootItemState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Desktop\LinDesk\src\desktop\DesktopSnakeGame.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\Desktop\LinDesk\src\desktop\FilenameEditor.h">

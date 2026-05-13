@@ -327,12 +327,16 @@ void LinDesktop::checkFirstLaunchPrompt()
             listView->applyAutoArrangeLayout(false, false);
             listView->update();
             listView->requestSaveBoxes();
+            listView->createRecentModifiedItemsBox();
             listView->show();
         }
     });
     dlg->addActionButton(tr("Keep Windows Layout"), FluentDialog::ActionType::Secondary, [this, markHandled]() {
-        listView->show();
         markHandled();
+        if (listView) {
+            listView->show();
+            listView->createRecentModifiedItemsBox();
+        }
     });
     dlg->show();
     dlg->raise();

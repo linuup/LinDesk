@@ -226,6 +226,7 @@ void RightMenu::initializeCustomMenu()
     m_sortByTypeAction = nullptr;
     m_pasteAction = nullptr;
     m_createBoxAction = nullptr;
+    m_createTimerAction = nullptr;
     m_mapFolderAction = nullptr;
     m_linDeskAction = nullptr;
     pasteShortcutAction = nullptr;
@@ -289,6 +290,11 @@ void RightMenu::initializeCustomMenu()
     connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
     m_customMenu->addAction(m_createBoxAction);
 
+    m_createTimerAction = new QAction(tr("New Timer"), linDeskMenu);
+    m_createTimerAction->setIcon(QIcon(gridPix));
+    connect(m_createTimerAction, &QAction::triggered, this, &RightMenu::onCreateTimer);
+    linDeskMenu->addAction(m_createTimerAction);
+
     m_mapFolderAction = new QAction(tr("Map Folder"), linDeskMenu);
     m_mapFolderAction->setIcon(QIcon(":/Assets/folder-share.svg"));
     connect(m_mapFolderAction, &QAction::triggered, this, &RightMenu::onMapFolder);
@@ -340,6 +346,7 @@ void RightMenu::onRefresh() { emit refreshTriggered(); }
 void RightMenu::onPaste() { emit pasteTriggered(); }
 void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
 void RightMenu::onCreateBox() { emit createBoxTriggered(); }
+void RightMenu::onCreateTimer() { emit createTimerTriggered(); }
 void RightMenu::onMapFolder() { emit mapFolderTriggered(); }
 void RightMenu::onOrganizeDesktop() { emit organizeDesktopTriggered(); }
 void RightMenu::onQuitApp() { emit quitAppTriggered(); }

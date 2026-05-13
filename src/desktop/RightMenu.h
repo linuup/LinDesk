@@ -90,6 +90,7 @@ signals:
     void pasteTriggered();
     void pasteShortcutTriggered();
     void createBoxTriggered();
+    void createTimerTriggered();
     void mapFolderTriggered();
     void organizeDesktopTriggered();
     void quitAppTriggered();
@@ -113,6 +114,7 @@ public slots:
     void onPaste();
     void onPasteShortcut();
     void onCreateBox();
+    void onCreateTimer();
     void onMapFolder();
     void onQuitApp();
     void onLinDesk();
@@ -164,6 +166,7 @@ private:
     QAction* m_sortByTypeAction = nullptr;
     QAction* m_pasteAction = nullptr;
     QAction* m_createBoxAction = nullptr;
+    QAction* m_createTimerAction = nullptr;
     QAction* m_mapFolderAction = nullptr;
     QAction* m_linDeskAction = nullptr;
     QAction* pasteShortcutAction = nullptr;

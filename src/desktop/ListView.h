@@ -26,6 +26,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include "desktop/DesktopRootItemState.h"
+#include "desktop/DesktopComponentItem.h"
 #include <windows.h>
 #include <shlobj_core.h>
 #include "services/DesktopItemLoader.h"
@@ -45,6 +46,10 @@ class FluentInfoTip;
 class ListViewSelectionController;
 class ListViewMappedBoxHelper;
 class ListViewDebugPanel;
+class DesktopSnakeGameController;
+struct DesktopSnakeGameIcon;
+class DesktopComponentManager;
+class DesktopComponentFloatingWindow;
 
 class ListView : public QWidget {
 	Q_OBJECT
@@ -292,11 +297,14 @@ public:
 	void setDoubleClickHideIconsEnabled(bool enabled);
 	bool isDoubleClickHideIconsEnabled() const;
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
+	bool desktopIconsVisible() const;
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
 	int rowSpacing() const { return m_rowSpacing; }
 	int colSpacing() const { return m_colSpacing; }
 	void setDebugGridSpacing(int rowSpacing, int colSpacing);
+	void createRecentModifiedItemsBox();
 	QStringList selectedItemPaths() const;
+	QVector<DesktopSnakeGameIcon> desktopSnakeIcons() const;
 	void rebuildSpatialIndex();
 	void refreshCheckedItem(QRect rect);
 	void showSettings(LinBox* target = nullptr);
@@ -323,6 +331,7 @@ protected:
 	void mouseMoveEvent(QMouseEvent* event) override;
 	void mouseReleaseEvent(QMouseEvent* event) override;
 	void mouseDoubleClickEvent(QMouseEvent* event) override;
+	void wheelEvent(QWheelEvent* event) override;
 	void keyPressEvent(QKeyEvent* event) override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
 	void dragMoveEvent(QDragMoveEvent* event) override;
@@ -352,6 +361,27 @@ private:
 	int desktopCustomInsertionIndexForPos(const QPoint& pos, const QStringList& draggedPaths) const;
 	void updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QStringList& draggedPaths);
 	void clearDesktopAutoArrangeReorderPreview();
+	void refreshComponentLayoutMetrics();
+	void rebuildDesktopComponentOccupancyCache() const;
+	QSet<quint64> desktopComponentOccupiedCells() const;
+	QVector<QRect> desktopComponentOccupiedRects() const;
+	QPoint resolveNearestGridCreatePosition(const QPoint& requestedPos, const QSet<quint64>& occupiedSlots) const;
+	QPoint resolveNearestFreeCreatePosition(const QPoint& requestedPos) const;
+	QMap<QString, QPoint> resolveDesktopDragFinalPositions(const QStringList& draggedPaths, const QPoint& releasePos, const QHash<QString, QPoint>& previewPositions = QHash<QString, QPoint>()) const;
+	QPoint localPosFromGhostWidget(const QWidget* ghostWidget) const;
+	bool rectIntersectsDesktopComponent(const QRect& rect) const;
+	QPoint resolveNearestGridAreaForDrag(const QVector<QPoint>& relativeCells, const QPoint& preferredTopLeftCell, const QSet<quint64>& occupiedSlots) const;
+	void moveDesktopGhostsForPreview(const QPoint& globalPos);
+	QSet<quint64> collectDesktopIconOccupiedCells(const QStringList& ignoredPaths = QStringList()) const;
+	QSet<quint64> collectDesktopComponentOccupiedCells(const QString& ignoredId = QString()) const;
+	bool isPositionBlockedByComponent(const QPoint& pos, const QSize& span = QSize(1, 1), const QString& ignoredComponentId = QString()) const;
+	bool createTimerComponentAt(const QPoint& requestedPos);
+	void showComponentContextMenu(const QString& componentId, const QPoint& globalPos);
+	void updateHoveredComponent(const QPoint& pos);
+	void clearHoveredComponent();
+	void syncFloatingComponentWindows();
+	void syncFloatingComponentWindow(const DesktopComponentItemModel& item);
+	void removeFloatingComponentWindow(const QString& componentId);
 	QRect desktopAutoArrangeInsertionIndicatorRect() const;
 	QRect desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<DesktopRootItemState*>& orderedStates) const;
 	QVector<QPoint> layoutAutoArrangeItems(const QVector<DesktopRootItemState*>& states) const;
@@ -447,6 +477,7 @@ public slots:
 	void onMenuDelete(bool permanently = false);
 	void onMenuRefresh();
 	void onMenuCreateBox();
+	void onMenuCreateTimer();
 	void onMenuMapFolder();
 	void onMenuOrganizeDesktop();
 	void onMenuOrganizeDesktopByNameSort();
@@ -484,6 +515,8 @@ private:
 	RightMenu* rightMenu;
 	QPointer<SettingUI> m_settingsWindow;
 	QPointer<ListViewDebugPanel> m_debugPanel;
+	DesktopSnakeGameController* m_snakeGameController = nullptr;
+	DesktopComponentManager* m_componentManager = nullptr;
 	QLabel* m_dragTip = nullptr;
 	FluentInfoTip* m_infoTip = nullptr;
 
@@ -523,6 +556,9 @@ private:
 	QSet<QString> m_pendingExternalRemovalPaths;
 	QHash<QString, QPointer<LinBox>> m_pendingCreatedItemBoxes;
 	QHash<QString, int> m_pendingCreatedItemInsertIndices;
+	mutable QSet<quint64> m_componentOccupiedCells;
+	mutable QVector<QRect> m_componentOccupiedRects;
+	mutable bool m_componentOccupancyDirty = true;
 	std::unique_ptr<DesktopQuadTree> m_spatialIndex;
 	QHash<QString, DesktopRootItemState*> m_desktopStateIndex;
 	QRect m_spatialIndexBounds;
@@ -540,6 +576,9 @@ private:
 	QString m_lastClickedBoxPath;
 	QString m_draggedDesktopPath;
 	QString m_draggedBoxPath;
+	QString m_hoveredComponentId;
+	QString m_draggedComponentId;
+	QHash<QString, QPointer<DesktopComponentFloatingWindow>> m_componentFloatingWindows;
 	DesktopInfoMonitor* monitor;
 	LinDirectoryMonitor* m_linMonitor;
 	WindowsConfigMonitor* m_windowsConfigMonitor = nullptr;
@@ -559,6 +598,7 @@ private:
 
 	// 坐标和区域
 	QPoint m_dragOffset;
+	QPoint m_componentDragOffset;
 	QPoint m_originalPos;
 	QPoint m_lastRightClickPos;
 	QPoint m_startPos;
