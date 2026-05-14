@@ -18,12 +18,16 @@
 #include <QMenu>
 #include <QAction>
 #include <QPointer>
+#include "services/update/UpdateTypes.h"
 #include "ui/Fluent/FluentBaseWidget.h"
 #include <QCloseEvent>
 
 class LinBox;
+class QProgressBar;
 class QStackedWidget;
 class QTimer;
+class UpdateChecker;
+class UpdateDownloader;
 class FluentToggleSwitch;
 class FluentCard;
 class FluentComboBox;
@@ -70,6 +74,10 @@ private:
     void ensureTrayIcon();
     void restoreFromTray();
     void exitFromTray();
+    void startUpdateCheck();
+    void startUpdateDownload();
+    void installDownloadedUpdate();
+    void resetUpdatePanel();
 
     QPointer<LinBox> m_targetBox;
     QVector<QPointer<LinBox>> m_allBoxes;
@@ -135,6 +143,14 @@ private:
     QMenu* m_trayMenu = nullptr;
     QAction* m_showTrayAction = nullptr;
     QAction* m_exitTrayAction = nullptr;
+    UpdateChecker* m_updateChecker = nullptr;
+    UpdateDownloader* m_updateDownloader = nullptr;
+    UpdateInfo m_pendingUpdate;
+    QString m_downloadedInstallerPath;
+    QLabel* m_updateStatusLabel = nullptr;
+    QLabel* m_updateNotesLabel = nullptr;
+    QProgressBar* m_updateProgressBar = nullptr;
+    QPushButton* m_checkUpdateButton = nullptr;
     QPushButton* m_settingsMinBtn = nullptr;
     QPushButton* m_settingsMaxBtn = nullptr;
     QPushButton* m_settingsCloseBtn = nullptr;

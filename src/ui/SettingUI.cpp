@@ -16,7 +16,10 @@
 #include "desktop/ListView.h"
 #include "desktop/LinDesktop.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "services/update/UpdateChecker.h"
+#include "services/update/UpdateDownloader.h"
 #include <QProcess>
+#include <QProgressBar>
 #include <QScrollArea>
 #include <QDateTime>
 #include <windowsx.h>
@@ -578,12 +581,6 @@ void SettingUI::initUI() {
     m_sidebar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     sidebarLayout->addWidget(m_sidebar);
 
-    QLabel* versionBadge = new QLabel(QString("v%1").arg(LINDESK_VERSION_STRING), sidebarContainer);
-    versionBadge->setObjectName("versionBadge");
-    versionBadge->setAlignment(Qt::AlignCenter);
-    versionBadge->setFixedSize(92, 36);
-    sidebarLayout->addWidget(versionBadge, 0, Qt::AlignHCenter);
-
     QWidget* rightArea = new QWidget(container());
     rightArea->setObjectName("rightArea");
     rightArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -640,7 +637,7 @@ void SettingUI::initUI() {
     mainLayout->addWidget(rightArea, 85);
 
     connect(m_sidebar, &QListWidget::currentRowChanged, m_contentStack, &QStackedWidget::setCurrentIndex);
-    m_sidebar->setCurrentRow(1);
+    m_sidebar->setCurrentRow(0);
     updateSidebarItemHeights();
 }
 
@@ -1621,9 +1618,246 @@ QWidget* SettingUI::createAboutPage() {
         "color: #9ca3af;"
     );
     layout->addWidget(m_aboutTaglineLabel, 0, Qt::AlignCenter);
+
+    layout->addSpacing(24);
+
+    QWidget* updatePanel = createPanel(page);
+    QVBoxLayout* updateLayout = new QVBoxLayout(updatePanel);
+    updateLayout->setContentsMargins(22, 18, 22, 18);
+    updateLayout->setSpacing(10);
+
+    updateLayout->addWidget(createCardTitle(tr("Online Update"), updatePanel));
+
+    m_updateStatusLabel = new QLabel(tr("Current version: %1").arg(LINDESK_VERSION_STRING_WITH_TAG), updatePanel);
+    m_updateStatusLabel->setObjectName("rowSubtitle");
+    m_updateStatusLabel->setWordWrap(true);
+    updateLayout->addWidget(m_updateStatusLabel);
+
+    m_updateNotesLabel = new QLabel(updatePanel);
+    m_updateNotesLabel->setObjectName("rowSubtitle");
+    m_updateNotesLabel->setWordWrap(true);
+    m_updateNotesLabel->hide();
+    updateLayout->addWidget(m_updateNotesLabel);
+
+    m_updateProgressBar = new QProgressBar(updatePanel);
+    m_updateProgressBar->setObjectName("updateProgressBar");
+    m_updateProgressBar->setRange(0, 100);
+    m_updateProgressBar->setValue(0);
+    m_updateProgressBar->hide();
+    updateLayout->addWidget(m_updateProgressBar);
+
+    QHBoxLayout* updateButtons = new QHBoxLayout();
+    updateButtons->setContentsMargins(0, 4, 0, 0);
+    updateButtons->setSpacing(10);
+
+    m_checkUpdateButton = new QPushButton(tr("Check for Updates"), updatePanel);
+    m_checkUpdateButton->setObjectName("updatePrimaryButton");
+    m_checkUpdateButton->setFixedHeight(34);
+    updateButtons->addWidget(m_checkUpdateButton);
+
+    updateButtons->addStretch(1);
+    updateLayout->addLayout(updateButtons);
+
+    layout->addWidget(updatePanel);
+
+    connect(m_checkUpdateButton, &QPushButton::clicked, this, &SettingUI::startUpdateCheck);
     
     layout->addStretch();
     return page;
+}
+
+void SettingUI::startUpdateCheck()
+{
+    if (!m_updateChecker) {
+        m_updateChecker = new UpdateChecker(this);
+        connect(m_updateChecker, &UpdateChecker::checkSucceeded, this, [this](const UpdateInfo& info, bool updateAvailable) {
+            if (!m_checkUpdateButton) {
+                return;
+            }
+
+            m_pendingUpdate = info;
+            m_downloadedInstallerPath.clear();
+            m_checkUpdateButton->setEnabled(true);
+
+            if (!updateAvailable) {
+                m_updateStatusLabel->setText(tr("Already up to date. Current version: %1").arg(LINDESK_VERSION_STRING_WITH_TAG));
+                m_updateNotesLabel->hide();
+                return;
+            }
+
+            m_updateStatusLabel->setText(tr("New version found: %1").arg(info.version));
+            m_updateNotesLabel->hide();
+
+            FluentDialog* dialog = new FluentDialog(this);
+            dialog->setDialogTitle(tr("New Version Available"));
+            dialog->setMessage(tr("Version: %1\n\n%2").arg(info.version, info.notes));
+            dialog->addActionButton(tr("Update Now"), FluentDialog::ActionType::Primary, [this, info]() {
+                m_pendingUpdate = info;
+                startUpdateDownload();
+            });
+            dialog->addActionButton(tr("Cancel"), FluentDialog::ActionType::Close, [this]() {
+                if (m_updateStatusLabel) {
+                    m_updateStatusLabel->setText(tr("Update cancelled."));
+                }
+            });
+            dialog->exec();
+            dialog->deleteLater();
+        });
+        connect(m_updateChecker, &UpdateChecker::checkFailed, this, [this](const QString& errorMessage) {
+            if (m_updateStatusLabel) {
+                m_updateStatusLabel->setText(tr("Update check failed: %1").arg(errorMessage));
+            }
+            if (m_checkUpdateButton) {
+                m_checkUpdateButton->setEnabled(true);
+            }
+        });
+    }
+
+    if (m_updateChecker->isChecking()) {
+        return;
+    }
+
+    m_pendingUpdate = UpdateInfo();
+    m_downloadedInstallerPath.clear();
+    if (m_updateStatusLabel) {
+        m_updateStatusLabel->setText(tr("Checking for updates..."));
+    }
+    if (m_updateNotesLabel) {
+        m_updateNotesLabel->clear();
+        m_updateNotesLabel->hide();
+    }
+    if (m_updateProgressBar) {
+        m_updateProgressBar->hide();
+        m_updateProgressBar->setRange(0, 100);
+        m_updateProgressBar->setValue(0);
+    }
+    if (m_checkUpdateButton) {
+        m_checkUpdateButton->setEnabled(false);
+    }
+
+    m_updateChecker->checkForUpdates();
+}
+
+void SettingUI::startUpdateDownload()
+{
+    if (m_pendingUpdate.url.isEmpty()) {
+        return;
+    }
+
+    if (!m_updateDownloader) {
+        m_updateDownloader = new UpdateDownloader(this);
+        connect(m_updateDownloader, &UpdateDownloader::progressChanged, this, [this](qint64 received, qint64 total) {
+            if (!m_updateProgressBar) {
+                return;
+            }
+            m_updateProgressBar->show();
+            if (total <= 0) {
+                m_updateProgressBar->setRange(0, 0);
+                return;
+            }
+            m_updateProgressBar->setRange(0, 100);
+            m_updateProgressBar->setValue(static_cast<int>((received * 100) / total));
+        });
+        connect(m_updateDownloader, &UpdateDownloader::downloadSucceeded, this, [this](const QString& installerPath) {
+            m_downloadedInstallerPath = installerPath;
+            if (m_updateStatusLabel) {
+                m_updateStatusLabel->setText(tr("Download complete. Starting installer..."));
+            }
+            if (m_updateProgressBar) {
+                m_updateProgressBar->setRange(0, 100);
+                m_updateProgressBar->setValue(100);
+            }
+            installDownloadedUpdate();
+        });
+        connect(m_updateDownloader, &UpdateDownloader::downloadFailed, this, [this](const QString& errorMessage) {
+            if (m_updateStatusLabel) {
+                m_updateStatusLabel->setText(tr("Download failed: %1").arg(errorMessage));
+            }
+            if (m_updateProgressBar) {
+                m_updateProgressBar->setRange(0, 100);
+            }
+            if (m_checkUpdateButton) {
+                m_checkUpdateButton->setEnabled(true);
+            }
+        });
+    }
+
+    if (m_updateDownloader->isDownloading()) {
+        return;
+    }
+
+    m_downloadedInstallerPath.clear();
+    if (m_updateStatusLabel) {
+        m_updateStatusLabel->setText(tr("Downloading update..."));
+    }
+    if (m_updateProgressBar) {
+        m_updateProgressBar->setRange(0, 100);
+        m_updateProgressBar->setValue(0);
+        m_updateProgressBar->show();
+    }
+    if (m_checkUpdateButton) {
+        m_checkUpdateButton->setEnabled(false);
+    }
+
+    m_updateDownloader->download(m_pendingUpdate);
+}
+
+void SettingUI::installDownloadedUpdate()
+{
+    if (m_downloadedInstallerPath.isEmpty() || !QFileInfo::exists(m_downloadedInstallerPath)) {
+        if (m_updateStatusLabel) {
+            m_updateStatusLabel->setText(tr("Installer file is missing. Please download again."));
+        }
+        return;
+    }
+
+    const QString updaterPath = QCoreApplication::applicationDirPath() + QStringLiteral("/LinDeskUpdate.exe");
+    if (!QFileInfo::exists(updaterPath)) {
+        if (m_updateStatusLabel) {
+            m_updateStatusLabel->setText(tr("LinDeskUpdate.exe was not found in the application directory."));
+        }
+        return;
+    }
+
+    QStringList args;
+    const QString languageArg = LanguageManager::configuredLanguageCode().startsWith(QStringLiteral("zh"))
+                                    ? QStringLiteral("zh")
+                                    : QStringLiteral("en");
+    args << QStringLiteral("--installer") << m_downloadedInstallerPath
+         << QStringLiteral("--app") << QCoreApplication::applicationFilePath()
+         << QStringLiteral("--process") << QStringLiteral("LinDesk.exe")
+         << QStringLiteral("--language") << languageArg
+         << QStringLiteral("--restart") << QStringLiteral("true");
+
+    if (!QProcess::startDetached(updaterPath, args)) {
+        if (m_updateStatusLabel) {
+            m_updateStatusLabel->setText(tr("Failed to start updater."));
+        }
+        return;
+    }
+
+    QCoreApplication::quit();
+}
+
+void SettingUI::resetUpdatePanel()
+{
+    m_pendingUpdate = UpdateInfo();
+    m_downloadedInstallerPath.clear();
+    if (m_updateStatusLabel) {
+        m_updateStatusLabel->setText(tr("Current version: %1").arg(LINDESK_VERSION_STRING_WITH_TAG));
+    }
+    if (m_updateNotesLabel) {
+        m_updateNotesLabel->clear();
+        m_updateNotesLabel->hide();
+    }
+    if (m_updateProgressBar) {
+        m_updateProgressBar->setRange(0, 100);
+        m_updateProgressBar->setValue(0);
+        m_updateProgressBar->hide();
+    }
+    if (m_checkUpdateButton) {
+        m_checkUpdateButton->setEnabled(true);
+    }
 }
 
 QWidget* SettingUI::createPluginsPage() {
@@ -1821,14 +2055,6 @@ void SettingUI::setupStyles() {
         "QListWidget#sidebar::item:hover { background: transparent; } "
         "QListWidget#sidebar::item:selected { background: transparent; } "
         "QListWidget#sidebar::item:focus { background: transparent; outline: none; } "
-        "QLabel#versionBadge { "
-        "   background: #eef5ff; "
-        "   border: 1px solid #dce8f8; "
-        "   border-radius: 9px; "
-        "   color: #56647d; "
-        "   font-size: 14px; "
-        "   font-weight: 500; "
-        "} "
         "QScrollBar:vertical { "
         "   border: none; background: transparent; width: 6px; margin: 12px 4px 12px 0; "
         "} "
@@ -1934,6 +2160,29 @@ void SettingUI::setupStyles() {
         "   font-weight: 700; "
         "} "
         "QPushButton#pluginSettingsButton:hover { background: #f5f9ff; border-color: #a9c7ef; } "
+        "QPushButton#updatePrimaryButton { "
+        "   background: #0078d4; "
+        "   border: 1px solid #0078d4; "
+        "   border-radius: 8px; "
+        "   color: #ffffff; "
+        "   font-size: 13px; "
+        "   font-weight: 800; "
+        "   padding: 0 16px; "
+        "} "
+        "QPushButton#updatePrimaryButton:hover { background: #0b86e8; border-color: #0b86e8; } "
+        "QPushButton#updatePrimaryButton:disabled { background: #d5dde9; border-color: #d5dde9; color: #7d8798; } "
+        "QProgressBar#updateProgressBar { "
+        "   background: #e6edf6; "
+        "   border: none; "
+        "   border-radius: 5px; "
+        "   height: 10px; "
+        "   text-align: center; "
+        "   color: transparent; "
+        "} "
+        "QProgressBar#updateProgressBar::chunk { "
+        "   background: #0078d4; "
+        "   border-radius: 5px; "
+        "} "
         "QPushButton#minBtn, QPushButton#maxBtn, QPushButton#closeBtn { "
         "   background: transparent; border: none; font-family: 'Segoe MDL2 Assets'; font-size: 10px; color: #26324a; "
         "} "

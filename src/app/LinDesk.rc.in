@@ -1,0 +1,32 @@
+#define IDI_APP_ICON 101
+
+IDI_APP_ICON ICON "../resources/Assets/icon.ico"
+
+1 VERSIONINFO
+ FILEVERSION @LINDESK_VERSION_MAJOR@,@LINDESK_VERSION_MINOR@,@LINDESK_VERSION_PATCH@,0
+ PRODUCTVERSION @LINDESK_VERSION_MAJOR@,@LINDESK_VERSION_MINOR@,@LINDESK_VERSION_PATCH@,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Max"
+            VALUE "FileDescription", "LinDesk"
+            VALUE "FileVersion", "@LINDESK_VERSION@"
+            VALUE "InternalName", "LinDesk"
+            VALUE "OriginalFilename", "LinDesk.exe"
+            VALUE "ProductName", "LinDesk"
+            VALUE "ProductVersion", "@LINDESK_VERSION@"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Max"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

@@ -86,11 +86,11 @@ void paintSoftShadow(QPainter& painter, const QRect& rect, int radius, qreal sca
 {
     painter.save();
     painter.setPen(Qt::NoPen);
-    const int layers = 4;
+    const int layers = 3;
     for (int i = layers; i >= 1; --i) {
-        const int spread = sp(scale, i * 2);
-        QRect shadowRect = rect.adjusted(-spread, sp(scale, 2), spread, sp(scale, 4 + i));
-        painter.setBrush(QColor(15, 23, 42, 8 + i * 4));
+        const int spread = sp(scale, i);
+        QRect shadowRect = rect.adjusted(-spread, sp(scale, 1), spread, sp(scale, 2 + i));
+        painter.setBrush(QColor(15, 23, 42, 4 + i * 3));
         painter.drawRoundedRect(shadowRect, radius + spread, radius + spread);
     }
     painter.restore();

@@ -45,6 +45,7 @@ vcpkg_installed/**/*
 # IDE 文件
 .vscode/
 .idea/
+*.aps
 *.swp
 *.swo
 *~

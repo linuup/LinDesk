@@ -1,14 +1,16 @@
 #define AppName "LinDesk"
-#define AppVersion "1.0.2"
+#define AppVersion "1.0.3"
 #define AppExeName "LinDesk.exe"
 #define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
 #define PackageOutputDir "D:/Desktop/LinDesk/installer"
 
 [Setup]
+AppId={{7F9D8C2A-5F9C-4C8C-9E41-2A33B6D0A001}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=Max
 AppPublisherURL=https://github.com/linuup
+UninstallDisplayIcon={app}\{#AppExeName}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 OutputDir={#PackageOutputDir}
@@ -41,19 +43,19 @@ en.closeFailed=Unable to close {#AppName}. Please close it manually and try agai
 zh.closeFailed=无法关闭 {#AppName}。请手动关闭后重试。
 
 [Files]
-Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "data.dat,*.ini"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:desktopIcon}"; GroupDescription: "{cm:shortcutGroup}"
 Name: "startmenuicon"; Description: "{cm:startMenuIcon}"; GroupDescription: "{cm:shortcutGroup}"; Flags: checkedonce
 
 [Icons]
-Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: startmenuicon
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"; WorkingDir: "{app}"; Tasks: startmenuicon
+Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon; Check: not IsUpdateInstallMode
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Tasks: startmenuicon; Check: not IsUpdateInstallMode
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"; WorkingDir: "{app}"; Tasks: startmenuicon; Check: not IsUpdateInstallMode
 
 [Run]
-Filename: "{app}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "{cm:installRuntime}"
+Filename: "{app}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "{cm:installRuntime}"; Check: ShouldInstallVCRuntime
 Filename: "{app}\{#AppExeName}"; Description: "{cm:launchApp}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
@@ -66,6 +68,37 @@ Type: dirifempty; Name: "{group}"
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+function IsUpdateInstallMode(): Boolean;
+begin
+  Result := Pos('/LINDESKUPDATE=1', UpperCase(GetCmdTail)) > 0;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+
+  if IsUpdateInstallMode() then
+  begin
+    Result := (PageID = wpSelectTasks) or (PageID = wpFinished);
+  end;
+end;
+
+function IsVCRuntimeInstalled(): Boolean;
+var
+  Installed: Cardinal;
+begin
+  Result := RegQueryDWordValue(
+    HKLM,
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
+    'Installed',
+    Installed) and (Installed = 1);
+end;
+
+function ShouldInstallVCRuntime(): Boolean;
+begin
+  Result := (not IsUpdateInstallMode()) and (not IsVCRuntimeInstalled());
+end;
+
 function IsLinDeskProcessRunning(): Boolean;
 var
   ResultCode: Integer;
