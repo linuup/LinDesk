@@ -397,6 +397,7 @@ private:
 	void clearFocusedItem();
 	bool shouldShowFileSystemItem(const DesktopRootItemModel& model) const;
 	void refreshVisibilityForWindowsConfig();
+	void syncBoxVisibilityWithDesktopIcons();
 	bool handlePendingShellCreatedItem(const QString& newPath);
 	DesktopItemInitContext currentDesktopItemInitContext() const;
 	bool addDesktopModelItemFromPath(const QString& filePath);

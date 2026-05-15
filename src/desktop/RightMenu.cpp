@@ -2,6 +2,7 @@
 #include "desktop/RightMenu.h"
 #include "desktop/ListViewFileOpsHelper.h"
 #include "app/AppFonts.h"
+#include "services/AppPaths.h"
 #include "ui/Fluent/FluentDialog.h"
 #include <QMenu>
 #include <QDebug>
@@ -28,7 +29,7 @@ const char kWindows11ContextMenuConfigKey[] = "Desktop/UseWindows11SystemContext
 
 QString rightMenuConfigPath()
 {
-    return QCoreApplication::applicationDirPath() + "/config.ini";
+    return AppPaths::configFilePath();
 }
 
 bool isWindows11OrNewer()

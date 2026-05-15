@@ -20,6 +20,7 @@
 #include <QTimer>
 #include <functional>
 #include "../../src/plugins/ILinPlugin.h"
+#include "services/AppPaths.h"
 #include "ScreenShot.h"
 #include "OcrResultDialog.h"
 #include "OcrSettingsDialog.h"
@@ -62,12 +63,7 @@ public:
             m_resultDialog = new OcrResultDialog();
         }
 
-        // Load configuration from INI file in the plugins folder
-        QString iniDir = QCoreApplication::applicationDirPath() + "/plugins";
-        QString iniPath = iniDir + "/ocr_config.ini";
-        
-        // Force directory creation to ensure file can be written
-        QDir().mkpath(iniDir);
+        const QString iniPath = AppPaths::ocrConfigFilePath();
 
         QSettings settings(iniPath, QSettings::IniFormat);
         

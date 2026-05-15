@@ -1,5 +1,5 @@
 #define AppName "LinDesk"
-#define AppVersion "1.0.3"
+#define AppVersion "1.0.5"
 #define AppExeName "LinDesk.exe"
 #define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
 #define PackageOutputDir "D:/Desktop/LinDesk/installer"
@@ -43,7 +43,7 @@ en.closeFailed=Unable to close {#AppName}. Please close it manually and try agai
 zh.closeFailed=无法关闭 {#AppName}。请手动关闭后重试。
 
 [Files]
-Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "data.dat,*.ini"
+Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:desktopIcon}"; GroupDescription: "{cm:shortcutGroup}"

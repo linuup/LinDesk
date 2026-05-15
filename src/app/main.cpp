@@ -19,29 +19,16 @@
 #include "desktop/LinDesktop.h"
 #include "app/AppLaunchOptions.h"
 #include "app/LanguageManager.h"
+#include "services/AppPaths.h"
 #include "services/LinDeskHoveredItemServer.h"
 using namespace ShortcutArrowManager;
-
-namespace {
-QString startupConfigPath(int argc, char *argv[])
-{
-    QString executablePath;
-    if (argc > 0 && argv && argv[0]) {
-        executablePath = QFileInfo(QString::fromLocal8Bit(argv[0])).absolutePath();
-    }
-    if (executablePath.isEmpty()) {
-        executablePath = QDir::currentPath();
-    }
-    return executablePath + "/config.ini";
-}
-}
 
 int main(int argc, char *argv[])
 {
     SetConsoleOutputCP(CP_UTF8);
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-    QSettings startupSettings(startupConfigPath(argc, argv), QSettings::IniFormat);
+    QSettings startupSettings(AppPaths::configFilePath(), QSettings::IniFormat);
     const bool useOpenGL = startupSettings.value("General/UseOpenGL", false).toBool();
     if (useOpenGL) {
         QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);

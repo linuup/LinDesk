@@ -6,6 +6,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QObject>
+#include <QTimer>
 
 class UpdateDownloader : public QObject
 {
@@ -16,6 +17,8 @@ public:
 
     bool isDownloading() const;
     QString downloadedFilePath() const;
+    QString cachedInstallerPath(const UpdateInfo& info) const;
+    bool hasValidCachedInstaller(const UpdateInfo& info, QString* installerPath = nullptr) const;
 
     void download(const UpdateInfo& info);
     void cancel();
@@ -29,6 +32,9 @@ private:
     QString updatesDirectory() const;
     QString fileNameForUpdate(const UpdateInfo& info) const;
     bool verifySha256(const QString& filePath, const QString& expectedHash) const;
+    void startTimeoutTimers();
+    void stopTimeoutTimers();
+    void markProgressActivity();
     void finishWithError(const QString& errorMessage, bool removeFile);
     void cleanupReply();
 
@@ -37,5 +43,6 @@ private:
     QFile* m_outputFile = nullptr;
     QString m_currentFilePath;
     UpdateInfo m_currentInfo;
+    QTimer m_stallTimeoutTimer;
     bool m_cancelled = false;
 };

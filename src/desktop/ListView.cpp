@@ -46,6 +46,7 @@
 #include "box/LinBox.h"
 #include "plugins/PluginManager.h"
 #include "services/HotkeyManager.h"
+#include "services/AppPaths.h"
 #include "services/IconCacheManager.h"
 #include "services/SpaceLookIpcClient.h"
 #include "services/DpiScaleHelper.h"
@@ -1100,11 +1101,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         syncFloatingComponentWindows();
         update();
     });
-#ifdef QT_DEBUG
-    m_persistencePath = QCoreApplication::applicationDirPath() + "/data.json";
-#else
-    m_persistencePath = QCoreApplication::applicationDirPath() + "/data.dat";
-#endif
+    m_persistencePath = AppPaths::desktopDataFilePath();
     
     // Load view mode configuration before initializing desktop item models.
     // This keeps icon sizing and render state consistent during startup.
@@ -1121,7 +1118,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     // Defer loading boxes to ensure the event loop is running and windows can be properly shown/mapped
     QTimer::singleShot(100, [this](){
         this->loadBoxes(true);
-        const QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+        const QString configPath = AppPaths::configFilePath();
         QSettings settings(configPath, QSettings::IniFormat);
         const bool isFirstLaunch = settings.value("Firslanuch", true).toBool();
         if (isFirstLaunch) {
@@ -4009,15 +4006,14 @@ void ListView::loadIconLayer()
     rebuildSpatialIndex();
     update();
 
-    // Refresh all boxes to ensured their icons are positioned and visible
+    // Refresh all boxes to ensure their icons are positioned.
     for (auto& box : BoxManager::instance()->allBoxes()) {
         if (box) {
             box->refreshLayout();
-            box->raise();
         }
     }
 
-    BoxManager::instance()->raiseAllBoxes();
+    syncBoxVisibilityWithDesktopIcons();
 }
 
 
@@ -4893,6 +4889,25 @@ void ListView::refreshVisibilityForWindowsConfig()
     }
 
     onMenuRefresh();
+}
+
+void ListView::syncBoxVisibilityWithDesktopIcons()
+{
+    const QVector<QPointer<LinBox>> boxes = BoxManager::instance()->allBoxes();
+    for (const QPointer<LinBox>& box : boxes) {
+        if (!box) {
+            continue;
+        }
+
+        if (m_iconShowRule.showDesktopIcons) {
+            if (!box->isVisible()) {
+                box->show();
+            }
+            box->raise();
+        } else {
+            box->hide();
+        }
+    }
 }
 
 void ListView::loadAutoLayout()
@@ -6601,21 +6616,11 @@ void ListView::onMenuShowDesktopIcons() {
     if(m_iconShowRule.showDesktopIcons) {
         m_iconShowRule.showDesktopIcons = false;
         this->rightMenu->setShowDesktopIconsChecked(false);
-        for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
-            if (box) {
-                box->hide();
-            }
-        }
     } else {
         m_iconShowRule.showDesktopIcons = true;
         this->rightMenu->setShowDesktopIconsChecked(true);
-        for (const QPointer<LinBox>& box : BoxManager::instance()->allBoxes()) {
-            if (box) {
-                box->show();
-            }
-        }
-        BoxManager::instance()->raiseAllBoxes();
     }
+    syncBoxVisibilityWithDesktopIcons();
     updateAllItemRenderData();
     rebuildSpatialIndex();
     update();
@@ -6757,11 +6762,13 @@ void ListView::onMenuSortByDate() {
 void ListView::onMenuRefresh() {
     // 1. Start Fake Animation: Hide the entire desktop layer
     this->hide();
+    syncBoxVisibilityWithDesktopIcons();
 
     // 2. Delay the actual logical refresh
     QTimer::singleShot(80, this, [this]() {
         this->show();
         this->raise();
+        syncBoxVisibilityWithDesktopIcons();
         this->update();
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
@@ -6835,14 +6842,13 @@ void ListView::onMenuRefresh() {
                 update();
             }
 
-            // Refresh icons for items in boxes and ensure boxes are re-shown
+            // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
             for (const auto& box : allBoxes) {
                 if (box) {
                     box->refreshLayout();
-                    box->show();
-                    box->raise();
                 }
             }
+            syncBoxVisibilityWithDesktopIcons();
 
             for (const auto& box : allBoxes) {
                 if (box) {
@@ -6851,7 +6857,11 @@ void ListView::onMenuRefresh() {
                 }
             }
             this->setUpdatesEnabled(true);
+            syncBoxVisibilityWithDesktopIcons();
             this->update();
+            QTimer::singleShot(0, this, [this]() {
+                syncBoxVisibilityWithDesktopIcons();
+            });
         });
     });
 }
@@ -8306,8 +8316,14 @@ void ListView::onMenuDestroyBox(LinBox* box) {
     }
     
     BoxManager::instance()->destroyBox(box, this);
-    applyAutoArrangeAfterDesktopMutation(true, false);
-    update();
+    if (m_iconShowRule.autoArrange) {
+        applyAutoArrangeAfterDesktopMutation(true, false);
+    } else {
+        updateAllItemRenderData();
+        rebuildSpatialIndex();
+        update();
+        requestSaveBoxes();
+    }
 }
 
 void ListView::clearDestroyedBoxRuntimeState(LinBox* box)

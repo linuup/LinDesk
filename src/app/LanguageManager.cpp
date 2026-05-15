@@ -1,4 +1,5 @@
 #include "app/LanguageManager.h"
+#include "services/AppPaths.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -44,7 +45,7 @@ LanguageManager::LanguageManager(QObject* parent)
 
 QString LanguageManager::configPath()
 {
-    return QCoreApplication::applicationDirPath() + "/config.ini";
+    return AppPaths::configFilePath();
 }
 
 QString LanguageManager::normalizeLanguageCode(const QVariant& value)

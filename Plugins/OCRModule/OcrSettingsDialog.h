@@ -18,6 +18,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <functional>
+#include "services/AppPaths.h"
 #include "../../src/ui/Fluent/FluentBaseDialog.h"
 #include "../../src/ui/Fluent/FluentButton.h"
 
@@ -159,7 +160,7 @@ public:
         layout->addLayout(vCol);
 
         // Load existing
-        QString iniPath = QCoreApplication::applicationDirPath() + "/plugins/ocr_config.ini";
+        QString iniPath = AppPaths::ocrConfigFilePath();
         QSettings settings(iniPath, QSettings::IniFormat);
         m_keyInput->setText(settings.value("Baidu/ApiKey").toString());
         m_secretInput->setText(settings.value("Baidu/SecretKey").toString());

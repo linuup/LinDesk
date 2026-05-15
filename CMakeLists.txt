@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.31)
 # 修改版本号只需要改这里
 set(LINDESK_VERSION_MAJOR 1)
 set(LINDESK_VERSION_MINOR 0)
-set(LINDESK_VERSION_PATCH 3)
+set(LINDESK_VERSION_PATCH 5)
 set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable 等
 
 # 生成完整版本字符串

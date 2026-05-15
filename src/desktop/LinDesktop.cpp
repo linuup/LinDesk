@@ -2,6 +2,7 @@
 #include "desktop/RenameManager.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "services/AppPaths.h"
 #include <QCoreApplication>
 #include <QFutureWatcher>
 #include <QSettings>
@@ -22,7 +23,7 @@ LinDesktop::LinDesktop(QWidget* parent)
         return;
     }
 
-    m_configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    m_configPath = AppPaths::configFilePath();
     {
         QSettings settings(m_configPath, QSettings::IniFormat);
         m_isFirstLaunch = settings.value("Firslanuch", true).toBool();

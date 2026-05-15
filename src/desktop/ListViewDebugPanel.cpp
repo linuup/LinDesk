@@ -7,6 +7,7 @@
 #include "ui/SoftDesktopTextRenderer.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 #include "ui/Fluent/FluentCard.h"
+#include "services/AppPaths.h"
 #include "services/DebugInfoExporter.h"
 
 #include <QCheckBox>
@@ -54,7 +55,7 @@ QString debugPanelStyleSheet()
 
 QString debugConfigPath()
 {
-    return QCoreApplication::applicationDirPath() + "/config.ini";
+    return AppPaths::configFilePath();
 }
 }
 

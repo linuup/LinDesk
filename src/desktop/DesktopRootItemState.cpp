@@ -359,6 +359,17 @@ bool openDesktopRootItem(const DesktopRootItemModel& model)
     }
 
     const QString nativePath = QDir::toNativeSeparators(model.filePath);
+    if (QFileInfo(nativePath).isDir()) {
+        const QString explorerArgument = QStringLiteral("\"%1\"").arg(nativePath);
+        HINSTANCE result = ShellExecuteW(nullptr,
+            L"open",
+            L"explorer.exe",
+            reinterpret_cast<LPCWSTR>(explorerArgument.utf16()),
+            nullptr,
+            SW_SHOWNORMAL);
+        return reinterpret_cast<INT_PTR>(result) > 32;
+    }
+
     CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(nativePath.utf16()), Z_OPEN);
     return true;
 }

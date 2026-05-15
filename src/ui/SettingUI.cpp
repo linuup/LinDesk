@@ -34,6 +34,7 @@
 #include "ui/Fluent/FluentColorWheel.h"
 #include "app/AppFonts.h"
 #include "app/LanguageManager.h"
+#include "services/AppPaths.h"
 #include "services/SysInfoUtil.h" // For ShortcutArrowManager
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -160,7 +161,7 @@ void ensureSegoeFluentIconsLoaded()
 
 QString settingsConfigPath()
 {
-    return QCoreApplication::applicationDirPath() + "/config.ini";
+    return AppPaths::configFilePath();
 }
 
 QColor readDesktopSelectionColor()
@@ -489,7 +490,7 @@ SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidge
     setupStyles();
 
     // 1. Persistence - Restore Window Size only
-    QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    QString configPath = settingsConfigPath();
     QSettings settings(configPath, QSettings::IniFormat);
     if (settings.contains("SettingUI/Size")) {
         resize(settings.value("SettingUI/Size").toSize().expandedTo(minimumSize()));
@@ -735,7 +736,7 @@ bool SettingUI::setLaunchAtLoginEnabled(bool enabled)
 
 bool SettingUI::shouldMinimizeToTray() const
 {
-    const QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    const QString configPath = settingsConfigPath();
     QSettings settings(configPath, QSettings::IniFormat);
     return settings.value("General/MinimizeToTray", true).toBool();
 }
@@ -821,7 +822,7 @@ QWidget* SettingUI::createGeneralPage() {
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignTop);
 
-    QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    QString configPath = settingsConfigPath();
     QSettings settings(configPath, QSettings::IniFormat);
 
     m_generalPageTitle = createPageTitle(tr("Settings Home"), page);
@@ -1775,6 +1776,7 @@ void SettingUI::startUpdateDownload()
             }
             if (m_updateProgressBar) {
                 m_updateProgressBar->setRange(0, 100);
+                m_updateProgressBar->setValue(0);
             }
             if (m_checkUpdateButton) {
                 m_checkUpdateButton->setEnabled(true);
@@ -1787,6 +1789,21 @@ void SettingUI::startUpdateDownload()
     }
 
     m_downloadedInstallerPath.clear();
+    QString cachedInstallerPath;
+    if (m_updateDownloader->hasValidCachedInstaller(m_pendingUpdate, &cachedInstallerPath)) {
+        m_downloadedInstallerPath = cachedInstallerPath;
+        if (m_updateStatusLabel) {
+            m_updateStatusLabel->setText(tr("Installer already downloaded. Starting installer..."));
+        }
+        if (m_updateProgressBar) {
+            m_updateProgressBar->setRange(0, 100);
+            m_updateProgressBar->setValue(100);
+            m_updateProgressBar->show();
+        }
+        installDownloadedUpdate();
+        return;
+    }
+
     if (m_updateStatusLabel) {
         m_updateStatusLabel->setText(tr("Downloading update..."));
     }
@@ -2467,7 +2484,7 @@ void SettingUI::updatePreviewStyle() {
 
 void SettingUI::closeEvent(QCloseEvent* event) {
     // 2. Persistence - Save Window Size only
-    QString configPath = QCoreApplication::applicationDirPath() + "/config.ini";
+    QString configPath = settingsConfigPath();
     QSettings settings(configPath, QSettings::IniFormat);
     settings.setValue("SettingUI/Size", size());
     settings.sync();

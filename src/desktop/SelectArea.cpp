@@ -1,4 +1,5 @@
 #include "desktop/SelectArea.h"
+#include "services/AppPaths.h"
 #include <QCoreApplication>
 #include <QSettings>
 
@@ -84,7 +85,7 @@ void SelectArea::reloadColorsFromSettings()
 
 void SelectArea::loadColors()
 {
-    QSettings settings(QCoreApplication::applicationDirPath() + "/config.ini", QSettings::IniFormat);
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
     const QColor baseColor(settings.value("Desktop/SelectionRectangleColor", QStringLiteral("#64A0F0")).toString());
     const int opacity = qBound(20, settings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100);
     const int contrast = qBound(0, settings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100);

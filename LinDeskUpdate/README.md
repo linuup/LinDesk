@@ -125,7 +125,15 @@
    LinDeskUpdate.exe --installer "<安装包路径>" --app "<LinDesk.exe路径>" --process "LinDesk.exe" --language zh --restart true
    ```
 
-17. `LinDeskUpdate.exe` 会关闭主程序，执行安装包：
+17. 安装目录中的 `LinDeskUpdate.exe` 会先复制自身到：
+
+   ```text
+   %LOCALAPPDATA%\LinDesk\UpdaterRuntime
+   ```
+
+   然后启动这个临时副本并退出，避免安装器提示 `LinDeskUpdate.exe` 正在运行。
+
+18. 临时副本会关闭主程序，执行安装包：
 
    ```text
    /NORESTART /LANG=zh /LINDESKUPDATE=1
@@ -133,9 +141,9 @@
 
    安装器会正常显示出来，并根据用户在 LinDesk 中配置的语言自动选择安装器语言。更新模式会跳过创建快捷方式页面和安装完成后启动页面。
 
-18. 安装器启动后，`LinDeskUpdate.exe` 会退出。后续启动由可见安装器流程处理。
+19. 安装器启动后，临时副本会等待安装器结束。安装成功后会清理更新缓存，包括下载目录里的安装包、空的 `Updates` 目录、旧的临时更新程序副本，并安排当前临时副本退出后自删除。后续启动由可见安装器流程处理。
 
-19. 更新程序日志写入：
+20. 更新程序日志写入：
 
    ```text
    %LOCALAPPDATA%\LinDesk\Logs\updater.log
