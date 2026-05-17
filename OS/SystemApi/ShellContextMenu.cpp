@@ -85,6 +85,103 @@ void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
     }
 }
 
+void EmitDesktopShellMenuListLine(const wchar_t* tag, const std::wstring& info)
+{
+    const std::wstring line = BuildTimestamp() + L" [DesktopShellMenuList] "
+        + (tag ? tag : L"Desktop") + L" " + info + L"\n";
+    OutputDebugStringW(line.c_str());
+
+    const std::filesystem::path logPath = GetDesktopLogPath();
+    if (logPath.empty()) {
+        return;
+    }
+
+    std::error_code ec;
+    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
+    if (!logFileExists) {
+        return;
+    }
+
+    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
+    if (!logFile.is_open()) {
+        return;
+    }
+
+    const std::string utf8Line = WideToUtf8(line);
+    if (!utf8Line.empty()) {
+        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
+    }
+}
+
+std::wstring MenuStateToText(UINT state)
+{
+    std::wstring text;
+    text += ((state & (MFS_DISABLED | MFS_GRAYED)) == 0) ? L"enabled=1" : L"enabled=0";
+    text += (state & MFS_CHECKED) ? L" checked=1" : L" checked=0";
+    text += (state & MFS_DEFAULT) ? L" default=1" : L" default=0";
+    return text;
+}
+
+void DebugLogMenuTree(HMENU menu, IContextMenu3* contextMenu, const wchar_t* tag, int depth = 0)
+{
+    if (!menu || depth > 8) {
+        return;
+    }
+
+    const int itemCount = GetMenuItemCount(menu);
+    if (depth == 0) {
+        EmitDesktopShellMenuListLine(tag, L"begin count=" + std::to_wstring(itemCount));
+    }
+
+    for (int i = 0; i < itemCount; ++i) {
+        wchar_t textBuffer[512] = {};
+        MENUITEMINFOW itemInfo = {};
+        itemInfo.cbSize = sizeof(itemInfo);
+        itemInfo.fMask = MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_SUBMENU;
+        itemInfo.dwTypeData = textBuffer;
+        itemInfo.cch = ARRAYSIZE(textBuffer);
+
+        if (!GetMenuItemInfoW(menu, static_cast<UINT>(i), TRUE, &itemInfo)) {
+            EmitDesktopShellMenuListLine(tag,
+                std::wstring(depth * 2, L' ')
+                + L"depth=" + std::to_wstring(depth)
+                + L" index=" + std::to_wstring(i)
+                + L" read_failed");
+            continue;
+        }
+
+        const bool isSeparator = (itemInfo.fType & MFT_SEPARATOR) == MFT_SEPARATOR;
+        const bool hasSubMenu = itemInfo.hSubMenu != nullptr;
+        std::wstring itemText = textBuffer;
+        if (itemText.empty()) {
+            itemText = isSeparator ? L"<separator>" : L"<empty>";
+        }
+
+        std::wstring line = std::wstring(depth * 2, L' ')
+            + L"depth=" + std::to_wstring(depth)
+            + L" index=" + std::to_wstring(i)
+            + L" type=" + (isSeparator ? L"separator" : (hasSubMenu ? L"submenu" : L"action"))
+            + L" id=" + std::to_wstring(itemInfo.wID)
+            + L" " + MenuStateToText(itemInfo.fState)
+            + L" text=\"" + itemText + L"\"";
+        EmitDesktopShellMenuListLine(tag, line);
+
+        if (hasSubMenu) {
+            if (contextMenu) {
+                contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
+                    reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
+                    MAKELPARAM(i, FALSE),
+                    nullptr);
+            }
+            DebugLogMenuTree(itemInfo.hSubMenu, contextMenu, tag, depth + 1);
+        }
+    }
+
+    if (depth == 0) {
+        EmitDesktopShellMenuListLine(tag, L"end");
+    }
+}
+
 void DebugLogTopLevelMenuItems(HMENU menu, const wchar_t* tag)
 {
     if (!menu || !IsBoxMenuDebugEnabled()) {
@@ -142,6 +239,31 @@ int FindNewMenuInsertPosition(HMENU menu)
 {
     const int newMenuPos = FindNewMenuPosition(menu);
     return newMenuPos >= 0 ? newMenuPos + 1 : -1;
+}
+
+const wchar_t* const kDesktopMenuExcludeList[] = {
+    L"Ne&w"
+};
+
+void RemoveDesktopExcludedMenuItems(HMENU menu)
+{
+    if (!menu) {
+        return;
+    }
+
+    for (const wchar_t* itemName : kDesktopMenuExcludeList) {
+        if (!itemName || *itemName == L'\0') {
+            continue;
+        }
+
+        const int menuPos = wcscmp(itemName, L"New") == 0
+            ? FindNewMenuPosition(menu)
+            : MenuHelper::FindMenuItem(menu, itemName);
+        if (menuPos >= 0 && DeleteMenu(menu, menuPos, MF_BYPOSITION)) {
+            MenuHelper::RemoveAdjacentSeparators(menu);
+            MenuHelper::RemoveTrailingSeparators(menu);
+        }
+    }
 }
 
 bool IsValidShellCommandId(UINT shellCommandId)
@@ -746,6 +868,7 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
     }
 
     RemoveTencentDeskGoMenu(hMenu.get());
+    DebugLogMenuTree(hMenu.get(), m_contextMenu.get(), L"Win11DesktopShellSnapshot");
 
     AppendMenuSnapshotItems(hMenu.get(),
         m_contextMenu.get(),
@@ -838,6 +961,9 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
 
     if (operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
         RemoveTencentDeskGoMenu(hMenu.get());
+        if (operationType == OperationType::BackGround) {
+            RemoveDesktopExcludedMenuItems(hMenu.get());
+        }
         if (operationType == OperationType::boxBackground) {
             KeepOnlyNewMenuForBoxBackground(hMenu.get());
         }
@@ -965,6 +1091,8 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
 
     if (operationType == OperationType::boxBackground) {
         DebugLogTopLevelMenuItems(hMenu.get(), L"BoxContextMenu");
+    } else if (operationType == OperationType::BackGround) {
+        DebugLogMenuTree(hMenu.get(), m_contextMenu.get(), L"DefaultDesktopShellMenu");
     }
 
     SetForegroundWindow(hwnd);

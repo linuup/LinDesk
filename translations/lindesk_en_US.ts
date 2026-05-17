@@ -100,16 +100,12 @@
         <translation></translation>
     </message>
     <message>
-        <source>The mapped folder &quot;%1&quot; is still missing.
-
-Do you want to re map this box to another folder?</source>
-        <translation type="unfinished"></translation>
+        <source>The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</source>
+        <translation>The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</translation>
     </message>
     <message>
-        <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.
-
-Do you want to re map this box to another folder?</source>
-        <translation type="unfinished"></translation>
+        <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.Do you want to re map this box to another folder?</source>
+        <translation>The mapped folder &quot;%1&quot; is still unavailable because access is denied.Do you want to re map this box to another folder?</translation>
     </message>
 </context>
 <context>
@@ -145,6 +141,26 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>LinDesk is still running in the system tray.</source>
         <translation>LinDesk is still running in the system tray.</translation>
+    </message>
+    <message>
+        <source>Desktop Manager Conflict Detected</source>
+        <translation>Desktop Manager Conflict Detected</translation>
+    </message>
+    <message>
+        <source>LinDesk detected another desktop management window under the Windows desktop host.</source>
+        <translation>LinDesk detected another desktop management window under the Windows desktop host.</translation>
+    </message>
+    <message>
+        <source>LinDesk detected another desktop management window under the Windows desktop host: %1.</source>
+        <translation>LinDesk detected another desktop management window under the Windows desktop host: %1.</translation>
+    </message>
+    <message>
+        <source>Please close the third-party desktop management software to avoid desktop display conflicts.</source>
+        <translation>Please close the third-party desktop management software to avoid desktop display conflicts.</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>OK</translation>
     </message>
 </context>
 <context>
@@ -272,6 +288,10 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Minutes</source>
         <translation>Minutes</translation>
+    </message>
+    <message>
+        <source>New Text Document.txt</source>
+        <translation>New Text Document.txt</translation>
     </message>
 </context>
 <context>
@@ -631,15 +651,15 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>This option is available only on Windows 11.</source>
-        <translation>This option is available only on Windows 11.</translation>
+        <translation type="vanished">This option is available only on Windows 11.</translation>
     </message>
     <message>
         <source>Windows 11 Context Menu</source>
-        <translation>Windows 11 Context Menu</translation>
+        <translation type="vanished">Windows 11 Context Menu</translation>
     </message>
     <message>
         <source>Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView.</source>
-        <translation>Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView.</translation>
+        <translation type="vanished">Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView.</translation>
     </message>
     <message>
         <source>See how your desktop box surface reacts to the current style.</source>
@@ -724,6 +744,148 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Preview the desktop selection rectangle color, contrast, and opacity.</source>
         <translation></translation>
+    </message>
+    <message>
+        <source>Windows11 Menu</source>
+        <translation>Windows 11 Menu</translation>
+    </message>
+    <message>
+        <source>This option is available only on Windows 11 in Release builds.</source>
+        <translation>This option is only available on Windows 11</translation>
+    </message>
+    <message>
+        <source>Windows 11 Style Context Menu</source>
+        <translation>Windows 11 Style Context Menu</translation>
+    </message>
+    <message>
+        <source>Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in ListView.</source>
+        <translation>Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in BackGround.</translation>
+    </message>
+    <message>
+        <source>Show New Box Menu</source>
+        <translation>Show New Box Menu</translation>
+    </message>
+    <message>
+        <source>Show the New Box entry in the desktop context menu.</source>
+        <translation>Show the New Box entry in the desktop context menu.</translation>
+    </message>
+    <message>
+        <source>Show LinDesk Menu</source>
+        <translation>Show LinDesk Menu</translation>
+    </message>
+    <message>
+        <source>Show the LinDesk submenu and its actions in the desktop context menu.</source>
+        <translation>Show the LinDesk submenu and its actions in the desktop context menu.</translation>
+    </message>
+    <message>
+        <source>Show Third Party Shell Menus</source>
+        <translation>Show Third Party Shell Menus</translation>
+    </message>
+    <message>
+        <source>Show registered third party Shell menu items in the Windows 11 style context menu.</source>
+        <translation>Show registered third party Shell menu items in the Windows 11 style context menu.</translation>
+    </message>
+    <message>
+        <source>Online Update</source>
+        <translation>Online Update</translation>
+    </message>
+    <message>
+        <source>Current version: %1</source>
+        <translation>Current version: %1</translation>
+    </message>
+    <message>
+        <source>Check for Updates</source>
+        <translation>Check for Updates</translation>
+    </message>
+    <message>
+        <source>Already up to date. Current version: %1</source>
+        <translation>Already up to date. Current version: %1</translation>
+    </message>
+    <message>
+        <source>New version found: %1</source>
+        <translation>New version found: %1</translation>
+    </message>
+    <message>
+        <source>New Version Available</source>
+        <translation>New Version Available</translation>
+    </message>
+    <message>
+        <source>Version: %1
+
+%2</source>
+        <translation>
+%2</translation>
+    </message>
+    <message>
+        <source>Version: %1</source>
+        <translation>Version: %1</translation>
+    </message>
+    <message>
+        <source>Update Now</source>
+        <translation>Update Now</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>Update cancelled.</source>
+        <translation>Update cancelled.</translation>
+    </message>
+    <message>
+        <source>Update check failed: %1</source>
+        <translation>Update check failed: %1</translation>
+    </message>
+    <message>
+        <source>Checking for updates...</source>
+        <translation>Checking for updates...</translation>
+    </message>
+    <message>
+        <source>Download complete. Starting installer...</source>
+        <translation>Download complete. Starting installer...</translation>
+    </message>
+    <message>
+        <source>Download failed: %1</source>
+        <translation>Download failed: %1</translation>
+    </message>
+    <message>
+        <source>Installer already downloaded. Starting installer...</source>
+        <translation>Installer already downloaded. Starting installer...</translation>
+    </message>
+    <message>
+        <source>Downloading update...</source>
+        <translation>Downloading update...</translation>
+    </message>
+    <message>
+        <source>Installer file is missing. Please download again.</source>
+        <translation>Installer file is missing. Please download again.</translation>
+    </message>
+    <message>
+        <source>LinDeskUpdate.exe was not found in the application directory.</source>
+        <translation>LinDeskUpdate.exe was not found in the application directory.</translation>
+    </message>
+    <message>
+        <source>Failed to start updater.</source>
+        <translation>Failed to start updater.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateChecker</name>
+    <message>
+        <source>Update request was cancelled.</source>
+        <translation>Update request was cancelled.</translation>
+    </message>
+    <message>
+        <source>Invalid update metadata.</source>
+        <translation>Invalid update metadata.</translation>
+    </message>
+    <message>
+        <source>Update metadata is missing required fields.</source>
+        <translation>Update metadata is missing required fields.</translation>
+    </message>
+    <message>
+        <source>Update installer URL is invalid.</source>
+        <translation>Update installer URL is invalid.</translation>
     </message>
 </context>
 </TS>

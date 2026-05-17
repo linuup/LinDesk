@@ -100,15 +100,18 @@ public:
         m_recognitionInProgress = false;
         m_pendingImage = QImage();
         if (m_screenShot) {
-            m_screenShot->disconnect(this);
-            m_screenShot->close();
-            m_screenShot->deleteLater();
+            ScreenShot* screenShot = m_screenShot.data();
+            screenShot->disconnect(this);
+            screenShot->hide();
             m_screenShot = nullptr;
+            delete screenShot;
         }
         if (m_resultDialog) {
-            m_resultDialog->close();
-            m_resultDialog->deleteLater();
+            OcrResultDialog* resultDialog = m_resultDialog.data();
+            resultDialog->disconnect(this);
+            resultDialog->hide();
             m_resultDialog = nullptr;
+            delete resultDialog;
         }
     }
 

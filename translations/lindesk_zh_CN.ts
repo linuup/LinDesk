@@ -146,6 +146,26 @@ Do you want to re map this box to another folder?</source>
         <source>LinDesk is still running in the system tray.</source>
         <translation>LinDesk 仍在系统托盘中运行。</translation>
     </message>
+    <message>
+        <source>Desktop Manager Conflict Detected</source>
+        <translation>检测到桌面管理器冲突</translation>
+    </message>
+    <message>
+        <source>LinDesk detected another desktop management window under the Windows desktop host.</source>
+        <translation>LinDesk 检测到在 Windows 桌面主机下有另一个桌面管理窗口。</translation>
+    </message>
+    <message>
+        <source>LinDesk detected another desktop management window under the Windows desktop host: %1.</source>
+        <translation>LinDesk 检测到在 Windows 桌面主机下有另一个桌面管理窗口：%1。</translation>
+    </message>
+    <message>
+        <source>Please close the third-party desktop management software to avoid desktop display conflicts.</source>
+        <translation>请关闭第三方桌面管理软件以避免桌面显示冲突。</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
 </context>
 <context>
     <name>ListView</name>
@@ -272,6 +292,10 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Minutes</source>
         <translation>分钟</translation>
+    </message>
+    <message>
+        <source>New Text Document.txt</source>
+        <translation>新建文本文档.txt</translation>
     </message>
 </context>
 <context>
@@ -655,15 +679,15 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>This option is available only on Windows 11.</source>
-        <translation>此选项仅在 Windows 11 上可用。</translation>
+        <translation type="vanished">此选项仅在 Windows 11 上可用。</translation>
     </message>
     <message>
         <source>Windows 11 Context Menu</source>
-        <translation>Windows 11 上下文菜单</translation>
+        <translation type="vanished">Windows 11 上下文菜单</translation>
     </message>
     <message>
         <source>Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView.</source>
-        <translation>在 ListView 中右键单击空白区域时使用原生 Windows 11 桌面背景上下文菜单。</translation>
+        <translation type="vanished">在 ListView 中右键单击空白区域时使用原生 Windows 11 桌面背景上下文菜单。</translation>
     </message>
     <message>
         <source>See how your desktop box surface reacts to the current style.</source>
@@ -764,6 +788,145 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Preview the desktop selection rectangle color, contrast, and opacity.</source>
         <translation>预览桌面选择矩形的颜色、对比度和透明度。</translation>
+    </message>
+    <message>
+        <source>Windows11 Menu</source>
+        <translation>Windows 11 菜单</translation>
+    </message>
+    <message>
+        <source>This option is available only on Windows 11 in Release builds.</source>
+        <translation>此选项仅在 Windows 11 的发布版本中可用。</translation>
+    </message>
+    <message>
+        <source>Windows 11 Style Context Menu</source>
+        <translation>Windows 11 风格上下文菜单</translation>
+    </message>
+    <message>
+        <source>Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in ListView.</source>
+        <translation>在 ListView 中右键单击空白区域时使用 LinDesk Windows 11 风格桌面上下文菜单。</translation>
+    </message>
+    <message>
+        <source>Show New Box Menu</source>
+        <translation>显示新建框菜单</translation>
+    </message>
+    <message>
+        <source>Show the New Box entry in the desktop context menu.</source>
+        <translation>在桌面上下文菜单中显示新建框条目。</translation>
+    </message>
+    <message>
+        <source>Show LinDesk Menu</source>
+        <translation>显示 LinDesk 菜单</translation>
+    </message>
+    <message>
+        <source>Show the LinDesk submenu and its actions in the desktop context menu.</source>
+        <translation>在桌面上下文菜单中显示 LinDesk 子菜单及其操作。</translation>
+    </message>
+    <message>
+        <source>Show Third Party Shell Menus</source>
+        <translation>显示第三方 Shell 菜单</translation>
+    </message>
+    <message>
+        <source>Show registered third party Shell menu items in the Windows 11 style context menu.</source>
+        <translation>在 Windows 11 风格上下文菜单中显示已注册的第三方 Shell 菜单项。</translation>
+    </message>
+    <message>
+        <source>Online Update</source>
+        <translation>在线更新</translation>
+    </message>
+    <message>
+        <source>Current version: %1</source>
+        <translation>当前版本: %1</translation>
+    </message>
+    <message>
+        <source>Check for Updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <source>Already up to date. Current version: %1</source>
+        <translation>已是最新版本。当前版本: %1</translation>
+    </message>
+    <message>
+        <source>New version found: %1</source>
+        <translation>发现新版本: %1</translation>
+    </message>
+    <message>
+        <source>New Version Available</source>
+        <translation>有新版本可用</translation>
+    </message>
+    <message>
+        <source>Version: %1
+
+%2</source>
+        <translation>版本: %1
+
+%2</translation>
+    </message>
+    <message>
+        <source>Update Now</source>
+        <translation>立即更新</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Update cancelled.</source>
+        <translation>更新已取消。</translation>
+    </message>
+    <message>
+        <source>Update check failed: %1</source>
+        <translation>更新检查失败: %1</translation>
+    </message>
+    <message>
+        <source>Checking for updates...</source>
+        <translation>正在检查更新...</translation>
+    </message>
+    <message>
+        <source>Download complete. Starting installer...</source>
+        <translation>下载完成。正在启动安装程序...</translation>
+    </message>
+    <message>
+        <source>Download failed: %1</source>
+        <translation>下载失败: %1</translation>
+    </message>
+    <message>
+        <source>Installer already downloaded. Starting installer...</source>
+        <translation>安装程序已下载。正在启动安装程序...</translation>
+    </message>
+    <message>
+        <source>Downloading update...</source>
+        <translation>正在下载更新...</translation>
+    </message>
+    <message>
+        <source>Installer file is missing. Please download again.</source>
+        <translation>安装程序文件丢失。请重新下载。</translation>
+    </message>
+    <message>
+        <source>LinDeskUpdate.exe was not found in the application directory.</source>
+        <translation>在应用程序目录中未找到 LinDeskUpdate.exe。</translation>
+    </message>
+    <message>
+        <source>Failed to start updater.</source>
+        <translation>启动更新程序失败。</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateChecker</name>
+    <message>
+        <source>Update request was cancelled.</source>
+        <translation>更新请求已被取消。</translation>
+    </message>
+    <message>
+        <source>Invalid update metadata.</source>
+        <translation>更新元数据无效。</translation>
+    </message>
+    <message>
+        <source>Update metadata is missing required fields.</source>
+        <translation>更新元数据缺少必需的字段。</translation>
+    </message>
+    <message>
+        <source>Update installer URL is invalid.</source>
+        <translation>更新安装程序 URL 无效。</translation>
     </message>
 </context>
 </TS>

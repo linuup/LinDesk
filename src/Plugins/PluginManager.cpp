@@ -22,6 +22,12 @@ PluginManager* PluginManager::instance() {
     return m_instance;
 }
 
+void PluginManager::shutdown() {
+    if (m_instance) {
+        m_instance->unloadPlugins();
+    }
+}
+
 void PluginManager::loadPlugins() {
     if (!qApp) {
         qWarning() << "[PluginManager] Cannot load plugins: qApp is null!";
@@ -105,6 +111,11 @@ void PluginManager::loadPlugins() {
 }
 
 void PluginManager::unloadPlugins() {
+    if (m_unloading) {
+        return;
+    }
+
+    m_unloading = true;
     for (auto* plugin : m_allPlugins) {
         if (plugin) plugin->onUnload();
     }
@@ -118,6 +129,7 @@ void PluginManager::unloadPlugins() {
         }
     }
     m_loaders.clear();
+    m_unloading = false;
 }
 
 ILinPlugin* PluginManager::getPlugin(const QString& id) const {

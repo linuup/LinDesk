@@ -27,6 +27,7 @@
 #include <QPointer>
 #include <QElapsedTimer>
 #include <windows.h>
+class FluentDialog;
 class LinDesktop : public QWidget {
     Q_OBJECT
     Q_PROPERTY(float transitionOpacity READ transitionOpacity WRITE setTransitionOpacity)
@@ -68,14 +69,24 @@ public:
     void embedToDesktop();
     void unembedFromDesktop();
     bool isEmbedded() const { return m_isEmbedded; }
-    void startDesktopHostHealthCheck();
-    void checkDesktopHostHealth();
-    void recoverDesktopHost(HWND expectedHost, const QString& reason);
     void forceDesktopRepaint();
-    bool isExpectedDesktopHostClass(HWND hwnd) const;
-    QString windowClassName(HWND hwnd) const;
+    bool hasDesktopHostConflict() const { return m_hasDesktopHostConflict; }
+    void handleDesktopHostWindowEvent(HWND hwnd, DWORD event);
 
 private:
+    void startDesktopHostWindowMonitor();
+    void stopDesktopHostWindowMonitor();
+    void rescanDesktopHostChildren();
+    void scheduleDesktopHostChildrenRescan();
+    void showDesktopHostConflictDialog(HWND conflictHwnd);
+    void repairDesktopHostPresentation();
+    HWND findThirdPartyDesktopHostChild() const;
+    bool isDesktopHostWindow(HWND hwnd) const;
+    bool isWindowUnderDesktopHost(HWND hwnd) const;
+    bool isOwnProcessWindow(HWND hwnd) const;
+    bool isCandidateThirdPartyWindow(HWND hwnd) const;
+    QString windowClassName(HWND hwnd) const;
+
     QString m_configPath;
     QPixmap m_backImagePixmap;
     QPixmap m_prevBackImagePixmap;
@@ -104,10 +115,13 @@ private:
     QMetaObject::Connection m_screenGeometryChangedConnection;
     QMetaObject::Connection m_screenDpiChangedConnection;
     QMetaObject::Connection m_windowScreenChangedConnection;
-    QPointer<QTimer> m_desktopHostHealthTimer;
-    QElapsedTimer m_desktopHostHealthElapsed;
-    HWND m_desktopHostHwnd = nullptr;
-    bool m_desktopHostRecovering = false;
+    QVector<HWINEVENTHOOK> m_desktopHostWindowEventHooks;
+    bool m_hasDesktopHostConflict = false;
+    HWND m_desktopHostConflictHwnd = nullptr;
+    bool m_desktopHostRescanPending = false;
+    bool m_desktopHostRescanAgain = false;
+    bool m_desktopHostConflictDialogShown = false;
+    QPointer<FluentDialog> m_desktopHostConflictDialog;
 
 private slots:
 

@@ -1023,8 +1023,6 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
 
 
     // 闁荤姳绀佹晶浠嬫偪閸℃稑绫嶉柣妯挎閻濊埖淇婂Δ鈧Λ娑㈡偘閵夆晛鐭?
-    setWindowFlags(Qt::FramelessWindowHint | Qt::WindowSystemMenuHint);
-
     // 闁荤姳绀佹晶浠嬫偪閸℃稒鐒婚煫鍥ㄦ⒐椤牠鏌ら崘鍙夋拱婵?
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
@@ -4298,12 +4296,14 @@ bool ListView::applyGridAlignedDesktopDropLayout(const QStringList& draggedPaths
         changed = true;
     }
 
-    if (changed) {
-        updateAllItemRenderData();
-        rebuildSpatialIndex();
-        update();
-        requestSaveBoxes();
+    if (!changed) {
+        return false;
     }
+
+    updateAllItemRenderData();
+    rebuildSpatialIndex();
+    update();
+    requestSaveBoxes();
     return true;
 }
 
@@ -7609,6 +7609,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
         }
 
 		bool hasCollision = false;
+        bool desktopPositionsChanged = false;
         QMap<QString, QPoint> resolvedDesktopPositions;
 
         if (!targetBox && !dropTargetState && m_iconShowRule.gridAlignment && !draggedPaths.isEmpty() &&
@@ -7651,9 +7652,12 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 					// Items in box stay where they are (refreshLayout handles them)
 					if (!targetBox && !dropTargetState && !desktopBackgroundFileOperation) {
                         if (draggedState) {
-                            draggedState->model.position = finalPos;
-                            draggedState->model.renderData.itemRect.moveTopLeft(finalPos);
-                            markDesktopRenderDataDirty(draggedState);
+                            if (draggedState->model.position != finalPos) {
+                                draggedState->model.position = finalPos;
+                                draggedState->model.renderData.itemRect.moveTopLeft(finalPos);
+                                markDesktopRenderDataDirty(draggedState);
+                                desktopPositionsChanged = true;
+                            }
                         }
 					}
 				}
@@ -7752,7 +7756,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
             } else {
                 moveItemsToBox(draggedPaths, targetBox, -1, true);
             }
-        } else if (!targetBox) {
+        } else if (!targetBox && (desktopPositionsChanged || hasCollision)) {
             updateAllItemRenderData();
             update();
         }
@@ -7764,7 +7768,9 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 		}
 		
 		// 婵烇絽娲︾换鍌炴偤閵娾晛鐐婇柣鎰靛墰閸ㄧ厧霉閿濆懐肖闁汇倕妫濆畷姘閺夋垵璧嬬紓鍌氬枤閸犳寮搁崘鈺冾浄?
-		requestSaveBoxes();
+        if (targetBox || dropTargetState || desktopBackgroundFileOperation || desktopPositionsChanged) {
+		    requestSaveBoxes();
+        }
 	}
 }
 

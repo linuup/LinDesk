@@ -12,6 +12,7 @@ class PluginManager : public QObject {
 
 public:
     static PluginManager* instance();
+    static void shutdown();
 
     // Discovery
     void loadPlugins();
@@ -43,4 +44,5 @@ private:
     QList<IOCRPlugin*> m_ocrPlugins;
     QList<QPluginLoader*> m_loaders;
     QMap<QString, bool> m_enabledMap; // PluginID -> Enabled
+    bool m_unloading = false;
 };

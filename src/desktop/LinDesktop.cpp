@@ -11,6 +11,34 @@
 #include <QWindow>
 #include <QDebug>
 
+namespace {
+QPointer<LinDesktop> g_desktopHostWindowMonitorOwner;
+
+void CALLBACK desktopHostWindowEventProc(HWINEVENTHOOK,
+                                         DWORD event,
+                                         HWND hwnd,
+                                         LONG idObject,
+                                         LONG idChild,
+                                         DWORD,
+                                         DWORD)
+{
+    if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF) {
+        return;
+    }
+
+    if (g_desktopHostWindowMonitorOwner) {
+        QMetaObject::invokeMethod(
+            g_desktopHostWindowMonitorOwner,
+            [owner = g_desktopHostWindowMonitorOwner, hwnd, event]() {
+                if (owner) {
+                    owner->handleDesktopHostWindowEvent(hwnd, event);
+                }
+            },
+            Qt::QueuedConnection);
+    }
+}
+}
+
 LinDesktop::LinDesktop(QWidget* parent)
     : QWidget(parent)
 {
@@ -48,13 +76,15 @@ LinDesktop::LinDesktop(QWidget* parent)
     });
     loadBackImage();
     listView = ListView::instance(this);
+    listView->setGeometry(rect());
+    listView->show();
     selectArea = new SelectArea(listView);
     selectArea->syncToRect(listView->rect());
     selectArea->lower();
     setFocusProxy(listView);
 
     embedToDesktop();
-    startDesktopHostHealthCheck();
+    startDesktopHostWindowMonitor();
 
     m_monitor = new DesktopInfoMonitor(this);
     m_monitor->startListening();
@@ -83,6 +113,8 @@ LinDesktop::LinDesktop(QWidget* parent)
 
 LinDesktop::~LinDesktop()
 {
+    stopDesktopHostWindowMonitor();
+
     if (m_trayIcon) {
         m_trayIcon->hide();
     }
@@ -433,24 +465,254 @@ void LinDesktop::embedToDesktop()
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
         setGeometry(QApplication::primaryScreen()->geometry());
         SetParent((HWND)this->winId(), hwnd);
-        m_desktopHostHwnd = hwnd;
         m_isEmbedded = true;
         show();
         forceDesktopRepaint();
     }
 }
 
-void LinDesktop::startDesktopHostHealthCheck()
+void LinDesktop::startDesktopHostWindowMonitor()
 {
-    if (m_desktopHostHealthTimer) {
+    if (!m_desktopHostWindowEventHooks.isEmpty()) {
         return;
     }
 
-    m_desktopHostHealthElapsed.start();
-    m_desktopHostHealthTimer = new QTimer(this);
-    m_desktopHostHealthTimer->setInterval(2000);
-    connect(m_desktopHostHealthTimer, &QTimer::timeout, this, &LinDesktop::checkDesktopHostHealth);
-    m_desktopHostHealthTimer->start();
+    g_desktopHostWindowMonitorOwner = this;
+    const DWORD events[] = {
+        EVENT_OBJECT_CREATE,
+        EVENT_OBJECT_SHOW,
+        EVENT_OBJECT_HIDE,
+        EVENT_OBJECT_DESTROY,
+        EVENT_OBJECT_REORDER,
+        EVENT_OBJECT_PARENTCHANGE,
+        EVENT_SYSTEM_FOREGROUND
+    };
+
+    for (DWORD event : events) {
+        HWINEVENTHOOK hook = SetWinEventHook(
+            event,
+            event,
+            nullptr,
+            desktopHostWindowEventProc,
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+        if (hook) {
+            m_desktopHostWindowEventHooks.append(hook);
+        }
+    }
+
+    rescanDesktopHostChildren();
+}
+
+void LinDesktop::stopDesktopHostWindowMonitor()
+{
+    for (HWINEVENTHOOK hook : m_desktopHostWindowEventHooks) {
+        if (hook) {
+            UnhookWinEvent(hook);
+        }
+    }
+    m_desktopHostWindowEventHooks.clear();
+
+    if (g_desktopHostWindowMonitorOwner == this) {
+        g_desktopHostWindowMonitorOwner.clear();
+    }
+}
+
+void LinDesktop::handleDesktopHostWindowEvent(HWND hwnd, DWORD event)
+{
+    if (event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_HIDE || event == EVENT_OBJECT_PARENTCHANGE) {
+        scheduleDesktopHostChildrenRescan();
+        return;
+    }
+
+    if (!hwnd || isWindowUnderDesktopHost(hwnd) || isDesktopHostWindow(hwnd) || hwnd == reinterpret_cast<HWND>(winId())) {
+        scheduleDesktopHostChildrenRescan();
+    }
+}
+
+void LinDesktop::scheduleDesktopHostChildrenRescan()
+{
+    if (m_desktopHostRescanPending) {
+        m_desktopHostRescanAgain = true;
+        return;
+    }
+
+    m_desktopHostRescanPending = true;
+    QTimer::singleShot(100, this, [this]() {
+        m_desktopHostRescanPending = false;
+        rescanDesktopHostChildren();
+        if (m_desktopHostRescanAgain) {
+            m_desktopHostRescanAgain = false;
+            scheduleDesktopHostChildrenRescan();
+        }
+    });
+}
+
+void LinDesktop::rescanDesktopHostChildren()
+{
+    HWND conflictHwnd = findThirdPartyDesktopHostChild();
+    const bool hasConflict = conflictHwnd != nullptr;
+    if (m_hasDesktopHostConflict == hasConflict && m_desktopHostConflictHwnd == conflictHwnd) {
+        return;
+    }
+
+    const bool hadConflict = m_hasDesktopHostConflict;
+    m_hasDesktopHostConflict = hasConflict;
+    m_desktopHostConflictHwnd = conflictHwnd;
+
+    if (hasConflict) {
+        qWarning() << "[LinDesktopHostMonitor] third-party window under desktop host"
+                   << "hwnd=" << conflictHwnd
+                   << "class=" << windowClassName(conflictHwnd);
+        showDesktopHostConflictDialog(conflictHwnd);
+    } else {
+        m_desktopHostConflictDialogShown = false;
+        qWarning() << "[LinDesktopHostMonitor] desktop host conflict cleared";
+        if (hadConflict) {
+            repairDesktopHostPresentation();
+        }
+    }
+}
+
+void LinDesktop::showDesktopHostConflictDialog(HWND conflictHwnd)
+{
+    if (m_desktopHostConflictDialogShown || m_desktopHostConflictDialog) {
+        return;
+    }
+
+    m_desktopHostConflictDialogShown = true;
+    FluentDialog* dialog = new FluentDialog(nullptr);
+    m_desktopHostConflictDialog = dialog;
+    dialog->setAttribute(Qt::WA_DeleteOnClose, true);
+    dialog->setDialogTitle(tr("Desktop Manager Conflict Detected"));
+
+    const QString className = windowClassName(conflictHwnd);
+    const QString detail = className.isEmpty()
+        ? tr("LinDesk detected another desktop management window under the Windows desktop host.")
+        : tr("LinDesk detected another desktop management window under the Windows desktop host: %1.").arg(className);
+    dialog->setMessage(detail + QStringLiteral("\n\n") +
+        tr("Please close the third-party desktop management software to avoid desktop display conflicts."));
+    dialog->addActionButton(tr("OK"), FluentDialog::ActionType::Primary);
+    connect(dialog, &QObject::destroyed, this, [this]() {
+        m_desktopHostConflictDialog = nullptr;
+    });
+    dialog->show();
+}
+
+void LinDesktop::repairDesktopHostPresentation()
+{
+    HWND selfHwnd = reinterpret_cast<HWND>(winId());
+    if (!selfHwnd || !IsWindow(selfHwnd)) {
+        return;
+    }
+
+    qWarning() << "[LinDesktopHostMonitor] repairing desktop host presentation"
+               << "self=" << selfHwnd
+               << "parent=" << GetParent(selfHwnd)
+               << "parentClass=" << windowClassName(GetParent(selfHwnd));
+
+    SetWindowPos(
+        selfHwnd,
+        HWND_TOP,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+
+    RedrawWindow(selfHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
+    update();
+    if (listView) {
+        listView->update();
+    }
+
+    qWarning() << "[LinDesktopHostMonitor] desktop host presentation repaired"
+               << "self=" << selfHwnd
+               << "parent=" << GetParent(selfHwnd)
+               << "parentClass=" << windowClassName(GetParent(selfHwnd));
+}
+
+HWND LinDesktop::findThirdPartyDesktopHostChild() const
+{
+    QVector<HWND> hosts;
+    if (HWND progman = FindWindow(_T("progman"), _T("program manager"))) {
+        hosts.append(progman);
+    }
+
+    EnumWindows([](HWND hwnd, LPARAM lparam) -> BOOL {
+        auto* hosts = reinterpret_cast<QVector<HWND>*>(lparam);
+        wchar_t className[256] = {};
+        if (GetClassNameW(hwnd, className, static_cast<int>(std::size(className))) &&
+            _wcsicmp(className, L"WorkerW") == 0) {
+            hosts->append(hwnd);
+        }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&hosts));
+
+    for (HWND host : hosts) {
+        QVector<HWND> pendingChildren;
+        for (HWND child = GetWindow(host, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+            pendingChildren.append(child);
+        }
+
+        while (!pendingChildren.isEmpty()) {
+            HWND child = pendingChildren.takeLast();
+            if (isCandidateThirdPartyWindow(child)) {
+                return child;
+            }
+
+            for (HWND grandChild = GetWindow(child, GW_CHILD); grandChild; grandChild = GetWindow(grandChild, GW_HWNDNEXT)) {
+                pendingChildren.append(grandChild);
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+bool LinDesktop::isDesktopHostWindow(HWND hwnd) const
+{
+    if (!hwnd || !IsWindow(hwnd)) {
+        return false;
+    }
+
+    const QString className = windowClassName(hwnd);
+    return className.compare(QStringLiteral("WorkerW"), Qt::CaseInsensitive) == 0 ||
+        className.compare(QStringLiteral("Progman"), Qt::CaseInsensitive) == 0;
+}
+
+bool LinDesktop::isWindowUnderDesktopHost(HWND hwnd) const
+{
+    for (HWND parent = GetParent(hwnd); parent; parent = GetParent(parent)) {
+        if (isDesktopHostWindow(parent)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool LinDesktop::isOwnProcessWindow(HWND hwnd) const
+{
+    DWORD processId = 0;
+    GetWindowThreadProcessId(hwnd, &processId);
+    return processId == GetCurrentProcessId();
+}
+
+bool LinDesktop::isCandidateThirdPartyWindow(HWND hwnd) const
+{
+    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || isOwnProcessWindow(hwnd)) {
+        return false;
+    }
+
+    const QString className = windowClassName(hwnd);
+    if (className.compare(QStringLiteral("SHELLDLL_DefView"), Qt::CaseInsensitive) == 0 ||
+        className.compare(QStringLiteral("SysListView32"), Qt::CaseInsensitive) == 0) {
+        return false;
+    }
+
+    RECT rect = {};
+    return GetWindowRect(hwnd, &rect) && !IsRectEmpty(&rect);
 }
 
 QString LinDesktop::windowClassName(HWND hwnd) const
@@ -464,106 +726,6 @@ QString LinDesktop::windowClassName(HWND hwnd) const
         return QString();
     }
     return QString::fromWCharArray(className);
-}
-
-bool LinDesktop::isExpectedDesktopHostClass(HWND hwnd) const
-{
-    const QString className = windowClassName(hwnd);
-    return className.compare(QStringLiteral("WorkerW"), Qt::CaseInsensitive) == 0 ||
-        className.compare(QStringLiteral("Progman"), Qt::CaseInsensitive) == 0 ||
-        className.compare(QStringLiteral("SHELLDLL_DefView"), Qt::CaseInsensitive) == 0;
-}
-
-void LinDesktop::checkDesktopHostHealth()
-{
-    if (m_desktopHostRecovering || !m_isEmbedded) {
-        return;
-    }
-
-    if (m_desktopHostHealthTimer) {
-        const int targetInterval = m_desktopHostHealthElapsed.elapsed() < 30000 ? 2000 : 5000;
-        if (m_desktopHostHealthTimer->interval() != targetInterval) {
-            m_desktopHostHealthTimer->setInterval(targetInterval);
-        }
-    }
-
-    HWND selfHwnd = reinterpret_cast<HWND>(winId());
-    HWND currentParent = GetParent(selfHwnd);
-    HWND expectedHost = CSystemApi::FindRealDesktop();
-
-    QString reason;
-    if (!expectedHost || !IsWindow(expectedHost)) {
-        reason = QStringLiteral("expected desktop host missing");
-    } else if (!currentParent || !IsWindow(currentParent)) {
-        reason = QStringLiteral("current parent missing");
-    } else if (currentParent != expectedHost) {
-        reason = QStringLiteral("desktop host changed");
-    } else if (!IsWindowVisible(currentParent)) {
-        reason = QStringLiteral("current parent invisible");
-    } else if (!isExpectedDesktopHostClass(currentParent)) {
-        reason = QStringLiteral("unexpected parent class");
-    }
-
-    if (!reason.isEmpty()) {
-        qWarning() << "[LinDesktopHostHealth]" << reason
-                   << "self=" << selfHwnd
-                   << "currentParent=" << currentParent
-                   << "currentClass=" << windowClassName(currentParent)
-                   << "expectedHost=" << expectedHost
-                   << "expectedClass=" << windowClassName(expectedHost);
-        recoverDesktopHost(expectedHost, reason);
-        return;
-    }
-
-    forceDesktopRepaint();
-}
-
-void LinDesktop::recoverDesktopHost(HWND expectedHost, const QString& reason)
-{
-    if (!expectedHost || !IsWindow(expectedHost)) {
-        return;
-    }
-
-    m_desktopHostRecovering = true;
-
-    HWND selfHwnd = reinterpret_cast<HWND>(winId());
-    const QRect screenGeometry = QApplication::primaryScreen()
-        ? QApplication::primaryScreen()->geometry()
-        : geometry();
-
-    SetParent(selfHwnd, expectedHost);
-    m_desktopHostHwnd = expectedHost;
-    m_isEmbedded = true;
-
-    setGeometry(screenGeometry);
-    SetWindowPos(selfHwnd,
-        HWND_BOTTOM,
-        screenGeometry.x(),
-        screenGeometry.y(),
-        screenGeometry.width(),
-        screenGeometry.height(),
-        SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
-
-    if (listView) {
-        listView->setGeometry(rect());
-        listView->refreshForDpiChange();
-        listView->show();
-        listView->update();
-    }
-    if (selectArea) {
-        selectArea->syncToRect(listView ? listView->rect() : rect());
-        selectArea->lower();
-    }
-
-    rebuildScaledWallpaperPixmaps();
-    forceDesktopRepaint();
-
-    qWarning() << "[LinDesktopHostHealth] recovered desktop host"
-               << "reason=" << reason
-               << "host=" << expectedHost
-               << "class=" << windowClassName(expectedHost);
-
-    m_desktopHostRecovering = false;
 }
 
 void LinDesktop::forceDesktopRepaint()

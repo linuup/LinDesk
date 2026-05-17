@@ -21,6 +21,7 @@
 #include "app/LanguageManager.h"
 #include "services/AppPaths.h"
 #include "services/LinDeskHoveredItemServer.h"
+#include "plugins/PluginManager.h"
 using namespace ShortcutArrowManager;
 
 int main(int argc, char *argv[])
@@ -61,8 +62,10 @@ int main(int argc, char *argv[])
     LinDesktop linDesktop;
     LinDeskHoveredItemServer hoveredItemServer;
     launchOptions.apply(&linDesktop);
-    linDesktop.show();
     hoveredItemServer.startListening();
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
+        PluginManager::shutdown();
+    });
     qDebug() << isShortcutArrowEnabled();
     qDebug() << isUACShieldEnabled();
     return app.exec();
