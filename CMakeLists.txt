@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.31)
 # 修改版本号只需要改这里
 set(LINDESK_VERSION_MAJOR 1)
 set(LINDESK_VERSION_MINOR 0)
-set(LINDESK_VERSION_PATCH 5)
+set(LINDESK_VERSION_PATCH 6)
 set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable 等
 
 # 生成完整版本字符串
@@ -20,6 +20,7 @@ set(LINDESK_INSTALLER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/installer")
 # ========== C++ 标准 ==========
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_SUPPRESS_REGENERATION ON)
 
 # 使用 Unicode
 add_definitions(-DUNICODE -D_UNICODE)
@@ -101,6 +102,15 @@ set(CMAKE_AUTOUIC ON)
 add_subdirectory("OS")
 add_subdirectory("LinDeskUpdate")
 
+set(LINDESK_W11_MENU_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}/W11MenuUI/Win11MenuIsland.vcxproj")
+set(LINDESK_HAS_W11_MENU_HOST OFF)
+if(WIN32 AND CMAKE_GENERATOR MATCHES "Visual Studio" AND EXISTS "${LINDESK_W11_MENU_PROJECT}")
+    include_external_msproject(Win11MenuIsland "${LINDESK_W11_MENU_PROJECT}" PLATFORM x64)
+    set(LINDESK_HAS_W11_MENU_HOST ON)
+else()
+    message(WARNING "Win11 menu host subproject will not be added because Visual Studio generator or W11MenuUI project was not found.")
+endif()
+
 # 自动收集 src 下所有 .cpp、.h 和 .qrc 文件
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
@@ -120,6 +130,9 @@ endif()
 
 add_executable(LinDesk ${SOURCES} ${WIN32_RESOURCES})
 add_dependencies(LinDesk LinDeskUpdate)
+if(TARGET Win11MenuIsland)
+    add_dependencies(LinDesk Win11MenuIsland)
+endif()
 
 # Debug 显示控制台，Release 等版本隐藏控制台
 set_target_properties(LinDesk PROPERTIES
@@ -219,3 +232,15 @@ add_custom_command(TARGET LinDesk POST_BUILD
         "$<TARGET_FILE_DIR:LinDesk>/resources"
     COMMENT "Copying resource files to output directory..."
 )
+
+if(LINDESK_HAS_W11_MENU_HOST)
+    add_custom_command(TARGET LinDesk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/W11MenuUI/bin/x64/$<CONFIG>"
+            "$<TARGET_FILE_DIR:LinDesk>"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/W11MenuUI/Win11ContextMenu"
+            "$<TARGET_FILE_DIR:LinDesk>/Win11ContextMenu"
+        COMMENT "Copying Win11 menu host to output directory..."
+    )
+endif()

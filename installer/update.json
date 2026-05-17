@@ -1,9 +1,9 @@
 ﻿{
-    "version":  "1.0.5",
+    "version":  "1.0.6",
     "channel":  "stable",
-    "url":  "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.5/LinDesk_Setup_1.0.5.exe",
-    "sha256":  "14c66443bcce58063ba977aec205675f77e5821b7506570b5ff0e0b9f227d67e",
-    "notes":  "LinDesk update.",
-    "publishedAt":  "2026-05-15T08:01:22Z",
+    "url":  "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.6/LinDesk_Setup_1.0.6.exe",
+    "sha256":  "2355fa96aab27121b36e79abd2f6b62f4f9e043a3af261a688a3c0d4a178f6f7",
+    "notes":  "添加桌面Windows 11右键菜单支持",
+    "publishedAt":  "2026-05-16T09:59:49Z",
     "minSupportedVersion":  "1.0.0"
 }

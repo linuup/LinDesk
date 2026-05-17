@@ -1275,15 +1275,32 @@ QWidget* SettingUI::createDesktopPage() {
     });
     m_hideIconsCard = nullptr;
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE949), tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces."), hideToggle, behaviorPanel));
-    behaviorLayout->addWidget(createDivider(behaviorPanel));
+
+    layout->addWidget(behaviorPanel, 0);
+
+    QWidget* win11MenuPanel = createPanel(page);
+    win11MenuPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* win11MenuLayout = new QVBoxLayout(win11MenuPanel);
+    win11MenuLayout->setContentsMargins(22, 18, 22, 18);
+    win11MenuLayout->setSpacing(0);
+    win11MenuLayout->addWidget(createCardTitle(tr("Windows11 Menu"), win11MenuPanel));
+    win11MenuLayout->addSpacing(12);
+
+    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
+    const QString windows11UnsupportedTip = tr("This option is available only on Windows 11 in Release builds.");
+    auto applyWindows11MenuAvailability = [windows11ContextMenuSupported, &windows11UnsupportedTip](FluentToggleSwitch* toggle) {
+        if (!toggle) {
+            return;
+        }
+        toggle->setEnabled(windows11ContextMenuSupported);
+        if (!windows11ContextMenuSupported) {
+            toggle->setToolTip(windows11UnsupportedTip);
+        }
+    };
 
     m_windows11ContextMenuToggle = new FluentToggleSwitch(page);
-    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
     m_windows11ContextMenuToggle->setChecked(RightMenu::isWindows11SystemContextMenuEnabled());
-    m_windows11ContextMenuToggle->setEnabled(windows11ContextMenuSupported);
-    if (!windows11ContextMenuSupported) {
-        m_windows11ContextMenuToggle->setToolTip(tr("This option is available only on Windows 11."));
-    }
+    applyWindows11MenuAvailability(m_windows11ContextMenuToggle);
     connect(m_windows11ContextMenuToggle, &FluentToggleSwitch::toggled, this, [this, windows11ContextMenuSupported](bool checked) {
         if (!windows11ContextMenuSupported) {
             if (m_windows11ContextMenuToggle) {
@@ -1296,16 +1313,79 @@ QWidget* SettingUI::createDesktopPage() {
         RightMenu::setWindows11SystemContextMenuEnabled(checked);
     });
     m_windows11ContextMenuCard = nullptr;
-    behaviorLayout->addWidget(createSwitchRow(
+    win11MenuLayout->addWidget(createSwitchRow(
         glyph(0xE8B8),
-        tr("Windows 11 Context Menu"),
+        tr("Windows 11 Style Context Menu"),
         windows11ContextMenuSupported
-            ? tr("Use the native Windows 11 desktop background context menu when right-clicking empty space in ListView.")
-            : tr("This option is available only on Windows 11."),
+            ? tr("Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in ListView.")
+            : windows11UnsupportedTip,
         m_windows11ContextMenuToggle,
-        behaviorPanel));
+        win11MenuPanel));
+    win11MenuLayout->addWidget(createDivider(win11MenuPanel));
 
-    layout->addWidget(behaviorPanel, 0);
+    FluentToggleSwitch* showNewBoxMenuToggle = new FluentToggleSwitch(page);
+    showNewBoxMenuToggle->setChecked(RightMenu::isNewBoxMenuItemEnabled());
+    applyWindows11MenuAvailability(showNewBoxMenuToggle);
+    connect(showNewBoxMenuToggle, &FluentToggleSwitch::toggled, this, [showNewBoxMenuToggle, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (showNewBoxMenuToggle) {
+                const QSignalBlocker blocker(showNewBoxMenuToggle);
+                showNewBoxMenuToggle->setChecked(RightMenu::isNewBoxMenuItemEnabled());
+            }
+            return;
+        }
+        RightMenu::setNewBoxMenuItemEnabled(checked);
+    });
+    win11MenuLayout->addWidget(createSwitchRow(
+        glyph(0xE8B7),
+        tr("Show New Box Menu"),
+        tr("Show the New Box entry in the desktop context menu."),
+        showNewBoxMenuToggle,
+        win11MenuPanel));
+    win11MenuLayout->addWidget(createDivider(win11MenuPanel));
+
+    FluentToggleSwitch* showLinDeskMenuToggle = new FluentToggleSwitch(page);
+    showLinDeskMenuToggle->setChecked(RightMenu::isLinDeskMenuEnabled());
+    applyWindows11MenuAvailability(showLinDeskMenuToggle);
+    connect(showLinDeskMenuToggle, &FluentToggleSwitch::toggled, this, [showLinDeskMenuToggle, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (showLinDeskMenuToggle) {
+                const QSignalBlocker blocker(showLinDeskMenuToggle);
+                showLinDeskMenuToggle->setChecked(RightMenu::isLinDeskMenuEnabled());
+            }
+            return;
+        }
+        RightMenu::setLinDeskMenuEnabled(checked);
+    });
+    win11MenuLayout->addWidget(createSwitchRow(
+        glyph(0xE713),
+        tr("Show LinDesk Menu"),
+        tr("Show the LinDesk submenu and its actions in the desktop context menu."),
+        showLinDeskMenuToggle,
+        win11MenuPanel));
+    win11MenuLayout->addWidget(createDivider(win11MenuPanel));
+
+    FluentToggleSwitch* showThirdPartyShellMenuToggle = new FluentToggleSwitch(page);
+    showThirdPartyShellMenuToggle->setChecked(RightMenu::isThirdPartyShellMenuEnabled());
+    applyWindows11MenuAvailability(showThirdPartyShellMenuToggle);
+    connect(showThirdPartyShellMenuToggle, &FluentToggleSwitch::toggled, this, [showThirdPartyShellMenuToggle, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (showThirdPartyShellMenuToggle) {
+                const QSignalBlocker blocker(showThirdPartyShellMenuToggle);
+                showThirdPartyShellMenuToggle->setChecked(RightMenu::isThirdPartyShellMenuEnabled());
+            }
+            return;
+        }
+        RightMenu::setThirdPartyShellMenuEnabled(checked);
+    });
+    win11MenuLayout->addWidget(createSwitchRow(
+        glyph(0xECAA),
+        tr("Show Third Party Shell Menus"),
+        tr("Show registered third party Shell menu items in the Windows 11 style context menu."),
+        showThirdPartyShellMenuToggle,
+        win11MenuPanel));
+
+    layout->addWidget(win11MenuPanel, 0);
     return page;
 }
 

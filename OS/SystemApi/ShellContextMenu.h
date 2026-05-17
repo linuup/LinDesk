@@ -3,6 +3,8 @@
 #include <optional>
 #include <functional>
 #include <map>
+#include <string>
+#include <vector>
 #include "CommonEnum.h"
 #include <wil/com.h>
 #include <ShlObj.h>
@@ -42,6 +44,40 @@ public:
 static const int MIN_SHELL_MENU_ID = 1;
 static const int MAX_SHELL_MENU_ID = 1000;
 static const int CUSTOM_MENU_ID_BASE = 10001;
+
+struct ShellMenuSnapshotItem {
+    std::wstring text;
+    std::string commandId;
+    std::vector<ShellMenuSnapshotItem> children;
+    bool isSeparator = false;
+    bool enabled = true;
+    bool checked = false;
+    HBITMAP hBitmap = nullptr;
+};
+
+class ShellMenuCommandSession {
+public:
+    ShellMenuCommandSession() = default;
+    ~ShellMenuCommandSession();
+
+    ShellMenuCommandSession(const ShellMenuCommandSession&) = delete;
+    ShellMenuCommandSession& operator=(const ShellMenuCommandSession&) = delete;
+
+    void reset();
+    const std::vector<ShellMenuSnapshotItem>& newMenuItems() const { return m_newItems; }
+    const std::vector<ShellMenuSnapshotItem>& thirdPartyMenuItems() const { return m_thirdPartyItems; }
+    bool invokeShellCommand(const std::string& commandId, HWND hwnd, const std::optional<std::string>& directoryOverride = std::nullopt);
+
+private:
+    friend class ShellContextMenu;
+
+    wil::com_ptr_nothrow<IContextMenu3> m_contextMenu;
+    HMENU m_menu = nullptr;
+    std::vector<ShellMenuSnapshotItem> m_newItems;
+    std::vector<ShellMenuSnapshotItem> m_thirdPartyItems;
+    std::map<std::string, UINT> m_commandMap;
+    std::optional<std::string> m_directory;
+};
 
 
 /// <summary>
@@ -138,6 +174,7 @@ public:
     */
     //为桌面生成右键上下文菜单
     void DisplayDesktopContextMenu();
+    bool prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenuCommandSession& session);
 
     void DisplayBoxBackgroundContextMenu();
 

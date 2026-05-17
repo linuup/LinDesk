@@ -1,13 +1,14 @@
 #include "pch.h"
 
-#include <sstream>
-
+namespace wdj = winrt::Windows::Data::Json;
 namespace wf = winrt::Windows::Foundation;
+namespace ws = winrt::Windows::System;
 namespace wu = winrt::Windows::UI;
 namespace wux = winrt::Windows::UI::Xaml;
 namespace wuxc = winrt::Windows::UI::Xaml::Controls;
 namespace wuxcp = winrt::Windows::UI::Xaml::Controls::Primitives;
 namespace wuxh = winrt::Windows::UI::Xaml::Hosting;
+namespace wuxinput = winrt::Windows::UI::Xaml::Input;
 namespace wuxi = winrt::Windows::UI::Xaml::Interop;
 namespace wuxm = winrt::Windows::UI::Xaml::Media;
 namespace wuxmi = winrt::Windows::UI::Xaml::Media::Imaging;
@@ -15,16 +16,26 @@ namespace wuxmi = winrt::Windows::UI::Xaml::Media::Imaging;
 namespace
 {
     constexpr wchar_t kWindowClassName[] = L"LinDeskWin11MenuIslandHost";
-    constexpr UINT_PTR kShowMenuTimerId = 1;
+    constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\LinDesk.Win11MenuHost";
+    constexpr UINT kShowMenuMessage = WM_APP + 41;
     constexpr int kAnchorWindowSize = 8;
+    constexpr DWORD kMaxMessageSize = 1024 * 1024;
 
     struct AppState
     {
         HWND hostWindow{};
         HWND islandWindow{};
-        POINT initialPoint{};
+        POINT requestedPoint{};
         std::filesystem::path assetDirectory;
+        std::wstring requestId;
+        std::wstring pendingRequestJson;
+        HANDLE currentPipe{ INVALID_HANDLE_VALUE };
+        HANDLE parentProcess{ nullptr };
+        HANDLE responseSentEvent{ nullptr };
+        std::mutex pipeMutex;
+        std::atomic_bool shutdownRequested{ false };
         bool menuShown{};
+        bool responseSent{};
         wuxh::WindowsXamlManager xamlManager{ nullptr };
         wuxh::DesktopWindowXamlSource desktopSource{ nullptr };
         wuxc::Grid root{ nullptr };
@@ -62,6 +73,98 @@ namespace
         return {};
     }
 
+    struct LaunchOptions
+    {
+        bool launchedByLinDesk{};
+        DWORD parentPid{};
+    };
+
+    LaunchOptions ParseLaunchOptions()
+    {
+        LaunchOptions options;
+        int argc = 0;
+        PWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (!argv)
+        {
+            return options;
+        }
+
+        for (int i = 1; i < argc; ++i)
+        {
+            if (wcscmp(argv[i], L"--lindesk-menu-host") == 0)
+            {
+                options.launchedByLinDesk = true;
+            }
+            else if (wcscmp(argv[i], L"--parent-pid") == 0 && i + 1 < argc)
+            {
+                options.parentPid = wcstoul(argv[i + 1], nullptr, 10);
+                ++i;
+            }
+        }
+
+        LocalFree(argv);
+        return options;
+    }
+
+    HANDLE OpenValidatedLinDeskParentProcess(const LaunchOptions& options)
+    {
+        if (!options.launchedByLinDesk || options.parentPid == 0 || options.parentPid == GetCurrentProcessId())
+        {
+            return nullptr;
+        }
+
+        HANDLE parentProcess = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, options.parentPid);
+        if (!parentProcess)
+        {
+            return nullptr;
+        }
+
+        std::wstring processPath(MAX_PATH, L'\0');
+        DWORD pathLength = static_cast<DWORD>(processPath.size());
+        while (!QueryFullProcessImageNameW(parentProcess, 0, processPath.data(), &pathLength))
+        {
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+            {
+                CloseHandle(parentProcess);
+                return nullptr;
+            }
+
+            processPath.resize(processPath.size() * 2, L'\0');
+            pathLength = static_cast<DWORD>(processPath.size());
+        }
+
+        processPath.resize(pathLength);
+        const std::wstring fileName = std::filesystem::path(processPath).filename().wstring();
+        if (_wcsicmp(fileName.c_str(), L"LinDesk.exe") != 0)
+        {
+            CloseHandle(parentProcess);
+            return nullptr;
+        }
+
+        return parentProcess;
+    }
+
+    void StartParentProcessWatch(HANDLE parentProcess)
+    {
+        if (!parentProcess)
+        {
+            return;
+        }
+
+        g_state.parentProcess = parentProcess;
+        std::thread([parentProcess]() {
+            const DWORD waitResult = WaitForSingleObject(parentProcess, INFINITE);
+            if (waitResult == WAIT_OBJECT_0 && !g_state.shutdownRequested.load())
+            {
+                g_state.shutdownRequested.store(true);
+                if (g_state.hostWindow)
+                {
+                    PostMessageW(g_state.hostWindow, WM_CLOSE, 0, 0);
+                }
+            }
+        }).detach();
+    }
+
     std::wstring ToFileUri(std::filesystem::path path)
     {
         path.make_preferred();
@@ -70,57 +173,158 @@ namespace
         return L"file:///" + value;
     }
 
-    std::wstring FormatHresultText(HRESULT hr)
+    std::wstring Utf8ToWide(std::string_view value)
     {
-        wchar_t* systemText = nullptr;
-        const DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-        const DWORD lang = MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT);
-        std::wstring result;
-
-        if (FormatMessageW(flags, nullptr, static_cast<DWORD>(hr), lang, reinterpret_cast<LPWSTR>(&systemText), 0, nullptr) && systemText)
+        if (value.empty())
         {
-            result = systemText;
-            LocalFree(systemText);
+            return {};
         }
 
-        while (!result.empty() && (result.back() == L'\r' || result.back() == L'\n' || result.back() == L' '))
+        const int size = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+        if (size <= 0)
         {
-            result.pop_back();
+            return {};
         }
 
+        std::wstring result(size, L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), size);
         return result;
     }
 
-    [[noreturn]] void ThrowDetailedHresult(HRESULT hr, wchar_t const* step)
+    std::string WideToUtf8(std::wstring_view value)
     {
-        std::wostringstream stream;
-        stream << step;
-        const std::wstring systemText = FormatHresultText(hr);
-        if (!systemText.empty())
+        if (value.empty())
         {
-            stream << L": " << systemText;
+            return {};
         }
-        throw winrt::hresult_error(hr, winrt::hstring(stream.str()));
+
+        const int size = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+        if (size <= 0)
+        {
+            return {};
+        }
+
+        std::string result(size, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), result.data(), size, nullptr, nullptr);
+        return result;
     }
 
-    void ExitMenuHost()
+    std::wstring JsonEscape(std::wstring_view value)
     {
-        PostQuitMessage(0);
+        std::wstring result;
+        result.reserve(value.size() + 8);
+        for (wchar_t ch : value)
+        {
+            switch (ch)
+            {
+            case L'\\':
+                result += L"\\\\";
+                break;
+            case L'"':
+                result += L"\\\"";
+                break;
+            case L'\r':
+                result += L"\\r";
+                break;
+            case L'\n':
+                result += L"\\n";
+                break;
+            case L'\t':
+                result += L"\\t";
+                break;
+            default:
+                result += ch;
+                break;
+            }
+        }
+        return result;
     }
 
-    wu::Color MakeColor(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
+    bool WriteAll(HANDLE pipe, const void* data, DWORD size)
     {
-        return wu::Color{ a, r, g, b };
+        const char* cursor = static_cast<const char*>(data);
+        DWORD remaining = size;
+        while (remaining > 0)
+        {
+            DWORD written = 0;
+            if (!WriteFile(pipe, cursor, remaining, &written, nullptr) || written == 0)
+            {
+                return false;
+            }
+            cursor += written;
+            remaining -= written;
+        }
+        return true;
+    }
+
+    bool ReadAll(HANDLE pipe, void* data, DWORD size)
+    {
+        char* cursor = static_cast<char*>(data);
+        DWORD remaining = size;
+        while (remaining > 0)
+        {
+            DWORD read = 0;
+            if (!ReadFile(pipe, cursor, remaining, &read, nullptr) || read == 0)
+            {
+                return false;
+            }
+            cursor += read;
+            remaining -= read;
+        }
+        return true;
+    }
+
+    bool WriteMessage(HANDLE pipe, const std::string& payload)
+    {
+        if (payload.empty() || payload.size() > kMaxMessageSize)
+        {
+            return false;
+        }
+
+        const uint32_t length = static_cast<uint32_t>(payload.size());
+        return WriteAll(pipe, &length, sizeof(length)) &&
+            WriteAll(pipe, payload.data(), length);
+    }
+
+    bool ReadMessage(HANDLE pipe, std::string* payload)
+    {
+        uint32_t length = 0;
+        if (!ReadAll(pipe, &length, sizeof(length)) || length == 0 || length > kMaxMessageSize)
+        {
+            return false;
+        }
+
+        std::string buffer(length, '\0');
+        if (!ReadAll(pipe, buffer.data(), length))
+        {
+            return false;
+        }
+
+        if (payload)
+        {
+            *payload = std::move(buffer);
+        }
+        return true;
+    }
+
+    std::wstring GetString(wdj::JsonObject const& object, wchar_t const* key, wchar_t const* fallback = L"")
+    {
+        return object.GetNamedString(key, fallback).c_str();
+    }
+
+    bool GetBool(wdj::JsonObject const& object, wchar_t const* key, bool fallback = false)
+    {
+        return object.GetNamedBoolean(key, fallback);
     }
 
     wuxm::SolidColorBrush MakeBrush(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
     {
-        return wuxm::SolidColorBrush(MakeColor(a, r, g, b));
+        return wuxm::SolidColorBrush(wu::Color{ a, r, g, b });
     }
 
-    wuxm::ImageSource CreateImageSource(wchar_t const* fileName)
+    wuxc::IconElement CreateMenuIcon(std::wstring const& fileName)
     {
-        if (!fileName || g_state.assetDirectory.empty())
+        if (fileName.empty() || g_state.assetDirectory.empty())
         {
             return nullptr;
         }
@@ -131,32 +335,56 @@ namespace
             return nullptr;
         }
 
-        wuxmi::BitmapImage image;
-        image.UriSource(wf::Uri(winrt::hstring(ToFileUri(path))));
-        return image;
-    }
-
-    wuxc::IconElement CreateMenuIcon(wchar_t const* fileName)
-    {
-        auto source = CreateImageSource(fileName);
-        if (!source)
-        {
-            return nullptr;
-        }
-
         wuxc::BitmapIcon icon;
-        icon.UriSource(wf::Uri(winrt::hstring(ToFileUri(g_state.assetDirectory / fileName))));
+        icon.UriSource(wf::Uri(winrt::hstring(ToFileUri(path))));
         icon.ShowAsMonochrome(false);
         return icon;
     }
 
-    void LogCommandAndExit(wchar_t const* commandId)
+    void SendMenuResult(std::wstring_view status, std::wstring_view commandId = {})
     {
-        std::wstring debugMessage = L"Win11MenuIsland command: ";
-        debugMessage += commandId;
-        debugMessage += L"\r\n";
-        OutputDebugStringW(debugMessage.c_str());
-        ExitMenuHost();
+        HANDLE pipe = INVALID_HANDLE_VALUE;
+        {
+            std::lock_guard<std::mutex> lock(g_state.pipeMutex);
+            if (g_state.responseSent)
+            {
+                return;
+            }
+            g_state.responseSent = true;
+            pipe = g_state.currentPipe;
+        }
+
+        if (pipe != INVALID_HANDLE_VALUE)
+        {
+            std::wostringstream response;
+            response << L"{\"type\":\"menuResult\",\"requestId\":\""
+                     << JsonEscape(g_state.requestId)
+                     << L"\",\"status\":\""
+                     << JsonEscape(status)
+                     << L"\"";
+            if (!commandId.empty())
+            {
+                response << L",\"commandId\":\"" << JsonEscape(commandId) << L"\"";
+            }
+            response << L"}";
+
+            const std::string responseUtf8 = WideToUtf8(response.str());
+            WriteMessage(pipe, responseUtf8);
+            FlushFileBuffers(pipe);
+            DisconnectNamedPipe(pipe);
+            CloseHandle(pipe);
+
+            std::lock_guard<std::mutex> lock(g_state.pipeMutex);
+            g_state.currentPipe = INVALID_HANDLE_VALUE;
+        }
+
+        if (g_state.responseSentEvent)
+        {
+            SetEvent(g_state.responseSentEvent);
+        }
+
+        ShowWindow(g_state.hostWindow, SW_HIDE);
+        g_state.menuShown = false;
     }
 
     void OnMenuItemClick(wf::IInspectable const& sender, wux::RoutedEventArgs const&)
@@ -165,23 +393,86 @@ namespace
         auto tag = winrt::unbox_value_or<winrt::hstring>(item.Tag(), L"");
         if (!tag.empty())
         {
-            LogCommandAndExit(tag.c_str());
+            SendMenuResult(L"accepted", tag.c_str());
         }
     }
 
-    wuxc::MenuFlyoutItem CreateActionItem(wchar_t const* text, wchar_t const* commandId, wchar_t const* iconName = nullptr, bool enabled = true)
+    void ApplyShortcut(wuxc::MenuFlyoutItemBase const& item, std::wstring const& shortcut)
     {
-        wuxc::MenuFlyoutItem item;
-        item.Text(text);
-        item.IsEnabled(enabled);
-        if (iconName)
+        if (shortcut.empty())
         {
-            auto icon = CreateMenuIcon(iconName);
-            if (icon)
+            return;
+        }
+
+        if (auto menuItem = item.try_as<wuxc::MenuFlyoutItem>())
+        {
+            menuItem.KeyboardAcceleratorTextOverride(winrt::hstring(shortcut));
+        }
+
+        ws::VirtualKey key = ws::VirtualKey::None;
+        if (shortcut == L"Ctrl+Shift+2")
+        {
+            key = ws::VirtualKey::Number2;
+        }
+        else if (shortcut == L"Ctrl+Shift+3")
+        {
+            key = ws::VirtualKey::Number3;
+        }
+        else if (shortcut == L"Ctrl+Shift+4")
+        {
+            key = ws::VirtualKey::Number4;
+        }
+
+        if (key == ws::VirtualKey::None)
+        {
+            return;
+        }
+
+        wuxinput::KeyboardAccelerator accelerator;
+        accelerator.Key(key);
+        accelerator.Modifiers(ws::VirtualKeyModifiers::Control | ws::VirtualKeyModifiers::Shift);
+        item.KeyboardAccelerators().Append(accelerator);
+    }
+
+    wuxc::MenuFlyoutItemBase CreateMenuItemFromJson(wdj::JsonObject const& data);
+
+    wuxc::MenuFlyoutItemBase CreateActionFromJson(wdj::JsonObject const& data)
+    {
+        const std::wstring text = GetString(data, L"text");
+        const std::wstring commandId = GetString(data, L"commandId");
+        const std::wstring iconName = GetString(data, L"icon");
+        const std::wstring shortcut = GetString(data, L"shortcut");
+        const bool enabled = GetBool(data, L"enabled", true);
+        const bool checkable = GetBool(data, L"checkable", false);
+        const bool checked = GetBool(data, L"checked", false);
+
+        if (checkable)
+        {
+            wuxc::ToggleMenuFlyoutItem item;
+            item.Text(winrt::hstring(text));
+            item.IsEnabled(enabled);
+            item.IsChecked(checked);
+            if (auto icon = CreateMenuIcon(iconName))
             {
                 item.Icon(icon);
             }
+            ApplyShortcut(item, shortcut);
+            if (enabled)
+            {
+                item.Tag(winrt::box_value(winrt::hstring(commandId)));
+                item.Click(OnMenuItemClick);
+            }
+            return item;
         }
+
+        wuxc::MenuFlyoutItem item;
+        item.Text(winrt::hstring(text));
+        item.IsEnabled(enabled);
+        if (auto icon = CreateMenuIcon(iconName))
+        {
+            item.Icon(icon);
+        }
+        ApplyShortcut(item, shortcut);
         if (enabled)
         {
             item.Tag(winrt::box_value(winrt::hstring(commandId)));
@@ -190,50 +481,41 @@ namespace
         return item;
     }
 
-    wuxc::MenuFlyoutSubItem CreateViewSubmenu()
+    wuxc::MenuFlyoutItemBase CreateSubmenuFromJson(wdj::JsonObject const& data)
     {
         wuxc::MenuFlyoutSubItem item;
-        item.Text(L"View");
-        if (auto icon = CreateMenuIcon(L"View.png"))
+        item.Text(winrt::hstring(GetString(data, L"text")));
+        if (auto icon = CreateMenuIcon(GetString(data, L"icon")))
         {
             item.Icon(icon);
         }
-        item.Items().Append(CreateActionItem(L"Large icons", L"view_large", L"LargeIcons.png"));
-        item.Items().Append(CreateActionItem(L"Medium icons", L"view_medium", L"MediumIcons.png"));
-        item.Items().Append(CreateActionItem(L"Small icons", L"view_small", L"SmallIcons.png"));
-        item.Items().Append(wuxc::MenuFlyoutSeparator{});
-        item.Items().Append(CreateActionItem(L"Auto arrange icons", L"auto_arrange_icons", L"AutoArrangeIcons.png"));
-        item.Items().Append(CreateActionItem(L"Show desktop icons", L"show_desktop_icons", L"ShowDesktopIcons.png"));
+
+        if (data.HasKey(L"items"))
+        {
+            auto children = data.GetNamedArray(L"items");
+            for (uint32_t i = 0; i < children.Size(); ++i)
+            {
+                if (children.GetAt(i).ValueType() == wdj::JsonValueType::Object)
+                {
+                    item.Items().Append(CreateMenuItemFromJson(children.GetAt(i).GetObject()));
+                }
+            }
+        }
         return item;
     }
 
-    wuxc::MenuFlyoutSubItem CreateSortSubmenu()
+    wuxc::MenuFlyoutItemBase CreateMenuItemFromJson(wdj::JsonObject const& data)
     {
-        wuxc::MenuFlyoutSubItem item;
-        item.Text(L"Sort by");
-        if (auto icon = CreateMenuIcon(L"SortBy.png"))
+        const std::wstring type = GetString(data, L"type", L"action");
+        if (type == L"separator")
         {
-            item.Icon(icon);
+            return wuxc::MenuFlyoutSeparator{};
         }
-        item.Items().Append(CreateActionItem(L"Name", L"sort_name"));
-        item.Items().Append(CreateActionItem(L"Size", L"sort_size"));
-        item.Items().Append(CreateActionItem(L"Item type", L"sort_type"));
-        item.Items().Append(CreateActionItem(L"Date modified", L"sort_date"));
-        return item;
-    }
-
-    wuxc::MenuFlyoutSubItem CreateNewSubmenu()
-    {
-        wuxc::MenuFlyoutSubItem item;
-        item.Text(L"New");
-        if (auto icon = CreateMenuIcon(L"New.png"))
+        if (type == L"submenu")
         {
-            item.Icon(icon);
+            return CreateSubmenuFromJson(data);
         }
-        item.Items().Append(CreateActionItem(L"Folder", L"new_folder"));
-        item.Items().Append(CreateActionItem(L"Shortcut", L"new_shortcut"));
-        item.Items().Append(CreateActionItem(L"Text Document", L"new_text"));
-        return item;
+        return CreateActionFromJson(data);
     }
 
     wux::Style CreateMenuPresenterStyle()
@@ -246,7 +528,7 @@ namespace
 
         wux::Setter backgroundSetter;
         backgroundSetter.Property(wuxc::Control::BackgroundProperty());
-        backgroundSetter.Value(MakeBrush(228, 243, 244, 247));
+        backgroundSetter.Value(MakeBrush(232, 243, 244, 247));
         style.Setters().Append(backgroundSetter);
 
         wux::Setter borderBrushSetter;
@@ -272,27 +554,29 @@ namespace
         return style;
     }
 
-    wuxc::MenuFlyout BuildMenu()
+    wuxc::MenuFlyout BuildMenuFromRequest(wdj::JsonObject const& request)
     {
         wuxc::MenuFlyout menu;
         menu.MenuFlyoutPresenterStyle(CreateMenuPresenterStyle());
-        menu.Items().Append(CreateViewSubmenu());
-        menu.Items().Append(CreateSortSubmenu());
-        menu.Items().Append(CreateActionItem(L"Refresh", L"refresh", L"Refresh.png"));
-        menu.Items().Append(wuxc::MenuFlyoutSeparator{});
-        menu.Items().Append(CreateActionItem(L"Paste", L"paste", nullptr, false));
-        menu.Items().Append(CreateActionItem(L"Paste shortcut", L"paste_shortcut", nullptr, false));
-        menu.Items().Append(CreateActionItem(L"Open in Terminal", L"open_terminal"));
-        menu.Items().Append(CreateNewSubmenu());
-        menu.Items().Append(wuxc::MenuFlyoutSeparator{});
-        menu.Items().Append(CreateActionItem(L"Display settings", L"display_settings", L"DisplaySettings.png"));
-        menu.Items().Append(CreateActionItem(L"Personalize", L"personalize", L"Personalize.png"));
-        menu.Items().Append(wuxc::MenuFlyoutSeparator{});
-        menu.Items().Append(CreateActionItem(L"Show more options", L"show_more_options", L"ShowMoreOptions.png"));
+
+        if (request.HasKey(L"items"))
+        {
+            auto items = request.GetNamedArray(L"items");
+            for (uint32_t i = 0; i < items.Size(); ++i)
+            {
+                if (items.GetAt(i).ValueType() == wdj::JsonValueType::Object)
+                {
+                    menu.Items().Append(CreateMenuItemFromJson(items.GetAt(i).GetObject()));
+                }
+            }
+        }
 
         menu.Closed([](wf::IInspectable const&, wf::IInspectable const&)
         {
-            ExitMenuHost();
+            if (!g_state.responseSent)
+            {
+                SendMenuResult(L"cancelled");
+            }
         });
 
         return menu;
@@ -301,12 +585,12 @@ namespace
     RECT CalculateHostRect()
     {
         RECT rect{};
-        rect.left = g_state.initialPoint.x;
-        rect.top = g_state.initialPoint.y;
+        rect.left = g_state.requestedPoint.x;
+        rect.top = g_state.requestedPoint.y;
         rect.right = rect.left + kAnchorWindowSize;
         rect.bottom = rect.top + kAnchorWindowSize;
 
-        HMONITOR monitor = MonitorFromPoint(g_state.initialPoint, MONITOR_DEFAULTTONEAREST);
+        HMONITOR monitor = MonitorFromPoint(g_state.requestedPoint, MONITOR_DEFAULTTONEAREST);
         MONITORINFO monitorInfo{};
         monitorInfo.cbSize = sizeof(monitorInfo);
         if (GetMonitorInfoW(monitor, &monitorInfo))
@@ -368,6 +652,25 @@ namespace
         g_state.menu.ShowAt(g_state.anchor, options);
     }
 
+    void HandleShowMenuRequest()
+    {
+        try
+        {
+            const auto request = wdj::JsonObject::Parse(winrt::hstring(g_state.pendingRequestJson));
+            g_state.requestId = GetString(request, L"requestId");
+            g_state.requestedPoint.x = static_cast<LONG>(request.GetNamedNumber(L"screenX", 0));
+            g_state.requestedPoint.y = static_cast<LONG>(request.GetNamedNumber(L"screenY", 0));
+            g_state.responseSent = false;
+            g_state.menuShown = false;
+            g_state.menu = BuildMenuFromRequest(request);
+            ShowMenuWindow();
+        }
+        catch (...)
+        {
+            SendMenuResult(L"failed");
+        }
+    }
+
     void InitializeIsland(HWND hwnd)
     {
         g_state.xamlManager = wuxh::WindowsXamlManager::InitializeForCurrentThread();
@@ -389,9 +692,90 @@ namespace
         g_state.anchor.VerticalAlignment(wux::VerticalAlignment::Top);
         g_state.root.Children().Append(g_state.anchor);
 
-        g_state.menu = BuildMenu();
         g_state.desktopSource.Content(g_state.root);
         ResizeIslandToHost();
+    }
+
+    void PipeServerLoop()
+    {
+        while (!g_state.shutdownRequested.load())
+        {
+            HANDLE pipe = CreateNamedPipeW(
+                kPipeName,
+                PIPE_ACCESS_DUPLEX,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                1,
+                kMaxMessageSize,
+                kMaxMessageSize,
+                0,
+                nullptr);
+
+            if (pipe == INVALID_HANDLE_VALUE)
+            {
+                Sleep(100);
+                continue;
+            }
+
+            const BOOL connected = ConnectNamedPipe(pipe, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+            if (!connected)
+            {
+                CloseHandle(pipe);
+                continue;
+            }
+
+            std::string requestUtf8;
+            if (!ReadMessage(pipe, &requestUtf8))
+            {
+                DisconnectNamedPipe(pipe);
+                CloseHandle(pipe);
+                continue;
+            }
+
+            const std::wstring requestJson = Utf8ToWide(requestUtf8);
+            bool shutdown = false;
+            try
+            {
+                const auto request = wdj::JsonObject::Parse(winrt::hstring(requestJson));
+                shutdown = GetString(request, L"type") == L"shutdown";
+            }
+            catch (...)
+            {
+                shutdown = false;
+            }
+
+            if (shutdown)
+            {
+                try
+                {
+                    const auto request = wdj::JsonObject::Parse(winrt::hstring(requestJson));
+                    g_state.requestId = GetString(request, L"requestId");
+                }
+                catch (...)
+                {
+                    g_state.requestId = L"";
+                }
+                {
+                    std::lock_guard<std::mutex> lock(g_state.pipeMutex);
+                    g_state.currentPipe = pipe;
+                    g_state.responseSent = false;
+                }
+                SendMenuResult(L"accepted");
+                g_state.shutdownRequested.store(true);
+                PostMessageW(g_state.hostWindow, WM_CLOSE, 0, 0);
+                break;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(g_state.pipeMutex);
+                g_state.pendingRequestJson = requestJson;
+                g_state.currentPipe = pipe;
+                g_state.responseSent = false;
+                ResetEvent(g_state.responseSentEvent);
+            }
+
+            PostMessageW(g_state.hostWindow, kShowMenuMessage, 0, 0);
+            WaitForSingleObject(g_state.responseSentEvent, INFINITE);
+        }
     }
 
     LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -403,24 +787,10 @@ namespace
             {
                 g_state.hostWindow = hwnd;
                 InitializeIsland(hwnd);
-                SetTimer(hwnd, kShowMenuTimerId, 30, nullptr);
                 return 0;
             }
-            catch (winrt::hresult_error const& ex)
+            catch (...)
             {
-                std::wostringstream text;
-                text << L"Failed to initialize XAML island.\r\n"
-                     << L"HRESULT: 0x" << std::hex << std::uppercase << static_cast<uint32_t>(ex.code()) << L"\r\n"
-                     << L"Message: " << ex.message().c_str();
-                MessageBoxW(hwnd, text.str().c_str(), L"Win11MenuIsland", MB_ICONERROR);
-                return -1;
-            }
-            catch (std::exception const& ex)
-            {
-                std::wstring exceptionMessage(ex.what(), ex.what() + strlen(ex.what()));
-                std::wstring text = L"Failed to initialize XAML island.\r\nMessage: ";
-                text += exceptionMessage;
-                MessageBoxW(hwnd, text.c_str(), L"Win11MenuIsland", MB_ICONERROR);
                 return -1;
             }
 
@@ -428,24 +798,25 @@ namespace
             ResizeIslandToHost();
             return 0;
 
-        case WM_TIMER:
-            if (wParam == kShowMenuTimerId)
-            {
-                KillTimer(hwnd, kShowMenuTimerId);
-                ShowMenuWindow();
-                return 0;
-            }
-            break;
+        case kShowMenuMessage:
+            HandleShowMenuRequest();
+            return 0;
 
         case WM_KEYDOWN:
             if (wParam == VK_ESCAPE)
             {
-                ExitMenuHost();
+                SendMenuResult(L"cancelled");
                 return 0;
             }
             break;
 
         case WM_DESTROY:
+            g_state.shutdownRequested.store(true);
+            if (g_state.parentProcess)
+            {
+                CloseHandle(g_state.parentProcess);
+                g_state.parentProcess = nullptr;
+            }
             g_state.menu = nullptr;
             g_state.anchor = nullptr;
             g_state.root = nullptr;
@@ -475,22 +846,34 @@ namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
-    winrt::init_apartment(winrt::apartment_type::single_threaded);
-
-    if (!RegisterHostClass(instance))
+    HANDLE parentProcess = OpenValidatedLinDeskParentProcess(ParseLaunchOptions());
+    if (!parentProcess)
     {
         return 0;
     }
 
-    GetCursorPos(&g_state.initialPoint);
+    winrt::init_apartment(winrt::apartment_type::single_threaded);
+
+    if (!RegisterHostClass(instance))
+    {
+        CloseHandle(parentProcess);
+        return 0;
+    }
+
+    g_state.responseSentEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    if (!g_state.responseSentEvent)
+    {
+        CloseHandle(parentProcess);
+        return 0;
+    }
 
     HWND hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         kWindowClassName,
         L"Win11MenuIsland",
         WS_POPUP,
-        g_state.initialPoint.x,
-        g_state.initialPoint.y,
+        0,
+        0,
         kAnchorWindowSize,
         kAnchorWindowSize,
         nullptr,
@@ -500,14 +883,26 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 
     if (!hwnd)
     {
+        CloseHandle(parentProcess);
+        CloseHandle(g_state.responseSentEvent);
         return 0;
     }
+
+    StartParentProcessWatch(parentProcess);
+
+    std::thread(PipeServerLoop).detach();
 
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0))
     {
         TranslateMessage(&message);
         DispatchMessageW(&message);
+    }
+
+    if (g_state.responseSentEvent)
+    {
+        CloseHandle(g_state.responseSentEvent);
+        g_state.responseSentEvent = nullptr;
     }
 
     winrt::uninit_apartment();

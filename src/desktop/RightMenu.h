@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QString>
 #include <QIcon>
+#include <QJsonArray>
 #include <QList>
 #include <vector>
 
@@ -36,6 +37,12 @@ public:
     static bool isWindows11SystemContextMenuSupported();
     static bool isWindows11SystemContextMenuEnabled();
     static void setWindows11SystemContextMenuEnabled(bool enabled);
+    static bool isNewBoxMenuItemEnabled();
+    static void setNewBoxMenuItemEnabled(bool enabled);
+    static bool isLinDeskMenuEnabled();
+    static void setLinDeskMenuEnabled(bool enabled);
+    static bool isThirdPartyShellMenuEnabled();
+    static void setThirdPartyShellMenuEnabled(bool enabled);
 
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);
     static std::vector<ShellContextMenu::CustomMenuItem> exportCustomMenuItems(
@@ -146,6 +153,10 @@ private:
     void applyCachedPasteActionsState() const;
     void refreshPasteActionsStateAsync() const;
     void connectClipboardStateRefresh();
+    bool showWindows11DesktopMenu(const QPoint& pos) const;
+    void showDefaultDesktopShellMenu(const QPoint& pos) const;
+    QJsonArray buildWindows11DesktopMenuItems(const ShellMenuCommandSession* shellSession = nullptr) const;
+    void handleWindows11MenuCommand(const QString& commandId, const QPoint& pos, ShellMenuCommandSession* shellSession = nullptr);
 
     ShellContextMenu* shellContextMenu = nullptr;
     HWND hwnd = nullptr;

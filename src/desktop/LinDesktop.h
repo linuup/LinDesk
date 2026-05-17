@@ -25,6 +25,7 @@
 #include <QCloseEvent>
 #include <QMetaObject>
 #include <QPointer>
+#include <QElapsedTimer>
 #include <windows.h>
 class LinDesktop : public QWidget {
     Q_OBJECT
@@ -67,6 +68,12 @@ public:
     void embedToDesktop();
     void unembedFromDesktop();
     bool isEmbedded() const { return m_isEmbedded; }
+    void startDesktopHostHealthCheck();
+    void checkDesktopHostHealth();
+    void recoverDesktopHost(HWND expectedHost, const QString& reason);
+    void forceDesktopRepaint();
+    bool isExpectedDesktopHostClass(HWND hwnd) const;
+    QString windowClassName(HWND hwnd) const;
 
 private:
     QString m_configPath;
@@ -97,6 +104,10 @@ private:
     QMetaObject::Connection m_screenGeometryChangedConnection;
     QMetaObject::Connection m_screenDpiChangedConnection;
     QMetaObject::Connection m_windowScreenChangedConnection;
+    QPointer<QTimer> m_desktopHostHealthTimer;
+    QElapsedTimer m_desktopHostHealthElapsed;
+    HWND m_desktopHostHwnd = nullptr;
+    bool m_desktopHostRecovering = false;
 
 private slots:
 

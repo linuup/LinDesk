@@ -1,5 +1,6 @@
 ﻿
 #include "ShellContextMenu.h"
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -113,7 +114,7 @@ void DebugLogTopLevelMenuItems(HMENU menu, const wchar_t* tag)
     }
 }
 
-int FindNewMenuInsertPosition(HMENU menu)
+int FindNewMenuPosition(HMENU menu)
 {
     if (!menu) {
         return -1;
@@ -121,20 +122,209 @@ int FindNewMenuInsertPosition(HMENU menu)
 
     const int newMenuPos = MenuHelper::FindMenuItem(menu, TEXT("Ne&w"));
     if (newMenuPos != -1) {
-        return newMenuPos + 1;
+        return newMenuPos;
     }
 
     const int plainNewMenuPos = MenuHelper::FindMenuItem(menu, TEXT("New"));
     if (plainNewMenuPos != -1) {
-        return plainNewMenuPos + 1;
+        return plainNewMenuPos;
     }
 
     const int cnNewMenuPos = MenuHelper::FindMenuItem(menu, TEXT("新建"));
     if (cnNewMenuPos != -1) {
-        return cnNewMenuPos + 1;
+        return cnNewMenuPos;
     }
 
     return -1;
+}
+
+int FindNewMenuInsertPosition(HMENU menu)
+{
+    const int newMenuPos = FindNewMenuPosition(menu);
+    return newMenuPos >= 0 ? newMenuPos + 1 : -1;
+}
+
+bool IsValidShellCommandId(UINT shellCommandId)
+{
+    return shellCommandId >= MIN_SHELL_MENU_ID && shellCommandId <= MAX_SHELL_MENU_ID;
+}
+
+bool HasActionItems(const std::vector<ShellMenuSnapshotItem>& items)
+{
+    for (const ShellMenuSnapshotItem& item : items) {
+        if (!item.isSeparator) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void TrimSnapshotSeparators(std::vector<ShellMenuSnapshotItem>& items)
+{
+    while (!items.empty() && items.front().isSeparator) {
+        items.erase(items.begin());
+    }
+    while (!items.empty() && items.back().isSeparator) {
+        items.pop_back();
+    }
+    for (int i = static_cast<int>(items.size()) - 1; i > 0; --i) {
+        if (items[i].isSeparator && items[i - 1].isSeparator) {
+            items.erase(items.begin() + i);
+        }
+    }
+}
+
+std::wstring NormalizeMenuTextForFilter(const std::wstring& text)
+{
+    std::wstring normalized;
+    normalized.reserve(text.size());
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        wchar_t ch = text[i];
+        if (ch == L'\t') {
+            break;
+        }
+        if (ch == L'&') {
+            continue;
+        }
+        if (ch == L'(' && i + 2 < text.size() && text[i + 1] == L'&') {
+            while (i < text.size() && text[i] != L')') {
+                ++i;
+            }
+            continue;
+        }
+        normalized.push_back(static_cast<wchar_t>(std::towlower(ch)));
+    }
+
+    const auto isSpace = [](wchar_t ch) { return std::iswspace(ch) != 0; };
+    while (!normalized.empty() && isSpace(normalized.front())) {
+        normalized.erase(normalized.begin());
+    }
+    while (!normalized.empty() && isSpace(normalized.back())) {
+        normalized.pop_back();
+    }
+
+    return normalized;
+}
+
+bool IsSystemDesktopBackgroundMenuText(const std::wstring& text)
+{
+    const std::wstring normalizedText = NormalizeMenuTextForFilter(text);
+    if (normalizedText.empty()) {
+        return true;
+    }
+
+    const wchar_t* systemMenuTexts[] = {
+        L"View",
+        L"查看",
+        L"Sort by",
+        L"排序方式",
+        L"排序",
+        L"Refresh",
+        L"刷新",
+        L"Paste",
+        L"粘贴",
+        L"Paste shortcut",
+        L"粘贴快捷方式",
+        L"New",
+        L"新建",
+        L"Browse background",
+        L"浏览背景",
+        L"Next background",
+        L"下一个背景",
+        L"Next desktop background",
+        L"下一个桌面背景",
+        L"Display settings",
+        L"显示设置",
+        L"Personalize",
+        L"个性化",
+        L"Show more options",
+        L"显示更多选项",
+        L"Open in Terminal",
+        L"在终端中打开",
+        L"Open in Windows Terminal",
+        L"在 Windows 终端中打开",
+        L"Open Windows Terminal here",
+        L"Desktop organizer",
+        L"Organize Desktop",
+        L"整理桌面"
+    };
+
+    for (const wchar_t* systemText : systemMenuTexts) {
+        if (normalizedText == NormalizeMenuTextForFilter(systemText)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void AppendMenuSnapshotItems(HMENU menu,
+    IContextMenu3* contextMenu,
+    std::vector<ShellMenuSnapshotItem>& outputItems,
+    std::map<std::string, UINT>& commandMap,
+    const char* commandPrefix,
+    bool filterSystemItems)
+{
+    if (!menu) {
+        return;
+    }
+
+    const int itemCount = GetMenuItemCount(menu);
+    for (int i = 0; i < itemCount; ++i) {
+        wchar_t textBuffer[512] = {};
+        MENUITEMINFOW itemInfo = {};
+        itemInfo.cbSize = sizeof(itemInfo);
+        itemInfo.fMask = MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_STRING | MIIM_BITMAP | MIIM_SUBMENU;
+        itemInfo.dwTypeData = textBuffer;
+        itemInfo.cch = ARRAYSIZE(textBuffer);
+
+        if (!GetMenuItemInfoW(menu, static_cast<UINT>(i), TRUE, &itemInfo)) {
+            continue;
+        }
+
+        ShellMenuSnapshotItem snapshotItem;
+        snapshotItem.isSeparator = (itemInfo.fType & MFT_SEPARATOR) == MFT_SEPARATOR;
+        if (snapshotItem.isSeparator) {
+            outputItems.push_back(snapshotItem);
+            continue;
+        }
+
+        snapshotItem.text = textBuffer;
+        if (filterSystemItems && IsSystemDesktopBackgroundMenuText(snapshotItem.text)) {
+            continue;
+        }
+
+        snapshotItem.enabled = (itemInfo.fState & (MFS_DISABLED | MFS_GRAYED)) == 0;
+        snapshotItem.checked = (itemInfo.fState & MFS_CHECKED) == MFS_CHECKED;
+        snapshotItem.hBitmap = itemInfo.hbmpItem;
+
+        if (itemInfo.hSubMenu) {
+            if (contextMenu) {
+                contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
+                    reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
+                    MAKELPARAM(i, FALSE),
+                    nullptr);
+            }
+            AppendMenuSnapshotItems(itemInfo.hSubMenu, contextMenu, snapshotItem.children, commandMap, commandPrefix, false);
+            TrimSnapshotSeparators(snapshotItem.children);
+            if (!HasActionItems(snapshotItem.children)) {
+                continue;
+            }
+            outputItems.push_back(snapshotItem);
+            continue;
+        }
+
+        if (!IsValidShellCommandId(itemInfo.wID)) {
+            continue;
+        }
+
+        snapshotItem.commandId = std::string(commandPrefix) + std::to_string(itemInfo.wID);
+        commandMap[snapshotItem.commandId] = itemInfo.wID;
+        outputItems.push_back(snapshotItem);
+    }
+
+    TrimSnapshotSeparators(outputItems);
 }
 
 void KeepOnlyNewMenuForBoxBackground(HMENU menu)
@@ -490,6 +680,106 @@ std::optional<std::string> ShellContextMenu::MaybeGetFilesystemDirectory() const
     return Tool::WstrToStr(parsingPath.get());
 }
 
+ShellMenuCommandSession::~ShellMenuCommandSession()
+{
+    reset();
+}
+
+void ShellMenuCommandSession::reset()
+{
+    m_newItems.clear();
+    m_thirdPartyItems.clear();
+    m_commandMap.clear();
+    m_directory.reset();
+    m_contextMenu.reset();
+    if (m_menu) {
+        DestroyMenu(m_menu);
+        m_menu = nullptr;
+    }
+}
+
+bool ShellMenuCommandSession::invokeShellCommand(const std::string& commandId, HWND hwnd, const std::optional<std::string>& directoryOverride)
+{
+    if (!m_contextMenu || commandId.empty()) {
+        return false;
+    }
+
+    const auto commandIt = m_commandMap.find(commandId);
+    if (commandIt == m_commandMap.end() || !IsValidShellCommandId(commandIt->second)) {
+        return false;
+    }
+
+    const std::optional<std::string>& directory = directoryOverride ? directoryOverride : m_directory;
+    CMINVOKECOMMANDINFO commandInfo = {};
+    commandInfo.cbSize = sizeof(commandInfo);
+    commandInfo.fMask = 0;
+    commandInfo.hwnd = hwnd;
+    commandInfo.lpVerb = reinterpret_cast<LPCSTR>(MAKEINTRESOURCE(commandIt->second - MIN_SHELL_MENU_ID));
+    commandInfo.lpDirectory = directory ? directory->c_str() : nullptr;
+    commandInfo.nShow = SW_SHOWNORMAL;
+    return SUCCEEDED(m_contextMenu->InvokeCommand(&commandInfo));
+}
+
+bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenuCommandSession& session)
+{
+    session.reset();
+    if (!hwnd) {
+        return false;
+    }
+
+    DisplayDesktopContextMenu();
+    operationType = OperationType::BackGround;
+    m_contextMenu = MaybeGetShellContextMenu(hwnd);
+    if (!m_contextMenu) {
+        return false;
+    }
+
+    wil::unique_hmenu hMenu(CreatePopupMenu());
+    if (!hMenu) {
+        return false;
+    }
+
+    const HRESULT queryHr = m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
+        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+    if (FAILED(queryHr)) {
+        return false;
+    }
+
+    RemoveTencentDeskGoMenu(hMenu.get());
+
+    AppendMenuSnapshotItems(hMenu.get(),
+        m_contextMenu.get(),
+        session.m_thirdPartyItems,
+        session.m_commandMap,
+        "shell_external:",
+        true);
+
+    const int newMenuPos = FindNewMenuPosition(hMenu.get());
+    if (newMenuPos >= 0) {
+        MENUITEMINFOW newMenuInfo = {};
+        newMenuInfo.cbSize = sizeof(newMenuInfo);
+        newMenuInfo.fMask = MIIM_SUBMENU;
+        if (GetMenuItemInfoW(hMenu.get(), static_cast<UINT>(newMenuPos), TRUE, &newMenuInfo) && newMenuInfo.hSubMenu) {
+            m_contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
+                reinterpret_cast<WPARAM>(newMenuInfo.hSubMenu),
+                MAKELPARAM(newMenuPos, FALSE),
+                nullptr);
+
+            AppendMenuSnapshotItems(newMenuInfo.hSubMenu,
+                m_contextMenu.get(),
+                session.m_newItems,
+                session.m_commandMap,
+                "shell_new:",
+                false);
+        }
+    }
+
+    session.m_contextMenu = m_contextMenu;
+    session.m_directory = MaybeGetFilesystemDirectory();
+    session.m_menu = hMenu.release();
+    return true;
+}
+
 void ShellContextMenu::RemoveTencentDeskGoMenu(HMENU hmenu)
 {
 
@@ -677,7 +967,11 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         DebugLogTopLevelMenuItems(hMenu.get(), L"BoxContextMenu");
     }
 
-    UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+
+    UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
+    PostMessage(hwnd, WM_NULL, 0, 0);
     if (cmd == 0)
     {
         return;

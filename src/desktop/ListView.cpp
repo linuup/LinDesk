@@ -7945,6 +7945,37 @@ bool ListView::createNewFolderInHost(LinBox* targetBox)
     return true;
 }
 
+bool ListView::createNewTextDocumentInHost()
+{
+    if (RenameManager::instance()->isRenaming()) {
+        return false;
+    }
+
+    const QString targetDirectory = normalizeDesktopPath(m_desktopDir);
+    if (targetDirectory.isEmpty()) {
+        return false;
+    }
+
+    const QString templatePath = QDir(targetDirectory).filePath(tr("New Text Document.txt"));
+    const QString newTextPath = ListViewFileOpsHelper::uniquePasteDestinationPath(templatePath, targetDirectory);
+    if (newTextPath.isEmpty()) {
+        return false;
+    }
+
+    if (!m_iconShowRule.autoArrange) {
+        reserveCreatedItemPosition(newTextPath, generateItemPosition());
+    }
+
+    QFile file(newTextPath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        m_pendingCreatedItemPositions.remove(normalizeDesktopPath(newTextPath));
+        return false;
+    }
+
+    file.close();
+    return true;
+}
+
 void ListView::onMenuDelete(bool permanently)
 {
     std::vector<std::wstring> paths;

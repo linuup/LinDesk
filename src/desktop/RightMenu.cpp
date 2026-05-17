@@ -1,14 +1,15 @@
 #pragma once
 #include "desktop/RightMenu.h"
 #include "desktop/ListViewFileOpsHelper.h"
+#include "desktop/Win11MenuBridge.h"
 #include "app/AppFonts.h"
 #include "services/AppPaths.h"
 #include "ui/Fluent/FluentDialog.h"
+#include <QCoreApplication>
 #include <QMenu>
 #include <QDebug>
 #include "../SystemApi/SystemApi.h"
 #include <QProcess>
-#include <qstandardpaths.h>
 #include "../SystemApi/Tool.h"
 #include <QtWinExtras/QtWin>
 #include <QGuiApplication>
@@ -18,14 +19,23 @@
 #include <QApplication>
 #include <QStyle>
 #include <QPainter>
+#include <QDir>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QOperatingSystemVersion>
 #include <QTimer>
 #include <Windows.h>
+#include <functional>
+#include <shellapi.h>
+#include <shobjidl.h>
 
 namespace {
 constexpr DWORD kClipboardPreferredDropEffectMove = 0x00000002;
 constexpr int kWindows11BuildNumber = 22000;
 const char kWindows11ContextMenuConfigKey[] = "Desktop/UseWindows11SystemContextMenu";
+const char kShowNewBoxMenuConfigKey[] = "Desktop/ShowNewBoxMenu";
+const char kShowLinDeskMenuConfigKey[] = "Desktop/ShowLinDeskMenu";
+const char kShowThirdPartyShellMenuConfigKey[] = "Desktop/ShowThirdPartyShellMenu";
 
 QString rightMenuConfigPath()
 {
@@ -52,6 +62,19 @@ QString shellMenuText(const char* englishSource, const char* chineseUtf8)
         : QString::fromUtf8(englishSource);
 }
 
+bool boolMenuSetting(const char* key, bool defaultValue)
+{
+    QSettings settings(rightMenuConfigPath(), QSettings::IniFormat);
+    return settings.value(QString::fromLatin1(key), defaultValue).toBool();
+}
+
+void setBoolMenuSetting(const char* key, bool enabled)
+{
+    QSettings settings(rightMenuConfigPath(), QSettings::IniFormat);
+    settings.setValue(QString::fromLatin1(key), enabled);
+    settings.sync();
+}
+
 bool isSupportedSpecialFolderMenu(SpecialFolders folder)
 {
     return folder == SpecialFolders::ThisPc ||
@@ -60,15 +83,119 @@ bool isSupportedSpecialFolderMenu(SpecialFolders folder)
         folder == SpecialFolders::Network ||
         folder == SpecialFolders::UserFolder;
 }
+
+void openUriWithShell(const wchar_t* uri)
+{
+    if (!uri || !*uri) {
+        return;
+    }
+
+    const HINSTANCE result = ShellExecuteW(nullptr, L"open", uri, nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32) {
+        qWarning() << "[RightMenu] ShellExecute failed for uri";
+    }
+}
+
+void advanceDesktopWallpaper()
+{
+    const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool shouldUninit = SUCCEEDED(initHr);
+    if (FAILED(initHr) && initHr != RPC_E_CHANGED_MODE) {
+        qWarning() << "[RightMenu] CoInitializeEx failed for wallpaper advance:" << Qt::hex << initHr;
+        return;
+    }
+
+    IDesktopWallpaper* wallpaper = nullptr;
+    const HRESULT createHr = CoCreateInstance(CLSID_DesktopWallpaper,
+        nullptr,
+        CLSCTX_ALL,
+        IID_IDesktopWallpaper,
+        reinterpret_cast<void**>(&wallpaper));
+    if (SUCCEEDED(createHr) && wallpaper) {
+        const HRESULT advanceHr = wallpaper->AdvanceSlideshow(nullptr, DSD_FORWARD);
+        if (FAILED(advanceHr)) {
+            qWarning() << "[RightMenu] AdvanceSlideshow failed:" << Qt::hex << advanceHr;
+        }
+        wallpaper->Release();
+    } else {
+        qWarning() << "[RightMenu] Failed to create IDesktopWallpaper:" << Qt::hex << createHr;
+    }
+
+    if (shouldUninit) {
+        CoUninitialize();
+    }
+}
+
+QString sanitizeIconFileName(QString value)
+{
+    for (QChar& ch : value) {
+        if (!ch.isLetterOrNumber()) {
+            ch = QLatin1Char('_');
+        }
+    }
+    return value;
+}
+
+bool isUsableMenuBitmap(HBITMAP bitmap)
+{
+    const quintptr rawValue = reinterpret_cast<quintptr>(bitmap);
+    return bitmap && rawValue > 16 && rawValue != static_cast<quintptr>(-1);
+}
+
+QString saveShellMenuBitmapIcon(HBITMAP bitmap, const QString& commandId, const QString& prefix)
+{
+    if (!isUsableMenuBitmap(bitmap)) {
+        return QString();
+    }
+
+    QPixmap pixmap = QtWin::fromHBITMAP(bitmap, QtWin::HBitmapAlpha);
+    if (pixmap.isNull()) {
+        return QString();
+    }
+
+    const QString fileName = QStringLiteral("%1_%2.png").arg(prefix, sanitizeIconFileName(commandId));
+    const QString basePath = QCoreApplication::applicationDirPath() + QStringLiteral("/Win11ContextMenu");
+    const QStringList themeFolders = {
+        basePath + QStringLiteral("/light"),
+        basePath + QStringLiteral("/dark")
+    };
+
+    bool saved = false;
+    const QPixmap normalizedPixmap = pixmap.size().width() > 32 || pixmap.size().height() > 32
+        ? pixmap.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+        : pixmap;
+
+    for (const QString& folderPath : themeFolders) {
+        QDir dir(folderPath);
+        if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+            continue;
+        }
+        saved = normalizedPixmap.save(dir.filePath(fileName), "PNG") || saved;
+    }
+
+    return saved ? fileName : QString();
+}
+
+QString shellMenuDisplayText(const std::wstring& text)
+{
+    QString displayText = QString::fromStdWString(text);
+    displayText.remove(QLatin1Char('&'));
+    return displayText;
+}
 }
 
 bool RightMenu::isWindows11SystemContextMenuSupported()
 {
+#if defined(_DEBUG)
+    return true;
+#else
     return isWindows11OrNewer();
+#endif
 }
 
 RightMenu::~RightMenu()
 {
+    Win11MenuBridge::shutdownHost();
     invalidateCustomMenuCaches();
 }
 
@@ -95,9 +222,44 @@ bool RightMenu::isWindows11SystemContextMenuEnabled()
 void RightMenu::setWindows11SystemContextMenuEnabled(bool enabled)
 {
     QSettings settings(rightMenuConfigPath(), QSettings::IniFormat);
-    settings.setValue(QString::fromLatin1(kWindows11ContextMenuConfigKey),
-        isWindows11SystemContextMenuSupported() && enabled);
+    const bool finalEnabled = isWindows11SystemContextMenuSupported() && enabled;
+    settings.setValue(QString::fromLatin1(kWindows11ContextMenuConfigKey), finalEnabled);
     settings.sync();
+    if (!finalEnabled) {
+        Win11MenuBridge::shutdownHost();
+    }
+}
+
+bool RightMenu::isNewBoxMenuItemEnabled()
+{
+    return boolMenuSetting(kShowNewBoxMenuConfigKey, true);
+}
+
+void RightMenu::setNewBoxMenuItemEnabled(bool enabled)
+{
+    setBoolMenuSetting(kShowNewBoxMenuConfigKey, enabled);
+    getInstance()->invalidateCustomMenuCaches();
+}
+
+bool RightMenu::isLinDeskMenuEnabled()
+{
+    return boolMenuSetting(kShowLinDeskMenuConfigKey, true);
+}
+
+void RightMenu::setLinDeskMenuEnabled(bool enabled)
+{
+    setBoolMenuSetting(kShowLinDeskMenuConfigKey, enabled);
+    getInstance()->invalidateCustomMenuCaches();
+}
+
+bool RightMenu::isThirdPartyShellMenuEnabled()
+{
+    return boolMenuSetting(kShowThirdPartyShellMenuConfigKey, true);
+}
+
+void RightMenu::setThirdPartyShellMenuEnabled(bool enabled)
+{
+    setBoolMenuSetting(kShowThirdPartyShellMenuConfigKey, enabled);
 }
   
 QMenu* RightMenu::createSortBySubMenu()
@@ -558,6 +720,251 @@ const std::vector<ShellContextMenu::CustomMenuItem>& RightMenu::sharedBoxCustomM
     return m_cachedSharedBoxMenuData.items;
 }
 
+QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSession* shellSession) const
+{
+    auto actionItem = [](const QString& text,
+                         const QString& commandId,
+                         bool enabled = true,
+                         bool checkable = false,
+                         bool checked = false,
+                         const QString& icon = QString(),
+                         const QString& shortcut = QString()) {
+        QJsonObject item;
+        item.insert(QStringLiteral("type"), QStringLiteral("action"));
+        item.insert(QStringLiteral("text"), text);
+        item.insert(QStringLiteral("commandId"), commandId);
+        item.insert(QStringLiteral("enabled"), enabled);
+        item.insert(QStringLiteral("checkable"), checkable);
+        item.insert(QStringLiteral("checked"), checked);
+        if (!icon.isEmpty()) {
+            item.insert(QStringLiteral("icon"), icon);
+        }
+        if (!shortcut.isEmpty()) {
+            item.insert(QStringLiteral("shortcut"), shortcut);
+        }
+        return item;
+    };
+
+    auto separatorItem = []() {
+        QJsonObject item;
+        item.insert(QStringLiteral("type"), QStringLiteral("separator"));
+        return item;
+    };
+
+    auto submenuItem = [](const QString& text, const QJsonArray& children, const QString& icon = QString()) {
+        QJsonObject item;
+        item.insert(QStringLiteral("type"), QStringLiteral("submenu"));
+        item.insert(QStringLiteral("text"), text);
+        item.insert(QStringLiteral("items"), children);
+        if (!icon.isEmpty()) {
+            item.insert(QStringLiteral("icon"), icon);
+        }
+        return item;
+    };
+
+    auto snapshotItemsToJson = [&](const std::vector<ShellMenuSnapshotItem>& snapshotItems, const QString& iconPrefix) {
+        std::function<QJsonObject(const ShellMenuSnapshotItem&)> convertItem;
+        convertItem = [&](const ShellMenuSnapshotItem& item) {
+            if (item.isSeparator) {
+                return separatorItem();
+            }
+
+            const QString iconKey = item.commandId.empty()
+                ? QString::fromStdWString(item.text)
+                : QString::fromStdString(item.commandId);
+            const QString icon = saveShellMenuBitmapIcon(item.hBitmap, iconKey, iconPrefix);
+
+            if (!item.children.empty()) {
+                QJsonArray childItems;
+                for (const ShellMenuSnapshotItem& child : item.children) {
+                    childItems.append(convertItem(child));
+                }
+                return submenuItem(shellMenuDisplayText(item.text), childItems, icon);
+            }
+
+            return actionItem(shellMenuDisplayText(item.text),
+                QString::fromStdString(item.commandId),
+                item.enabled,
+                false,
+                item.checked,
+                icon);
+        };
+
+        QJsonArray result;
+        for (const ShellMenuSnapshotItem& item : snapshotItems) {
+            result.append(convertItem(item));
+        }
+        return result;
+    };
+
+    QJsonArray viewItems;
+    viewItems.append(actionItem(shellMenuText("Large icons", "大图标"), QStringLiteral("view_large"), true, true, m_largeIconsAction && m_largeIconsAction->isChecked(), QStringLiteral("LargeIcons.png"), QStringLiteral("Ctrl+Shift+2")));
+    viewItems.append(actionItem(shellMenuText("Medium icons", "中等图标"), QStringLiteral("view_medium"), true, true, m_mediumIconsAction && m_mediumIconsAction->isChecked(), QStringLiteral("MediumIcons.png"), QStringLiteral("Ctrl+Shift+3")));
+    viewItems.append(actionItem(shellMenuText("Small icons", "小图标"), QStringLiteral("view_small"), true, true, m_smallIconsAction && m_smallIconsAction->isChecked(), QStringLiteral("SmallIcons.png"), QStringLiteral("Ctrl+Shift+4")));
+    viewItems.append(separatorItem());
+    viewItems.append(actionItem(shellMenuText("Auto arrange icons", "自动排列图标"), QStringLiteral("auto_arrange_icons"), true, true, m_autoArrangeIconsAction && m_autoArrangeIconsAction->isChecked(), QStringLiteral("AutoArrangeIcons.png")));
+    viewItems.append(actionItem(shellMenuText("Align icons to grid", "将图标与网格对齐"), QStringLiteral("align_icons_to_grid"), true, true, m_alignIconsToGridAction && m_alignIconsToGridAction->isChecked()));
+    viewItems.append(separatorItem());
+    viewItems.append(actionItem(shellMenuText("Show desktop icons", "显示桌面图标"), QStringLiteral("show_desktop_icons"), true, true, m_showDesktopIconsAction && m_showDesktopIconsAction->isChecked(), QStringLiteral("ShowDesktopIcons.png")));
+    viewItems.append(actionItem(shellMenuText("Double click to hide icons", "双击隐藏图标"), QStringLiteral("double_click_hide_icons"), true, true, m_doubleClickedHideIconsAction && m_doubleClickedHideIconsAction->isChecked()));
+
+    QJsonArray sortItems;
+    sortItems.append(actionItem(shellMenuText("Name", "名称"), QStringLiteral("sort_name"), true, true, m_sortByNameAction && m_sortByNameAction->isChecked()));
+    sortItems.append(actionItem(shellMenuText("Size", "大小"), QStringLiteral("sort_size"), true, true, m_sortBySizeAction && m_sortBySizeAction->isChecked()));
+    sortItems.append(actionItem(shellMenuText("Item type", "项目类型"), QStringLiteral("sort_type"), true, true, m_sortByTypeAction && m_sortByTypeAction->isChecked()));
+    sortItems.append(actionItem(shellMenuText("Date modified", "修改日期"), QStringLiteral("sort_date"), true, true, m_sortByDateAction && m_sortByDateAction->isChecked()));
+
+    QJsonArray linDeskItems;
+    linDeskItems.append(actionItem(shellMenuText("New Timer", "新建计时器"), QStringLiteral("create_timer"), true, false, false, QStringLiteral("NewTimer.png")));
+    linDeskItems.append(actionItem(shellMenuText("Map Folder", "映射文件夹"), QStringLiteral("map_folder"), true, false, false, QStringLiteral("MapFolder.png")));
+    linDeskItems.append(actionItem(shellMenuText("Organize Desktop", "整理桌面"), QStringLiteral("organize_desktop"), true, false, false, QStringLiteral("OrganizeDesktop.png")));
+    linDeskItems.append(actionItem(shellMenuText("Settings", "设置"), QStringLiteral("settings"), true, false, false, QStringLiteral("Settings.png")));
+    linDeskItems.append(separatorItem());
+    linDeskItems.append(actionItem(shellMenuText("Exit LinDesk", "退出 LinDesk"), QStringLiteral("exit_lindesk"), true, false, false, QStringLiteral("Exit.png")));
+
+    const QJsonArray newItems = shellSession
+        ? snapshotItemsToJson(shellSession->newMenuItems(), QStringLiteral("ShellNew"))
+        : QJsonArray();
+    const QJsonArray thirdPartyItems = shellSession && isThirdPartyShellMenuEnabled()
+        ? snapshotItemsToJson(shellSession->thirdPartyMenuItems(), QStringLiteral("ShellExternal"))
+        : QJsonArray();
+    const bool showNewBoxItem = isNewBoxMenuItemEnabled();
+    const bool showLinDeskMenu = isLinDeskMenuEnabled();
+
+    QJsonArray items;
+    items.append(submenuItem(shellMenuText("View", "查看"), viewItems, QStringLiteral("View.png")));
+    items.append(submenuItem(shellMenuText("Sort by", "排序方式"), sortItems, QStringLiteral("SortBy.png")));
+    items.append(actionItem(shellMenuText("Refresh", "刷新"), QStringLiteral("refresh"), true, false, false, QStringLiteral("Refresh.png")));
+    items.append(separatorItem());
+    if (m_pasteAction && m_pasteAction->isEnabled()) {
+        items.append(actionItem(shellMenuText("Paste", "粘贴"), QStringLiteral("paste")));
+    }
+    if (pasteShortcutAction && pasteShortcutAction->isEnabled()) {
+        items.append(actionItem(shellMenuText("Paste shortcut", "粘贴快捷方式"), QStringLiteral("paste_shortcut")));
+    }
+    if (!newItems.isEmpty()) {
+        items.append(submenuItem(shellMenuText("New", "新建"), newItems, QStringLiteral("New.png")));
+    }
+    if (showNewBoxItem) {
+        items.append(actionItem(shellMenuText("New Box", "新建盒子"), QStringLiteral("create_box"), true, false, false, QStringLiteral("NewBox.png")));
+    }
+    if (showLinDeskMenu) {
+        items.append(submenuItem(QStringLiteral("LinDesk"), linDeskItems, QStringLiteral("LinDesk.png")));
+    }
+    items.append(separatorItem());
+    items.append(actionItem(shellMenuText("Next desktop background", "下一个背景"), QStringLiteral("next_desktop_background"), true, false, false, QStringLiteral("NextBackground.png")));
+    items.append(actionItem(shellMenuText("Display settings", "显示设置"), QStringLiteral("display_settings"), true, false, false, QStringLiteral("DisplaySettings.png")));
+    items.append(actionItem(shellMenuText("Personalize", "个性化"), QStringLiteral("personalize"), true, false, false, QStringLiteral("Personalize.png")));
+    if (!thirdPartyItems.isEmpty()) {
+        items.append(separatorItem());
+        for (const QJsonValue& item : thirdPartyItems) {
+            items.append(item);
+        }
+        items.append(separatorItem());
+    } else {
+        items.append(separatorItem());
+    }
+    items.append(actionItem(shellMenuText("Show more options", "显示更多选项"), QStringLiteral("show_more_options"), true, false, false, QStringLiteral("ShowMoreOptions.png")));
+
+    return items;
+}
+
+void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoint& pos, ShellMenuCommandSession* shellSession)
+{
+    if (commandId.isEmpty()) {
+        return;
+    }
+
+    if (commandId.startsWith(QStringLiteral("shell_new:")) || commandId.startsWith(QStringLiteral("shell_external:"))) {
+        if (!shellSession || !shellSession->invokeShellCommand(commandId.toStdString(), hwnd)) {
+            qWarning() << "[RightMenu] failed to invoke Shell command:" << commandId;
+        }
+    } else if (commandId == QStringLiteral("view_large")) {
+        onLargeIcons();
+    } else if (commandId == QStringLiteral("view_medium")) {
+        onMediumIcons();
+    } else if (commandId == QStringLiteral("view_small")) {
+        onSmallIcons();
+    } else if (commandId == QStringLiteral("auto_arrange_icons")) {
+        onAutoArrangeIcons();
+    } else if (commandId == QStringLiteral("align_icons_to_grid")) {
+        onAlignIconsToGrid();
+    } else if (commandId == QStringLiteral("show_desktop_icons")) {
+        onShowDesktopIcons();
+    } else if (commandId == QStringLiteral("double_click_hide_icons")) {
+        onDoubleClickedHideIcons();
+    } else if (commandId == QStringLiteral("sort_name")) {
+        onSortByName();
+    } else if (commandId == QStringLiteral("sort_size")) {
+        onSortBySize();
+    } else if (commandId == QStringLiteral("sort_type")) {
+        onSortByType();
+    } else if (commandId == QStringLiteral("sort_date")) {
+        onSortByDate();
+    } else if (commandId == QStringLiteral("refresh")) {
+        onRefresh();
+    } else if (commandId == QStringLiteral("paste")) {
+        onPaste();
+    } else if (commandId == QStringLiteral("paste_shortcut")) {
+        onPasteShortcut();
+    } else if (commandId == QStringLiteral("next_desktop_background")) {
+        advanceDesktopWallpaper();
+    } else if (commandId == QStringLiteral("display_settings")) {
+        openUriWithShell(L"ms-settings:display");
+    } else if (commandId == QStringLiteral("personalize")) {
+        openUriWithShell(L"ms-settings:personalization");
+    } else if (commandId == QStringLiteral("create_box")) {
+        onCreateBox();
+    } else if (commandId == QStringLiteral("create_timer")) {
+        onCreateTimer();
+    } else if (commandId == QStringLiteral("map_folder")) {
+        onMapFolder();
+    } else if (commandId == QStringLiteral("organize_desktop")) {
+        onOrganizeDesktop();
+    } else if (commandId == QStringLiteral("settings")) {
+        onLinDesk();
+    } else if (commandId == QStringLiteral("exit_lindesk")) {
+        onQuitApp();
+    } else if (commandId == QStringLiteral("show_more_options")) {
+        QTimer::singleShot(80, this, [this, pos]() {
+            showDefaultDesktopShellMenu(pos);
+        });
+    } else {
+        qWarning() << "[RightMenu] unknown Win11 menu command:" << commandId;
+    }
+}
+
+void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
+{
+    ShellContextMenu scm;
+    POINT p = { pos.x(), pos.y() };
+    scm.DisplayDesktopContextMenu();
+    if (m_customMenu) {
+        scm.setCustomMenuItems(desktopCustomMenuItems());
+    }
+    scm.ShowMenu(this->hwnd, &p, nullptr);
+}
+
+bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
+{
+    ShellContextMenu shellMenu;
+    ShellMenuCommandSession shellSession;
+    const bool hasShellNewSnapshot = shellMenu.prepareDesktopBackgroundMenuSnapshot(hwnd, shellSession);
+    if (!hasShellNewSnapshot) {
+        qWarning() << "[RightMenu] Shell New snapshot unavailable";
+    }
+
+    QString commandId;
+    if (!Win11MenuBridge::showDesktopMenu(pos, buildWindows11DesktopMenuItems(&shellSession), &commandId)) {
+        return false;
+    }
+
+    if (!commandId.isEmpty()) {
+        const_cast<RightMenu*>(this)->handleWindows11MenuCommand(commandId, pos, &shellSession);
+    }
+    return true;
+}
+
 void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
 {
     ShellContextMenu scm;
@@ -565,12 +972,13 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
     const POINT* position = &p;
 	if (this->fileType == ObjectType::BackGround) {
 		preparePasteActionsForMenu();
-		scm.DisplayDesktopContextMenu();
 		if (RightMenu::isWindows11SystemContextMenuEnabled()) {
-			scm.ShowMenu(this->hwnd, position, nullptr);
-			return;
+            if (showWindows11DesktopMenu(pos)) {
+                return;
+            }
 		}
 
+		scm.DisplayDesktopContextMenu();
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {
 			scm.setCustomMenuItems(desktopCustomMenuItems());

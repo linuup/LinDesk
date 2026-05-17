@@ -281,6 +281,7 @@ public:
 	void clearCutMarks();
 	void applyCutMarks(const QStringList& filePaths);
 	bool createNewFolderInHost(LinBox* targetBox = nullptr);
+	bool createNewTextDocumentInHost();
 
 	// 右键菜单
 	void requestSystemRightMenu(ObjectType objType, QPoint point, const QStringList& checkedPaths = {});
