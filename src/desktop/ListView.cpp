@@ -2550,13 +2550,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
     if (m_isDragging && !m_draggedDesktopPath.isEmpty()) {
         if ((event->pos() - m_startPos).manhattanLength() > QApplication::startDragDistance()) {
-            if (m_ghosts.isEmpty()) {
-                createDragGhosts(m_startPos);
-            } else {
-                QPoint mousePos = event->globalPos();
-                moveDesktopGhostsForPreview(mousePos);
-                updateGhostDragHoverPreview(mousePos);
-            }
+            startDesktopItemDrag(m_startPos);
         }
         event->accept();
         return;
@@ -3354,12 +3348,15 @@ void ListView::dropEvent(QDropEvent* event)
                 } else if (isCopyAction) {
                     result = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
                 } else {
-                    result = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
+                    result = ListViewFileOpsHelper::moveFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
                 }
                 if (result) {
                     applyAutoArrangeAfterDesktopMutation(false, false);
+                    event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCopyAction ? Qt::CopyAction : Qt::MoveAction));
+                    event->accept();
+                    return;
                 }
-                event->accept();
+                event->ignore();
                 return;
             }
         }
@@ -6960,6 +6957,27 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         this->performSort(m_iconShowRule.sortType);
     };
 
+    auto removeTrackedPath = [this](const QString& path) -> bool {
+        if (path.isEmpty()) {
+            return false;
+        }
+
+        if (findDesktopStateByPath(path)) {
+            removeDesktopStateByPath(path);
+            requestSaveBoxes();
+            return true;
+        }
+
+        if (LinBox* box = BoxManager::instance()->findBoxContainingItem(path)) {
+            if (box->removeItemState(path, true)) {
+                requestSaveBoxes();
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     switch (eventInfo.eventType) {
     case FileSystemEvent::FileCreated:
     case FileSystemEvent::DirectoryCreated:
@@ -7007,10 +7025,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (consumePendingExternalRemoval(deletePath)) break;
         
             // 婵烇絽娲︾换鍌炴偤閵娾晛绠板ù锝夘棑閻ｄ粙鏌涢弽銊у闁哄鍟粋鎺旀媼閸︻厾顦紓浣割槸椤嘲鈻嶆惔鈽嗗晠闁圭粯甯掗悘鈺呮⒒閸曗晛鈧牠寮搁崘鈺冾浄闁诡垶鍋婇崬鍓佹喐?
-        if (findDesktopStateByPath(deletePath)) {
-            removeDesktopStateByPath(deletePath);
-            requestSaveBoxes();
-        }
+        removeTrackedPath(deletePath);
         break;
     }
     case FileSystemEvent::FileRenamed:
@@ -7095,6 +7110,11 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     {
         const QString& updatePath = !newPath.isEmpty() ? newPath : oldPath;
         if (updatePath.isEmpty()) break;
+
+        if (!QFileInfo::exists(updatePath)) {
+            removeTrackedPath(updatePath);
+            break;
+        }
 
         if (eventInfo.eventType == FileSystemEvent::DirectoryUpdated) {
             refreshFolderItemByPath(updatePath);
@@ -7516,6 +7536,100 @@ void ListView::resetRenameClickState()
     m_clickTimer.invalidate();
 }
 
+bool ListView::startDesktopItemDrag(const QPoint& clickPos)
+{
+    const QStringList dragPaths = selectedDesktopPaths();
+    if (dragPaths.isEmpty()) {
+        return false;
+    }
+
+    QList<QUrl> urls;
+    urls.reserve(dragPaths.size());
+    for (const QString& path : dragPaths) {
+        if (!path.isEmpty()) {
+            urls.append(QUrl::fromLocalFile(path));
+        }
+    }
+    if (urls.isEmpty()) {
+        return false;
+    }
+
+    auto* mimeData = new WindowsDragMimeData();
+    mimeData->setUrls(urls);
+    mimeData->setDropDescriptionForAction(Qt::MoveAction, QCoreApplication::translate("ListView", "Desktop"));
+
+    QVector<DesktopRootItemRenderData> ghostItems;
+    QRect ghostBounds;
+    for (const QString& path : dragPaths) {
+        const DesktopRootItemState* state = findDesktopStateByPath(path);
+        if (!state) {
+            continue;
+        }
+
+        const DesktopRootItemRenderData& renderData = state->model.renderData;
+        if (renderData.itemRect.isNull() || !renderData.itemRect.size().isValid()) {
+            continue;
+        }
+
+        ghostItems.append(renderData);
+        ghostBounds = ghostBounds.isNull()
+            ? renderData.itemRect
+            : ghostBounds.united(renderData.itemRect);
+    }
+
+    QPixmap dragPixmap;
+    QPoint hotSpot;
+    if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
+        dragPixmap = QPixmap(ghostBounds.size());
+        dragPixmap.fill(Qt::transparent);
+
+        QPainter painter(&dragPixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.setRenderHint(QPainter::TextAntialiasing);
+        painter.translate(-ghostBounds.topLeft());
+        for (const DesktopRootItemRenderData& renderData : ghostItems) {
+            paintDesktopRootItemGhost(painter, renderData);
+        }
+        painter.end();
+
+        hotSpot = clickPos - ghostBounds.topLeft();
+        hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
+        hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
+    }
+
+    for (GhostInfo& ghost : m_ghosts) {
+        if (ghost.widget) {
+            ghost.widget->hide();
+            ghost.widget->deleteLater();
+        }
+    }
+    m_ghosts.clear();
+
+    QDrag drag(this);
+    drag.setMimeData(mimeData);
+    if (!dragPixmap.isNull()) {
+        drag.setPixmap(dragPixmap);
+        drag.setHotSpot(hotSpot);
+    }
+
+    const Qt::DropAction resultAction = drag.exec(Qt::CopyAction | Qt::MoveAction | Qt::LinkAction, Qt::MoveAction);
+    if (resultAction == Qt::MoveAction) {
+        QStringList removedSourcePaths;
+        for (const QString& path : dragPaths) {
+            if (!path.isEmpty() && !QFileInfo::exists(path)) {
+                removedSourcePaths.append(path);
+            }
+        }
+        finalizeMovedModelSourcesAfterFileOp(removedSourcePaths);
+    }
+
+    clearDesktopAutoArrangeReorderPreview();
+    m_isDragging = false;
+    m_draggedDesktopPath.clear();
+    m_draggedBoxPath.clear();
+    return true;
+}
 
 void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 {

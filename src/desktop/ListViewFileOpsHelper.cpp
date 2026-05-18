@@ -1430,6 +1430,16 @@ bool ListViewFileOpsHelper::copyFilesToDirectoryWithRule(const QStringList& sour
     return ok;
 }
 
+bool ListViewFileOpsHelper::moveFilesToDirectoryWithRule(const QStringList& sourcePaths, const QString& targetDir)
+{
+    bool ok = true;
+    for (const QString& filePath : sourcePaths) {
+        const QString destinationPath = uniquePasteDestinationPath(filePath, targetDir);
+        ok = movePathToExactDestination(filePath, destinationPath) && ok;
+    }
+    return ok;
+}
+
 bool ListViewFileOpsHelper::createShellShortcut(const QString& sourcePath, const QString& shortcutPath)
 {
     const HRESULT initHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);

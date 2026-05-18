@@ -41,6 +41,7 @@ public:
     static bool copyPathToExactDestination(const QString& sourcePath, const QString& destinationPath);
     static bool movePathToExactDestination(const QString& sourcePath, const QString& destinationPath);
     static bool copyFilesToDirectoryWithRule(const QStringList& sourcePaths, const QString& targetDir);
+    static bool moveFilesToDirectoryWithRule(const QStringList& sourcePaths, const QString& targetDir);
     static bool createShellShortcut(const QString& sourcePath, const QString& shortcutPath);
     static bool shouldCreateShortcutForExternalPath(const QString& sourcePath);
     static void updateInternalDragDescriptionCustom(const QMimeData* mimeData, DROPIMAGETYPE type, const QString& message, const QString& insertText);

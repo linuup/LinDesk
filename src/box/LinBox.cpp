@@ -2000,7 +2000,16 @@ bool LinBox::startItemDrag(const QPoint& boxPos)
         drag.setHotSpot(hotSpot);
     }
 
-    drag.exec(Qt::CopyAction | Qt::MoveAction | Qt::LinkAction, Qt::MoveAction);
+    const Qt::DropAction resultAction = drag.exec(Qt::CopyAction | Qt::MoveAction | Qt::LinkAction, Qt::MoveAction);
+    if (resultAction == Qt::MoveAction) {
+        QStringList removedSourcePaths;
+        for (const QString& path : dragPaths) {
+            if (!path.isEmpty() && !QFileInfo::exists(path)) {
+                removedSourcePaths.append(path);
+            }
+        }
+        lv->finalizeMovedModelSourcesAfterFileOp(removedSourcePaths);
+    }
     lv->clearDraggedItemPath(true);
     return true;
 }
@@ -2443,13 +2452,15 @@ const DesktopRootItemState* LinBox::dropTargetItemStateAt(const QPoint& boxPos) 
     const QPoint contentPos = m_contentArea->mapFromGlobal(mapToGlobal(boxPos));
     for (int i = m_itemStates.size() - 1; i >= 0; --i) {
         const DesktopRootItemState& state = m_itemStates[i];
-        QRect targetRect = state.model.renderData.selectionContentRect
-            .united(state.model.renderData.itemRect);
-        if (m_showType == BoxShowType::List_ShowType) {
-            const int marginLeft = scaledPx(this, kBaseItemMarginLeft);
-            const int rightEdge = qMax(targetRect.right(), m_contentArea->width() - marginLeft - 1);
-            targetRect.setLeft(qMin(targetRect.left(), marginLeft));
-            targetRect.setRight(rightEdge);
+        QRect targetRect = state.model.renderData.selectionContentRect;
+        if (targetRect.isNull() || !targetRect.isValid()) {
+            targetRect = state.model.renderData.staticContentRect;
+        } else if (!state.model.renderData.staticContentRect.isNull() &&
+                   state.model.renderData.staticContentRect.isValid()) {
+            targetRect = targetRect.united(state.model.renderData.staticContentRect);
+        }
+        if (targetRect.isNull() || !targetRect.isValid()) {
+            targetRect = state.model.renderData.itemRect;
         }
         if (targetRect.contains(contentPos)) {
             return &state;
@@ -3405,6 +3416,7 @@ void LinBox::dropEvent(QDropEvent* event) {
     }
 
     if (lv->importPathsToBox(operationPaths, this, copyMode, -1, preferShortcutForDrop)) {
+        event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (copyMode ? Qt::CopyAction : Qt::MoveAction));
         event->accept();
     } else {
         event->ignore();

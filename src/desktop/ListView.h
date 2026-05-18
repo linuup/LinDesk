@@ -454,6 +454,7 @@ private:
 	void flushBackgroundSelectionUpdate();
 	int currentBackgroundSelectionThrottleMs() const;
 	void updateBackgroundSelectionThrottle(qint64 refreshElapsedMs, const QRect& selectionRect);
+	bool startDesktopItemDrag(const QPoint& clickPos);
 	void finalizeActiveDrag(LinBox* box, QMouseEvent* event);
 	void updateGhostDragHoverPreview(const QPoint& globalPos);
 	void clearDestroyedBoxRuntimeState(LinBox* box);
