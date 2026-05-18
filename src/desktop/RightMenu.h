@@ -61,6 +61,12 @@ public:
     QMenu* getCustomMenu() const { return m_customMenu; }
     const std::vector<ShellContextMenu::CustomMenuItem>& desktopCustomMenuItems() const;
     const std::vector<ShellContextMenu::CustomMenuItem>& sharedBoxCustomMenuItems() const;
+    std::vector<ShellMenuSnapshotItem> shellMenuPreviewItems(const QString& key) const;
+    std::vector<ShellContextMenu::CustomMenuItem> filteredDesktopCustomMenuItems() const;
+    std::vector<ShellContextMenu::CustomMenuItem> filteredSharedBoxCustomMenuItems() const;
+    static std::vector<ShellContextMenu::CustomMenuItem> filterCustomItemsForExclusionKey(
+        const std::vector<ShellContextMenu::CustomMenuItem>& items,
+        const std::wstring& key);
 
     void setLargeIconsChecked(bool checked);
     void setMediumIconsChecked(bool checked);
@@ -157,6 +163,8 @@ private:
     void showDefaultDesktopShellMenu(const QPoint& pos) const;
     QJsonArray buildWindows11DesktopMenuItems(const ShellMenuCommandSession* shellSession = nullptr) const;
     void handleWindows11MenuCommand(const QString& commandId, const QPoint& pos, ShellMenuCommandSession* shellSession = nullptr);
+    std::vector<std::wstring> exclusionKeysForModel(const DesktopRootItemModel& model) const;
+    static std::vector<ShellMenuSnapshotItem> customItemsToPreviewItems(const std::vector<ShellContextMenu::CustomMenuItem>& items);
 
     ShellContextMenu* shellContextMenu = nullptr;
     HWND hwnd = nullptr;

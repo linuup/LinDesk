@@ -1,11 +1,19 @@
 ﻿
 #include "ShellContextMenu.h"
+#include <algorithm>
 #include <cwctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <unordered_map>
+#include <Shlwapi.h>
+#include <ShlObj.h>
+#include <shellapi.h>
 
 namespace {
+constexpr wchar_t kShellMenuExclusionSection[] = L"ShellMenuExclusions";
+
 std::filesystem::path GetDesktopLogPath()
 {
     PWSTR localAppDataPath = nullptr;
@@ -37,6 +45,472 @@ std::string WideToUtf8(const std::wstring& text)
     return utf8;
 }
 
+void AppendDesktopLogLine(const std::wstring& line)
+{
+    const std::filesystem::path logPath = GetDesktopLogPath();
+    if (logPath.empty()) {
+        return;
+    }
+
+    std::error_code ec;
+    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
+    if (!logFileExists) {
+        return;
+    }
+
+    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
+    if (!logFile.is_open()) {
+        return;
+    }
+
+    const std::string utf8Line = WideToUtf8(line);
+    if (!utf8Line.empty()) {
+        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
+    }
+}
+
+HBITMAP CopyMenuBitmap(HBITMAP source)
+{
+    const uintptr_t rawValue = reinterpret_cast<uintptr_t>(source);
+    if (!source || rawValue <= 16 || rawValue == static_cast<uintptr_t>(-1)) {
+        return nullptr;
+    }
+
+    return reinterpret_cast<HBITMAP>(CopyImage(source, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION));
+}
+
+HBITMAP BitmapFromIcon(HICON icon)
+{
+    if (!icon) {
+        return nullptr;
+    }
+
+    ICONINFO iconInfo = {};
+    if (!GetIconInfo(icon, &iconInfo)) {
+        return nullptr;
+    }
+
+    BITMAP maskInfo = {};
+    if (iconInfo.hbmColor) {
+        GetObjectW(iconInfo.hbmColor, sizeof(maskInfo), &maskInfo);
+    } else if (iconInfo.hbmMask) {
+        GetObjectW(iconInfo.hbmMask, sizeof(maskInfo), &maskInfo);
+    }
+
+    const int width = maskInfo.bmWidth > 0 ? maskInfo.bmWidth : GetSystemMetrics(SM_CXSMICON);
+    const int height = iconInfo.hbmColor
+        ? (maskInfo.bmHeight > 0 ? maskInfo.bmHeight : GetSystemMetrics(SM_CYSMICON))
+        : (maskInfo.bmHeight > 1 ? maskInfo.bmHeight / 2 : GetSystemMetrics(SM_CYSMICON));
+
+    BITMAPINFO bitmapInfo = {};
+    bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmapInfo.bmiHeader.biWidth = width;
+    bitmapInfo.bmiHeader.biHeight = -height;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HDC screenDc = GetDC(nullptr);
+    HBITMAP bitmap = CreateDIBSection(screenDc, &bitmapInfo, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (bitmap && screenDc) {
+        HDC memoryDc = CreateCompatibleDC(screenDc);
+        HGDIOBJ oldBitmap = SelectObject(memoryDc, bitmap);
+        RECT rect = { 0, 0, width, height };
+        FillRect(memoryDc, &rect, reinterpret_cast<HBRUSH>(GetStockObject(NULL_BRUSH)));
+        DrawIconEx(memoryDc, 0, 0, icon, width, height, 0, nullptr, DI_NORMAL);
+        SelectObject(memoryDc, oldBitmap);
+        DeleteDC(memoryDc);
+    }
+    if (screenDc) {
+        ReleaseDC(nullptr, screenDc);
+    }
+    if (iconInfo.hbmColor) {
+        DeleteObject(iconInfo.hbmColor);
+    }
+    if (iconInfo.hbmMask) {
+        DeleteObject(iconInfo.hbmMask);
+    }
+    return bitmap;
+}
+
+std::wstring ExpandEnvironmentStringsValue(const std::wstring& value)
+{
+    if (value.empty()) {
+        return {};
+    }
+
+    const DWORD required = ExpandEnvironmentStringsW(value.c_str(), nullptr, 0);
+    if (required == 0) {
+        return value;
+    }
+
+    std::wstring expanded(required, L'\0');
+    const DWORD written = ExpandEnvironmentStringsW(value.c_str(), expanded.data(), required);
+    if (written == 0 || written > required) {
+        return value;
+    }
+    expanded.resize(written - 1);
+    return expanded;
+}
+
+std::wstring QueryRegistryString(HKEY root, const std::wstring& subKey, const wchar_t* valueName = nullptr)
+{
+    DWORD type = 0;
+    DWORD size = 0;
+    LONG result = RegGetValueW(root, subKey.c_str(), valueName, RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ, &type, nullptr, &size);
+    if (result != ERROR_SUCCESS || size == 0) {
+        return {};
+    }
+
+    std::wstring value(size / sizeof(wchar_t), L'\0');
+    result = RegGetValueW(root, subKey.c_str(), valueName, RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ, &type, value.data(), &size);
+    if (result != ERROR_SUCCESS) {
+        return {};
+    }
+    while (!value.empty() && value.back() == L'\0') {
+        value.pop_back();
+    }
+    return type == REG_EXPAND_SZ ? ExpandEnvironmentStringsValue(value) : value;
+}
+
+bool QueryRegistrySubKeyNames(HKEY root, const std::wstring& subKey, std::vector<std::wstring>& names)
+{
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(root, subKey.c_str(), 0, KEY_READ, &key) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    DWORD index = 0;
+    wchar_t name[256] = {};
+    DWORD nameLength = ARRAYSIZE(name);
+    while (RegEnumKeyExW(key, index++, name, &nameLength, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) {
+        names.emplace_back(name, nameLength);
+        nameLength = ARRAYSIZE(name);
+    }
+    RegCloseKey(key);
+    return true;
+}
+
+std::wstring TrimMenuTextForRegistry(std::wstring text)
+{
+    std::wstring output;
+    output.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        const wchar_t ch = text[i];
+        if (ch == L'&') {
+            continue;
+        }
+        if (ch == L'\t') {
+            break;
+        }
+        output.push_back(ch);
+    }
+
+    while (!output.empty() && std::iswspace(output.front())) {
+        output.erase(output.begin());
+    }
+    while (!output.empty() && std::iswspace(output.back())) {
+        output.pop_back();
+    }
+    return output;
+}
+
+std::wstring LowercaseText(std::wstring text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return text;
+}
+
+bool LooksLikeDynamicFileName(const std::wstring& text)
+{
+    const size_t dotPos = text.find_last_of(L'.');
+    if (dotPos == std::wstring::npos || dotPos == 0 || dotPos + 1 >= text.size()) {
+        return false;
+    }
+
+    const std::wstring extension = LowercaseText(text.substr(dotPos + 1));
+    if (extension.size() < 2 || extension.size() > 8) {
+        return false;
+    }
+
+    for (wchar_t ch : extension) {
+        if (!std::iswalnum(ch)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool TextContainsInsensitive(const std::wstring& text, const std::wstring& needle)
+{
+    if (needle.empty()) {
+        return false;
+    }
+    return LowercaseText(text).find(LowercaseText(needle)) != std::wstring::npos;
+}
+
+std::wstring ExecutableFromCommand(const std::wstring& command)
+{
+    std::wstring expanded = ExpandEnvironmentStringsValue(command);
+    while (!expanded.empty() && std::iswspace(expanded.front())) {
+        expanded.erase(expanded.begin());
+    }
+    if (expanded.empty()) {
+        return {};
+    }
+
+    if (expanded.front() == L'"') {
+        const size_t endQuote = expanded.find(L'"', 1);
+        if (endQuote != std::wstring::npos) {
+            return expanded.substr(1, endQuote - 1);
+        }
+    }
+
+    const size_t exePos = LowercaseText(expanded).find(L".exe");
+    if (exePos != std::wstring::npos) {
+        return expanded.substr(0, exePos + 4);
+    }
+
+    const size_t dllPos = LowercaseText(expanded).find(L".dll");
+    if (dllPos != std::wstring::npos) {
+        return expanded.substr(0, dllPos + 4);
+    }
+
+    const size_t firstSpace = expanded.find(L' ');
+    return firstSpace == std::wstring::npos ? expanded : expanded.substr(0, firstSpace);
+}
+
+HBITMAP BitmapFromIconLocation(const std::wstring& location)
+{
+    const std::wstring expanded = ExpandEnvironmentStringsValue(location);
+    if (expanded.empty()) {
+        return nullptr;
+    }
+
+    std::wstring path = expanded;
+    int iconIndex = 0;
+    const size_t commaPos = expanded.rfind(L',');
+    if (commaPos != std::wstring::npos) {
+        path = expanded.substr(0, commaPos);
+        try {
+            iconIndex = std::stoi(expanded.substr(commaPos + 1));
+        } catch (...) {
+            iconIndex = 0;
+        }
+    }
+
+    while (!path.empty() && std::iswspace(path.front())) {
+        path.erase(path.begin());
+    }
+    while (!path.empty() && std::iswspace(path.back())) {
+        path.pop_back();
+    }
+    if (path.size() >= 2 && path.front() == L'"' && path.back() == L'"') {
+        path = path.substr(1, path.size() - 2);
+    }
+    if (path.empty()) {
+        return nullptr;
+    }
+
+    HICON largeIcon = nullptr;
+    HICON smallIcon = nullptr;
+    const UINT count = ExtractIconExW(path.c_str(), iconIndex, &largeIcon, &smallIcon, 1);
+    HICON icon = smallIcon ? smallIcon : largeIcon;
+    HBITMAP bitmap = count > 0 && icon ? BitmapFromIcon(icon) : nullptr;
+    if (largeIcon) {
+        DestroyIcon(largeIcon);
+    }
+    if (smallIcon) {
+        DestroyIcon(smallIcon);
+    }
+    return bitmap;
+}
+
+std::wstring CommandVerbForMenuItem(IContextMenu3* contextMenu, UINT commandId)
+{
+    if (!contextMenu || commandId < MIN_SHELL_MENU_ID || commandId > MAX_SHELL_MENU_ID) {
+        return {};
+    }
+
+    wchar_t wideVerb[256] = {};
+    if (SUCCEEDED(contextMenu->GetCommandString(commandId - MIN_SHELL_MENU_ID, GCS_VERBW, nullptr,
+        reinterpret_cast<LPSTR>(wideVerb), static_cast<UINT>(sizeof(wideVerb))))) {
+        if (wideVerb[0] != L'\0') {
+            return wideVerb;
+        }
+    }
+
+    char verb[256] = {};
+    if (SUCCEEDED(contextMenu->GetCommandString(commandId - MIN_SHELL_MENU_ID, GCS_VERBA, nullptr,
+        verb, static_cast<UINT>(std::size(verb))))) {
+        if (verb[0] != '\0') {
+            const int required = MultiByteToWideChar(CP_UTF8, 0, verb, -1, nullptr, 0);
+            if (required > 1) {
+                std::wstring result(required - 1, L'\0');
+                MultiByteToWideChar(CP_UTF8, 0, verb, -1, result.data(), required);
+                return result;
+            }
+            const int ansiRequired = MultiByteToWideChar(CP_ACP, 0, verb, -1, nullptr, 0);
+            if (ansiRequired > 1) {
+                std::wstring result(ansiRequired - 1, L'\0');
+                MultiByteToWideChar(CP_ACP, 0, verb, -1, result.data(), ansiRequired);
+                return result;
+            }
+        }
+    }
+    return {};
+}
+
+bool RegistryShellItemMatches(const std::wstring& subKeyName,
+    const std::wstring& menuText,
+    const std::wstring& verb,
+    const std::wstring& displayText)
+{
+    const std::wstring cleanText = TrimMenuTextForRegistry(menuText);
+    if (!verb.empty() && _wcsicmp(subKeyName.c_str(), verb.c_str()) == 0) {
+        return true;
+    }
+    if (!displayText.empty() && (TextContainsInsensitive(cleanText, displayText) || TextContainsInsensitive(displayText, cleanText))) {
+        return true;
+    }
+    if (!subKeyName.empty() && TextContainsInsensitive(cleanText, subKeyName)) {
+        return true;
+    }
+    return false;
+}
+
+HBITMAP BitmapFromRegistryShellItem(HKEY root,
+    const std::wstring& shellRoot,
+    const std::wstring& subKeyName)
+{
+    const std::wstring itemKey = shellRoot + L"\\" + subKeyName;
+    HBITMAP bitmap = BitmapFromIconLocation(QueryRegistryString(root, itemKey, L"Icon"));
+    if (bitmap) {
+        return bitmap;
+    }
+
+    const std::wstring command = QueryRegistryString(root, itemKey + L"\\command");
+    const std::wstring executable = ExecutableFromCommand(command);
+    return BitmapFromIconLocation(executable);
+}
+
+HBITMAP BitmapFromRegistryShellRoots(const std::vector<std::wstring>& shellRoots,
+    const std::wstring& menuText,
+    const std::wstring& verb)
+{
+    for (const std::wstring& shellRoot : shellRoots) {
+        std::vector<std::wstring> subKeyNames;
+        if (!QueryRegistrySubKeyNames(HKEY_CLASSES_ROOT, shellRoot, subKeyNames)) {
+            continue;
+        }
+
+        for (const std::wstring& subKeyName : subKeyNames) {
+            const std::wstring itemKey = shellRoot + L"\\" + subKeyName;
+            std::wstring displayText = QueryRegistryString(HKEY_CLASSES_ROOT, itemKey, L"MUIVerb");
+            if (displayText.empty()) {
+                displayText = QueryRegistryString(HKEY_CLASSES_ROOT, itemKey);
+            }
+
+            if (!RegistryShellItemMatches(subKeyName, menuText, verb, displayText)) {
+                continue;
+            }
+
+            HBITMAP bitmap = BitmapFromRegistryShellItem(HKEY_CLASSES_ROOT, shellRoot, subKeyName);
+            if (bitmap) {
+                return bitmap;
+            }
+        }
+    }
+    return nullptr;
+}
+
+std::wstring RegistryDefaultValue(const std::wstring& key)
+{
+    return QueryRegistryString(HKEY_CLASSES_ROOT, key);
+}
+
+std::vector<std::wstring> RegistryShellRootsForExclusionKey(const std::wstring& key)
+{
+    std::vector<std::wstring> roots;
+    auto addRoot = [&roots](const std::wstring& root) {
+        if (!root.empty() && std::find(roots.begin(), roots.end(), root) == roots.end()) {
+            roots.push_back(root);
+        }
+    };
+
+    if (key == L"desktop" || key == L"box_background") {
+        addRoot(L"DesktopBackground\\Shell");
+        addRoot(L"Directory\\Background\\shell");
+        addRoot(L"Directory\\Background\\shellex\\ContextMenuHandlers");
+    } else if (key == L"folder") {
+        addRoot(L"Directory\\shell");
+        addRoot(L"Folder\\shell");
+        addRoot(L"AllFilesystemObjects\\shell");
+    } else if (key == L"shortcut") {
+        addRoot(L"lnkfile\\shell");
+        addRoot(L"AllFilesystemObjects\\shell");
+        addRoot(L"*\\shell");
+    } else if (key == L"disk") {
+        addRoot(L"Drive\\shell");
+        addRoot(L"Folder\\shell");
+    } else if (key == L"file_no_extension") {
+        addRoot(L"*\\shell");
+        addRoot(L"AllFilesystemObjects\\shell");
+    } else if (key.rfind(L"file_ext:", 0) == 0) {
+        const std::wstring extension = key.substr(wcslen(L"file_ext:"));
+        const std::wstring progId = RegistryDefaultValue(extension);
+        addRoot(extension + L"\\shell");
+        if (!progId.empty()) {
+            addRoot(progId + L"\\shell");
+        }
+        addRoot(L"*\\shell");
+        addRoot(L"AllFilesystemObjects\\shell");
+    }
+    return roots;
+}
+
+HBITMAP ResolveFallbackMenuBitmap(IContextMenu3* contextMenu,
+    UINT commandId,
+    const std::wstring& menuText,
+    const std::vector<std::wstring>& registryShellRoots)
+{
+    if (registryShellRoots.empty()) {
+        return nullptr;
+    }
+
+    const std::wstring verb = CommandVerbForMenuItem(contextMenu, commandId);
+    return BitmapFromRegistryShellRoots(registryShellRoots, menuText, verb);
+}
+
+void ResetSnapshotBitmap(ShellMenuSnapshotItem& item)
+{
+    if (item.ownsHBitmap && item.hBitmap) {
+        DeleteObject(item.hBitmap);
+    }
+    item.hBitmap = nullptr;
+    item.ownsHBitmap = false;
+}
+
+void CopySnapshotBitmap(ShellMenuSnapshotItem& target, const ShellMenuSnapshotItem& source)
+{
+    target.hBitmap = nullptr;
+    target.ownsHBitmap = false;
+    if (!source.hBitmap) {
+        return;
+    }
+
+    if (source.ownsHBitmap) {
+        target.hBitmap = CopyMenuBitmap(source.hBitmap);
+        target.ownsHBitmap = target.hBitmap != nullptr;
+    } else {
+        target.hBitmap = source.hBitmap;
+        target.ownsHBitmap = false;
+    }
+}
+
 std::wstring BuildTimestamp()
 {
     SYSTEMTIME st = {};
@@ -62,27 +536,6 @@ void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
 
     const std::wstring line = BuildTimestamp() + L"-" + (moduleName ? moduleName : L"Menu") + L"-" + info + L"\n";
     OutputDebugStringW(line.c_str());
-
-    const std::filesystem::path logPath = GetDesktopLogPath();
-    if (logPath.empty()) {
-        return;
-    }
-
-    std::error_code ec;
-    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
-    if (!logFileExists) {
-        return;
-    }
-
-    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
-    if (!logFile.is_open()) {
-        return;
-    }
-
-    const std::string utf8Line = WideToUtf8(line);
-    if (!utf8Line.empty()) {
-        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
-    }
 }
 
 void EmitDesktopShellMenuListLine(const wchar_t* tag, const std::wstring& info)
@@ -90,27 +543,7 @@ void EmitDesktopShellMenuListLine(const wchar_t* tag, const std::wstring& info)
     const std::wstring line = BuildTimestamp() + L" [DesktopShellMenuList] "
         + (tag ? tag : L"Desktop") + L" " + info + L"\n";
     OutputDebugStringW(line.c_str());
-
-    const std::filesystem::path logPath = GetDesktopLogPath();
-    if (logPath.empty()) {
-        return;
-    }
-
-    std::error_code ec;
-    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
-    if (!logFileExists) {
-        return;
-    }
-
-    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
-    if (!logFile.is_open()) {
-        return;
-    }
-
-    const std::string utf8Line = WideToUtf8(line);
-    if (!utf8Line.empty()) {
-        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
-    }
+    AppendDesktopLogLine(line);
 }
 
 std::wstring MenuStateToText(UINT state)
@@ -165,13 +598,23 @@ void DebugLogMenuTree(HMENU menu, IContextMenu3* contextMenu, const wchar_t* tag
             + L" " + MenuStateToText(itemInfo.fState)
             + L" text=\"" + itemText + L"\"";
         EmitDesktopShellMenuListLine(tag, line);
-
         if (hasSubMenu) {
             if (contextMenu) {
                 contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
                     reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
                     MAKELPARAM(i, FALSE),
                     nullptr);
+            }
+            MSG msg;
+            for (int k = 0; k < 10; ++k)
+            {
+                while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+                {
+                    TranslateMessage(&msg);
+                    DispatchMessage(&msg);
+                }
+
+                Sleep(1);
             }
             DebugLogMenuTree(itemInfo.hSubMenu, contextMenu, tag, depth + 1);
         }
@@ -241,25 +684,47 @@ int FindNewMenuInsertPosition(HMENU menu)
     return newMenuPos >= 0 ? newMenuPos + 1 : -1;
 }
 
-const wchar_t* const kDesktopMenuExcludeList[] = {
-    L"Ne&w"
-};
-
-void RemoveDesktopExcludedMenuItems(HMENU menu)
+bool MenuItemMatchesExclusion(const std::vector<ShellMenuExclusionEntry>& exclusions,
+    const std::wstring& rawText,
+    const std::vector<std::wstring>& parentMatchPath)
 {
-    if (!menu) {
+    const std::wstring normalizedText = ShellContextMenu::NormalizeMenuText(rawText);
+    const std::wstring matchText = ShellContextMenu::MatchMenuText(rawText);
+    std::vector<std::wstring> matchPath = parentMatchPath;
+    matchPath.push_back(matchText);
+    for (const ShellMenuExclusionEntry& exclusion : exclusions) {
+        if (ShellContextMenu::MenuEntryMatches(exclusion, rawText, normalizedText, matchText, matchPath)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void RemoveConfiguredMenuItems(HMENU menu,
+    const std::vector<ShellMenuExclusionEntry>& exclusions,
+    const std::vector<std::wstring>& parentMatchPath = {})
+{
+    if (!menu || exclusions.empty()) {
         return;
     }
 
-    for (const wchar_t* itemName : kDesktopMenuExcludeList) {
-        if (!itemName || *itemName == L'\0') {
+    for (int i = GetMenuItemCount(menu) - 1; i >= 0; --i) {
+        const std::wstring rawText = MenuHelper::GetMenuItemString(menu, static_cast<UINT>(i), true);
+        if (rawText.empty()) {
             continue;
         }
+        std::vector<std::wstring> currentMatchPath = parentMatchPath;
+        currentMatchPath.push_back(ShellContextMenu::MatchMenuText(rawText));
 
-        const int menuPos = wcscmp(itemName, L"New") == 0
-            ? FindNewMenuPosition(menu)
-            : MenuHelper::FindMenuItem(menu, itemName);
-        if (menuPos >= 0 && DeleteMenu(menu, menuPos, MF_BYPOSITION)) {
+        MENUITEMINFOW itemInfo = {};
+        itemInfo.cbSize = sizeof(itemInfo);
+        itemInfo.fMask = MIIM_SUBMENU;
+        if (GetMenuItemInfoW(menu, static_cast<UINT>(i), TRUE, &itemInfo) && itemInfo.hSubMenu) {
+            RemoveConfiguredMenuItems(itemInfo.hSubMenu, exclusions, currentMatchPath);
+        }
+
+        const bool shouldDelete = MenuItemMatchesExclusion(exclusions, rawText, parentMatchPath);
+        if (shouldDelete && DeleteMenu(menu, static_cast<UINT>(i), MF_BYPOSITION)) {
             MenuHelper::RemoveAdjacentSeparators(menu);
             MenuHelper::RemoveTrailingSeparators(menu);
         }
@@ -279,6 +744,86 @@ bool HasActionItems(const std::vector<ShellMenuSnapshotItem>& items)
         }
     }
     return false;
+}
+
+bool IsSendToMenuText(const std::wstring& text)
+{
+    const std::wstring normalized = ShellContextMenu::NormalizeMenuText(text);
+    return normalized == L"send to" ||
+        normalized.find(L"send to") != std::wstring::npos ||
+        normalized.find(L"发送到") != std::wstring::npos;
+}
+
+std::wstring ShellDisplayNameForPath(const std::filesystem::path& path)
+{
+    SHFILEINFOW info = {};
+    if (SHGetFileInfoW(path.c_str(), 0, &info, sizeof(info), SHGFI_DISPLAYNAME)) {
+        std::wstring displayName = info.szDisplayName;
+        if (!displayName.empty()) {
+            return displayName;
+        }
+    }
+
+    std::wstring fallback = path.stem().wstring();
+    return fallback.empty() ? path.filename().wstring() : fallback;
+}
+
+HBITMAP ShellSmallIconBitmapForPath(const std::filesystem::path& path)
+{
+    SHFILEINFOW info = {};
+    if (!SHGetFileInfoW(path.c_str(), 0, &info, sizeof(info), SHGFI_ICON | SHGFI_SMALLICON) || !info.hIcon) {
+        return nullptr;
+    }
+
+    HBITMAP bitmap = BitmapFromIcon(info.hIcon);
+    DestroyIcon(info.hIcon);
+    return bitmap;
+}
+
+void AppendSendToFallbackItems(ShellMenuSnapshotItem& parentItem)
+{
+    if (!IsSendToMenuText(parentItem.text) || HasActionItems(parentItem.children)) {
+        return;
+    }
+
+    PWSTR sendToPath = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_SendTo, 0, nullptr, &sendToPath)) || !sendToPath) {
+        return;
+    }
+
+    const std::filesystem::path sendToDir(sendToPath);
+    CoTaskMemFree(sendToPath);
+
+    std::error_code ec;
+    if (!std::filesystem::exists(sendToDir, ec) || ec) {
+        return;
+    }
+
+    for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(sendToDir, ec)) {
+        if (ec) {
+            break;
+        }
+
+        const std::filesystem::path path = entry.path();
+        const std::wstring fileName = path.filename().wstring();
+        if (fileName.empty() || _wcsicmp(fileName.c_str(), L"desktop.ini") == 0) {
+            continue;
+        }
+
+        ShellMenuSnapshotItem item;
+        item.text = ShellDisplayNameForPath(path);
+        item.normalizedText = ShellContextMenu::NormalizeMenuText(item.text);
+        item.matchText = ShellContextMenu::MatchMenuText(item.text);
+        item.menuPath = parentItem.menuPath;
+        item.menuPath.push_back(item.text);
+        item.matchPath = parentItem.matchPath;
+        item.matchPath.push_back(item.matchText);
+        item.source = L"sendto";
+        item.enabled = true;
+        item.hBitmap = ShellSmallIconBitmapForPath(path);
+        item.ownsHBitmap = item.hBitmap != nullptr;
+        parentItem.children.push_back(std::move(item));
+    }
 }
 
 void TrimSnapshotSeparators(std::vector<ShellMenuSnapshotItem>& items)
@@ -327,6 +872,368 @@ std::wstring NormalizeMenuTextForFilter(const std::wstring& text)
     }
 
     return normalized;
+}
+
+std::filesystem::path GetUserConfigPath()
+{
+    wchar_t appData[MAX_PATH] = {};
+    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, appData))) {
+        return {};
+    }
+
+    std::filesystem::path dir(appData);
+    dir /= L"LinDesk";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    dir /= L"config.ini";
+    return dir;
+}
+
+std::filesystem::path GetShellMenuSampleDir()
+{
+    wchar_t appData[MAX_PATH] = {};
+    if (FAILED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, appData))) {
+        return {};
+    }
+
+    std::filesystem::path dir(appData);
+    dir /= L"LinDesk";
+    dir /= L"ShellMenuSamples";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    return dir;
+}
+
+std::wstring EscapeConfigValue(const std::wstring& value)
+{
+    std::wstring output;
+    output.reserve(value.size());
+    for (wchar_t ch : value) {
+        if (ch == L'\\' || ch == L'|' || ch == L'\n' || ch == L'\r') {
+            output.push_back(L'\\');
+            if (ch == L'\n') {
+                output.push_back(L'n');
+            } else if (ch == L'\r') {
+                output.push_back(L'r');
+            } else {
+                output.push_back(ch);
+            }
+        } else {
+            output.push_back(ch);
+        }
+    }
+    return output;
+}
+
+std::wstring UnescapeConfigValue(const std::wstring& value)
+{
+    std::wstring output;
+    output.reserve(value.size());
+    bool escaped = false;
+    for (wchar_t ch : value) {
+        if (!escaped && ch == L'\\') {
+            escaped = true;
+            continue;
+        }
+        if (escaped && ch == L'n') {
+            output.push_back(L'\n');
+        } else if (escaped && ch == L'r') {
+            output.push_back(L'\r');
+        } else {
+            output.push_back(ch);
+        }
+        escaped = false;
+    }
+    if (escaped) {
+        output.push_back(L'\\');
+    }
+    return output;
+}
+
+std::wstring ConfigNameForKey(const std::wstring& key)
+{
+    std::wstring output = L"exclude.";
+    for (wchar_t ch : key) {
+        if (ch == L'\\' || ch == L'/' || ch == L':' || ch == L'*' || ch == L'?' || ch == L'"' || ch == L'<' || ch == L'>' || ch == L'|' || ch == L'.') {
+            output.push_back(L'_');
+        } else {
+            output.push_back(static_cast<wchar_t>(std::towlower(ch)));
+        }
+    }
+    return output;
+}
+
+std::vector<std::wstring> SplitConfigList(const std::wstring& value)
+{
+    std::vector<std::wstring> items;
+    std::wstring current;
+    bool escaped = false;
+    for (wchar_t ch : value) {
+        if (!escaped && ch == L'\\') {
+            escaped = true;
+            current.push_back(ch);
+            continue;
+        }
+        if (!escaped && ch == L';') {
+            items.push_back(current);
+            current.clear();
+            continue;
+        }
+        current.push_back(ch);
+        escaped = false;
+    }
+    if (!current.empty()) {
+        items.push_back(current);
+    }
+    return items;
+}
+
+std::vector<std::wstring> SplitFields(const std::wstring& value)
+{
+    std::vector<std::wstring> fields;
+    std::wstring current;
+    bool escaped = false;
+    for (wchar_t ch : value) {
+        if (!escaped && ch == L'\\') {
+            escaped = true;
+            current.push_back(ch);
+            continue;
+        }
+        if (!escaped && ch == L'|') {
+            fields.push_back(current);
+            current.clear();
+            continue;
+        }
+        current.push_back(ch);
+        escaped = false;
+    }
+    fields.push_back(current);
+    return fields;
+}
+
+std::wstring ReadProfileStringValue(const std::wstring& name)
+{
+    const std::filesystem::path configPath = GetUserConfigPath();
+    if (configPath.empty()) {
+        return {};
+    }
+
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = GetPrivateProfileStringW(
+        kShellMenuExclusionSection,
+        name.c_str(),
+        L"",
+        buffer.data(),
+        static_cast<DWORD>(buffer.size()),
+        configPath.c_str());
+    buffer.resize(length);
+    return buffer;
+}
+
+void WriteProfileStringValue(const std::wstring& name, const std::wstring& value)
+{
+    const std::filesystem::path configPath = GetUserConfigPath();
+    if (configPath.empty()) {
+        return;
+    }
+
+    WritePrivateProfileStringW(kShellMenuExclusionSection, name.c_str(), value.c_str(), configPath.c_str());
+}
+
+std::wstring FileExtensionLower(const wchar_t* path)
+{
+    if (!path || *path == L'\0') {
+        return {};
+    }
+
+    const wchar_t* extension = PathFindExtensionW(path);
+    if (!extension || *extension == L'\0') {
+        return {};
+    }
+
+    std::wstring output(extension);
+    std::transform(output.begin(), output.end(), output.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return output;
+}
+
+std::wstring ProgIdForPath(const wchar_t* path)
+{
+    const std::wstring extension = FileExtensionLower(path);
+    if (extension.empty()) {
+        return {};
+    }
+
+    wchar_t progId[512] = {};
+    DWORD size = sizeof(progId);
+    if (RegGetValueW(HKEY_CLASSES_ROOT, extension.c_str(), nullptr, RRF_RT_REG_SZ, nullptr, progId, &size) != ERROR_SUCCESS) {
+        return {};
+    }
+    return progId;
+}
+
+std::filesystem::path KnownFolderPath(REFKNOWNFOLDERID folderId)
+{
+    PWSTR path = nullptr;
+    const HRESULT hr = SHGetKnownFolderPath(folderId, 0, nullptr, &path);
+    if (FAILED(hr) || !path) {
+        return {};
+    }
+
+    std::filesystem::path result(path);
+    CoTaskMemFree(path);
+    return result;
+}
+
+bool IsExistingDirectory(const std::filesystem::path& path)
+{
+    if (path.empty()) {
+        return false;
+    }
+
+    std::error_code ec;
+    return std::filesystem::exists(path, ec) && !ec && std::filesystem::is_directory(path, ec) && !ec;
+}
+
+std::filesystem::path FirstExistingDirectory(std::initializer_list<KNOWNFOLDERID> folderIds)
+{
+    for (const KNOWNFOLDERID& folderId : folderIds) {
+        const std::filesystem::path path = KnownFolderPath(folderId);
+        if (IsExistingDirectory(path)) {
+            return path;
+        }
+    }
+    return {};
+}
+
+bool IsShortcutPath(const std::filesystem::path& path)
+{
+    return _wcsicmp(path.extension().c_str(), L".lnk") == 0;
+}
+
+std::filesystem::path FindFirstShortcutInDirectory(const std::filesystem::path& dir, bool recursive)
+{
+    if (!IsExistingDirectory(dir)) {
+        return {};
+    }
+
+    std::error_code ec;
+    if (!recursive) {
+        for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied, ec)) {
+            if (!ec && entry.is_regular_file(ec) && !ec && IsShortcutPath(entry.path())) {
+                return entry.path();
+            }
+        }
+        return {};
+    }
+
+    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied, ec)) {
+        if (!ec && entry.is_regular_file(ec) && !ec && IsShortcutPath(entry.path())) {
+            return entry.path();
+        }
+    }
+    return {};
+}
+
+std::filesystem::path FindRealShortcutSample()
+{
+    const std::filesystem::path desktopShortcut = FindFirstShortcutInDirectory(KnownFolderPath(FOLDERID_Desktop), false);
+    if (!desktopShortcut.empty()) {
+        return desktopShortcut;
+    }
+
+    const std::filesystem::path commonDesktopShortcut = FindFirstShortcutInDirectory(KnownFolderPath(FOLDERID_PublicDesktop), false);
+    if (!commonDesktopShortcut.empty()) {
+        return commonDesktopShortcut;
+    }
+
+    const std::filesystem::path startMenuShortcut = FindFirstShortcutInDirectory(KnownFolderPath(FOLDERID_StartMenu), true);
+    if (!startMenuShortcut.empty()) {
+        return startMenuShortcut;
+    }
+
+    return FindFirstShortcutInDirectory(KnownFolderPath(FOLDERID_CommonStartMenu), true);
+}
+
+std::filesystem::path EnsureSampleFile(const std::wstring& key)
+{
+    const std::filesystem::path dir = GetShellMenuSampleDir();
+    if (dir.empty()) {
+        return {};
+    }
+
+    std::filesystem::path samplePath;
+    if (key.rfind(L"file_ext:", 0) == 0) {
+        const std::wstring extension = key.substr(wcslen(L"file_ext:"));
+        samplePath = dir / (L"sample" + extension);
+    } else if (key == L"file_no_extension") {
+        samplePath = dir / L"sample_no_extension";
+    }
+
+    if (!samplePath.empty() && !std::filesystem::exists(samplePath)) {
+        std::ofstream sample(samplePath, std::ios::binary);
+        sample << "LinDesk shell menu sample";
+    }
+    return samplePath;
+}
+
+std::filesystem::path EnsureSampleFolder()
+{
+    const std::filesystem::path realFolder = FirstExistingDirectory({
+        FOLDERID_Desktop,
+        FOLDERID_Documents,
+        FOLDERID_Downloads,
+        FOLDERID_Profile
+    });
+    if (!realFolder.empty()) {
+        return realFolder;
+    }
+
+    const std::filesystem::path dir = GetShellMenuSampleDir();
+    if (dir.empty()) {
+        return {};
+    }
+    const std::filesystem::path folder = dir / L"SampleFolder";
+    std::error_code ec;
+    std::filesystem::create_directories(folder, ec);
+    return folder;
+}
+
+std::filesystem::path EnsureSampleShortcut()
+{
+    const std::filesystem::path realShortcut = FindRealShortcutSample();
+    if (!realShortcut.empty()) {
+        return realShortcut;
+    }
+
+    const std::filesystem::path dir = GetShellMenuSampleDir();
+    if (dir.empty()) {
+        return {};
+    }
+    const std::filesystem::path shortcut = dir / L"SampleShortcut.lnk";
+
+    wchar_t systemDir[MAX_PATH] = {};
+    if (GetSystemDirectoryW(systemDir, ARRAYSIZE(systemDir))) {
+        const std::filesystem::path cmdPath = std::filesystem::path(systemDir) / L"cmd.exe";
+        wil::com_ptr_nothrow<IShellLinkW> shellLink;
+        if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shellLink))) && shellLink) {
+            shellLink->SetPath(cmdPath.c_str());
+            shellLink->SetWorkingDirectory(systemDir);
+            shellLink->SetDescription(L"LinDesk shell menu sample shortcut");
+
+            wil::com_ptr_nothrow<IPersistFile> persistFile;
+            if (SUCCEEDED(shellLink.query_to(&persistFile)) && persistFile &&
+                SUCCEEDED(persistFile->Save(shortcut.c_str(), TRUE))) {
+                return shortcut;
+            }
+        }
+    }
+
+    if (!std::filesystem::exists(shortcut)) {
+        std::ofstream sample(shortcut, std::ios::binary);
+    }
+    return shortcut;
 }
 
 bool IsSystemDesktopBackgroundMenuText(const std::wstring& text)
@@ -386,7 +1293,10 @@ void AppendMenuSnapshotItems(HMENU menu,
     std::vector<ShellMenuSnapshotItem>& outputItems,
     std::map<std::string, UINT>& commandMap,
     const char* commandPrefix,
-    bool filterSystemItems)
+    bool filterSystemItems,
+    const std::vector<std::wstring>& registryShellRoots,
+    const std::vector<std::wstring>& parentMenuPath,
+    const std::vector<std::wstring>& parentMatchPath)
 {
     if (!menu) {
         return;
@@ -413,13 +1323,25 @@ void AppendMenuSnapshotItems(HMENU menu,
         }
 
         snapshotItem.text = textBuffer;
+        snapshotItem.normalizedText = ShellContextMenu::NormalizeMenuText(snapshotItem.text);
+        snapshotItem.matchText = ShellContextMenu::MatchMenuText(snapshotItem.text);
+        snapshotItem.menuPath = parentMenuPath;
+        snapshotItem.menuPath.push_back(snapshotItem.text);
+        snapshotItem.matchPath = parentMatchPath;
+        snapshotItem.matchPath.push_back(snapshotItem.matchText);
+        snapshotItem.source = L"system";
         if (filterSystemItems && IsSystemDesktopBackgroundMenuText(snapshotItem.text)) {
             continue;
         }
 
         snapshotItem.enabled = (itemInfo.fState & (MFS_DISABLED | MFS_GRAYED)) == 0;
         snapshotItem.checked = (itemInfo.fState & MFS_CHECKED) == MFS_CHECKED;
-        snapshotItem.hBitmap = itemInfo.hbmpItem;
+        snapshotItem.hBitmap = CopyMenuBitmap(itemInfo.hbmpItem);
+        snapshotItem.ownsHBitmap = snapshotItem.hBitmap != nullptr;
+        if (!snapshotItem.hBitmap && IsValidShellCommandId(itemInfo.wID)) {
+            snapshotItem.hBitmap = ResolveFallbackMenuBitmap(contextMenu, itemInfo.wID, snapshotItem.text, registryShellRoots);
+            snapshotItem.ownsHBitmap = snapshotItem.hBitmap != nullptr;
+        }
 
         if (itemInfo.hSubMenu) {
             if (contextMenu) {
@@ -428,7 +1350,16 @@ void AppendMenuSnapshotItems(HMENU menu,
                     MAKELPARAM(i, FALSE),
                     nullptr);
             }
-            AppendMenuSnapshotItems(itemInfo.hSubMenu, contextMenu, snapshotItem.children, commandMap, commandPrefix, false);
+            AppendMenuSnapshotItems(itemInfo.hSubMenu,
+                contextMenu,
+                snapshotItem.children,
+                commandMap,
+                commandPrefix,
+                false,
+                registryShellRoots,
+                snapshotItem.menuPath,
+                snapshotItem.matchPath);
+            AppendSendToFallbackItems(snapshotItem);
             TrimSnapshotSeparators(snapshotItem.children);
             if (!HasActionItems(snapshotItem.children)) {
                 continue;
@@ -437,12 +1368,10 @@ void AppendMenuSnapshotItems(HMENU menu,
             continue;
         }
 
-        if (!IsValidShellCommandId(itemInfo.wID)) {
-            continue;
+        if (IsValidShellCommandId(itemInfo.wID)) {
+            snapshotItem.commandId = std::string(commandPrefix) + std::to_string(itemInfo.wID);
+            commandMap[snapshotItem.commandId] = itemInfo.wID;
         }
-
-        snapshotItem.commandId = std::string(commandPrefix) + std::to_string(itemInfo.wID);
-        commandMap[snapshotItem.commandId] = itemInfo.wID;
         outputItems.push_back(snapshotItem);
     }
 
@@ -538,6 +1467,386 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
 
 }
 
+ShellMenuSnapshotItem::ShellMenuSnapshotItem(const ShellMenuSnapshotItem& other)
+    : text(other.text),
+      normalizedText(other.normalizedText),
+      matchText(other.matchText),
+      source(other.source),
+      commandId(other.commandId),
+      menuPath(other.menuPath),
+      matchPath(other.matchPath),
+      children(other.children),
+      isSeparator(other.isSeparator),
+      enabled(other.enabled),
+      checked(other.checked)
+{
+    CopySnapshotBitmap(*this, other);
+}
+
+ShellMenuSnapshotItem& ShellMenuSnapshotItem::operator=(const ShellMenuSnapshotItem& other)
+{
+    if (this == &other) {
+        return *this;
+    }
+
+    ResetSnapshotBitmap(*this);
+    text = other.text;
+    normalizedText = other.normalizedText;
+    matchText = other.matchText;
+    source = other.source;
+    commandId = other.commandId;
+    menuPath = other.menuPath;
+    matchPath = other.matchPath;
+    children = other.children;
+    isSeparator = other.isSeparator;
+    enabled = other.enabled;
+    checked = other.checked;
+    CopySnapshotBitmap(*this, other);
+    return *this;
+}
+
+ShellMenuSnapshotItem::ShellMenuSnapshotItem(ShellMenuSnapshotItem&& other) noexcept
+    : text(std::move(other.text)),
+      normalizedText(std::move(other.normalizedText)),
+      matchText(std::move(other.matchText)),
+      source(std::move(other.source)),
+      commandId(std::move(other.commandId)),
+      menuPath(std::move(other.menuPath)),
+      matchPath(std::move(other.matchPath)),
+      children(std::move(other.children)),
+      isSeparator(other.isSeparator),
+      enabled(other.enabled),
+      checked(other.checked),
+      hBitmap(other.hBitmap),
+      ownsHBitmap(other.ownsHBitmap)
+{
+    other.hBitmap = nullptr;
+    other.ownsHBitmap = false;
+}
+
+ShellMenuSnapshotItem& ShellMenuSnapshotItem::operator=(ShellMenuSnapshotItem&& other) noexcept
+{
+    if (this == &other) {
+        return *this;
+    }
+
+    ResetSnapshotBitmap(*this);
+    text = std::move(other.text);
+    normalizedText = std::move(other.normalizedText);
+    matchText = std::move(other.matchText);
+    source = std::move(other.source);
+    commandId = std::move(other.commandId);
+    menuPath = std::move(other.menuPath);
+    matchPath = std::move(other.matchPath);
+    children = std::move(other.children);
+    isSeparator = other.isSeparator;
+    enabled = other.enabled;
+    checked = other.checked;
+    hBitmap = other.hBitmap;
+    ownsHBitmap = other.ownsHBitmap;
+    other.hBitmap = nullptr;
+    other.ownsHBitmap = false;
+    return *this;
+}
+
+ShellMenuSnapshotItem::~ShellMenuSnapshotItem()
+{
+    ResetSnapshotBitmap(*this);
+}
+
+std::wstring ShellContextMenu::NormalizeMenuText(const std::wstring& text)
+{
+    return NormalizeMenuTextForFilter(text);
+}
+
+std::wstring ShellContextMenu::MatchMenuText(const std::wstring& text)
+{
+    std::wstring output;
+    output.reserve(text.size());
+    bool inQuote = false;
+    wchar_t quoteChar = L'\0';
+    std::wstring quotedText;
+
+    auto flushQuoted = [&]() {
+        if (LooksLikeDynamicFileName(quotedText)) {
+            output += L"{target}";
+        } else {
+            output += quotedText;
+        }
+        quotedText.clear();
+    };
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        const wchar_t ch = text[i];
+        if (!inQuote && ch == L'\t') {
+            break;
+        }
+        if (ch == L'&') {
+            continue;
+        }
+
+        const bool isOpeningQuote = !inQuote && (ch == L'"' || ch == L'\'' || ch == L'“' || ch == L'‘');
+        const bool isClosingQuote = inQuote &&
+            ((quoteChar == L'"' && ch == L'"') ||
+                (quoteChar == L'\'' && ch == L'\'') ||
+                (quoteChar == L'“' && ch == L'”') ||
+                (quoteChar == L'‘' && ch == L'’'));
+
+        if (isOpeningQuote) {
+            inQuote = true;
+            quoteChar = ch;
+            output.push_back(ch);
+            continue;
+        }
+
+        if (isClosingQuote) {
+            flushQuoted();
+            output.push_back(ch);
+            inQuote = false;
+            quoteChar = L'\0';
+            continue;
+        }
+
+        if (inQuote) {
+            quotedText.push_back(ch);
+        } else {
+            output.push_back(static_cast<wchar_t>(std::towlower(ch)));
+        }
+    }
+
+    if (inQuote) {
+        output += quotedText;
+    }
+
+    while (!output.empty() && std::iswspace(output.front())) {
+        output.erase(output.begin());
+    }
+    while (!output.empty() && std::iswspace(output.back())) {
+        output.pop_back();
+    }
+    return output;
+}
+
+bool ShellContextMenu::MenuEntryMatches(const ShellMenuExclusionEntry& exclusion,
+    const std::wstring& rawText,
+    const std::wstring& normalizedText,
+    const std::wstring& matchText,
+    const std::vector<std::wstring>& matchPath)
+{
+    if (!exclusion.enabled) {
+        return false;
+    }
+    if (!exclusion.matchPath.empty() && !matchPath.empty() && exclusion.matchPath == matchPath) {
+        return true;
+    }
+    if (!exclusion.matchText.empty() && !matchText.empty() && exclusion.matchText == matchText) {
+        return true;
+    }
+    if (!exclusion.rawText.empty() && rawText == exclusion.rawText) {
+        return true;
+    }
+    return !exclusion.normalizedText.empty() && normalizedText == exclusion.normalizedText;
+}
+
+std::vector<std::wstring> ShellContextMenu::ExclusionKeysForPath(OperationType type, const wchar_t* path)
+{
+    std::vector<std::wstring> keys;
+    switch (type) {
+    case OperationType::BackGround:
+        keys.push_back(L"desktop");
+        break;
+    case OperationType::boxBackground:
+        keys.push_back(L"box_background");
+        break;
+    case OperationType::folder:
+        keys.push_back(L"folder");
+        break;
+    case OperationType::link:
+        keys.push_back(L"shortcut");
+        break;
+    case OperationType::diskLetter:
+        keys.push_back(L"disk");
+        break;
+    case OperationType::file: {
+        const std::wstring progId = ProgIdForPath(path);
+        if (!progId.empty()) {
+            keys.push_back(L"file_progid:" + progId);
+        }
+        const std::wstring extension = FileExtensionLower(path);
+        if (!extension.empty()) {
+            keys.push_back(L"file_ext:" + extension);
+        } else {
+            keys.push_back(L"file_no_extension");
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return keys;
+}
+
+std::vector<ShellMenuExclusionEntry> ShellContextMenu::LoadExclusions(const std::wstring& key)
+{
+    std::vector<ShellMenuExclusionEntry> entries;
+    const std::wstring stored = ReadProfileStringValue(ConfigNameForKey(key));
+    for (const std::wstring& item : SplitConfigList(stored)) {
+        const std::vector<std::wstring> fields = SplitFields(item);
+        if (fields.empty()) {
+            continue;
+        }
+
+        ShellMenuExclusionEntry entry;
+        entry.rawText = UnescapeConfigValue(fields[0]);
+        entry.normalizedText = fields.size() > 1
+            ? UnescapeConfigValue(fields[1])
+            : ShellContextMenu::NormalizeMenuText(entry.rawText);
+        entry.enabled = fields.size() <= 2 || fields[2] != L"0";
+        if (!entry.rawText.empty() || !entry.normalizedText.empty()) {
+            entries.push_back(entry);
+        }
+    }
+    return entries;
+}
+
+void ShellContextMenu::SaveExclusions(const std::wstring& key, const std::vector<ShellMenuExclusionEntry>& entries)
+{
+    std::wstring stored;
+    bool first = true;
+    for (const ShellMenuExclusionEntry& entry : entries) {
+        if (!first) {
+            stored.push_back(L';');
+        }
+        first = false;
+        stored += EscapeConfigValue(entry.rawText);
+        stored.push_back(L'|');
+        stored += EscapeConfigValue(entry.normalizedText);
+        stored.push_back(L'|');
+        stored += entry.enabled ? L"1" : L"0";
+    }
+    WriteProfileStringValue(ConfigNameForKey(key), stored);
+}
+
+void ShellContextMenu::AddExclusion(const std::wstring& key, const std::wstring& rawText)
+{
+    if (key.empty() || rawText.empty()) {
+        return;
+    }
+
+    std::vector<ShellMenuExclusionEntry> entries = LoadExclusions(key);
+    const std::wstring normalized = NormalizeMenuText(rawText);
+    for (const ShellMenuExclusionEntry& entry : entries) {
+        if (entry.rawText == rawText || entry.normalizedText == normalized) {
+            return;
+        }
+    }
+
+    ShellMenuExclusionEntry entry;
+    entry.rawText = rawText;
+    entry.normalizedText = normalized;
+    entry.enabled = true;
+    entries.push_back(entry);
+    SaveExclusions(key, entries);
+}
+
+void ShellContextMenu::RemoveExclusion(const std::wstring& key, int index)
+{
+    std::vector<ShellMenuExclusionEntry> entries = LoadExclusions(key);
+    if (index < 0 || index >= static_cast<int>(entries.size())) {
+        return;
+    }
+    entries.erase(entries.begin() + index);
+    SaveExclusions(key, entries);
+}
+
+std::vector<ShellMenuSnapshotItem> ShellContextMenu::SnapshotMenuForExclusionKey(const std::wstring& key)
+{
+    const std::wstring logTag = L"SettingsShellScan:" + key;
+    EmitDesktopShellMenuListLine(logTag.c_str(), L"start");
+
+    ShellContextMenu menu;
+    if (key == L"desktop") {
+        menu.DisplayDesktopContextMenu();
+        menu.m_contextMenu = menu.MaybeGetShellContextMenu(GetDesktopWindow());
+    } else if (key == L"box_background") {
+        menu.DisplayBoxBackgroundContextMenu();
+        menu.m_contextMenu = menu.MaybeGetShellContextMenu(GetDesktopWindow());
+    } else if (key == L"folder") {
+        const std::filesystem::path folder = EnsureSampleFolder();
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"source folder=\"" + folder.wstring() + L"\"");
+        menu.DisplayFolderContextMenu(folder.c_str());
+    } else if (key == L"shortcut") {
+        const std::filesystem::path shortcut = EnsureSampleShortcut();
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"source shortcut=\"" + shortcut.wstring() + L"\"");
+        menu.DisplayLinkContextMenu(shortcut.c_str());
+    } else if (key == L"disk") {
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"source disk=\"C:\\\"");
+        menu.DisplayFolderContextMenu(L"C:\\");
+    } else if (key == L"file_no_extension" || key.rfind(L"file_ext:", 0) == 0) {
+        const std::filesystem::path sample = EnsureSampleFile(key);
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"source file=\"" + sample.wstring() + L"\"");
+        menu.DisplayFileContextMenu(sample.c_str());
+    } else if (key.rfind(L"file_progid:", 0) == 0) {
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"skip unsupported file_progid");
+        return {};
+    } else {
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"skip unknown key");
+        return {};
+    }
+
+    if (!menu.m_contextMenu) {
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"no context menu");
+        return {};
+    }
+
+    wil::unique_hmenu hMenu(CreatePopupMenu());
+    if (!hMenu) {
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"create popup menu failed");
+        return {};
+    }
+
+    const HRESULT queryHr = menu.m_contextMenu->QueryContextMenu(
+        hMenu.get(),
+        0,
+        MIN_SHELL_MENU_ID,
+        MAX_SHELL_MENU_ID,
+        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+    if (FAILED(queryHr)) {
+        EmitDesktopShellMenuListLine(logTag.c_str(), L"QueryContextMenu failed hr=" + std::to_wstring(static_cast<long>(queryHr)));
+        return {};
+    }
+
+    menu.RemoveTencentDeskGoMenu(hMenu.get());
+    DebugLogMenuTree(hMenu.get(), menu.m_contextMenu.get(), logTag.c_str());
+
+    std::vector<ShellMenuSnapshotItem> items;
+    std::map<std::string, UINT> commandMap;
+    AppendMenuSnapshotItems(hMenu.get(),
+        menu.m_contextMenu.get(),
+        items,
+        commandMap,
+        "scan:",
+        false,
+        RegistryShellRootsForExclusionKey(key),
+        {},
+        {});
+    EmitDesktopShellMenuListLine(logTag.c_str(), L"finish output_count=" + std::to_wstring(items.size()));
+    return items;
+}
+
+std::wstring ShellContextMenu::DisplayNameForExclusionKey(const std::wstring& key)
+{
+    if (key == L"desktop") return L"Desktop";
+    if (key == L"box_background") return L"Box Background";
+    if (key == L"folder") return L"Folder";
+    if (key == L"shortcut") return L"Shortcut";
+    if (key == L"disk") return L"Disk";
+    if (key == L"file_no_extension") return L"No Extension File";
+    if (key.rfind(L"file_ext:", 0) == 0) return key.substr(wcslen(L"file_ext:"));
+    if (key.rfind(L"file_progid:", 0) == 0) return L"ProgID " + key.substr(wcslen(L"file_progid:"));
+    return key;
+}
+
 void ShellContextMenu::DisplayDesktopContextMenu()
 {
     m_contextMenu = nullptr;
@@ -599,7 +1908,6 @@ void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
 {
     m_contextMenu = nullptr;
     operationType = OperationType::file;
-    //鑾峰彇ShellFolder鎺ュ彛
     m_pShellFolder = GetIshellFolderByPath(path);
     if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
         return;
@@ -868,6 +2176,7 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
     }
 
     RemoveTencentDeskGoMenu(hMenu.get());
+    RemoveConfiguredMenuItems(hMenu.get(), m_exclusions);
     DebugLogMenuTree(hMenu.get(), m_contextMenu.get(), L"Win11DesktopShellSnapshot");
 
     AppendMenuSnapshotItems(hMenu.get(),
@@ -875,7 +2184,10 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
         session.m_thirdPartyItems,
         session.m_commandMap,
         "shell_external:",
-        true);
+        true,
+        RegistryShellRootsForExclusionKey(L"desktop"),
+        {},
+        {});
 
     const int newMenuPos = FindNewMenuPosition(hMenu.get());
     if (newMenuPos >= 0) {
@@ -893,7 +2205,10 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
                 session.m_newItems,
                 session.m_commandMap,
                 "shell_new:",
-                false);
+                false,
+                {},
+                {},
+                {});
         }
     }
 
@@ -961,9 +2276,6 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
 
     if (operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
         RemoveTencentDeskGoMenu(hMenu.get());
-        if (operationType == OperationType::BackGround) {
-            RemoveDesktopExcludedMenuItems(hMenu.get());
-        }
         if (operationType == OperationType::boxBackground) {
             KeepOnlyNewMenuForBoxBackground(hMenu.get());
         }
@@ -1088,6 +2400,8 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             }
         }
     }
+
+    RemoveConfiguredMenuItems(hMenu.get(), m_exclusions);
 
     if (operationType == OperationType::boxBackground) {
         DebugLogTopLevelMenuItems(hMenu.get(), L"BoxContextMenu");
@@ -1267,12 +2581,20 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
 
             if (SUCCEEDED(hr))
             {
-                return result;
+                if (msg == WM_INITMENUPOPUP) {
+                    RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_exclusions);
+                }
+                if (msg != WM_INITMENUPOPUP) {
+                    return result;
+                }
             }
         }
         else if (auto contextMenu2 = m_contextMenu.try_query<IContextMenu2>())
         {
             contextMenu2->HandleMenuMsg(msg, wParam, lParam);
+            if (msg == WM_INITMENUPOPUP) {
+                RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_exclusions);
+            }
         }
         break;
     }

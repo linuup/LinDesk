@@ -308,6 +308,10 @@ Do you want to re map this box to another folder?</source>
         <source>LinDesk</source>
         <translation>LinDesk</translation>
     </message>
+    <message>
+        <source>ProgID %1</source>
+        <translation>程序ID %1</translation>
+    </message>
 </context>
 <context>
     <name>QmlTestWindow</name>
@@ -543,7 +547,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Window</source>
-        <translation>窗口</translation>
+        <translation>桌面</translation>
     </message>
     <message>
         <source>LinDesk Settings</source>
@@ -908,6 +912,90 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Failed to start updater.</source>
         <translation>启动更新程序失败。</translation>
+    </message>
+    <message>
+        <source>Context Menu</source>
+        <translation>右键菜单</translation>
+    </message>
+    <message>
+        <source>Shell Menu Exclusions</source>
+        <translation>右键菜单排除项</translation>
+    </message>
+    <message>
+        <source>Choose a menu type. LinDesk scans the real menu immediately, then you can hide items from future context menus.</source>
+        <translation>选择菜单类型,然后您可以从未来的上下文菜单中隐藏项目。</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Default Types</source>
+        <translation>默认类型</translation>
+    </message>
+    <message>
+        <source>Custom Extensions</source>
+        <translation>自定义扩展</translation>
+    </message>
+    <message>
+        <source>Menu Items</source>
+        <translation>菜单项</translation>
+    </message>
+    <message>
+        <source>No menu items were found.</source>
+        <translation>未找到菜单项。</translation>
+    </message>
+    <message>
+        <source>Box Background</source>
+        <translation>盒子背景</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>文件夹</translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation>快捷方式</translation>
+    </message>
+    <message>
+        <source>Disk</source>
+        <translation>磁盘</translation>
+    </message>
+    <message>
+        <source>No Extension File</source>
+        <translation>无扩展文件</translation>
+    </message>
+    <message>
+        <source>system</source>
+        <translation>系统</translation>
+    </message>
+    <message>
+        <source>No menu items were found for %1.</source>
+        <translation>未找到 %1 的菜单项。</translation>
+    </message>
+    <message>
+        <source>%1 visible, %2 hidden for %3.</source>
+        <translation>%1 可见，%2 对 %3 隐藏。</translation>
+    </message>
+    <message>
+        <source>File Extension</source>
+        <translation>文件扩展名</translation>
+    </message>
+    <message>
+        <source>Enter a file extension, for example .txt.</source>
+        <translation>输入文件扩展名，例如 .txt。</translation>
+    </message>
+    <message>
+        <source>Removed extension type: %1</source>
+        <translation>已删除扩展类型: %1</translation>
+    </message>
+    <message>
+        <source>Removed extension type.</source>
+        <translation>已删除扩展类型。</translation>
     </message>
 </context>
 <context>

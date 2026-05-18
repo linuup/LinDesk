@@ -101,11 +101,19 @@
     </message>
     <message>
         <source>The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</source>
-        <translation>The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</translation>
+        <translation type="vanished">The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</translation>
     </message>
     <message>
-        <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.Do you want to re map this box to another folder?</source>
-        <translation>The mapped folder &quot;%1&quot; is still unavailable because access is denied.Do you want to re map this box to another folder?</translation>
+        <source>The mapped folder &quot;%1&quot; is still missing.
+
+Do you want to re map this box to another folder?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.
+
+Do you want to re map this box to another folder?</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -303,6 +311,10 @@
     <message>
         <source>LinDesk</source>
         <translation>LinDesk</translation>
+    </message>
+    <message>
+        <source>ProgID %1</source>
+        <translation>ProgID %1</translation>
     </message>
 </context>
 <context>
@@ -818,7 +830,7 @@
     </message>
     <message>
         <source>Version: %1</source>
-        <translation>Version: %1</translation>
+        <translation type="vanished">Version: %1</translation>
     </message>
     <message>
         <source>Update Now</source>
@@ -867,6 +879,90 @@
     <message>
         <source>Failed to start updater.</source>
         <translation>Failed to start updater.</translation>
+    </message>
+    <message>
+        <source>Context Menu</source>
+        <translation>Right Menu</translation>
+    </message>
+    <message>
+        <source>Shell Menu Exclusions</source>
+        <translation>Right Menu Exclusions</translation>
+    </message>
+    <message>
+        <source>Choose a menu type. LinDesk scans the real menu immediately, then you can hide items from future context menus.</source>
+        <translation>Choose a menu type,then you can hide items from future context menus.</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <source>Default Types</source>
+        <translation>Default Types</translation>
+    </message>
+    <message>
+        <source>Custom Extensions</source>
+        <translation>Custom Extensions</translation>
+    </message>
+    <message>
+        <source>Menu Items</source>
+        <translation>Menu Items</translation>
+    </message>
+    <message>
+        <source>No menu items were found.</source>
+        <translation>No menu items were found.</translation>
+    </message>
+    <message>
+        <source>Box Background</source>
+        <translation>Box Background</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>Folder</translation>
+    </message>
+    <message>
+        <source>Shortcut</source>
+        <translation>Shortcut</translation>
+    </message>
+    <message>
+        <source>Disk</source>
+        <translation>Disk</translation>
+    </message>
+    <message>
+        <source>No Extension File</source>
+        <translation>No Extension File</translation>
+    </message>
+    <message>
+        <source>system</source>
+        <translation>System</translation>
+    </message>
+    <message>
+        <source>No menu items were found for %1.</source>
+        <translation>No menu items were found for %1.</translation>
+    </message>
+    <message>
+        <source>%1 visible, %2 hidden for %3.</source>
+        <translation>%1 visible, %2 hidden for %3.</translation>
+    </message>
+    <message>
+        <source>File Extension</source>
+        <translation>File Extension</translation>
+    </message>
+    <message>
+        <source>Enter a file extension, for example .txt.</source>
+        <translation>Enter a file extension, for example .txt.</translation>
+    </message>
+    <message>
+        <source>Removed extension type: %1</source>
+        <translation>Removed extension type: %1</translation>
+    </message>
+    <message>
+        <source>Removed extension type.</source>
+        <translation>Removed extension type.</translation>
     </message>
 </context>
 <context>

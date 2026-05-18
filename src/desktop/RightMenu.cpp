@@ -4,6 +4,7 @@
 #include "desktop/Win11MenuBridge.h"
 #include "app/AppFonts.h"
 #include "services/AppPaths.h"
+#include "services/ShellMenuExclusionStore.h"
 #include "ui/Fluent/FluentDialog.h"
 #include <QCoreApplication>
 #include <QMenu>
@@ -720,6 +721,136 @@ const std::vector<ShellContextMenu::CustomMenuItem>& RightMenu::sharedBoxCustomM
     return m_cachedSharedBoxMenuData.items;
 }
 
+static bool isShellMenuTextExcluded(const std::wstring& key, const std::wstring& rawText)
+{
+    return ShellMenuExclusionStore::contains(key, rawText);
+}
+
+std::vector<ShellContextMenu::CustomMenuItem> RightMenu::filterCustomItemsForExclusionKey(
+    const std::vector<ShellContextMenu::CustomMenuItem>& items,
+    const std::wstring& key)
+{
+    const std::vector<ShellMenuExclusionEntry> exclusions = ShellMenuExclusionStore::load(key);
+    if (exclusions.empty()) {
+        return items;
+    }
+
+    std::vector<ShellContextMenu::CustomMenuItem> filtered;
+    filtered.reserve(items.size());
+    std::function<void(const std::vector<ShellContextMenu::CustomMenuItem>&,
+        std::vector<ShellContextMenu::CustomMenuItem>&,
+        const std::vector<std::wstring>&)> appendFiltered;
+    appendFiltered = [&](const std::vector<ShellContextMenu::CustomMenuItem>& sourceItems,
+        std::vector<ShellContextMenu::CustomMenuItem>& targetItems,
+        const std::vector<std::wstring>& parentMatchPath) {
+    for (const ShellContextMenu::CustomMenuItem& item : sourceItems) {
+        if (item.isSeparator) {
+            targetItems.push_back(item);
+            continue;
+        }
+
+        const std::wstring normalizedText = ShellContextMenu::NormalizeMenuText(item.text);
+        const std::wstring matchText = ShellContextMenu::MatchMenuText(item.text);
+        std::vector<std::wstring> matchPath = parentMatchPath;
+        matchPath.push_back(matchText);
+        bool excluded = false;
+        for (const ShellMenuExclusionEntry& exclusion : exclusions) {
+            if (ShellContextMenu::MenuEntryMatches(exclusion, item.text, normalizedText, matchText, matchPath)) {
+                excluded = true;
+                break;
+            }
+        }
+        if (excluded) {
+            continue;
+        }
+
+        ShellContextMenu::CustomMenuItem copy = item;
+        if (!copy.children.empty()) {
+            copy.children.clear();
+            appendFiltered(item.children, copy.children, matchPath);
+        }
+        if (!copy.children.empty() || item.children.empty()) {
+            targetItems.push_back(std::move(copy));
+        }
+    }
+    };
+    appendFiltered(items, filtered, {});
+
+    while (!filtered.empty() && filtered.front().isSeparator) {
+        filtered.erase(filtered.begin());
+    }
+    while (!filtered.empty() && filtered.back().isSeparator) {
+        filtered.pop_back();
+    }
+    for (int i = static_cast<int>(filtered.size()) - 1; i > 0; --i) {
+        if (filtered[i].isSeparator && filtered[i - 1].isSeparator) {
+            filtered.erase(filtered.begin() + i);
+        }
+    }
+    return filtered;
+}
+
+std::vector<ShellContextMenu::CustomMenuItem> RightMenu::filteredDesktopCustomMenuItems() const
+{
+    return filterCustomItemsForExclusionKey(desktopCustomMenuItems(), L"desktop");
+}
+
+std::vector<ShellContextMenu::CustomMenuItem> RightMenu::filteredSharedBoxCustomMenuItems() const
+{
+    return filterCustomItemsForExclusionKey(sharedBoxCustomMenuItems(), L"box_background");
+}
+
+std::vector<ShellMenuSnapshotItem> RightMenu::customItemsToPreviewItems(const std::vector<ShellContextMenu::CustomMenuItem>& items)
+{
+    std::vector<ShellMenuSnapshotItem> result;
+    result.reserve(items.size());
+    std::function<void(const std::vector<ShellContextMenu::CustomMenuItem>&,
+        std::vector<ShellMenuSnapshotItem>&,
+        const std::vector<std::wstring>&,
+        const std::vector<std::wstring>&)> appendItems;
+    appendItems = [&](const std::vector<ShellContextMenu::CustomMenuItem>& sourceItems,
+        std::vector<ShellMenuSnapshotItem>& targetItems,
+        const std::vector<std::wstring>& parentMenuPath,
+        const std::vector<std::wstring>& parentMatchPath) {
+    for (const ShellContextMenu::CustomMenuItem& customItem : sourceItems) {
+        ShellMenuSnapshotItem item;
+        item.isSeparator = customItem.isSeparator;
+        if (item.isSeparator) {
+            targetItems.push_back(item);
+            continue;
+        }
+        item.text = customItem.text;
+        item.normalizedText = ShellContextMenu::NormalizeMenuText(customItem.text);
+        item.matchText = ShellContextMenu::MatchMenuText(customItem.text);
+        item.menuPath = parentMenuPath;
+        item.menuPath.push_back(item.text);
+        item.matchPath = parentMatchPath;
+        item.matchPath.push_back(item.matchText);
+        item.source = L"lindesk";
+        item.enabled = customItem.enabled;
+        item.checked = customItem.checked;
+        item.hBitmap = customItem.hBitmap;
+        appendItems(customItem.children, item.children, item.menuPath, item.matchPath);
+        targetItems.push_back(std::move(item));
+    }
+    };
+    appendItems(items, result, {}, {});
+    return result;
+}
+
+std::vector<ShellMenuSnapshotItem> RightMenu::shellMenuPreviewItems(const QString& key) const
+{
+    std::vector<ShellMenuSnapshotItem> items = ShellContextMenu::SnapshotMenuForExclusionKey(key.toStdWString());
+    if (key == QStringLiteral("desktop")) {
+        std::vector<ShellMenuSnapshotItem> customItems = customItemsToPreviewItems(desktopCustomMenuItems());
+        items.insert(items.end(), customItems.begin(), customItems.end());
+    } else if (key == QStringLiteral("box_background")) {
+        std::vector<ShellMenuSnapshotItem> customItems = customItemsToPreviewItems(sharedBoxCustomMenuItems());
+        items.insert(items.end(), customItems.begin(), customItems.end());
+    }
+    return items;
+}
+
 QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSession* shellSession) const
 {
     auto actionItem = [](const QString& text,
@@ -760,6 +891,14 @@ QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSessi
             item.insert(QStringLiteral("icon"), icon);
         }
         return item;
+    };
+
+    auto desktopActionItem = [&](const QString& text,
+                                 const QString& commandId,
+                                 const QString& icon = QString()) {
+        return isShellMenuTextExcluded(L"desktop", text.toStdWString())
+            ? QJsonObject()
+            : actionItem(text, commandId, true, false, false, icon);
     };
 
     auto snapshotItemsToJson = [&](const std::vector<ShellMenuSnapshotItem>& snapshotItems, const QString& iconPrefix) {
@@ -815,12 +954,29 @@ QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSessi
     sortItems.append(actionItem(shellMenuText("Date modified", "修改日期"), QStringLiteral("sort_date"), true, true, m_sortByDateAction && m_sortByDateAction->isChecked()));
 
     QJsonArray linDeskItems;
-    linDeskItems.append(actionItem(shellMenuText("New Timer", "新建计时器"), QStringLiteral("create_timer"), true, false, false, QStringLiteral("NewTimer.png")));
-    linDeskItems.append(actionItem(shellMenuText("Map Folder", "映射文件夹"), QStringLiteral("map_folder"), true, false, false, QStringLiteral("MapFolder.png")));
-    linDeskItems.append(actionItem(shellMenuText("Organize Desktop", "整理桌面"), QStringLiteral("organize_desktop"), true, false, false, QStringLiteral("OrganizeDesktop.png")));
-    linDeskItems.append(actionItem(shellMenuText("Settings", "设置"), QStringLiteral("settings"), true, false, false, QStringLiteral("Settings.png")));
-    linDeskItems.append(separatorItem());
-    linDeskItems.append(actionItem(shellMenuText("Exit LinDesk", "退出 LinDesk"), QStringLiteral("exit_lindesk"), true, false, false, QStringLiteral("Exit.png")));
+    const QJsonObject timerItem = desktopActionItem(tr("New Timer"), QStringLiteral("create_timer"), QStringLiteral("NewTimer.png"));
+    if (!timerItem.isEmpty()) {
+        linDeskItems.append(timerItem);
+    }
+    const QJsonObject mapFolderItem = desktopActionItem(tr("Map Folder"), QStringLiteral("map_folder"), QStringLiteral("MapFolder.png"));
+    if (!mapFolderItem.isEmpty()) {
+        linDeskItems.append(mapFolderItem);
+    }
+    const QJsonObject organizeItem = desktopActionItem(tr("Organize Desktop"), QStringLiteral("organize_desktop"), QStringLiteral("OrganizeDesktop.png"));
+    if (!organizeItem.isEmpty()) {
+        linDeskItems.append(organizeItem);
+    }
+    const QJsonObject settingsItem = desktopActionItem(tr("Setting"), QStringLiteral("settings"), QStringLiteral("Settings.png"));
+    if (!settingsItem.isEmpty()) {
+        linDeskItems.append(settingsItem);
+    }
+    const QJsonObject exitItem = desktopActionItem(tr("Exit LinDesk"), QStringLiteral("exit_lindesk"), QStringLiteral("Exit.png"));
+    if (!exitItem.isEmpty()) {
+        if (!linDeskItems.isEmpty()) {
+            linDeskItems.append(separatorItem());
+        }
+        linDeskItems.append(exitItem);
+    }
 
     const QJsonArray newItems = shellSession
         ? snapshotItemsToJson(shellSession->newMenuItems(), QStringLiteral("ShellNew"))
@@ -845,10 +1001,10 @@ QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSessi
     if (!newItems.isEmpty()) {
         items.append(submenuItem(shellMenuText("New", "新建"), newItems, QStringLiteral("New.png")));
     }
-    if (showNewBoxItem) {
+    if (showNewBoxItem && !isShellMenuTextExcluded(L"desktop", tr("New Box").toStdWString())) {
         items.append(actionItem(shellMenuText("New Box", "新建盒子"), QStringLiteral("create_box"), true, false, false, QStringLiteral("NewBox.png")));
     }
-    if (showLinDeskMenu) {
+    if (showLinDeskMenu && !linDeskItems.isEmpty() && !isShellMenuTextExcluded(L"desktop", QStringLiteral("LinDesk").toStdWString())) {
         items.append(submenuItem(QStringLiteral("LinDesk"), linDeskItems, QStringLiteral("LinDesk.png")));
     }
     items.append(separatorItem());
@@ -939,8 +1095,10 @@ void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
     ShellContextMenu scm;
     POINT p = { pos.x(), pos.y() };
     scm.DisplayDesktopContextMenu();
+    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
+    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
     if (m_customMenu) {
-        scm.setCustomMenuItems(desktopCustomMenuItems());
+        scm.setCustomMenuItems(filteredDesktopCustomMenuItems());
     }
     scm.ShowMenu(this->hwnd, &p, nullptr);
 }
@@ -949,6 +1107,8 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 {
     ShellContextMenu shellMenu;
     ShellMenuCommandSession shellSession;
+    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
+    shellMenu.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
     const bool hasShellNewSnapshot = shellMenu.prepareDesktopBackgroundMenuSnapshot(hwnd, shellSession);
     if (!hasShellNewSnapshot) {
         qWarning() << "[RightMenu] Shell New snapshot unavailable";
@@ -979,9 +1139,11 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
 		}
 
 		scm.DisplayDesktopContextMenu();
+        const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
+        scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {
-			scm.setCustomMenuItems(desktopCustomMenuItems());
+			scm.setCustomMenuItems(filteredDesktopCustomMenuItems());
 			scm.ShowMenu(this->hwnd, position, nullptr);
 			return;
 		}
@@ -997,6 +1159,7 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
     } else {
         scm.DisplayItemContextMenu(model.itemData.pidl());
     }
+    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeysForModel(model)));
     scm.ShowMenu(this->hwnd, position, nullptr);
 }
 #if 0
@@ -1120,6 +1283,27 @@ void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemMode
     ShellContextMenu scm;
     scm.DisplayMultipleContextMenu(pidls);
     scm.ShowMenu(this->hwnd, position, nullptr);
+}
+
+std::vector<std::wstring> RightMenu::exclusionKeysForModel(const DesktopRootItemModel& model) const
+{
+    if (model.objectType == ObjectType::Folder_ObjectType) {
+        return ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::folder, reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(model.filePath).utf16()));
+    }
+    if (model.objectType == ObjectType::DiskLetter) {
+        return ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::diskLetter, reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(model.filePath).utf16()));
+    }
+    if (model.objectType == ObjectType::SpecialFolder) {
+        return {};
+    }
+    if (model.objectType == ObjectType::File) {
+        const QString nativePath = QDir::toNativeSeparators(model.filePath);
+        const auto type = model.isShortcut
+            ? ShellContextMenu::OperationType::link
+            : ShellContextMenu::OperationType::file;
+        return ShellContextMenu::ExclusionKeysForPath(type, reinterpret_cast<const wchar_t*>(nativePath.utf16()));
+    }
+    return {};
 }
 
 const wchar_t* RightMenu::objPath() const

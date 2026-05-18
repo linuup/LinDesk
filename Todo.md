@@ -13,6 +13,18 @@
   - [ ] 快捷按钮点击后复用现有 Win11 菜单 commandId 执行逻辑
   - [ ] 无可用快捷操作时隐藏顶部横向区域
 
+# 菜单自定义显示
+- 每种类型的菜单扫描中目前没有使用系统提供的apiGetSubMenu来获取子菜单，这可能导致无法正确获取
+- 目前是激活的方式
+- if (hasSubMenu) {
+    if (contextMenu) {
+        contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
+            reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
+            MAKELPARAM(i, TRUE),
+            nullptr);
+    }
+    DebugLogMenuTree(itemInfo.hSubMenu, contextMenu, tag, depth + 1);
+}
 # 桌面图标
 1. [x] 根据注册表值显示或隐藏系统图标
 2. [x] 桌面图标交互增强

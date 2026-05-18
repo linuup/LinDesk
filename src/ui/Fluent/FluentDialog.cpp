@@ -88,51 +88,14 @@ void FluentDialog::setMessage(const QString& msg) {
     m_messageLabel->setVisible(!msg.isEmpty());
 }
 
-void FluentDialog::addActionButton(const QString& text, ActionType type, std::function<void()> callback) {
-    QPushButton* button = new QPushButton(text, m_contentWidget);
-    button->setCursor(Qt::PointingHandCursor);
-    button->setFixedHeight(32);
-    button->setMinimumWidth(80);
+QVBoxLayout* FluentDialog::contentLayout() const {
+    return m_mainLayout;
+}
 
-    // Style the button based on Fluent standards
-    if (type == ActionType::Primary) {
-        button->setStyleSheet(
-            "QPushButton {"
-            "  background-color: #0078d4;" // Fluent Blue
-            "  color: white;"
-            "  border: none;"
-            "  border-radius: 6px;"
-            "  padding: 6px 24px;"
-            "  font-weight: 500;"
-            "}"
-            "QPushButton:hover { background-color: #006cbd; }"
-            "QPushButton:pressed { background-color: #005a9e; }"
-        );
-    } else if (type == ActionType::Secondary) {
-        button->setStyleSheet(
-            "QPushButton {"
-            "  background-color: #ffffff;"
-            "  border: 1px solid #e5e7eb;"
-            "  border-radius: 6px;"
-            "  padding: 6px 24px;"
-            "  color: #1f2937;"
-            "}"
-            "QPushButton:hover { background-color: #f9fafb; border-color: #d1d5db; }"
-            "QPushButton:pressed { background-color: #f3f4f6; }"
-        );
-    } else { // ActionType::Close
-        button->setStyleSheet(
-            "QPushButton {"
-            "  background-color: transparent;"
-            "  border: none;"
-            "  border-radius: 6px;"
-            "  padding: 6px 24px;"
-            "  color: #6b7280;"
-            "}"
-            "QPushButton:hover { background-color: rgba(0, 0, 0, 0.06); }"
-            "QPushButton:pressed { background-color: rgba(0, 0, 0, 0.1); }"
-        );
-    }
+void FluentDialog::addActionButton(const QString& text, ActionType type, std::function<void()> callback) {
+    FluentButton* button = new FluentButton(text, m_contentWidget);
+    button->setFixedSize(96, 32);
+    button->setAccent(type == ActionType::Primary);
 
     m_buttonLayout->addWidget(button);
     

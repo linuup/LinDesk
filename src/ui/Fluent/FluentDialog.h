@@ -9,6 +9,7 @@
 #include <QPropertyAnimation>
 #include <QPainter>
 #include <QPaintEvent>
+#include "ui/Fluent/FluentButton.h"
 
 /**
  * @brief Formal Fluent Design Dialog with Smoke Backdrop.
@@ -24,7 +25,7 @@ public:
     };
 
     struct ActionInfo {
-        QPushButton* button;
+        FluentButton* button;
         ActionType type;
         std::function<void()> callback;
     };
@@ -35,6 +36,7 @@ public:
     // Configuration
     void setDialogTitle(const QString& title);
     void setMessage(const QString& msg);
+    QVBoxLayout* contentLayout() const;
     void addActionButton(const QString& text, ActionType type, std::function<void()> callback = nullptr);
 
     // Static Helpers

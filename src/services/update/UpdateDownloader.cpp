@@ -8,9 +8,11 @@
 #include <QNetworkRequest>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QStorageInfo>
 
 namespace {
 constexpr int kDownloadStallTimeoutMs = 15 * 1000;
+constexpr qint64 kDiskSpaceSafetyMarginBytes = 16LL * 1024LL * 1024LL;
 }
 
 UpdateDownloader::UpdateDownloader(QObject* parent)
@@ -84,13 +86,6 @@ void UpdateDownloader::download(const UpdateInfo& info)
     QFile::remove(m_currentFilePath);
 
     m_outputFile = new QFile(m_currentFilePath, this);
-    if (!m_outputFile->open(QIODevice::WriteOnly)) {
-        const QString error = m_outputFile->errorString();
-        m_outputFile->deleteLater();
-        m_outputFile = nullptr;
-        emit downloadFailed(QStringLiteral("Cannot write installer: %1").arg(error));
-        return;
-    }
 
     QNetworkRequest request(QUrl(info.url));
     request.setHeader(QNetworkRequest::UserAgentHeader,
@@ -98,6 +93,19 @@ void UpdateDownloader::download(const UpdateInfo& info)
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     m_reply = m_network.get(request);
+    connect(m_reply, &QNetworkReply::metaDataChanged, this, [this]() {
+        if (!m_reply || m_outputFile->isOpen()) {
+            return;
+        }
+        const QVariant lengthHeader = m_reply->header(QNetworkRequest::ContentLengthHeader);
+        bool ok = false;
+        const qint64 contentLength = lengthHeader.toLongLong(&ok);
+        if (ok && contentLength > 0 && !hasEnoughDiskSpace(contentLength + kDiskSpaceSafetyMarginBytes)) {
+            finishWithError(diskSpaceErrorMessage(), true);
+            return;
+        }
+        ensureOutputFileOpen();
+    });
 #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     connect(m_reply, &QNetworkReply::errorOccurred, this, [this](QNetworkReply::NetworkError) {
         if (!m_reply || m_cancelled) {
@@ -115,12 +123,20 @@ void UpdateDownloader::download(const UpdateInfo& info)
 #endif
     connect(m_reply, &QNetworkReply::readyRead, this, [this]() {
         markProgressActivity();
-        if (m_outputFile && m_reply) {
-            m_outputFile->write(m_reply->readAll());
+        if (!ensureOutputFileOpen()) {
+            return;
         }
+        writeReplyData();
     });
     connect(m_reply, &QNetworkReply::downloadProgress, this, [this](qint64 bytesReceived, qint64 bytesTotal) {
         markProgressActivity();
+        if (bytesTotal > 0 && m_reply) {
+            const qint64 remainingBytes = qMax<qint64>(0, bytesTotal - bytesReceived);
+            if (!hasEnoughDiskSpace(remainingBytes + kDiskSpaceSafetyMarginBytes)) {
+                finishWithError(diskSpaceErrorMessage(), true);
+                return;
+            }
+        }
         emit progressChanged(bytesReceived, bytesTotal);
     });
     connect(m_reply, &QNetworkReply::finished, this, [this]() {
@@ -129,7 +145,9 @@ void UpdateDownloader::download(const UpdateInfo& info)
         }
 
         if (m_outputFile) {
-            m_outputFile->write(m_reply->readAll());
+            if (!writeReplyData()) {
+                return;
+            }
             m_outputFile->close();
         }
 
@@ -195,6 +213,60 @@ bool UpdateDownloader::verifySha256(const QString& filePath, const QString& expe
 
     const QString actual = QString::fromLatin1(hash.result().toHex()).toLower();
     return actual == expectedHash.trimmed().toLower();
+}
+
+bool UpdateDownloader::ensureOutputFileOpen()
+{
+    if (!m_outputFile) {
+        return false;
+    }
+    if (m_outputFile->isOpen()) {
+        return true;
+    }
+    if (m_outputFile->open(QIODevice::WriteOnly)) {
+        return true;
+    }
+
+    finishWithError(diskSpaceErrorMessage(), true);
+    return false;
+}
+
+bool UpdateDownloader::hasEnoughDiskSpace(qint64 requiredBytes) const
+{
+    if (requiredBytes <= 0) {
+        return true;
+    }
+
+    QStorageInfo storage(QFileInfo(m_currentFilePath).absolutePath());
+    if (!storage.isValid() || !storage.isReady()) {
+        return true;
+    }
+    return storage.bytesAvailable() >= requiredBytes;
+}
+
+QString UpdateDownloader::diskSpaceErrorMessage() const
+{
+    return QStringLiteral("Not enough disk space to save the update installer. Please free space on the drive that contains: %1")
+        .arg(QFileInfo(m_currentFilePath).absolutePath());
+}
+
+bool UpdateDownloader::writeReplyData()
+{
+    if (!m_reply || !m_outputFile) {
+        return false;
+    }
+
+    const QByteArray data = m_reply->readAll();
+    if (data.isEmpty()) {
+        return true;
+    }
+
+    const qint64 written = m_outputFile->write(data);
+    if (written != data.size()) {
+        finishWithError(diskSpaceErrorMessage(), true);
+        return false;
+    }
+    return true;
 }
 
 void UpdateDownloader::startTimeoutTimers()

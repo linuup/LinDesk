@@ -37,6 +37,7 @@
 #include "desktop/RightMenu.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "services/DpiScaleHelper.h"
+#include "services/ShellMenuExclusionStore.h"
 #include "services/WinBlurHelper.h"
 #include "ui/Fluent/FluentDragTip.h"
 #include "monitor/LinDirectoryMonitor.h"
@@ -3814,6 +3815,8 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 
     RightMenu::getInstance()->preparePasteActionsForMenu();
     scm.DisplayBoxBackgroundContextMenu();
+    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::boxBackground, nullptr);
+    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
     const QString contextPath = isFolderMapped()
         ? normalizeMappedFolderPath(mappedFolderPath())
         : defaultDesktopPath();
@@ -3898,7 +3901,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     boxItems.push_back(destroyItem);
 
     // 2. Get shared actions from RightMenu and convert them
-    const auto& sharedItems = RightMenu::getInstance()->sharedBoxCustomMenuItems();
+    const auto sharedItems = RightMenu::getInstance()->filteredSharedBoxCustomMenuItems();
     if (!sharedItems.empty()) {
         items.insert(items.end(), sharedItems.begin(), sharedItems.end());
     }
@@ -3914,7 +3917,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
     }
 
     // Set custom items and show the native menu
-    scm.setCustomMenuItems(items);
+    scm.setCustomMenuItems(RightMenu::filterCustomItemsForExclusionKey(items, L"box_background"));
     scm.ShowMenu(ownerHwnd, position, nullptr);
 }
 

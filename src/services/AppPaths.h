@@ -44,6 +44,15 @@ inline QString desktopDataFilePath()
 #endif
 }
 
+inline QString shellMenuExclusionsFilePath()
+{
+#ifdef QT_DEBUG
+    return QDir(userConfigDir()).filePath(QStringLiteral("Menuexclusions.json"));
+#else
+    return QDir(userConfigDir()).filePath(QStringLiteral("Menuexclusions.dat"));
+#endif
+}
+
 inline QString ocrConfigFilePath()
 {
     return QDir(userPluginConfigDir()).filePath(QStringLiteral("ocr_config.ini"));

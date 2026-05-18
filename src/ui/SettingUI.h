@@ -61,6 +61,8 @@ private:
 
     QWidget* createGeneralPage();
     QWidget* createDesktopPage();
+    QWidget* createWindows11MenuPanel(QWidget* page);
+    QWidget* createContextMenuPage();
     QWidget* createGridPage();
     QWidget* createPluginsPage();
     QWidget* createAboutPage();
@@ -87,12 +89,14 @@ private:
     QStackedWidget* m_contentStack = nullptr;
     QListWidgetItem* m_generalTabItem = nullptr;
     QListWidgetItem* m_desktopTabItem = nullptr;
+    QListWidgetItem* m_contextMenuTabItem = nullptr;
     QListWidgetItem* m_boxTabItem = nullptr;
     QListWidgetItem* m_pluginsTabItem = nullptr;
     QListWidgetItem* m_aboutTabItem = nullptr;
 
     QLabel* m_generalPageTitle = nullptr;
     QLabel* m_desktopPageTitle = nullptr;
+    QLabel* m_contextMenuPageTitle = nullptr;
     QLabel* m_boxPageTitle = nullptr;
     QLabel* m_aboutNameLabel = nullptr;
     QLabel* m_aboutVersionLabel = nullptr;

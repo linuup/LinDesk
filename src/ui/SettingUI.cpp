@@ -16,6 +16,7 @@
 #include "desktop/ListView.h"
 #include "desktop/LinDesktop.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "ui/Fluent/FluentInput.h"
 #include "services/update/UpdateChecker.h"
 #include "services/update/UpdateDownloader.h"
 #include <QProcess>
@@ -29,22 +30,26 @@
 #include <QPainterPath>
 #include "ui/Fluent/FluentToggleSwitch.h"
 #include "ui/Fluent/FluentButton.h"
+#include "ui/Fluent/FluentCheckBox.h"
 #include "ui/Fluent/FluentComboBox.h"
 #include "ui/Fluent/FluentCard.h"
 #include "ui/Fluent/FluentColorWheel.h"
 #include "app/AppFonts.h"
 #include "app/LanguageManager.h"
 #include "services/AppPaths.h"
+#include "services/ShellMenuExclusionStore.h"
 #include "services/SysInfoUtil.h" // For ShortcutArrowManager
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
 #include <QFileInfo>
 #include <QComboBox>
+#include <QListWidget>
 #include <QLayoutItem>
 #include <QFileDialog>
 #include <QDesktopServices>
 #include <QSignalBlocker>
+#include <QSettings>
 #include <QUrl>
 #include <QDir>
 #include <QShowEvent>
@@ -53,7 +58,14 @@
 #include <QColorDialog>
 #include <QFontDatabase>
 #include <QGridLayout>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QtWinExtras/QtWin>
+#include <functional>
+#include <memory>
+#include <algorithm>
 #include "desktop/RightMenu.h"
+#include <ShellContextMenu.h>
 
 // Custom delegate to draw the Fluent Design 2 style sidebar
 class SidebarDelegate : public QStyledItemDelegate {
@@ -148,6 +160,32 @@ public:
     }
 };
 
+class MenuListMousePressFilter : public QObject {
+public:
+    MenuListMousePressFilter(QListWidget* list, std::function<bool(const QPoint&, Qt::KeyboardModifiers)> mousePressHandler)
+        : QObject(list), m_list(list), m_mousePressHandler(std::move(mousePressHandler))
+    {
+    }
+
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (!m_list || watched != m_list->viewport() || event->type() != QEvent::MouseButtonPress) {
+            return QObject::eventFilter(watched, event);
+        }
+
+        const QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+        if (m_mousePressHandler && m_mousePressHandler(mouseEvent->pos(), mouseEvent->modifiers())) {
+            return true;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    QListWidget* m_list = nullptr;
+    std::function<bool(const QPoint&, Qt::KeyboardModifiers)> m_mousePressHandler;
+};
+
 namespace {
 void ensureSegoeFluentIconsLoaded()
 {
@@ -162,6 +200,133 @@ void ensureSegoeFluentIconsLoaded()
 QString settingsConfigPath()
 {
     return AppPaths::configFilePath();
+}
+
+QStringList shellMenuCustomExtensionKeys()
+{
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    QStringList keys = settings.value(QStringLiteral("ShellMenuExclusions/CustomExtensionKeys")).toStringList();
+    keys.removeDuplicates();
+    keys.removeAll(QString());
+    return keys;
+}
+
+void saveShellMenuCustomExtensionKeys(QStringList keys)
+{
+    keys.removeDuplicates();
+    keys.removeAll(QString());
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("ShellMenuExclusions/CustomExtensionKeys"), keys);
+    settings.sync();
+}
+
+bool isUsableShellMenuBitmap(HBITMAP bitmap)
+{
+    const quintptr rawValue = reinterpret_cast<quintptr>(bitmap);
+    return bitmap && rawValue > 16 && rawValue != static_cast<quintptr>(-1);
+}
+
+QIcon shellMenuBitmapIcon(HBITMAP bitmap)
+{
+    if (!isUsableShellMenuBitmap(bitmap)) {
+        return QIcon();
+    }
+
+    const QPixmap pixmap = QtWin::fromHBITMAP(bitmap, QtWin::HBitmapAlpha);
+    return pixmap.isNull() ? QIcon() : QIcon(pixmap);
+}
+
+QStringList wideVectorToStringList(const std::vector<std::wstring>& values)
+{
+    QStringList result;
+    for (const std::wstring& value : values) {
+        result.append(QString::fromStdWString(value));
+    }
+    return result;
+}
+
+ShellMenuExclusionEntry shellMenuEntryFromItem(QListWidgetItem* item)
+{
+    ShellMenuExclusionEntry entry;
+    if (!item) {
+        return entry;
+    }
+
+    entry.rawText = item->data(Qt::UserRole).toString().toStdWString();
+    entry.normalizedText = item->data(Qt::UserRole + 1).toString().toStdWString();
+    entry.matchText = item->data(Qt::UserRole + 5).toString().toStdWString();
+    const QStringList menuPath = item->data(Qt::UserRole + 6).toStringList();
+    const QStringList matchPath = item->data(Qt::UserRole + 7).toStringList();
+    entry.menuPath.reserve(static_cast<size_t>(menuPath.size()));
+    entry.matchPath.reserve(static_cast<size_t>(matchPath.size()));
+    for (const QString& segment : menuPath) {
+        entry.menuPath.push_back(segment.toStdWString());
+    }
+    for (const QString& segment : matchPath) {
+        entry.matchPath.push_back(segment.toStdWString());
+    }
+    entry.enabled = true;
+    return entry;
+}
+
+bool shellMenuEntryMatches(const std::vector<ShellMenuExclusionEntry>& entries,
+    const QString& rawText,
+    const QString& normalizedText,
+    const QString& matchText,
+    const QStringList& matchPath)
+{
+    const std::wstring raw = rawText.toStdWString();
+    const std::wstring normalized = normalizedText.toStdWString();
+    const std::wstring match = matchText.toStdWString();
+    std::vector<std::wstring> path;
+    path.reserve(static_cast<size_t>(matchPath.size()));
+    for (const QString& segment : matchPath) {
+        path.push_back(segment.toStdWString());
+    }
+    for (const ShellMenuExclusionEntry& entry : entries) {
+        if (ShellContextMenu::MenuEntryMatches(entry, raw, normalized, match, path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString shellMenuDisplayText(QString text)
+{
+    text.remove(QLatin1Char('&'));
+    const int tabIndex = text.indexOf(QLatin1Char('\t'));
+    if (tabIndex >= 0) {
+        text.truncate(tabIndex);
+    }
+    return text.trimmed();
+}
+
+int shellMenuDesktopPriority(const ShellMenuSnapshotItem& item)
+{
+    const QString normalized = QString::fromStdWString(item.normalizedText).trimmed().toLower();
+    if (normalized == QStringLiteral("view") || normalized == QString::fromWCharArray(L"鏌ョ湅") || normalized == QString::fromWCharArray(L"瑙嗗浘")) {
+        return 0;
+    }
+    if (normalized == QStringLiteral("sort by") || normalized == QString::fromWCharArray(L"鎺掑簭鏂瑰紡") || normalized == QString::fromWCharArray(L"鎺掑簭")) {
+        return 1;
+    }
+    if (normalized == QStringLiteral("refresh") || normalized == QString::fromWCharArray(L"鍒锋柊")) {
+        return 2;
+    }
+    if (normalized == QStringLiteral("paste") || normalized == QString::fromWCharArray(L"绮樿创")) {
+        return 3;
+    }
+    if (normalized == QStringLiteral("paste shortcut") || normalized == QString::fromWCharArray(L"绮樿创蹇嵎鏂瑰紡")) {
+        return 4;
+    }
+    return 100;
+}
+
+void prioritizeDesktopMenuItems(std::vector<ShellMenuSnapshotItem>& items)
+{
+    std::stable_sort(items.begin(), items.end(), [](const ShellMenuSnapshotItem& left, const ShellMenuSnapshotItem& right) {
+        return shellMenuDesktopPriority(left) < shellMenuDesktopPriority(right);
+    });
 }
 
 QColor readDesktopSelectionColor()
@@ -556,6 +721,7 @@ void SettingUI::initUI() {
     QVector<TabInfo> tabs = {
         {0xE713, tr("General")},
         {0xE7F8, tr("Window")},
+        {0xECAA, tr("Context Menu")},
         {0xF133, tr("Box")},
         {0xF22C, tr("Plugins")},
         {0xE946, tr("About")}
@@ -569,9 +735,10 @@ void SettingUI::initUI() {
         switch (m_sidebar->count() - 1) {
         case 0: m_generalTabItem = item; break;
         case 1: m_desktopTabItem = item; break;
-        case 2: m_boxTabItem = item; break;
-        case 3: m_pluginsTabItem = item; break;
-        case 4: m_aboutTabItem = item; break;
+        case 2: m_contextMenuTabItem = item; break;
+        case 3: m_boxTabItem = item; break;
+        case 4: m_pluginsTabItem = item; break;
+        case 5: m_aboutTabItem = item; break;
         default: break;
         }
     }
@@ -628,6 +795,7 @@ void SettingUI::initUI() {
     m_contentStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_contentStack->addWidget(wrapScrollablePage(createGeneralPage()));
     m_contentStack->addWidget(wrapScrollablePage(createDesktopPage()));
+    m_contentStack->addWidget(wrapScrollablePage(createContextMenuPage()));
     m_contentStack->addWidget(wrapScrollablePage(createGridPage()));
     m_contentStack->addWidget(createPluginsPage());
     m_contentStack->addWidget(wrapScrollablePage(createAboutPage()));
@@ -1277,7 +1445,13 @@ QWidget* SettingUI::createDesktopPage() {
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE949), tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces."), hideToggle, behaviorPanel));
 
     layout->addWidget(behaviorPanel, 0);
+    layout->addWidget(createWindows11MenuPanel(page), 0);
 
+    return page;
+}
+
+QWidget* SettingUI::createWindows11MenuPanel(QWidget* page)
+{
     QWidget* win11MenuPanel = createPanel(page);
     win11MenuPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* win11MenuLayout = new QVBoxLayout(win11MenuPanel);
@@ -1385,7 +1559,454 @@ QWidget* SettingUI::createDesktopPage() {
         showThirdPartyShellMenuToggle,
         win11MenuPanel));
 
-    layout->addWidget(win11MenuPanel, 0);
+    return win11MenuPanel;
+}
+
+QWidget* SettingUI::createContextMenuPage() {
+    QWidget* page = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
+
+    m_contextMenuPageTitle = createPageTitle(tr("Context Menu"), page);
+    m_contextMenuPageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(m_contextMenuPageTitle, 0, Qt::AlignLeft);
+    layout->addSpacing(8);
+
+    QWidget* shellExcludePanel = createPanel(page);
+    shellExcludePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    shellExcludePanel->setMinimumHeight(620);
+    QVBoxLayout* shellExcludeLayout = new QVBoxLayout(shellExcludePanel);
+    shellExcludeLayout->setContentsMargins(22, 18, 22, 20);
+    shellExcludeLayout->setSpacing(12);
+
+    QHBoxLayout* shellHeaderLayout = new QHBoxLayout();
+    QVBoxLayout* shellTitleLayout = new QVBoxLayout();
+    shellTitleLayout->setSpacing(4);
+    shellTitleLayout->addWidget(createCardTitle(tr("Shell Menu Exclusions"), shellExcludePanel));
+    shellTitleLayout->addWidget(createCardSubtitle(tr("Choose a menu type. LinDesk scans the real menu immediately, then you can hide items from future context menus."), shellExcludePanel));
+    shellHeaderLayout->addLayout(shellTitleLayout, 1);
+    FluentButton* addExtensionButton = new FluentButton(tr("Add"), shellExcludePanel);
+    addExtensionButton->setAccent(false);
+    addExtensionButton->setFixedWidth(86);
+    shellHeaderLayout->addWidget(addExtensionButton, 0, Qt::AlignTop);
+    FluentButton* removeExtensionButton = new FluentButton(tr("Remove"), shellExcludePanel);
+    removeExtensionButton->setAccent(false);
+    removeExtensionButton->setFixedWidth(96);
+    removeExtensionButton->setEnabled(false);
+    removeExtensionButton->setVisible(false);
+    shellHeaderLayout->addWidget(removeExtensionButton, 0, Qt::AlignTop);
+    shellExcludeLayout->addLayout(shellHeaderLayout);
+
+    QFrame* shellBody = new QFrame(shellExcludePanel);
+    shellBody->setObjectName(QStringLiteral("shellExcludeBody"));
+    shellBody->setFrameShape(QFrame::NoFrame);
+    shellBody->setMinimumHeight(520);
+    shellBody->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QHBoxLayout* shellBodyLayout = new QHBoxLayout(shellBody);
+    shellBodyLayout->setContentsMargins(0, 0, 0, 0);
+    shellBodyLayout->setSpacing(14);
+
+    QWidget* shellTypePanel = new QWidget(shellBody);
+    shellTypePanel->setObjectName(QStringLiteral("shellExcludeTypePanel"));
+    shellTypePanel->setMinimumWidth(180);
+    shellTypePanel->setMaximumWidth(240);
+    QVBoxLayout* shellTypePanelLayout = new QVBoxLayout(shellTypePanel);
+    shellTypePanelLayout->setContentsMargins(0, 0, 0, 0);
+    shellTypePanelLayout->setSpacing(8);
+    QLabel* defaultTypeTitle = new QLabel(tr("Default Types"), shellTypePanel);
+    defaultTypeTitle->setObjectName(QStringLiteral("shellExcludeGroupTitle"));
+    shellTypePanelLayout->addWidget(defaultTypeTitle);
+
+    QListWidget* shellTypeList = new QListWidget(shellTypePanel);
+    shellTypeList->setObjectName(QStringLiteral("shellExcludeTypeList"));
+    shellTypeList->setFrameShape(QFrame::NoFrame);
+    shellTypeList->setFixedHeight(230);
+    shellTypeList->setSpacing(4);
+    shellTypeList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    shellTypeList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    shellTypePanelLayout->addWidget(shellTypeList);
+
+    QLabel* customTypeTitle = new QLabel(tr("Custom Extensions"), shellTypePanel);
+    customTypeTitle->setObjectName(QStringLiteral("shellExcludeGroupTitle"));
+    shellTypePanelLayout->addWidget(customTypeTitle);
+    QListWidget* customTypeList = new QListWidget(shellTypePanel);
+    customTypeList->setObjectName(QStringLiteral("shellExcludeTypeList"));
+    customTypeList->setFrameShape(QFrame::NoFrame);
+    customTypeList->setSpacing(4);
+    customTypeList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    customTypeList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    shellTypePanelLayout->addWidget(customTypeList, 1);
+    shellBodyLayout->addWidget(shellTypePanel);
+
+    QWidget* shellDetailPanel = new QWidget(shellBody);
+    shellDetailPanel->setObjectName(QStringLiteral("shellExcludeDetail"));
+    QVBoxLayout* shellDetailLayout = new QVBoxLayout(shellDetailPanel);
+    shellDetailLayout->setContentsMargins(0, 0, 0, 0);
+    shellDetailLayout->setSpacing(10);
+    shellBodyLayout->addWidget(shellDetailPanel, 1);
+
+    QLabel* shellCurrentTitle = createCardTitle(tr("Desktop"), shellDetailPanel);
+    QLabel* shellExcludeStatusLabel = createCardSubtitle(QString(), shellDetailPanel);
+    QHBoxLayout* currentHeaderLayout = new QHBoxLayout();
+    QVBoxLayout* currentTextLayout = new QVBoxLayout();
+    currentTextLayout->setContentsMargins(0, 0, 0, 0);
+    currentTextLayout->setSpacing(3);
+    currentTextLayout->addWidget(shellCurrentTitle);
+    currentTextLayout->addWidget(shellExcludeStatusLabel);
+    currentHeaderLayout->addLayout(currentTextLayout, 1);
+    shellDetailLayout->addLayout(currentHeaderLayout);
+
+    QWidget* menuTreePane = new QWidget(shellDetailPanel);
+    menuTreePane->setObjectName(QStringLiteral("shellExcludePane"));
+    menuTreePane->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout* menuTreeLayout = new QVBoxLayout(menuTreePane);
+    menuTreeLayout->setContentsMargins(0, 0, 0, 0);
+    menuTreeLayout->setSpacing(6);
+    QLabel* menuTreeTitle = createCardSubtitle(tr("Menu Items"), menuTreePane);
+    menuTreeLayout->addWidget(menuTreeTitle);
+    QListWidget* shellMenuTreeList = new QListWidget(menuTreePane);
+    shellMenuTreeList->setObjectName(QStringLiteral("shellExcludeTreeList"));
+    shellMenuTreeList->setFrameShape(QFrame::NoFrame);
+    shellMenuTreeList->setMinimumHeight(420);
+    shellMenuTreeList->setMinimumWidth(360);
+    shellMenuTreeList->setSpacing(0);
+    shellMenuTreeList->setSelectionMode(QAbstractItemView::SingleSelection);
+    shellMenuTreeList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    shellMenuTreeList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    menuTreeLayout->addWidget(shellMenuTreeList, 1);
+    QLabel* shellMenuEmptyLabel = createCardSubtitle(tr("No menu items were found."), menuTreePane);
+    shellMenuEmptyLabel->setObjectName(QStringLiteral("shellExcludeEmptyLabel"));
+    shellMenuEmptyLabel->setAlignment(Qt::AlignCenter);
+    shellMenuEmptyLabel->setVisible(false);
+    menuTreeLayout->addWidget(shellMenuEmptyLabel, 0, Qt::AlignCenter);
+    shellDetailLayout->addWidget(menuTreePane, 1);
+
+    shellExcludeLayout->addWidget(shellBody);
+
+    auto addTypeItem = [](QListWidget* list, const QString& title, const QString& key) {
+        QListWidgetItem* item = new QListWidgetItem(title, list);
+        item->setData(Qt::UserRole, key);
+        item->setSizeHint(QSize(170, 36));
+        return item;
+    };
+    addTypeItem(shellTypeList, tr("Desktop"), QStringLiteral("desktop"));
+    addTypeItem(shellTypeList, tr("Box Background"), QStringLiteral("box_background"));
+    addTypeItem(shellTypeList, tr("Folder"), QStringLiteral("folder"));
+    addTypeItem(shellTypeList, tr("Shortcut"), QStringLiteral("shortcut"));
+    addTypeItem(shellTypeList, tr("Disk"), QStringLiteral("disk"));
+    addTypeItem(shellTypeList, tr("No Extension File"), QStringLiteral("file_no_extension"));
+    for (const QString& key : shellMenuCustomExtensionKeys()) {
+        if (key.startsWith(QStringLiteral("file_ext:"))) {
+            addTypeItem(customTypeList, key.mid(QStringLiteral("file_ext:").size()), key);
+        }
+    }
+
+    auto refreshTypeTitle = [shellCurrentTitle](const QString& key, const QString& fallback) {
+        if (key.startsWith(QStringLiteral("file_ext:"))) {
+            shellCurrentTitle->setText(key.mid(QStringLiteral("file_ext:").size()));
+        } else if (key.startsWith(QStringLiteral("file_progid:"))) {
+            shellCurrentTitle->setText(QObject::tr("ProgID %1").arg(key.mid(QStringLiteral("file_progid:").size())));
+        } else {
+            shellCurrentTitle->setText(fallback);
+        }
+    };
+
+    auto childRowsForParent = [](QListWidget* list, int row) {
+        QVector<int> rows;
+        if (!list || row < 0 || row >= list->count()) {
+            return rows;
+        }
+        QListWidgetItem* parentItem = list->item(row);
+        if (!parentItem || !parentItem->data(Qt::UserRole + 4).toBool()) {
+            return rows;
+        }
+        const int parentDepth = parentItem->data(Qt::UserRole + 3).toInt();
+        for (int childRow = row + 1; childRow < list->count(); ++childRow) {
+            QListWidgetItem* childItem = list->item(childRow);
+            if (!childItem || childItem->data(Qt::UserRole + 3).toInt() <= parentDepth) {
+                break;
+            }
+            rows.push_back(childRow);
+        }
+        return rows;
+    };
+
+    auto entriesForTreeRow = [childRowsForParent](QListWidget* list, int row) {
+        std::vector<ShellMenuExclusionEntry> entries;
+        if (!list || row < 0 || row >= list->count()) {
+            return entries;
+        }
+        if (QListWidgetItem* item = list->item(row)) {
+            entries.push_back(shellMenuEntryFromItem(item));
+        }
+        for (const int childRow : childRowsForParent(list, row)) {
+            if (QListWidgetItem* childItem = list->item(childRow)) {
+                entries.push_back(shellMenuEntryFromItem(childItem));
+            }
+        }
+        return entries;
+    };
+
+    auto removeExclusionEntry = [](const QString& key, const ShellMenuExclusionEntry& entry) {
+        ShellMenuExclusionStore::remove(key, entry);
+    };
+
+    auto updateTreeStatusLabel = [shellMenuTreeList, shellExcludeStatusLabel](const QString& key) {
+        int visibleCount = 0;
+        int hiddenCount = 0;
+        for (int rowIndex = 0; rowIndex < shellMenuTreeList->count(); ++rowIndex) {
+            QListWidgetItem* item = shellMenuTreeList->item(rowIndex);
+            QWidget* rowWidget = item ? shellMenuTreeList->itemWidget(item) : nullptr;
+            FluentCheckBox* checkbox = rowWidget ? rowWidget->findChild<FluentCheckBox*>(QStringLiteral("shellExcludeRowCheckBox")) : nullptr;
+            if (!checkbox) {
+                continue;
+            }
+            if (checkbox->isChecked()) {
+                ++visibleCount;
+            } else {
+                ++hiddenCount;
+            }
+        }
+        shellExcludeStatusLabel->setText(QObject::tr("%1 visible, %2 hidden for %3.")
+            .arg(visibleCount)
+            .arg(hiddenCount)
+            .arg(key));
+    };
+
+    auto makeMenuRow = [this](QListWidget* list, const QIcon& icon, int depth, bool hasChildren, const QString& rawText, bool visible) {
+        QWidget* row = new QWidget(list);
+        row->setObjectName(QStringLiteral("shellExcludeRow"));
+        row->setAttribute(Qt::WA_Hover, true);
+        QHBoxLayout* rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(8, 5, 12, 5);
+        rowLayout->setSpacing(9);
+
+        if (depth > 0) {
+            QWidget* indent = new QWidget(row);
+            indent->setFixedWidth(qMin(72, depth * 20));
+            rowLayout->addWidget(indent);
+        }
+
+        QLabel* branchLabel = new QLabel(row);
+        branchLabel->setObjectName(QStringLiteral("shellExcludeBranchIcon"));
+        branchLabel->setFixedSize(16, 22);
+        branchLabel->setAlignment(Qt::AlignCenter);
+        branchLabel->setText(hasChildren ? glyph(0xE70D) : QString());
+        rowLayout->addWidget(branchLabel, 0, Qt::AlignVCenter);
+
+        FluentCheckBox* checkbox = new FluentCheckBox(row);
+        checkbox->setObjectName(QStringLiteral("shellExcludeRowCheckBox"));
+        checkbox->setChecked(visible);
+        rowLayout->addWidget(checkbox, 0, Qt::AlignVCenter);
+
+        QLabel* iconLabel = new QLabel(row);
+        iconLabel->setObjectName(QStringLiteral("shellExcludeRowIcon"));
+        iconLabel->setFixedSize(20, 20);
+        iconLabel->setAlignment(Qt::AlignCenter);
+        if (!icon.isNull()) {
+            iconLabel->setPixmap(icon.pixmap(16, 16));
+        }
+        rowLayout->addWidget(iconLabel, 0, Qt::AlignVCenter);
+
+        QLabel* title = new QLabel(rawText, row);
+        title->setObjectName(QStringLiteral("shellExcludeRowTitle"));
+        title->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        title->setTextInteractionFlags(Qt::NoTextInteraction);
+        rowLayout->addWidget(title, 1, Qt::AlignVCenter);
+        return row;
+    };
+
+    auto scanShellMenu = std::make_shared<std::function<void(const QString&)>>();
+
+    auto isCustomExtensionKey = [](const QString& key) {
+        return key.startsWith(QStringLiteral("file_ext:")) && shellMenuCustomExtensionKeys().contains(key);
+    };
+
+    *scanShellMenu = [=](const QString& key) {
+        shellMenuTreeList->clear();
+        shellMenuEmptyLabel->setVisible(false);
+        const auto exclusions = ShellMenuExclusionStore::load(key);
+        auto items = RightMenu::getInstance()->shellMenuPreviewItems(key);
+        if (key == QStringLiteral("desktop") || key == QStringLiteral("box_background")) {
+            prioritizeDesktopMenuItems(items);
+        }
+        int rowCount = 0;
+        int hiddenCount = 0;
+        std::function<void(const std::vector<ShellMenuSnapshotItem>&, int)> appendItems;
+        appendItems = [&](const std::vector<ShellMenuSnapshotItem>& menuItems, int depth) {
+            for (const ShellMenuSnapshotItem& shellItem : menuItems) {
+                if (shellItem.isSeparator || shellItem.text.empty()) {
+                    continue;
+                }
+                const QString rawText = shellMenuDisplayText(QString::fromStdWString(shellItem.text));
+                const QString storedRawText = QString::fromStdWString(shellItem.text);
+                const QString normalizedText = QString::fromStdWString(shellItem.normalizedText);
+                const QString matchText = QString::fromStdWString(shellItem.matchText);
+                const QStringList menuPath = wideVectorToStringList(shellItem.menuPath);
+                const QStringList matchPath = wideVectorToStringList(shellItem.matchPath);
+                const bool visible = !shellMenuEntryMatches(exclusions, storedRawText, normalizedText, matchText, matchPath);
+                if (!visible) {
+                    ++hiddenCount;
+                }
+                const QString source = QString::fromStdWString(shellItem.source).isEmpty()
+                    ? tr("system")
+                    : QString::fromStdWString(shellItem.source);
+                QListWidgetItem* item = new QListWidgetItem(shellMenuTreeList);
+                item->setData(Qt::UserRole, storedRawText);
+                item->setData(Qt::UserRole + 1, normalizedText);
+                item->setData(Qt::UserRole + 2, source);
+                item->setData(Qt::UserRole + 3, depth);
+                item->setData(Qt::UserRole + 4, !shellItem.children.empty());
+                item->setData(Qt::UserRole + 5, matchText);
+                item->setData(Qt::UserRole + 6, menuPath);
+                item->setData(Qt::UserRole + 7, matchPath);
+                QWidget* row = makeMenuRow(shellMenuTreeList, shellMenuBitmapIcon(shellItem.hBitmap), depth, !shellItem.children.empty(), rawText, visible);
+                item->setSizeHint(row->sizeHint().expandedTo(QSize(0, 36)));
+                shellMenuTreeList->setItemWidget(item, row);
+                ++rowCount;
+                if (!shellItem.children.empty()) {
+                    appendItems(shellItem.children, depth + 1);
+                }
+            }
+        };
+        appendItems(items, 0);
+        shellMenuEmptyLabel->setVisible(rowCount == 0);
+        shellMenuTreeList->setVisible(rowCount > 0);
+        shellExcludeStatusLabel->setText(rowCount == 0
+            ? tr("No menu items were found for %1.").arg(key)
+            : tr("%1 visible, %2 hidden for %3.").arg(rowCount - hiddenCount).arg(hiddenCount).arg(key));
+
+        for (int rowIndex = 0; rowIndex < shellMenuTreeList->count(); ++rowIndex) {
+            QListWidgetItem* item = shellMenuTreeList->item(rowIndex);
+            QWidget* rowWidget = item ? shellMenuTreeList->itemWidget(item) : nullptr;
+            FluentCheckBox* checkbox = rowWidget ? rowWidget->findChild<FluentCheckBox*>(QStringLiteral("shellExcludeRowCheckBox")) : nullptr;
+            if (!item || !checkbox) {
+                continue;
+            }
+            connect(checkbox, &FluentCheckBox::toggled, this, [=](bool checked) {
+                const int clickedRow = shellMenuTreeList->row(item);
+                const std::vector<ShellMenuExclusionEntry> entries = entriesForTreeRow(shellMenuTreeList, clickedRow);
+                if (checked) {
+                    for (const ShellMenuExclusionEntry& entry : entries) {
+                        removeExclusionEntry(key, entry);
+                    }
+                } else {
+                    for (const ShellMenuExclusionEntry& entry : entries) {
+                        ShellMenuExclusionStore::add(key, entry);
+                    }
+                }
+
+                for (const int childRow : childRowsForParent(shellMenuTreeList, clickedRow)) {
+                    QListWidgetItem* childItem = shellMenuTreeList->item(childRow);
+                    QWidget* childRowWidget = childItem ? shellMenuTreeList->itemWidget(childItem) : nullptr;
+                    FluentCheckBox* childCheckbox = childRowWidget ? childRowWidget->findChild<FluentCheckBox*>(QStringLiteral("shellExcludeRowCheckBox")) : nullptr;
+                    if (!childCheckbox) {
+                        continue;
+                    }
+                    const QSignalBlocker blocker(childCheckbox);
+                    childCheckbox->setChecked(checked);
+                }
+                updateTreeStatusLabel(key);
+            });
+        }
+    };
+
+    auto selectTypeKey = [=](QListWidgetItem* item) {
+        if (!item) {
+            return;
+        }
+        QListWidget* sourceList = item->listWidget();
+        const QSignalBlocker defaultBlocker(shellTypeList);
+        const QSignalBlocker customBlocker(customTypeList);
+        if (sourceList == shellTypeList) {
+            customTypeList->setCurrentItem(nullptr);
+        } else if (sourceList == customTypeList) {
+            shellTypeList->setCurrentItem(nullptr);
+        }
+        const QString key = item->data(Qt::UserRole).toString();
+        refreshTypeTitle(key, item->text());
+        const bool canRemoveType = isCustomExtensionKey(key);
+        removeExtensionButton->setVisible(canRemoveType);
+        removeExtensionButton->setEnabled(canRemoveType);
+        (*scanShellMenu)(key);
+    };
+
+    connect(shellTypeList, &QListWidget::currentItemChanged, this, [=](QListWidgetItem* current) {
+        selectTypeKey(current);
+    });
+    connect(customTypeList, &QListWidget::currentItemChanged, this, [=](QListWidgetItem* current) {
+        selectTypeKey(current);
+    });
+
+    connect(addExtensionButton, &QPushButton::clicked, this, [=]() {
+        FluentDialog dialog(this);
+        dialog.setDialogTitle(tr("File Extension"));
+        dialog.setMessage(tr("Enter a file extension, for example .txt."));
+        FluentInput* extensionInput = new FluentInput(&dialog);
+        extensionInput->setText(QStringLiteral("txt"));
+        extensionInput->selectAll();
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, extensionInput);
+
+        QString extension;
+        dialog.addActionButton(tr("Add"), FluentDialog::ActionType::Primary, [&]() {
+            extension = extensionInput->text().trimmed().toLower();
+        });
+        dialog.addActionButton(tr("Cancel"), FluentDialog::ActionType::Secondary);
+        QTimer::singleShot(0, extensionInput, qOverload<>(&FluentInput::setFocus));
+
+        if (dialog.exec() != QDialog::Accepted || extension.isEmpty()) {
+            return;
+        }
+        if (!extension.startsWith('.')) {
+            extension.prepend('.');
+        }
+        const QString key = QStringLiteral("file_ext:") + extension;
+        for (int i = 0; i < customTypeList->count(); ++i) {
+            if (customTypeList->item(i)->data(Qt::UserRole).toString() == key) {
+                customTypeList->setCurrentRow(i);
+                return;
+            }
+        }
+        QListWidgetItem* item = addTypeItem(customTypeList, extension, key);
+        QStringList customKeys = shellMenuCustomExtensionKeys();
+        customKeys.append(key);
+        saveShellMenuCustomExtensionKeys(customKeys);
+        customTypeList->setCurrentItem(item);
+    });
+
+    connect(removeExtensionButton, &QPushButton::clicked, this, [=]() {
+        QListWidgetItem* current = customTypeList->currentItem();
+        if (!current) {
+            return;
+        }
+
+        const QString key = current->data(Qt::UserRole).toString();
+        if (!isCustomExtensionKey(key)) {
+            return;
+        }
+
+        QStringList customKeys = shellMenuCustomExtensionKeys();
+        customKeys.removeAll(key);
+        saveShellMenuCustomExtensionKeys(customKeys);
+
+        const int row = customTypeList->row(current);
+        delete customTypeList->takeItem(row);
+        const int nextRow = qBound(0, qMin(row, customTypeList->count() - 1), customTypeList->count() - 1);
+        if (nextRow >= 0) {
+            customTypeList->setCurrentRow(nextRow);
+            shellExcludeStatusLabel->setText(tr("Removed extension type: %1").arg(key.mid(QStringLiteral("file_ext:").size())));
+        } else {
+            shellTypeList->setCurrentRow(0);
+            shellExcludeStatusLabel->setText(tr("Removed extension type."));
+            removeExtensionButton->setEnabled(false);
+            removeExtensionButton->setVisible(false);
+        }
+    });
+
+    shellTypeList->setCurrentRow(0);
+    layout->addWidget(shellExcludePanel, 0);
     return page;
 }
 
@@ -1873,7 +2494,7 @@ void SettingUI::startUpdateDownload()
     if (m_updateDownloader->hasValidCachedInstaller(m_pendingUpdate, &cachedInstallerPath)) {
         m_downloadedInstallerPath = cachedInstallerPath;
         if (m_updateStatusLabel) {
-            m_updateStatusLabel->setText(tr("Installer already downloaded. Starting installer..."));
+            m_updateStatusLabel->setText(tr("Using cached installer: %1").arg(cachedInstallerPath));
         }
         if (m_updateProgressBar) {
             m_updateProgressBar->setRange(0, 100);
@@ -1885,7 +2506,7 @@ void SettingUI::startUpdateDownload()
     }
 
     if (m_updateStatusLabel) {
-        m_updateStatusLabel->setText(tr("Downloading update..."));
+        m_updateStatusLabel->setText(tr("Downloading update to: %1").arg(m_updateDownloader->cachedInstallerPath(m_pendingUpdate)));
     }
     if (m_updateProgressBar) {
         m_updateProgressBar->setRange(0, 100);
@@ -2167,6 +2788,95 @@ void SettingUI::setupStyles() {
         "QLabel#rowTitle { font-size: 14px; font-weight: 800; color: #142033; } "
         "QLabel#rowSubtitle { font-size: 13px; font-weight: 500; color: #63708a; } "
         "QLabel#valueLabel { color: #63708a; font-size: 14px; font-weight: 700; } "
+        "QFrame#shellExcludeBody { "
+        "   background: rgba(247, 250, 255, 0.82); "
+        "   border: 1px solid rgba(207, 216, 230, 0.82); "
+        "   border-radius: 10px; "
+        "} "
+        "QWidget#shellExcludeTypePanel { background: transparent; border: none; } "
+        "QWidget#shellExcludeDetail { background: transparent; border: none; } "
+        "QWidget#shellExcludePane { background: transparent; border: none; } "
+        "QWidget#shellExcludeTransferPane { background: transparent; border: none; } "
+        "QWidget#shellExcludeActionPane { background: transparent; border: none; } "
+        "QLabel#shellExcludeGroupTitle { "
+        "   color: #5e6c84; "
+        "   font-size: 12px; "
+        "   font-weight: 800; "
+        "   padding: 2px 4px; "
+        "} "
+        "QListWidget#shellExcludeTypeList { "
+        "   background: rgba(255, 255, 255, 0.72); "
+        "   border: 1px solid rgba(214, 223, 236, 0.76); "
+        "   border-radius: 8px; "
+        "   padding: 6px; "
+        "   outline: none; "
+        "} "
+        "QListWidget#shellExcludeTypeList::item { "
+        "   min-height: 34px; "
+        "   padding: 0 10px; "
+        "   border-radius: 6px; "
+        "   color: #28344a; "
+        "   font-size: 13px; "
+        "   font-weight: 700; "
+        "} "
+        "QListWidget#shellExcludeTypeList::item:hover { background: #eef6ff; } "
+        "QListWidget#shellExcludeTypeList::item:selected { "
+        "   background: #e6f1ff; "
+        "   color: #005fb8; "
+        "} "
+        "QListWidget#shellExcludeTreeList { "
+        "   background: rgba(255, 255, 255, 0.74); "
+        "   border: 1px solid rgba(214, 223, 236, 0.76); "
+        "   border-radius: 8px; "
+        "   padding: 6px; "
+        "   outline: none; "
+        "} "
+        "QListWidget#shellExcludeTreeList::item { "
+        "   background: transparent; "
+        "   border: none; "
+        "   padding: 0; "
+        "} "
+        "QListWidget#shellExcludeTreeList::item:selected { "
+        "   background: rgba(0, 120, 212, 0.10); "
+        "   border-radius: 5px; "
+        "} "
+        "QListWidget#shellExcludeTreeList::item:hover { "
+        "   background: rgba(238, 246, 255, 0.92); "
+        "   border-radius: 5px; "
+        "} "
+        "QLabel#shellExcludeEmptyLabel { "
+        "   color: #63708a; "
+        "   font-size: 13px; "
+        "   font-weight: 600; "
+        "   padding: 28px; "
+        "} "
+        "QWidget#shellExcludeRow { "
+        "   background: transparent; "
+        "   border: none; "
+        "   border-radius: 5px; "
+        "} "
+        "QWidget#shellExcludeRow:hover { "
+        "   background: rgba(238, 246, 255, 0.92); "
+        "   border: none; "
+        "} "
+        "QWidget#shellExcludeRow[selected=\"true\"] { "
+        "   background: rgba(0, 120, 212, 0.10); "
+        "   border: none; "
+        "} "
+        "QLabel#shellExcludeRowIcon { "
+        "   background: transparent; "
+        "   border: none; "
+        "} "
+        "QLabel#shellExcludeBranchIcon { "
+        "   background: transparent; "
+        "   border: none; "
+        "   color: #7a879b; "
+        "   font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; "
+        "   font-size: 11px; "
+        "   font-weight: 700; "
+        "} "
+        "QLabel#shellExcludeRowTitle { font-size: 13px; font-weight: 600; color: #142033; } "
+        "QLabel#shellExcludeRowSubtitle { font-size: 12px; font-weight: 600; color: #63708a; } "
         "QLabel#homeTileTitle { font-size: 15px; font-weight: 800; color: #101827; } "
         "QLabel#homeTileSubtitle { font-size: 13px; font-weight: 500; color: #56647d; } "
         "QLabel#pluginName { font-size: 19px; font-weight: 800; color: #101827; } "

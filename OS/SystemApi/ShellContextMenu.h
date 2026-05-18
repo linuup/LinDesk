@@ -42,17 +42,39 @@ public:
 };
 
 static const int MIN_SHELL_MENU_ID = 1;
-static const int MAX_SHELL_MENU_ID = 1000;
+static const int MAX_SHELL_MENU_ID = 9999;
 static const int CUSTOM_MENU_ID_BASE = 10001;
 
 struct ShellMenuSnapshotItem {
+    ShellMenuSnapshotItem() = default;
+    ShellMenuSnapshotItem(const ShellMenuSnapshotItem& other);
+    ShellMenuSnapshotItem& operator=(const ShellMenuSnapshotItem& other);
+    ShellMenuSnapshotItem(ShellMenuSnapshotItem&& other) noexcept;
+    ShellMenuSnapshotItem& operator=(ShellMenuSnapshotItem&& other) noexcept;
+    ~ShellMenuSnapshotItem();
+
     std::wstring text;
+    std::wstring normalizedText;
+    std::wstring matchText;
+    std::wstring source;
     std::string commandId;
+    std::vector<std::wstring> menuPath;
+    std::vector<std::wstring> matchPath;
     std::vector<ShellMenuSnapshotItem> children;
     bool isSeparator = false;
     bool enabled = true;
     bool checked = false;
     HBITMAP hBitmap = nullptr;
+    bool ownsHBitmap = false;
+};
+
+struct ShellMenuExclusionEntry {
+    std::wstring rawText;
+    std::wstring normalizedText;
+    std::wstring matchText;
+    std::vector<std::wstring> menuPath;
+    std::vector<std::wstring> matchPath;
+    bool enabled = true;
 };
 
 class ShellMenuCommandSession {
@@ -156,6 +178,32 @@ public:
     void clearFilesystemDirectory() {
         m_directoryOverride.reset();
     }
+    void setExclusionKeys(const std::vector<std::wstring>& keys) {
+        m_exclusionKeys = keys;
+        m_exclusions.clear();
+        for (const std::wstring& key : m_exclusionKeys) {
+            std::vector<ShellMenuExclusionEntry> entries = LoadExclusions(key);
+            m_exclusions.insert(m_exclusions.end(), entries.begin(), entries.end());
+        }
+    }
+    void setExclusions(const std::vector<ShellMenuExclusionEntry>& entries) {
+        m_exclusions = entries;
+    }
+
+    static std::wstring NormalizeMenuText(const std::wstring& text);
+    static std::wstring MatchMenuText(const std::wstring& text);
+    static bool MenuEntryMatches(const ShellMenuExclusionEntry& exclusion,
+        const std::wstring& rawText,
+        const std::wstring& normalizedText,
+        const std::wstring& matchText = std::wstring(),
+        const std::vector<std::wstring>& matchPath = {});
+    static std::vector<std::wstring> ExclusionKeysForPath(OperationType type, const wchar_t* path);
+    static std::vector<ShellMenuSnapshotItem> SnapshotMenuForExclusionKey(const std::wstring& key);
+    static std::vector<ShellMenuExclusionEntry> LoadExclusions(const std::wstring& key);
+    static void SaveExclusions(const std::wstring& key, const std::vector<ShellMenuExclusionEntry>& entries);
+    static void AddExclusion(const std::wstring& key, const std::wstring& rawText);
+    static void RemoveExclusion(const std::wstring& key, int index);
+    static std::wstring DisplayNameForExclusionKey(const std::wstring& key);
 
     void ShowMenu(HWND hwnd, const POINT *pt, IUnknown* site, Flags flags = Flags::Standard);
 
@@ -199,6 +247,8 @@ public:
 private:
     OperationType operationType = OperationType::BackGround;
     std::optional<std::string> m_directoryOverride;
+    std::vector<std::wstring> m_exclusionKeys;
+    std::vector<ShellMenuExclusionEntry> m_exclusions;
 
     wil::com_ptr_nothrow<IContextMenu3> MaybeGetShellContextMenu(HWND hwnd) const;	//获取文件Shell上下文接口
 

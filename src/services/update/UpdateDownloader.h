@@ -32,6 +32,10 @@ private:
     QString updatesDirectory() const;
     QString fileNameForUpdate(const UpdateInfo& info) const;
     bool verifySha256(const QString& filePath, const QString& expectedHash) const;
+    bool ensureOutputFileOpen();
+    bool hasEnoughDiskSpace(qint64 requiredBytes) const;
+    QString diskSpaceErrorMessage() const;
+    bool writeReplyData();
     void startTimeoutTimers();
     void stopTimeoutTimers();
     void markProgressActivity();
