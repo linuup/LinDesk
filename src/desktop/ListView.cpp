@@ -1,4 +1,4 @@
-﻿#include <QJsonDocument>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDataStream>
@@ -2222,19 +2222,22 @@ void ListView::requestSystemRightMenu(ObjectType objType, QPoint point, const QS
     if (checkedPaths.size() == 1 || models.size() == 1) {
         r->setShowType(objType);
         if (!models.isEmpty()) {
-            r->showMenu(point, models.first());
+            const bool extendedVerbs = (QApplication::queryKeyboardModifiers() & Qt::ShiftModifier) != 0;
+            r->showMenu(point, models.first(), extendedVerbs);
         }
         return;
     }
     else if (objType == ObjectType::BackGround) {
         r->setShowType(ObjectType::BackGround);
-        r->showMenu(point, DesktopRootItemModel{});
+        const bool extendedVerbs = (QApplication::queryKeyboardModifiers() & Qt::ShiftModifier) != 0;
+        r->showMenu(point, DesktopRootItemModel{}, extendedVerbs);
         return;
     }
     else {
         r->setShowType(ObjectType::MultObject);
         if (!models.isEmpty()) {
-            r->showMultObjectMenu(point, models);
+            const bool extendedVerbs = (QApplication::queryKeyboardModifiers() & Qt::ShiftModifier) != 0;
+            r->showMultObjectMenu(point, models, extendedVerbs);
         }
     }
 }
@@ -2405,12 +2408,13 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 
             QVector<DesktopRootItemModel> desktopModels = selectedDesktopModels();
             RightMenu* menu = RightMenu::getInstance();
+            const bool extendedVerbs = (event->modifiers() & Qt::ShiftModifier) != 0;
             if (desktopModels.size() == 1) {
                 menu->setShowType(hitState->model.objectType);
-                menu->showMenu(event->globalPos(), desktopModels.first());
+                menu->showMenu(event->globalPos(), desktopModels.first(), extendedVerbs);
             } else if (!desktopModels.isEmpty()) {
                 menu->setShowType(ObjectType::MultObject);
-                menu->showMultObjectMenu(event->globalPos(), desktopModels);
+                menu->showMultObjectMenu(event->globalPos(), desktopModels, extendedVerbs);
             }
             event->accept();
             return;

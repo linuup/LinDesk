@@ -1125,7 +1125,7 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
     return true;
 }
 
-void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
+void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool extendedVerbs) const
 {
     ShellContextMenu scm;
     POINT p = { pos.x(), pos.y() };
@@ -1144,7 +1144,8 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {
 			scm.setCustomMenuItems(filteredDesktopCustomMenuItems());
-			scm.ShowMenu(this->hwnd, position, nullptr);
+			scm.ShowMenu(this->hwnd, position, nullptr,
+				extendedVerbs ? ShellContextMenu::Flags::ExtendedVerbs : ShellContextMenu::Flags::Standard);
 			return;
 		}
 	}else if (this->fileType == ObjectType::File) {
@@ -1160,7 +1161,8 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model) const
         scm.DisplayItemContextMenu(model.itemData.pidl());
     }
     scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeysForModel(model)));
-    scm.ShowMenu(this->hwnd, position, nullptr);
+    scm.ShowMenu(this->hwnd, position, nullptr,
+        extendedVerbs ? ShellContextMenu::Flags::ExtendedVerbs : ShellContextMenu::Flags::Standard);
 }
 #if 0
 void RightMenu::showBoxMenu(QPoint pos) const {
@@ -1268,7 +1270,7 @@ std::vector<ShellContextMenu::CustomMenuItem> RightMenu::exportCustomMenuItems(
     return convertQActionsToCustomItems(filteredActions, tempBitmaps);
 }
 
-void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models) const
+void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models, bool extendedVerbs) const
 {
     vector<LPITEMIDLIST> pidls;
     pidls.reserve(models.size());
@@ -1282,7 +1284,8 @@ void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemMode
     const POINT* position = &p;
     ShellContextMenu scm;
     scm.DisplayMultipleContextMenu(pidls);
-    scm.ShowMenu(this->hwnd, position, nullptr);
+    scm.ShowMenu(this->hwnd, position, nullptr,
+        extendedVerbs ? ShellContextMenu::Flags::ExtendedVerbs : ShellContextMenu::Flags::Standard);
 }
 
 std::vector<std::wstring> RightMenu::exclusionKeysForModel(const DesktopRootItemModel& model) const

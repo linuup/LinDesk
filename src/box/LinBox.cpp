@@ -1,4 +1,4 @@
-﻿#include "box/LinBox.h"
+#include "box/LinBox.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <winuser.h>
@@ -1688,7 +1688,8 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                 if (watched == m_contentArea && handleItemContextMenu(mouseEvent->globalPos(), mappedPos)) {
                     return true;
                 }
-                showCustomContextMenu(mouseEvent->globalPos());
+                const bool extendedVerbs = (mouseEvent->modifiers() & Qt::ShiftModifier) != 0;
+                showCustomContextMenu(mouseEvent->globalPos(), extendedVerbs);
                 return true;
             }
         } else if (event->type() == QEvent::MouseMove) {
@@ -1790,7 +1791,8 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
         }
         QWidget* child = childAt(event->pos());
         if (m_titleBar->geometry().contains(event->pos()) || !child || child == m_contentArea || child == this) {
-            showCustomContextMenu(event->globalPos());
+            const bool extendedVerbs = (event->modifiers() & Qt::ShiftModifier) != 0;
+            showCustomContextMenu(event->globalPos(), extendedVerbs);
         }
     }
 }
@@ -3803,7 +3805,7 @@ void LinBox::updateBlurCache()
     update();
 }
 
-void LinBox::showCustomContextMenu(const QPoint& globalPos) {
+void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) {
     if (ListView* lv = ListView::instance()) {
         lv->armPendingShellNewTargetBox(this);
     }
@@ -3918,7 +3920,8 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos) {
 
     // Set custom items and show the native menu
     scm.setCustomMenuItems(RightMenu::filterCustomItemsForExclusionKey(items, L"box_background"));
-    scm.ShowMenu(ownerHwnd, position, nullptr);
+    scm.ShowMenu(ownerHwnd, position, nullptr,
+        extendedVerbs ? ShellContextMenu::Flags::ExtendedVerbs : ShellContextMenu::Flags::Standard);
 }
 
 void LinBox::updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut) {

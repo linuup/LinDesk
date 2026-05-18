@@ -131,7 +131,7 @@ private:
     bool isDragArea(const QPoint& pos);
     QString displayTitleText() const;
     void refreshMappedFolderState();
-    void showCustomContextMenu(const QPoint& globalPos);
+    void showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs = false);
     void beginTitleEditing();
     void commitTitleEditing();
     DesktopRootItemState* hitItemStateAt(const QPoint& boxPos);

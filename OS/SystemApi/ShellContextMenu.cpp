@@ -1,4 +1,4 @@
-﻿
+
 #include "ShellContextMenu.h"
 #include <algorithm>
 #include <cwctype>
@@ -2268,8 +2268,10 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     // 鍒涘缓 WindowSubclassWrapper 瀹炰緥
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
+    const UINT queryFlags = CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME
+        | ((flags & Flags::ExtendedVerbs) != Flags::Standard ? CMF_EXTENDEDVERBS : 0);
     HRESULT queryHr = m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+        queryFlags);
     if (FAILED(queryHr)) {
         return;
     }

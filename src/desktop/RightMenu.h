@@ -32,8 +32,8 @@ public:
     ~RightMenu() override;
 
     void initializeCustomMenu();
-    void showMenu(QPoint pos, const DesktopRootItemModel& model) const;
-    void showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models) const;
+    void showMenu(QPoint pos, const DesktopRootItemModel& model, bool extendedVerbs = false) const;
+    void showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models, bool extendedVerbs = false) const;
     static bool isWindows11SystemContextMenuSupported();
     static bool isWindows11SystemContextMenuEnabled();
     static void setWindows11SystemContextMenuEnabled(bool enabled);
