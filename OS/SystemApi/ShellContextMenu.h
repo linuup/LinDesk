@@ -68,14 +68,8 @@ struct ShellMenuSnapshotItem {
     bool ownsHBitmap = false;
 };
 
-struct ShellMenuExclusionEntry {
-    std::wstring rawText;
-    std::wstring normalizedText;
-    std::wstring matchText;
-    std::vector<std::wstring> menuPath;
-    std::vector<std::wstring> matchPath;
-    bool enabled = true;
-};
+#include "ShellMenuTypes.h"
+
 
 class ShellMenuCommandSession {
 public:

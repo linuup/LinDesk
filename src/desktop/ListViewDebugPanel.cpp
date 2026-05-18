@@ -12,6 +12,7 @@
 
 #include <QCheckBox>
 #include <QCoreApplication>
+#include <QDir>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -21,6 +22,8 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSlider>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <QListWidget>
@@ -302,6 +305,20 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
         "OpenGL Status",
         "Shows the saved setting and whether this launch is using the OpenGL startup path.",
         m_openGLStatusLabel), 4, 0, 1, 2);
+
+    QPushButton* openRoamingBtn = createActionButton("Open Roaming", false, false);
+    connect(openRoamingBtn, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userConfigDir()));
+    });
+    grid->addWidget(new FluentCard(u8"\uE838", "Roaming Configs", "Open LinDesk AppData directory", openRoamingBtn), 7, 0);
+
+    QPushButton* openLocalBtn = createActionButton("Open Local", false, false);
+    connect(openLocalBtn, &QPushButton::clicked, this, []() {
+        QString localPath = qEnvironmentVariable("LOCALAPPDATA") + "/LinDesk";
+        QDir().mkpath(localPath);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(localPath));
+    });
+    grid->addWidget(new FluentCard(u8"\uE8A7", "Local Logs", "Open LinDesk LocalAppData directory", openLocalBtn), 7, 1);
 
     layout->addLayout(grid);
     layout->addStretch();

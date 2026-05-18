@@ -92,6 +92,10 @@ QVBoxLayout* FluentDialog::contentLayout() const {
     return m_mainLayout;
 }
 
+void FluentDialog::keepOpenOnce() {
+    m_keepOpenOnce = true;
+}
+
 void FluentDialog::addActionButton(const QString& text, ActionType type, std::function<void()> callback) {
     FluentButton* button = new FluentButton(text, m_contentWidget);
     button->setFixedSize(96, 32);
@@ -102,6 +106,10 @@ void FluentDialog::addActionButton(const QString& text, ActionType type, std::fu
     // Connect click logic
     connect(button, &QPushButton::clicked, this, [this, callback]() {
         if (callback) callback();
+        if (m_keepOpenOnce) {
+            m_keepOpenOnce = false;
+            return;
+        }
         this->accept(); // Close dialog on any action click by default
     });
 

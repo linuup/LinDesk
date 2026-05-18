@@ -289,6 +289,44 @@ void ShellMenuExclusionStore::save(const std::wstring& key, const std::vector<Sh
     save(keyFromWide(key), entries);
 }
 
+int ShellMenuExclusionStore::merge(const QString& key, const std::vector<ShellMenuExclusionEntry>& entries)
+{
+    if (key.isEmpty() || entries.empty()) {
+        return 0;
+    }
+
+    std::vector<ShellMenuExclusionEntry> existingEntries = load(key);
+    int addedCount = 0;
+    for (const ShellMenuExclusionEntry& entry : entries) {
+        if (entry.rawText.empty() && entry.normalizedText.empty() && entry.matchText.empty() && entry.matchPath.empty()) {
+            continue;
+        }
+
+        bool exists = false;
+        for (const ShellMenuExclusionEntry& existing : existingEntries) {
+            if (ShellContextMenu::MenuEntryMatches(existing,
+                    entry.rawText,
+                    entry.normalizedText,
+                    entry.matchText,
+                    entry.matchPath)) {
+                exists = true;
+                break;
+            }
+        }
+        if (exists) {
+            continue;
+        }
+
+        existingEntries.push_back(entry);
+        ++addedCount;
+    }
+
+    if (addedCount > 0) {
+        save(key, existingEntries);
+    }
+    return addedCount;
+}
+
 void ShellMenuExclusionStore::add(const QString& key, const ShellMenuExclusionEntry& entry)
 {
     if (key.isEmpty() || (entry.rawText.empty() && entry.normalizedText.empty() && entry.matchText.empty() && entry.matchPath.empty())) {

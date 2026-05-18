@@ -38,6 +38,7 @@ public:
     void setMessage(const QString& msg);
     QVBoxLayout* contentLayout() const;
     void addActionButton(const QString& text, ActionType type, std::function<void()> callback = nullptr);
+    void keepOpenOnce();
 
     // Static Helpers
     static void showInfo(QWidget* parent, const QString& title, const QString& msg);
@@ -57,4 +58,5 @@ private:
     QLabel* m_titleLabel;
     QLabel* m_messageLabel;
     QVector<ActionInfo> m_actions;
+    bool m_keepOpenOnce = false;
 };

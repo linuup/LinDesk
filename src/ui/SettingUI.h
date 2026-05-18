@@ -100,7 +100,6 @@ private:
     QLabel* m_boxPageTitle = nullptr;
     QLabel* m_aboutNameLabel = nullptr;
     QLabel* m_aboutVersionLabel = nullptr;
-    QLabel* m_aboutTaglineLabel = nullptr;
     QLabel* m_pluginsPageTitle = nullptr;
     QLabel* m_pluginsEmptyLabel = nullptr;
     QLabel* m_previewLabel = nullptr;

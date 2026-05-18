@@ -14,6 +14,7 @@ public:
     static std::vector<ShellMenuExclusionEntry> loadForKeys(const std::vector<std::wstring>& keys);
     static void save(const QString& key, const std::vector<ShellMenuExclusionEntry>& entries);
     static void save(const std::wstring& key, const std::vector<ShellMenuExclusionEntry>& entries);
+    static int merge(const QString& key, const std::vector<ShellMenuExclusionEntry>& entries);
     static void add(const QString& key, const ShellMenuExclusionEntry& entry);
     static void add(const QString& key, const QString& rawText);
     static void add(const std::wstring& key, const std::wstring& rawText);

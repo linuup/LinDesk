@@ -12,12 +12,11 @@ public:
     explicit FluentButton(const QString& text, QWidget* parent = nullptr) : QPushButton(text, parent) {
         setFixedSize(120, 32);
         setCursor(Qt::PointingHandCursor);
-        m_bgColor = QColor(0, 120, 212); // Fluent Blue #0078d4
         
         m_hoverAnim = new QVariantAnimation(this);
         m_hoverAnim->setDuration(150);
-        m_hoverAnim->setStartValue(QColor(0, 120, 212));
-        m_hoverAnim->setEndValue(QColor(0, 100, 180)); // Darker on hover
+        m_hoverAnim->setStartValue(m_normalColor);
+        m_hoverAnim->setEndValue(m_hoverColor);
         connect(m_hoverAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& v){
             m_bgColor = v.value<QColor>();
             update();
@@ -29,11 +28,22 @@ public:
 
     void setAccent(bool accent) {
         m_accent = accent;
-        if (!m_accent) {
-            m_bgColor = QColor(243, 243, 243);
-            m_hoverAnim->setStartValue(QColor(243, 243, 243));
-            m_hoverAnim->setEndValue(QColor(235, 235, 235));
+        if (m_accent) {
+            setColors(QColor(0, 120, 212), QColor(0, 100, 180), Qt::white, QColor());
+        } else {
+            setColors(QColor(239, 246, 255), QColor(219, 234, 254), QColor(31, 41, 55), QColor(147, 197, 253));
         }
+    }
+
+    void setColors(const QColor& normal, const QColor& hover, const QColor& text, const QColor& border = QColor()) {
+        m_normalColor = normal;
+        m_hoverColor = hover;
+        m_textColor = text;
+        m_borderColor = border;
+        m_bgColor = normal;
+        m_hoverAnim->setStartValue(normal);
+        m_hoverAnim->setEndValue(hover);
+        update();
     }
 
 protected:
@@ -53,12 +63,12 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
 
         // 1. Background
-        p.setBrush(m_bgColor);
-        p.setPen(Qt::NoPen);
+        p.setBrush(isEnabled() ? m_bgColor : QColor(245, 245, 245));
+        p.setPen(m_borderColor.isValid() ? QPen(m_borderColor, 1) : Qt::NoPen);
         p.drawRoundedRect(rect().adjusted(1,1,-1,-1), 6, 6);
 
         // 2. Text
-        p.setPen(m_accent ? Qt::white : QColor(32, 32, 32));
+        p.setPen(isEnabled() ? m_textColor : QColor(150, 150, 150));
         QFont f = font();
         f.setPixelSize(13);
         f.setWeight(QFont::Medium);
@@ -68,6 +78,10 @@ protected:
 
 private:
     QColor m_bgColor;
+    QColor m_normalColor = QColor(0, 120, 212);
+    QColor m_hoverColor = QColor(0, 100, 180);
+    QColor m_textColor = Qt::white;
+    QColor m_borderColor;
     QVariantAnimation* m_hoverAnim;
     bool m_accent = true;
 };

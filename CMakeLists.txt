@@ -6,10 +6,9 @@ cmake_minimum_required(VERSION 3.31)
 set(LINDESK_VERSION_MAJOR 1)
 set(LINDESK_VERSION_MINOR 0)
 set(LINDESK_VERSION_PATCH 7)
-set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable 等
-
-# 生成完整版本字符串
+set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable �?
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
+# 生成完整版本字符�?set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 set(LINDESK_VERSION_FULL "${LINDESK_VERSION} ${LINDESK_VERSION_TAG}")
 
 # 设置安装器输入目录，可自定义
@@ -29,12 +28,10 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-# --- vcpkg 自动搜索逻辑 ---
+# --- vcpkg auto discovery ---
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-    # 1. 尝试从环境变量 VCPKG_ROOT 查找
     if(DEFINED ENV{VCPKG_ROOT})
         set(_VCPKG_ROOT "$ENV{VCPKG_ROOT}")
-    # 2. 尝试从 PATH 中查找 vcpkg 所在目录
     else()
         find_program(_VCPKG_EXE vcpkg)
         if(_VCPKG_EXE)
@@ -42,7 +39,6 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
         endif()
     endif()
 
-    # 3. 如果找到根目录，推导工具链路径
     if(_VCPKG_ROOT AND EXISTS "${_VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
         set(CMAKE_TOOLCHAIN_FILE "${_VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE FILEPATH "vcpkg toolchain")
     endif()
@@ -57,13 +53,8 @@ if(IS_DIRECTORY "${CMAKE_TOOLCHAIN_FILE}")
     endif()
 endif()
 
-# 验证最终结果
 if(NOT CMAKE_TOOLCHAIN_FILE OR NOT EXISTS "${CMAKE_TOOLCHAIN_FILE}")
-    message(FATAL_ERROR "
-    [ERROR] 无法自动找到 vcpkg 工具链。
-    请设置环境变量 VCPKG_ROOT 指向 vcpkg 安装目录，
-    或运行 cmake -DCMAKE_TOOLCHAIN_FILE=[path/to/vcpkg.cmake] ..
-    ")
+    message(FATAL_ERROR "Unable to find vcpkg toolchain. Set VCPKG_ROOT or pass -DCMAKE_TOOLCHAIN_FILE=path/to/vcpkg.cmake")
 endif()
 # -------------------------
 
@@ -91,7 +82,7 @@ configure_file(
 
 add_compile_options("/utf-8")
 
-# 查找 Qt5 库
+# Find Qt5
 find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools REQUIRED)
 
 # 启用 Qt MOC、RCC、UIC 自动生成
@@ -111,7 +102,7 @@ else()
     message(WARNING "Win11 menu host subproject will not be added because Visual Studio generator or W11MenuUI project was not found.")
 endif()
 
-# 自动收集 src 下所有 .cpp、.h 和 .qrc 文件
+# 自动收集 src 下所�?.cpp�?h �?.qrc 文件
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/*.h"
@@ -120,8 +111,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
 
-# 添加可执行文件
-set(WIN32_RESOURCES)
+# 添加可执行文�?set(WIN32_RESOURCES)
 if(WIN32)
     list(APPEND WIN32_RESOURCES
         "src/app/LinDesk.rc"
@@ -187,8 +177,7 @@ set(TS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_zh_CN.ts
 )
 
-# 复制并配置 ts 文件，替换版本号占位符
-set(TS_FILES_CONFIGURED)
+# 复制并配�?ts 文件，替换版本号占位�?set(TS_FILES_CONFIGURED)
 foreach(TS_FILE ${TS_FILES})
     get_filename_component(TS_NAME ${TS_FILE} NAME)
     set(CONFIGURED_TS_FILE "${CMAKE_BINARY_DIR}/translations/${TS_NAME}")
@@ -213,7 +202,7 @@ add_custom_command(TARGET LinDesk POST_BUILD
     COMMENT "Copying translation files to output directory..."
 )
 
-# 确保构建目录存在，用于 ts 文件配置
+# 确保构建目录存在，用�?ts 文件配置
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/translations")
 
 # Post-build: Copy OpenSSL DLLs to executable directory

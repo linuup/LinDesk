@@ -301,6 +301,22 @@ QString shellMenuDisplayText(QString text)
     return text.trimmed();
 }
 
+struct ShellMenuRuleTypeOption
+{
+    QString title;
+    QString key;
+};
+
+QString shellMenuTypeTitle(const QList<ShellMenuRuleTypeOption>& options, const QString& key)
+{
+    for (const ShellMenuRuleTypeOption& option : options) {
+        if (option.key == key) {
+            return option.title;
+        }
+    }
+    return key;
+}
+
 int shellMenuDesktopPriority(const ShellMenuSnapshotItem& item)
 {
     const QString normalized = QString::fromStdWString(item.normalizedText).trimmed().toLower();
@@ -1587,16 +1603,27 @@ QWidget* SettingUI::createContextMenuPage() {
     shellTitleLayout->addWidget(createCardTitle(tr("Shell Menu Exclusions"), shellExcludePanel));
     shellTitleLayout->addWidget(createCardSubtitle(tr("Choose a menu type. LinDesk scans the real menu immediately, then you can hide items from future context menus."), shellExcludePanel));
     shellHeaderLayout->addLayout(shellTitleLayout, 1);
+    const auto applyOutlineButtonStyle = [](FluentButton* button) {
+        button->setColors(QColor("#ffffff"), QColor("#eef6ff"), QColor("#005a9e"), QColor("#0078d4"));
+    };
     FluentButton* addExtensionButton = new FluentButton(tr("Add"), shellExcludePanel);
-    addExtensionButton->setAccent(false);
+    applyOutlineButtonStyle(addExtensionButton);
     addExtensionButton->setFixedWidth(86);
     shellHeaderLayout->addWidget(addExtensionButton, 0, Qt::AlignTop);
     FluentButton* removeExtensionButton = new FluentButton(tr("Remove"), shellExcludePanel);
-    removeExtensionButton->setAccent(false);
+    removeExtensionButton->setColors(QColor("#ffffff"), QColor("#fff1f0"), QColor("#a4262c"), QColor("#d13438"));
     removeExtensionButton->setFixedWidth(96);
     removeExtensionButton->setEnabled(false);
     removeExtensionButton->setVisible(false);
     shellHeaderLayout->addWidget(removeExtensionButton, 0, Qt::AlignTop);
+    FluentButton* copyRulesButton = new FluentButton(tr("Copy From"), shellExcludePanel);
+    applyOutlineButtonStyle(copyRulesButton);
+    copyRulesButton->setFixedWidth(112);
+    shellHeaderLayout->addWidget(copyRulesButton, 0, Qt::AlignTop);
+    FluentButton* applyRulesButton = new FluentButton(tr("Apply To"), shellExcludePanel);
+    applyOutlineButtonStyle(applyRulesButton);
+    applyRulesButton->setFixedWidth(100);
+    shellHeaderLayout->addWidget(applyRulesButton, 0, Qt::AlignTop);
     shellExcludeLayout->addLayout(shellHeaderLayout);
 
     QFrame* shellBody = new QFrame(shellExcludePanel);
@@ -1691,15 +1718,21 @@ QWidget* SettingUI::createContextMenuPage() {
         item->setSizeHint(QSize(170, 36));
         return item;
     };
-    addTypeItem(shellTypeList, tr("Desktop"), QStringLiteral("desktop"));
-    addTypeItem(shellTypeList, tr("Box Background"), QStringLiteral("box_background"));
-    addTypeItem(shellTypeList, tr("Folder"), QStringLiteral("folder"));
-    addTypeItem(shellTypeList, tr("Shortcut"), QStringLiteral("shortcut"));
-    addTypeItem(shellTypeList, tr("Disk"), QStringLiteral("disk"));
-    addTypeItem(shellTypeList, tr("No Extension File"), QStringLiteral("file_no_extension"));
+    auto ruleTypeOptions = std::make_shared<QList<ShellMenuRuleTypeOption>>();
+    auto addDefaultType = [&](const QString& title, const QString& key) {
+        ruleTypeOptions->append({ title, key });
+        addTypeItem(shellTypeList, title, key);
+    };
+    addDefaultType(tr("Desktop"), QStringLiteral("desktop"));
+    addDefaultType(tr("Box Background"), QStringLiteral("box_background"));
+    addDefaultType(tr("Folder"), QStringLiteral("folder"));
+    addDefaultType(tr("Shortcut"), QStringLiteral("shortcut"));
+    addDefaultType(tr("No Extension File"), QStringLiteral("file_no_extension"));
     for (const QString& key : shellMenuCustomExtensionKeys()) {
         if (key.startsWith(QStringLiteral("file_ext:"))) {
-            addTypeItem(customTypeList, key.mid(QStringLiteral("file_ext:").size()), key);
+            const QString title = key.mid(QStringLiteral("file_ext:").size());
+            ruleTypeOptions->append({ title, key });
+            addTypeItem(customTypeList, title, key);
         }
     }
 
@@ -1773,6 +1806,23 @@ QWidget* SettingUI::createContextMenuPage() {
             .arg(visibleCount)
             .arg(hiddenCount)
             .arg(key));
+    };
+
+    auto updateTreeFromExclusions = [shellMenuTreeList](const std::vector<ShellMenuExclusionEntry>& exclusions) {
+        for (int rowIndex = 0; rowIndex < shellMenuTreeList->count(); ++rowIndex) {
+            QListWidgetItem* item = shellMenuTreeList->item(rowIndex);
+            QWidget* rowWidget = item ? shellMenuTreeList->itemWidget(item) : nullptr;
+            FluentCheckBox* checkbox = rowWidget ? rowWidget->findChild<FluentCheckBox*>(QStringLiteral("shellExcludeRowCheckBox")) : nullptr;
+            if (!item || !checkbox) {
+                continue;
+            }
+            const QString rawText = item->data(Qt::UserRole).toString();
+            const QString normalizedText = item->data(Qt::UserRole + 1).toString();
+            const QString matchText = item->data(Qt::UserRole + 5).toString();
+            const QStringList matchPath = item->data(Qt::UserRole + 7).toStringList();
+            const QSignalBlocker blocker(checkbox);
+            checkbox->setChecked(!shellMenuEntryMatches(exclusions, rawText, normalizedText, matchText, matchPath));
+        }
     };
 
     auto makeMenuRow = [this](QListWidget* list, const QIcon& icon, int depth, bool hasChildren, const QString& rawText, bool visible) {
@@ -1940,40 +1990,222 @@ QWidget* SettingUI::createContextMenuPage() {
         selectTypeKey(current);
     });
 
+    connect(copyRulesButton, &QPushButton::clicked, this, [=]() {
+        QListWidgetItem* current = shellTypeList->currentItem() ? shellTypeList->currentItem() : customTypeList->currentItem();
+        if (!current) {
+            return;
+        }
+
+        FluentDialog dialog(this);
+        dialog.setDialogTitle(tr("Copy Rules"));
+        dialog.setMessage(tr("Choose a source type to copy hidden menu rules from."));
+        FluentComboBox* sourceCombo = new FluentComboBox(&dialog);
+        for (const ShellMenuRuleTypeOption& option : *ruleTypeOptions) {
+            sourceCombo->addItem(option.title, option.key);
+        }
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, sourceCombo);
+
+        bool confirmed = false;
+        QString sourceKey;
+        dialog.addActionButton(tr("Copy"), FluentDialog::ActionType::Primary, [&]() {
+            confirmed = true;
+            sourceKey = sourceCombo->currentData().toString();
+        });
+        dialog.addActionButton(tr("Cancel"), FluentDialog::ActionType::Secondary);
+        if (dialog.exec() != QDialog::Accepted || !confirmed || sourceKey.isEmpty()) {
+            return;
+        }
+
+        const std::vector<ShellMenuExclusionEntry> sourceEntries = ShellMenuExclusionStore::load(sourceKey);
+        if (sourceEntries.empty()) {
+            shellExcludeStatusLabel->setText(tr("No hidden rules to copy."));
+            return;
+        }
+
+        const QString targetKey = current->data(Qt::UserRole).toString();
+        const int addedCount = ShellMenuExclusionStore::merge(targetKey, sourceEntries);
+        updateTreeFromExclusions(ShellMenuExclusionStore::load(targetKey));
+        updateTreeStatusLabel(targetKey);
+        shellExcludeStatusLabel->setText(tr("Copied %1 rules from %2.")
+            .arg(addedCount)
+            .arg(shellMenuTypeTitle(*ruleTypeOptions, sourceKey)));
+    });
+
+    connect(applyRulesButton, &QPushButton::clicked, this, [=]() {
+        QListWidgetItem* current = shellTypeList->currentItem() ? shellTypeList->currentItem() : customTypeList->currentItem();
+        if (!current) {
+            return;
+        }
+
+        const QString sourceKey = current->data(Qt::UserRole).toString();
+        const std::vector<ShellMenuExclusionEntry> sourceEntries = ShellMenuExclusionStore::load(sourceKey);
+        if (sourceEntries.empty()) {
+            shellExcludeStatusLabel->setText(tr("No hidden rules to copy."));
+            return;
+        }
+
+        FluentDialog dialog(this);
+        dialog.setDialogTitle(tr("Apply Rules"));
+        dialog.setMessage(tr("Choose target types to receive the current hidden menu rules."));
+        QListWidget* targetList = new QListWidget(&dialog);
+        targetList->setObjectName(QStringLiteral("shellExcludeTypeList"));
+        targetList->setFrameShape(QFrame::NoFrame);
+        targetList->setSelectionMode(QAbstractItemView::NoSelection);
+        targetList->setMinimumHeight(220);
+        for (const ShellMenuRuleTypeOption& option : *ruleTypeOptions) {
+            if (option.key == sourceKey) {
+                continue;
+            }
+            QListWidgetItem* item = new QListWidgetItem(targetList);
+            item->setData(Qt::UserRole, option.key);
+            item->setSizeHint(QSize(260, 34));
+            QWidget* row = new QWidget(targetList);
+            QHBoxLayout* rowLayout = new QHBoxLayout(row);
+            rowLayout->setContentsMargins(10, 4, 10, 4);
+            rowLayout->setSpacing(10);
+            FluentCheckBox* checkbox = new FluentCheckBox(row);
+            checkbox->setObjectName(QStringLiteral("applyRulesTargetCheckBox"));
+            rowLayout->addWidget(checkbox, 0, Qt::AlignVCenter);
+            QLabel* label = new QLabel(option.title, row);
+            label->setObjectName(QStringLiteral("shellExcludeRowTitle"));
+            rowLayout->addWidget(label, 1, Qt::AlignVCenter);
+            targetList->setItemWidget(item, row);
+            connect(checkbox, &FluentCheckBox::toggled, this, [targetList, checkbox](bool checked) {
+                if (!checked) {
+                    return;
+                }
+                for (int rowIndex = 0; rowIndex < targetList->count(); ++rowIndex) {
+                    QListWidgetItem* otherItem = targetList->item(rowIndex);
+                    QWidget* otherRow = otherItem ? targetList->itemWidget(otherItem) : nullptr;
+                    FluentCheckBox* otherCheckBox = otherRow ? otherRow->findChild<FluentCheckBox*>(QStringLiteral("applyRulesTargetCheckBox")) : nullptr;
+                    if (otherCheckBox && otherCheckBox != checkbox) {
+                        const QSignalBlocker blocker(otherCheckBox);
+                        otherCheckBox->setChecked(false);
+                    }
+                }
+            });
+        }
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, targetList);
+
+        bool confirmed = false;
+        QStringList targetKeys;
+        dialog.addActionButton(tr("Apply"), FluentDialog::ActionType::Primary, [&]() {
+            confirmed = true;
+            for (int row = 0; row < targetList->count(); ++row) {
+                QListWidgetItem* item = targetList->item(row);
+                QWidget* rowWidget = item ? targetList->itemWidget(item) : nullptr;
+                FluentCheckBox* checkbox = rowWidget ? rowWidget->findChild<FluentCheckBox*>(QStringLiteral("applyRulesTargetCheckBox")) : nullptr;
+                if (item && checkbox && checkbox->isChecked()) {
+                    targetKeys.append(item->data(Qt::UserRole).toString());
+                }
+            }
+        });
+        dialog.addActionButton(tr("Cancel"), FluentDialog::ActionType::Secondary);
+        if (dialog.exec() != QDialog::Accepted || !confirmed) {
+            return;
+        }
+        if (targetKeys.isEmpty()) {
+            shellExcludeStatusLabel->setText(tr("No target type selected."));
+            return;
+        }
+
+        int addedCount = 0;
+        for (const QString& targetKey : targetKeys) {
+            addedCount += ShellMenuExclusionStore::merge(targetKey, sourceEntries);
+        }
+        shellExcludeStatusLabel->setText(tr("Applied %1 rules to %2 types.")
+            .arg(addedCount)
+            .arg(targetKeys.size()));
+    });
+
     connect(addExtensionButton, &QPushButton::clicked, this, [=]() {
         FluentDialog dialog(this);
         dialog.setDialogTitle(tr("File Extension"));
         dialog.setMessage(tr("Enter a file extension, for example .txt."));
+        QLabel* extensionLabel = new QLabel(tr("Extension"), &dialog);
+        extensionLabel->setObjectName(QStringLiteral("rowTitle"));
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, extensionLabel);
         FluentInput* extensionInput = new FluentInput(&dialog);
         extensionInput->setText(QStringLiteral("txt"));
         extensionInput->selectAll();
         dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, extensionInput);
+        QLabel* reuseLabel = new QLabel(tr("Reuse Rules From"), &dialog);
+        reuseLabel->setObjectName(QStringLiteral("rowTitle"));
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, reuseLabel);
+        FluentComboBox* reuseCombo = new FluentComboBox(&dialog);
+        reuseCombo->setFixedWidth(260);
+        reuseCombo->addItem(tr("Do Not Reuse"), QString());
+        for (const ShellMenuRuleTypeOption& option : *ruleTypeOptions) {
+            if (option.key.startsWith(QStringLiteral("file_ext:"))) {
+                reuseCombo->addItem(option.title, option.key);
+            }
+        }
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, reuseCombo);
+        QLabel* validationLabel = new QLabel(&dialog);
+        validationLabel->setObjectName(QStringLiteral("rowSubtitle"));
+        validationLabel->setStyleSheet(QStringLiteral("color: #d13438;"));
+        validationLabel->setWordWrap(true);
+        validationLabel->hide();
+        dialog.contentLayout()->insertWidget(dialog.contentLayout()->count() - 1, validationLabel);
 
+        bool confirmed = false;
         QString extension;
+        QString reuseKey;
         dialog.addActionButton(tr("Add"), FluentDialog::ActionType::Primary, [&]() {
-            extension = extensionInput->text().trimmed().toLower();
+            QString input = extensionInput->text().trimmed().toLower();
+            if (input.isEmpty()) {
+                validationLabel->setText(tr("Enter a file extension."));
+                validationLabel->show();
+                dialog.keepOpenOnce();
+                QTimer::singleShot(0, extensionInput, qOverload<>(&FluentInput::setFocus));
+                return;
+            }
+            if (!input.startsWith('.')) {
+                input.prepend('.');
+            }
+
+            const QString candidateKey = QStringLiteral("file_ext:") + input;
+            for (int i = 0; i < customTypeList->count(); ++i) {
+                if (customTypeList->item(i)->data(Qt::UserRole).toString() == candidateKey) {
+                    customTypeList->setCurrentRow(i);
+                    validationLabel->setText(tr("Extension type already exists: %1").arg(input));
+                    validationLabel->show();
+                    shellExcludeStatusLabel->setText(tr("Extension type already exists: %1").arg(input));
+                    dialog.keepOpenOnce();
+                    QTimer::singleShot(0, extensionInput, qOverload<>(&FluentInput::setFocus));
+                    return;
+                }
+            }
+
+            confirmed = true;
+            extension = input;
+            reuseKey = reuseCombo->currentData().toString();
         });
         dialog.addActionButton(tr("Cancel"), FluentDialog::ActionType::Secondary);
         QTimer::singleShot(0, extensionInput, qOverload<>(&FluentInput::setFocus));
 
-        if (dialog.exec() != QDialog::Accepted || extension.isEmpty()) {
+        if (dialog.exec() != QDialog::Accepted || !confirmed) {
             return;
         }
-        if (!extension.startsWith('.')) {
-            extension.prepend('.');
-        }
+
         const QString key = QStringLiteral("file_ext:") + extension;
-        for (int i = 0; i < customTypeList->count(); ++i) {
-            if (customTypeList->item(i)->data(Qt::UserRole).toString() == key) {
-                customTypeList->setCurrentRow(i);
-                return;
-            }
-        }
         QListWidgetItem* item = addTypeItem(customTypeList, extension, key);
+        ruleTypeOptions->append({ extension, key });
         QStringList customKeys = shellMenuCustomExtensionKeys();
         customKeys.append(key);
         saveShellMenuCustomExtensionKeys(customKeys);
         customTypeList->setCurrentItem(item);
+        int copiedCount = 0;
+        if (!reuseKey.isEmpty()) {
+            copiedCount += ShellMenuExclusionStore::merge(key, ShellMenuExclusionStore::load(reuseKey));
+        }
+        if (copiedCount > 0) {
+            updateTreeFromExclusions(ShellMenuExclusionStore::load(key));
+            updateTreeStatusLabel(key);
+            shellExcludeStatusLabel->setText(tr("Added %1 and reused %2 rules.")
+                .arg(extension)
+                .arg(copiedCount));
+        }
     });
 
     connect(removeExtensionButton, &QPushButton::clicked, this, [=]() {
@@ -1990,6 +2222,12 @@ QWidget* SettingUI::createContextMenuPage() {
         QStringList customKeys = shellMenuCustomExtensionKeys();
         customKeys.removeAll(key);
         saveShellMenuCustomExtensionKeys(customKeys);
+        for (int optionIndex = 0; optionIndex < ruleTypeOptions->size(); ++optionIndex) {
+            if (ruleTypeOptions->at(optionIndex).key == key) {
+                ruleTypeOptions->removeAt(optionIndex);
+                break;
+            }
+        }
 
         const int row = customTypeList->row(current);
         delete customTypeList->takeItem(row);
@@ -2311,16 +2549,6 @@ QWidget* SettingUI::createAboutPage() {
     );
     layout->addWidget(m_aboutVersionLabel, 0, Qt::AlignCenter);
     
-    layout->addSpacing(20);
-    
-    m_aboutTaglineLabel = new QLabel(tr("Powered by Antigravity Design System"), page);
-    m_aboutTaglineLabel->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI'; "
-        "font-size: 12px; "
-        "color: #9ca3af;"
-    );
-    layout->addWidget(m_aboutTaglineLabel, 0, Qt::AlignCenter);
-
     layout->addSpacing(24);
 
     QWidget* updatePanel = createPanel(page);
