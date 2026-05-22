@@ -1,6 +1,6 @@
-#include "desktop/DesktopComponentFloatingWindow.h"
+#include "desktop/widgets/DesktopComponentFloatingWindow.h"
 
-#include "desktop/DesktopComponentRenderer.h"
+#include "desktop/widgets/DesktopComponentRenderer.h"
 
 #include <QContextMenuEvent>
 #include <QMouseEvent>

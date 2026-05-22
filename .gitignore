@@ -71,4 +71,4 @@ Output/
 /.tmp_build
 
 
-/src/resources/LinWidgets/Weather/.webview2/EBWebView
+/src/resources/LinWidgets/*/.webview2/EBWebView

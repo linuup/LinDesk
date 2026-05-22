@@ -1,6 +1,6 @@
 #pragma once
 
-#include "desktop/DesktopComponentItem.h"
+#include "desktop/widgets/DesktopComponentItem.h"
 
 #include <QObject>
 #include <QSet>

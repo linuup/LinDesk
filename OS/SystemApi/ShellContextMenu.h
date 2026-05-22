@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "CommonEnum.h"
 #include <wil/com.h>
@@ -158,6 +159,14 @@ public:
         HBITMAP hBitmap = nullptr;    // 图标位图句柄
     };
 
+    struct CompiledExclusions {
+        bool empty = true;
+        std::unordered_set<std::wstring> rawText;
+        std::unordered_set<std::wstring> normalizedText;
+        std::unordered_set<std::wstring> matchText;
+        std::unordered_set<std::wstring> matchPath;
+    };
+
     /// <summary>
     /// 设置要追加到背景右键菜单的自定义菜单项
     /// </summary>
@@ -179,9 +188,11 @@ public:
             std::vector<ShellMenuExclusionEntry> entries = LoadExclusions(key);
             m_exclusions.insert(m_exclusions.end(), entries.begin(), entries.end());
         }
+        rebuildCompiledExclusions();
     }
     void setExclusions(const std::vector<ShellMenuExclusionEntry>& entries) {
         m_exclusions = entries;
+        rebuildCompiledExclusions();
     }
 
     static std::wstring NormalizeMenuText(const std::wstring& text);
@@ -243,6 +254,8 @@ private:
     std::optional<std::string> m_directoryOverride;
     std::vector<std::wstring> m_exclusionKeys;
     std::vector<ShellMenuExclusionEntry> m_exclusions;
+    CompiledExclusions m_compiledExclusions;
+    void rebuildCompiledExclusions();
 
     wil::com_ptr_nothrow<IContextMenu3> MaybeGetShellContextMenu(HWND hwnd) const;	//获取文件Shell上下文接口
 

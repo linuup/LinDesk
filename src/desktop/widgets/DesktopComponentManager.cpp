@@ -1,4 +1,4 @@
-#include "desktop/DesktopComponentManager.h"
+#include "desktop/widgets/DesktopComponentManager.h"
 
 #include <QDateTime>
 #include <QDir>

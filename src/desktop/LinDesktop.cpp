@@ -2,6 +2,7 @@
 #include "desktop/RenameManager.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "ui/Fluent/FluentInfoTip.h"
 #include "services/AppPaths.h"
 #include <QCoreApplication>
 #include <QFutureWatcher>
@@ -10,9 +11,26 @@
 #include <QMenu>
 #include <QWindow>
 #include <QDebug>
+#include <psapi.h>
 
 namespace {
 QPointer<LinDesktop> g_desktopHostWindowMonitorOwner;
+
+void showAlreadyRunningTipAndQuit()
+{
+    constexpr int kTipVisibleMs = 2600;
+    constexpr int kQuitDelayMs = 2900;
+
+    FluentInfoTip* tip = new FluentInfoTip(nullptr);
+    tip->setText(QCoreApplication::translate("LinDesktop", "LinDesk is already running."));
+    QObject::connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, tip, &QObject::deleteLater);
+
+    const QRect screenRect = QApplication::primaryScreen()
+        ? QApplication::primaryScreen()->availableGeometry()
+        : QRect(0, 0, 800, 600);
+    tip->showCentered(screenRect, kTipVisibleMs);
+    QTimer::singleShot(kQuitDelayMs, QCoreApplication::instance(), &QCoreApplication::quit);
+}
 
 void CALLBACK desktopHostWindowEventProc(HWINEVENTHOOK,
                                          DWORD event,
@@ -48,7 +66,9 @@ LinDesktop::LinDesktop(QWidget* parent)
             CloseHandle(m_singleInstanceMutex);
             m_singleInstanceMutex = nullptr;
         }
-        QTimer::singleShot(0, QCoreApplication::instance(), &QCoreApplication::quit);
+        QTimer::singleShot(0, []() {
+            showAlreadyRunningTipAndQuit();
+        });
         return;
     }
 
@@ -699,9 +719,35 @@ bool LinDesktop::isOwnProcessWindow(HWND hwnd) const
     return processId == GetCurrentProcessId();
 }
 
+bool LinDesktop::isOwnWidgetHostWindow(HWND hwnd) const
+{
+    const QString imageName = windowProcessImageName(hwnd);
+    if (imageName.compare(QStringLiteral("WidgetHost.exe"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+
+    const QString className = windowClassName(hwnd);
+    return className.startsWith(QStringLiteral("Qt5152"), Qt::CaseInsensitive) &&
+        className.contains(QStringLiteral("QWindow"), Qt::CaseInsensitive);
+}
+
+bool LinDesktop::isOwnWidgetHostWindowOrDescendant(HWND hwnd) const
+{
+    for (HWND current = hwnd; current && IsWindow(current); current = GetParent(current)) {
+        if (isOwnProcessWindow(current) || isOwnWidgetHostWindow(current)) {
+            return true;
+        }
+
+        if (isDesktopHostWindow(current)) {
+            break;
+        }
+    }
+    return false;
+}
+
 bool LinDesktop::isCandidateThirdPartyWindow(HWND hwnd) const
 {
-    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || isOwnProcessWindow(hwnd)) {
+    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || isOwnWidgetHostWindowOrDescendant(hwnd)) {
         return false;
     }
 
@@ -726,6 +772,35 @@ QString LinDesktop::windowClassName(HWND hwnd) const
         return QString();
     }
     return QString::fromWCharArray(className);
+}
+
+QString LinDesktop::windowProcessImageName(HWND hwnd) const
+{
+    if (!hwnd || !IsWindow(hwnd)) {
+        return QString();
+    }
+
+    DWORD processId = 0;
+    GetWindowThreadProcessId(hwnd, &processId);
+    if (processId == 0) {
+        return QString();
+    }
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, processId);
+    if (!process) {
+        process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    }
+    if (!process) {
+        return QString();
+    }
+
+    wchar_t path[MAX_PATH] = {};
+    QString result;
+    if (GetModuleFileNameExW(process, nullptr, path, static_cast<DWORD>(std::size(path)))) {
+        result = QFileInfo(QString::fromWCharArray(path)).fileName();
+    }
+    CloseHandle(process);
+    return result;
 }
 
 void LinDesktop::forceDesktopRepaint()

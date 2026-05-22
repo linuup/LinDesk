@@ -684,27 +684,42 @@ int FindNewMenuInsertPosition(HMENU menu)
     return newMenuPos >= 0 ? newMenuPos + 1 : -1;
 }
 
-bool MenuItemMatchesExclusion(const std::vector<ShellMenuExclusionEntry>& exclusions,
-    const std::wstring& rawText,
-    const std::vector<std::wstring>& parentMatchPath)
+std::wstring MatchPathKey(const std::vector<std::wstring>& matchPath)
 {
-    const std::wstring normalizedText = ShellContextMenu::NormalizeMenuText(rawText);
-    const std::wstring matchText = ShellContextMenu::MatchMenuText(rawText);
-    std::vector<std::wstring> matchPath = parentMatchPath;
-    matchPath.push_back(matchText);
-    for (const ShellMenuExclusionEntry& exclusion : exclusions) {
-        if (ShellContextMenu::MenuEntryMatches(exclusion, rawText, normalizedText, matchText, matchPath)) {
-            return true;
-        }
+    std::wstring key;
+    for (const std::wstring& segment : matchPath) {
+        key.append(segment);
+        key.push_back(L'\x1f');
     }
-    return false;
+    return key;
+}
+
+bool MenuItemMatchesExclusion(const ShellContextMenu::CompiledExclusions& exclusions,
+    const std::wstring& rawText,
+    const std::wstring& normalizedText,
+    const std::wstring& matchText,
+    const std::vector<std::wstring>& matchPath)
+{
+    if (exclusions.empty) {
+        return false;
+    }
+    if (!matchPath.empty() && exclusions.matchPath.find(MatchPathKey(matchPath)) != exclusions.matchPath.end()) {
+        return true;
+    }
+    if (!matchText.empty() && exclusions.matchText.find(matchText) != exclusions.matchText.end()) {
+        return true;
+    }
+    if (!rawText.empty() && exclusions.rawText.find(rawText) != exclusions.rawText.end()) {
+        return true;
+    }
+    return !normalizedText.empty() && exclusions.normalizedText.find(normalizedText) != exclusions.normalizedText.end();
 }
 
 void RemoveConfiguredMenuItems(HMENU menu,
-    const std::vector<ShellMenuExclusionEntry>& exclusions,
+    const ShellContextMenu::CompiledExclusions& exclusions,
     const std::vector<std::wstring>& parentMatchPath = {})
 {
-    if (!menu || exclusions.empty()) {
+    if (!menu || exclusions.empty) {
         return;
     }
 
@@ -713,8 +728,10 @@ void RemoveConfiguredMenuItems(HMENU menu,
         if (rawText.empty()) {
             continue;
         }
+        const std::wstring normalizedText = ShellContextMenu::NormalizeMenuText(rawText);
+        const std::wstring matchText = ShellContextMenu::MatchMenuText(rawText);
         std::vector<std::wstring> currentMatchPath = parentMatchPath;
-        currentMatchPath.push_back(ShellContextMenu::MatchMenuText(rawText));
+        currentMatchPath.push_back(matchText);
 
         MENUITEMINFOW itemInfo = {};
         itemInfo.cbSize = sizeof(itemInfo);
@@ -723,7 +740,7 @@ void RemoveConfiguredMenuItems(HMENU menu,
             RemoveConfiguredMenuItems(itemInfo.hSubMenu, exclusions, currentMatchPath);
         }
 
-        const bool shouldDelete = MenuItemMatchesExclusion(exclusions, rawText, parentMatchPath);
+        const bool shouldDelete = MenuItemMatchesExclusion(exclusions, rawText, normalizedText, matchText, currentMatchPath);
         if (shouldDelete && DeleteMenu(menu, static_cast<UINT>(i), MF_BYPOSITION)) {
             MenuHelper::RemoveAdjacentSeparators(menu);
             MenuHelper::RemoveTrailingSeparators(menu);
@@ -1648,6 +1665,33 @@ bool ShellContextMenu::MenuEntryMatches(const ShellMenuExclusionEntry& exclusion
     return !exclusion.normalizedText.empty() && normalizedText == exclusion.normalizedText;
 }
 
+void ShellContextMenu::rebuildCompiledExclusions()
+{
+    m_compiledExclusions = CompiledExclusions();
+    for (const ShellMenuExclusionEntry& exclusion : m_exclusions) {
+        if (!exclusion.enabled) {
+            continue;
+        }
+        if (!exclusion.rawText.empty()) {
+            m_compiledExclusions.rawText.insert(exclusion.rawText);
+        }
+        if (!exclusion.normalizedText.empty()) {
+            m_compiledExclusions.normalizedText.insert(exclusion.normalizedText);
+        }
+        if (!exclusion.matchText.empty()) {
+            m_compiledExclusions.matchText.insert(exclusion.matchText);
+        }
+        if (!exclusion.matchPath.empty()) {
+            m_compiledExclusions.matchPath.insert(MatchPathKey(exclusion.matchPath));
+        }
+    }
+    m_compiledExclusions.empty =
+        m_compiledExclusions.rawText.empty() &&
+        m_compiledExclusions.normalizedText.empty() &&
+        m_compiledExclusions.matchText.empty() &&
+        m_compiledExclusions.matchPath.empty();
+}
+
 std::vector<std::wstring> ShellContextMenu::ExclusionKeysForPath(OperationType type, const wchar_t* path)
 {
     std::vector<std::wstring> keys;
@@ -2176,7 +2220,7 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
     }
 
     RemoveTencentDeskGoMenu(hMenu.get());
-    RemoveConfiguredMenuItems(hMenu.get(), m_exclusions);
+    RemoveConfiguredMenuItems(hMenu.get(), m_compiledExclusions);
     DebugLogMenuTree(hMenu.get(), m_contextMenu.get(), L"Win11DesktopShellSnapshot");
 
     AppendMenuSnapshotItems(hMenu.get(),
@@ -2403,7 +2447,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         }
     }
 
-    RemoveConfiguredMenuItems(hMenu.get(), m_exclusions);
+    RemoveConfiguredMenuItems(hMenu.get(), m_compiledExclusions);
 
     if (operationType == OperationType::boxBackground) {
         DebugLogTopLevelMenuItems(hMenu.get(), L"BoxContextMenu");
@@ -2584,7 +2628,7 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
             if (SUCCEEDED(hr))
             {
                 if (msg == WM_INITMENUPOPUP) {
-                    RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_exclusions);
+                    RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_compiledExclusions);
                 }
                 if (msg != WM_INITMENUPOPUP) {
                     return result;
@@ -2595,7 +2639,7 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
         {
             contextMenu2->HandleMenuMsg(msg, wParam, lParam);
             if (msg == WM_INITMENUPOPUP) {
-                RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_exclusions);
+                RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_compiledExclusions);
             }
         }
         break;

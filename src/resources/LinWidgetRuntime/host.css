@@ -1,0 +1,86 @@
+html,
+body,
+#surface {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+#surface {
+  position: relative;
+  box-sizing: border-box;
+  border: 0;
+}
+
+body.show-webview-bounds #surface {
+  background: rgba(15, 111, 191, 0.08);
+  border: 1px solid rgba(15, 111, 191, 0.45);
+}
+
+#surface::before {
+  content: "LinWidget WebView";
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  z-index: 2147483647;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(15, 111, 191, 0.18);
+  color: rgba(15, 23, 42, 0.72);
+  font: 12px/16px "Segoe UI", sans-serif;
+  pointer-events: none;
+  display: none;
+}
+
+body.show-webview-bounds #surface::before {
+  display: block;
+}
+
+body {
+  user-select: none;
+  touch-action: none;
+}
+
+.linwidget-panel {
+  position: absolute;
+  overflow: hidden;
+  background: transparent;
+  border-radius: 0;
+  box-sizing: border-box;
+}
+
+.linwidget-panel iframe {
+  position: relative;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.linwidget-drag-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  height: 18px;
+  z-index: 2;
+  cursor: move;
+  background: transparent;
+}
+
+.linwidget-drag-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: none;
+  background: transparent;
+}
+
+body.dragging .linwidget-drag-shield {
+  display: block;
+}

@@ -53,11 +53,67 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/DesktopComponentManager.h"
-#include "desktop/DesktopComponentRenderer.h"
-#include "desktop/DesktopComponentFloatingWindow.h"
+#include "desktop/widgets/DesktopComponentManager.h"
+#include "desktop/widgets/DesktopComponentRenderer.h"
+#include "desktop/widgets/DesktopComponentFloatingWindow.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 namespace {
+#ifdef Q_OS_WIN
+bool windowClassNameContains(HWND window, const QString& needle)
+{
+    if (!window) {
+        return false;
+    }
+    wchar_t className[256] = {};
+    GetClassNameW(window, className, 256);
+    return QString::fromWCharArray(className).contains(needle, Qt::CaseInsensitive);
+}
+
+bool focusedWindowIsLinWidgetChild(HWND listViewWindow)
+{
+    if (!listViewWindow) {
+        return false;
+    }
+
+    GUITHREADINFO guiInfo = {};
+    guiInfo.cbSize = sizeof(guiInfo);
+    const HWND foregroundWindow = GetForegroundWindow();
+    DWORD foregroundProcessId = 0;
+    const DWORD foregroundThreadId = foregroundWindow
+        ? GetWindowThreadProcessId(foregroundWindow, &foregroundProcessId)
+        : 0;
+    if (foregroundThreadId != 0) {
+        GetGUIThreadInfo(foregroundThreadId, &guiInfo);
+    }
+
+    HWND focusedWindow = guiInfo.hwndFocus ? guiInfo.hwndFocus : GetFocus();
+    if (!focusedWindow) {
+        return false;
+    }
+
+    HWND current = focusedWindow;
+    bool hasWebViewChild = windowClassNameContains(current, QStringLiteral("Chrome_WidgetWin")) ||
+        windowClassNameContains(current, QStringLiteral("WebView"));
+    while (current && current != listViewWindow) {
+        if (windowClassNameContains(current, QStringLiteral("Chrome_WidgetWin")) ||
+            windowClassNameContains(current, QStringLiteral("WebView"))) {
+            hasWebViewChild = true;
+        }
+        current = GetParent(current);
+    }
+    const bool insideLinWidget = current == listViewWindow && hasWebViewChild;
+    if (insideLinWidget) {
+        qDebug() << "[LinWidgetFocus] hwndFocus="
+                 << QString::number(reinterpret_cast<quintptr>(focusedWindow), 16)
+                 << "foreground="
+                 << QString::number(reinterpret_cast<quintptr>(foregroundWindow), 16);
+    }
+    return insideLinWidget;
+}
+#endif
+
 QString normalizeDesktopPath(const QString& path)
 {
     QString normalized = QDir::toNativeSeparators(path);
@@ -273,6 +329,54 @@ bool isNormalBoxDragSource(const QObject* source)
 {
     const auto* box = qobject_cast<const LinBox*>(source);
     return box && !box->isFolderMapped();
+}
+
+bool shouldSkipLinWidgetResourceEntry(const QString& name)
+{
+    return name == QStringLiteral(".webview2") ||
+        name == QStringLiteral(".git") ||
+        name == QStringLiteral("node_modules") ||
+        name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
+        name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
+        name.compare(QStringLiteral("temp"), Qt::CaseInsensitive) == 0;
+}
+
+bool copyLinWidgetResourceDirectory(const QString& sourcePath, const QString& targetPath)
+{
+    const QDir sourceDir(sourcePath);
+    if (!sourceDir.exists()) {
+        return false;
+    }
+
+    QDir().mkpath(targetPath);
+    bool copiedAny = false;
+    const QFileInfoList entries = sourceDir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        if (shouldSkipLinWidgetResourceEntry(entry.fileName())) {
+            continue;
+        }
+
+        const QString targetEntryPath = QDir(targetPath).filePath(entry.fileName());
+        if (entry.isDir()) {
+            copiedAny = copyLinWidgetResourceDirectory(entry.absoluteFilePath(), targetEntryPath) || copiedAny;
+            continue;
+        }
+        if (QFileInfo::exists(targetEntryPath)) {
+            QFile::remove(targetEntryPath);
+        }
+        copiedAny = QFile::copy(entry.absoluteFilePath(), targetEntryPath) || copiedAny;
+    }
+    return copiedAny;
+}
+
+QString runtimeLinWidgetsDir()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets"));
+}
+
+QString runtimeLinWidgetHostDir()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgetRuntime"));
 }
 
 bool isMappedDragStillInsideSourceBox(const QObject* source, const QPoint& globalPos)
@@ -1126,8 +1230,67 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         }
         this->onMenuRefresh();
         this->raise();
+        this->initializeLinWidgets();
 
     });
+}
+
+LinWidget::WidgetManager* ListView::linWidgetManager()
+{
+    if (!m_linWidgetManager) {
+        m_linWidgetManager = new LinWidget::WidgetManager(this);
+    }
+    return m_linWidgetManager;
+}
+
+void ListView::ensureBundledLinWidgetsInstalled()
+{
+    copyLinWidgetResourceDirectory(runtimeLinWidgetHostDir(), AppPaths::userLinWidgetRuntimeDir());
+
+    const QDir bundledDir(runtimeLinWidgetsDir());
+    if (!bundledDir.exists()) {
+        qDebug() << "[LinWidgetAutoLoad] runtime bundled widgets missing" << bundledDir.absolutePath();
+        return;
+    }
+
+    const QString targetRoot = AppPaths::userLinWidgetsDir();
+    const QString markerPath = QDir(targetRoot).filePath(QStringLiteral(".defaults-installed"));
+    if (QFileInfo::exists(markerPath)) {
+        return;
+    }
+
+    const QFileInfoList entries = bundledDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        const QString targetPath = QDir(targetRoot).filePath(entry.fileName());
+        if (QFileInfo::exists(targetPath)) {
+            continue;
+        }
+        copyLinWidgetResourceDirectory(entry.absoluteFilePath(), targetPath);
+    }
+
+    QFile marker(markerPath);
+    if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        marker.write("1\n");
+    }
+}
+
+void ListView::initializeLinWidgets()
+{
+    ensureBundledLinWidgetsInstalled();
+
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    linWidgetManager()->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
+
+    LinWidget::WidgetRegistryManager registry;
+    QString registryError;
+    registry.load(&registryError);
+    registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
+    registry.save(&registryError);
+
+    QString restoreError;
+    if (!linWidgetManager()->restoreFromConfig(QString(), &restoreError) && !restoreError.isEmpty()) {
+        qDebug() << "[LinWidgetAutoLoad] restore failed" << restoreError;
+    }
 }
 
 void ListView::showDebugPanel()
@@ -3638,6 +3801,16 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void ListView::wheelEvent(QWheelEvent* event)
 {
+    if (event->modifiers() & Qt::ControlModifier) {
+        const QPoint angleDelta = event->angleDelta();
+        const int delta = angleDelta.y() != 0 ? angleDelta.y() : angleDelta.x();
+        if (delta != 0) {
+            stepIconViewMode(delta > 0 ? 1 : -1);
+            event->accept();
+            return;
+        }
+    }
+
     if (m_componentManager) {
         refreshComponentLayoutMetrics();
         if (DesktopComponentItemModel* component = m_componentManager->itemAt(event->pos())) {
@@ -3655,6 +3828,13 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+#ifdef Q_OS_WIN
+    if (focusedWindowIsLinWidgetChild(reinterpret_cast<HWND>(winId()))) {
+        qDebug() << "[LinWidgetFocus] ListView ignored key because focus is inside LinWidget WebView";
+        event->ignore();
+        return;
+    }
+#endif
     // 闁兼儳鍢茶ぐ鍥┾偓鍦仦濡炲倿鎯冮崟顖涙殯闁烩晜顭囨慨鎼佸箑?
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
@@ -5427,7 +5607,10 @@ void ListView::initRightMenuConnections() {
         menu->setSmallIconsChecked(true);
         break;
     default:
-        menu->setMediumIconsChecked(true);
+        menu->setLargeIconsChecked(false);
+        menu->setMediumIconsChecked(false);
+        menu->setSmallIconsChecked(false);
+        break;
     }
     
     if(m_iconShowRule.autoArrange) {
@@ -5485,6 +5668,13 @@ void ListView::syncViewModeSizes() {
     m_bottomPadding = scalePx(kBaseBottomPadding);
 
     switch (m_iconShowRule.viewMode) {
+        case ViewMode::HugeIcon:
+            m_iconWidth = scalePx(kHugeIconW);
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
+            m_rowSpacing = scalePx(kLargeRowSpacing);
+            m_colSpacing = scalePx(kLargeColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
+            break;
         case ViewMode::LargeIcon:
             m_iconWidth  = scalePx(kLargeIconW);
             m_rowSpacing = scalePx(kLargeRowSpacing);
@@ -5492,6 +5682,13 @@ void ListView::syncViewModeSizes() {
             ListItemData::s_targetIconSize = m_iconWidth;
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             if (rightMenu) rightMenu->setLargeIconsChecked(true);
+            break;
+        case ViewMode::MediumLargeIcon:
+            m_iconWidth = scalePx(kMediumLargeIconW);
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
+            m_rowSpacing = scalePx(kMediumRowSpacing);
+            m_colSpacing = scalePx(kMediumColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
             break;
         case ViewMode::MediumIcon:
             m_iconWidth  = scalePx(kMediumIconW);
@@ -5501,6 +5698,13 @@ void ListView::syncViewModeSizes() {
             ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setMediumIconsChecked(true);
             break;
+        case ViewMode::SmallMediumIcon:
+            m_iconWidth = scalePx(kSmallMediumIconW);
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
+            m_rowSpacing = scalePx(kSmallRowSpacing);
+            m_colSpacing = scalePx(kSmallColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
+            break;
         case ViewMode::SmallIcon:
             m_iconWidth = scalePx(kSmallIconW);
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
@@ -5508,6 +5712,15 @@ void ListView::syncViewModeSizes() {
             m_colSpacing = scalePx(kSmallColSpacing);
             ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setSmallIconsChecked(true);
+            break;
+        default:
+            m_iconShowRule.viewMode = ViewMode::MediumIcon;
+            m_iconWidth = scalePx(kMediumIconW);
+            m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
+            m_rowSpacing = scalePx(kMediumRowSpacing);
+            m_colSpacing = scalePx(kMediumColSpacing);
+            ListItemData::s_targetIconSize = m_iconWidth;
+            if (rightMenu) rightMenu->setMediumIconsChecked(true);
             break;
     }
 
@@ -6493,16 +6706,20 @@ void ListView::setDebugGridSpacing(int rowSpacing, int colSpacing)
     update();
 }
 
-void ListView::onMenuLargeIcons() {
-    qDebug() << "ListView: Large Icons triggered";
-    if (m_iconShowRule.viewMode == ViewMode::LargeIcon) return;
+bool ListView::applyIconViewMode(ViewMode mode)
+{
+    if (m_iconShowRule.viewMode == mode) {
+        return false;
+    }
+
     const int oldIconWidth = m_iconWidth;
     const int oldIconHeight = m_iconHeight;
     const int oldRowSpacing = m_rowSpacing;
     const int oldColSpacing = m_colSpacing;
     const int oldMarginTop = m_marginTop;
     const int oldMarginLeft = m_marginLeft;
-    m_iconShowRule.viewMode = ViewMode::LargeIcon;
+
+    m_iconShowRule.viewMode = mode;
     syncViewModeSizes();
     if (m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
@@ -6512,48 +6729,46 @@ void ListView::onMenuLargeIcons() {
     }
     update();
     requestSaveBoxes();
+    return true;
+}
+
+bool ListView::stepIconViewMode(int direction)
+{
+    if (direction == 0) {
+        return false;
+    }
+
+    static const QVector<ViewMode> modes = {
+        ViewMode::SmallIcon,
+        ViewMode::SmallMediumIcon,
+        ViewMode::MediumIcon,
+        ViewMode::MediumLargeIcon,
+        ViewMode::LargeIcon,
+        ViewMode::HugeIcon
+    };
+
+    int currentIndex = modes.indexOf(m_iconShowRule.viewMode);
+    if (currentIndex < 0) {
+        currentIndex = modes.indexOf(ViewMode::MediumIcon);
+    }
+
+    const int nextIndex = qBound(0, currentIndex + (direction > 0 ? 1 : -1), modes.size() - 1);
+    return applyIconViewMode(modes[nextIndex]);
+}
+
+void ListView::onMenuLargeIcons() {
+    qDebug() << "ListView: Large Icons triggered";
+    applyIconViewMode(ViewMode::LargeIcon);
 }
 
 void ListView::onMenuMediumIcons() {
     qDebug() << "ListView: Medium Icons triggered";
-    if (m_iconShowRule.viewMode == ViewMode::MediumIcon) return;
-    const int oldIconWidth = m_iconWidth;
-    const int oldIconHeight = m_iconHeight;
-    const int oldRowSpacing = m_rowSpacing;
-    const int oldColSpacing = m_colSpacing;
-    const int oldMarginTop = m_marginTop;
-    const int oldMarginLeft = m_marginLeft;
-    m_iconShowRule.viewMode = ViewMode::MediumIcon;
-    syncViewModeSizes();
-    if (m_iconShowRule.autoArrange) {
-        applyAutoArrangeLayout(false, false);
-    } else {
-        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing, oldMarginTop, oldMarginLeft);
-        loadIconLayer();
-    }
-    update();
-    requestSaveBoxes();
+    applyIconViewMode(ViewMode::MediumIcon);
 }
 
 void ListView::onMenuSmallIcons() {
     qDebug() << "ListView: Small Icons triggered";
-    if (m_iconShowRule.viewMode == ViewMode::SmallIcon) return;
-    const int oldIconWidth = m_iconWidth;
-    const int oldIconHeight = m_iconHeight;
-    const int oldRowSpacing = m_rowSpacing;
-    const int oldColSpacing = m_colSpacing;
-    const int oldMarginTop = m_marginTop;
-    const int oldMarginLeft = m_marginLeft;
-    m_iconShowRule.viewMode = ViewMode::SmallIcon;
-    syncViewModeSizes();
-    if (m_iconShowRule.autoArrange) {
-        applyAutoArrangeLayout(false, false);
-    } else {
-        applyViewModeMetricsChange(oldIconWidth, oldIconHeight, oldRowSpacing, oldColSpacing, oldMarginTop, oldMarginLeft);
-        loadIconLayer();
-    }
-    update();
-    requestSaveBoxes();
+    applyIconViewMode(ViewMode::SmallIcon);
 }
 
 void ListView::onMenuAutoArrangeIcons() {
@@ -8327,6 +8542,9 @@ void ListView::loadBoxes(bool autoUpdateState) {
 
     m_enablePersistence = state.enablePersistence;
     m_iconShowRule.viewMode = (ViewMode)state.viewMode;
+    if (state.viewMode < (int)ViewMode::LargeIcon || state.viewMode > (int)ViewMode::HugeIcon) {
+        m_iconShowRule.viewMode = ViewMode::MediumIcon;
+    }
     m_iconShowRule.sortType = (SortOrderType)state.sortType;
     m_iconShowRule.sortTypeBeforeAutoArrange = (SortOrderType)state.preAutoSort;
     m_iconShowRule.iconPosMode = (IconPosMode)state.iconPosMode;

@@ -6,9 +6,9 @@ cmake_minimum_required(VERSION 3.31)
 set(LINDESK_VERSION_MAJOR 1)
 set(LINDESK_VERSION_MINOR 0)
 set(LINDESK_VERSION_PATCH 7)
-set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable �?
+set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
-# 生成完整版本字符�?set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
+# 生成完整版本字符串set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 set(LINDESK_VERSION_FULL "${LINDESK_VERSION} ${LINDESK_VERSION_TAG}")
 
 # 设置安装器输入目录，可自定义
@@ -110,8 +110,14 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/widgethost/.*")
 
-# 添加可执行文�?set(WIN32_RESOURCES)
+file(GLOB_RECURSE LINWIDGET_SHARED_SOURCES CONFIGURE_DEPENDS
+    "src/desktop/widgets/linwidget/*.cpp"
+    "src/desktop/widgets/linwidget/*.h"
+)
+
+# 添加可执行文件资�?WIN32_RESOURCES)
 if(WIN32)
     list(APPEND WIN32_RESOURCES
         "src/app/LinDesk.rc"
@@ -119,7 +125,15 @@ if(WIN32)
 endif()
 
 add_executable(LinDesk ${SOURCES} ${WIN32_RESOURCES})
+
+add_executable(WidgetHost
+    src/widgethost/main.cpp
+    src/widgethost/WidgetHostRuntime.cpp
+    src/widgethost/WidgetHostRuntime.h
+    ${LINWIDGET_SHARED_SOURCES}
+)
 add_dependencies(LinDesk LinDeskUpdate)
+add_dependencies(LinDesk WidgetHost)
 if(TARGET Win11MenuIsland)
     add_dependencies(LinDesk Win11MenuIsland)
 endif()
@@ -129,9 +143,31 @@ set_target_properties(LinDesk PROPERTIES
     WIN32_EXECUTABLE "$<$<NOT:$<CONFIG:Debug>>:TRUE>"
 )
 
+target_link_libraries(WidgetHost
+    PRIVATE
+        Qt5::Widgets
+        Qt5::Core
+        Qt5::Network
+)
+
+target_include_directories(WidgetHost
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
+)
+
+set(LINDESK_WEBVIEW2_ROOT "$ENV{USERPROFILE}/.nuget/packages/microsoft.web.webview2/1.0.3179.45/build/native")
+if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/include/WebView2.h")
+    target_compile_definitions(WidgetHost PRIVATE LINDESK_HAS_WEBVIEW2)
+    target_include_directories(WidgetHost PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
+    target_link_libraries(WidgetHost PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
+endif()
+
 target_link_libraries(LinDesk
     PRIVATE
-        Shell32
+        Shell32
+        Psapi
         Shlwapi
         Ole32
         Uuid
@@ -177,7 +213,7 @@ set(TS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_zh_CN.ts
 )
 
-# 复制并配�?ts 文件，替换版本号占位�?set(TS_FILES_CONFIGURED)
+# 复制并配�?ts 文件，替换版本号占位�?
 foreach(TS_FILE ${TS_FILES})
     get_filename_component(TS_NAME ${TS_FILE} NAME)
     set(CONFIGURED_TS_FILE "${CMAKE_BINARY_DIR}/translations/${TS_NAME}")
@@ -202,7 +238,7 @@ add_custom_command(TARGET LinDesk POST_BUILD
     COMMENT "Copying translation files to output directory..."
 )
 
-# 确保构建目录存在，用�?ts 文件配置
+# 确保构建目录存在,并且 translations 目录存在以存放生成的 .qm 文件
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/translations")
 
 # Post-build: Copy OpenSSL DLLs to executable directory
@@ -216,11 +252,36 @@ add_custom_command(TARGET LinDesk POST_BUILD
 
 # Post-build: Copy Qt resource source files to executable directory for installer packaging
 add_custom_command(TARGET LinDesk POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
-        "$<TARGET_FILE_DIR:LinDesk>/resources"
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy_resources.ps1"
+        -Source "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
+        -Target "$<TARGET_FILE_DIR:LinDesk>/resources"
     COMMENT "Copying resource files to output directory..."
 )
+
+add_custom_command(TARGET WidgetHost POST_BUILD
+    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy_resources.ps1"
+        -Source "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
+        -Target "$<TARGET_FILE_DIR:WidgetHost>/resources"
+    COMMENT "Copying resource files to WidgetHost output directory..."
+)
+
+add_custom_command(TARGET LinDesk POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:WidgetHost>
+        $<TARGET_FILE_DIR:LinDesk>
+    COMMENT "Copying WidgetHost to output directory..."
+)
+
+if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2Loader.dll")
+    add_custom_command(TARGET LinDesk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2Loader.dll"
+            $<TARGET_FILE_DIR:LinDesk>
+        COMMENT "Copying WebView2Loader to output directory..."
+    )
+endif()
 
 if(LINDESK_HAS_W11_MENU_HOST)
     add_custom_command(TARGET LinDesk POST_BUILD

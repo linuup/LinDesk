@@ -4,6 +4,7 @@
 
 #include <QByteArray>
 #include <QDataStream>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -19,6 +20,21 @@ namespace {
 constexpr int kStoreVersion = 1;
 constexpr quint32 kBinaryMagic = 0x4C444D45;
 constexpr quint32 kBinaryVersion = 1;
+
+struct RootCache
+{
+    QString path;
+    QDateTime lastModified;
+    qint64 size = -1;
+    bool loaded = false;
+    QJsonObject root;
+};
+
+RootCache& rootCache()
+{
+    static RootCache cache;
+    return cache;
+}
 
 QString stringFromWide(const std::wstring& value)
 {
@@ -78,9 +94,8 @@ std::vector<std::wstring> decodeStringList(const QJsonValue& value)
     return values;
 }
 
-QJsonObject readRootObject()
+QJsonObject readRootObjectFromDisk(const QString& path)
 {
-    const QString path = AppPaths::shellMenuExclusionsFilePath();
     QFile file(path);
     if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
         return {};
@@ -102,6 +117,35 @@ QJsonObject readRootObject()
 
     const QJsonDocument document = QJsonDocument::fromJson(jsonBytes);
     return document.isObject() ? document.object() : QJsonObject();
+}
+
+QJsonObject readRootObject()
+{
+    const QString path = AppPaths::shellMenuExclusionsFilePath();
+    const QFileInfo info(path);
+    RootCache& cache = rootCache();
+    if (!info.exists()) {
+        cache.path = path;
+        cache.lastModified = QDateTime();
+        cache.size = -1;
+        cache.loaded = true;
+        cache.root = QJsonObject();
+        return {};
+    }
+
+    if (cache.loaded &&
+        cache.path == path &&
+        cache.lastModified == info.lastModified() &&
+        cache.size == info.size()) {
+        return cache.root;
+    }
+
+    cache.path = path;
+    cache.lastModified = info.lastModified();
+    cache.size = info.size();
+    cache.loaded = true;
+    cache.root = readRootObjectFromDisk(path);
+    return cache.root;
 }
 
 bool writeRootObject(const QJsonObject& root)
@@ -129,7 +173,17 @@ bool writeRootObject(const QJsonObject& root)
     out << kBinaryMagic << kBinaryVersion << jsonBytes;
 #endif
 
-    return file.commit();
+    const bool committed = file.commit();
+    if (committed) {
+        const QFileInfo info(path);
+        RootCache& cache = rootCache();
+        cache.path = path;
+        cache.lastModified = info.exists() ? info.lastModified() : QDateTime();
+        cache.size = info.exists() ? info.size() : -1;
+        cache.loaded = true;
+        cache.root = root;
+    }
+    return committed;
 }
 
 QJsonArray entriesToJson(const std::vector<ShellMenuExclusionEntry>& entries)
@@ -258,9 +312,12 @@ std::vector<ShellMenuExclusionEntry> ShellMenuExclusionStore::load(const std::ws
 
 std::vector<ShellMenuExclusionEntry> ShellMenuExclusionStore::loadForKeys(const std::vector<std::wstring>& keys)
 {
+    ensureMigrated();
+    const QJsonObject root = readRootObject();
+    const QJsonObject exclusions = root.value(QStringLiteral("exclusions")).toObject();
     std::vector<ShellMenuExclusionEntry> merged;
     for (const std::wstring& key : keys) {
-        std::vector<ShellMenuExclusionEntry> entries = load(key);
+        std::vector<ShellMenuExclusionEntry> entries = entriesFromJson(exclusions.value(keyFromWide(key)).toArray());
         merged.insert(merged.end(), entries.begin(), entries.end());
     }
     return merged;

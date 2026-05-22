@@ -1,4 +1,4 @@
-#include "desktop/DesktopComponentRenderer.h"
+#include "desktop/widgets/DesktopComponentRenderer.h"
 
 #include "app/AppFonts.h"
 

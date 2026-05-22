@@ -47,12 +47,32 @@ public:
     }
 
 protected:
+    void changeEvent(QEvent* event) override {
+        if (event->type() == QEvent::EnabledChange) {
+            if (!isEnabled()) {
+                m_hoverAnim->stop();
+                m_bgColor = m_normalColor;
+            }
+            setCursor(isEnabled() ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            update();
+        }
+        QPushButton::changeEvent(event);
+    }
+
     void enterEvent(QEvent* event) override {
+        if (!isEnabled()) {
+            QPushButton::enterEvent(event);
+            return;
+        }
         m_hoverAnim->setDirection(QAbstractAnimation::Forward);
         m_hoverAnim->start();
         QPushButton::enterEvent(event);
     }
     void leaveEvent(QEvent* event) override {
+        if (!isEnabled()) {
+            QPushButton::leaveEvent(event);
+            return;
+        }
         m_hoverAnim->setDirection(QAbstractAnimation::Backward);
         m_hoverAnim->start();
         QPushButton::leaveEvent(event);
@@ -63,12 +83,20 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
 
         // 1. Background
-        p.setBrush(isEnabled() ? m_bgColor : QColor(245, 245, 245));
-        p.setPen(m_borderColor.isValid() ? QPen(m_borderColor, 1) : Qt::NoPen);
+        const QColor disabledBg(243, 243, 243);
+        const QColor disabledBorder(218, 218, 218);
+        const QColor disabledText(161, 161, 161);
+
+        p.setBrush(isEnabled() ? m_bgColor : disabledBg);
+        if (isEnabled()) {
+            p.setPen(m_borderColor.isValid() ? QPen(m_borderColor, 1) : Qt::NoPen);
+        } else {
+            p.setPen(QPen(disabledBorder, 1));
+        }
         p.drawRoundedRect(rect().adjusted(1,1,-1,-1), 6, 6);
 
         // 2. Text
-        p.setPen(isEnabled() ? m_textColor : QColor(150, 150, 150));
+        p.setPen(isEnabled() ? m_textColor : disabledText);
         QFont f = font();
         f.setPixelSize(13);
         f.setWeight(QFont::Medium);

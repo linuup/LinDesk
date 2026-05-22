@@ -301,7 +301,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         resolved = FillTargetNamesFromPidl(targetPidl.get(), targetParsingPath, targetDisplayName);
 #ifndef NDEBUG
         if (resolved) {
-            wprintf(L"[ResolveShortcutTarget] GetIDList succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
+            //wprintf(L"[ResolveShortcutTarget] GetIDList succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
         }
 #endif
     }

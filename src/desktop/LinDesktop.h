@@ -84,8 +84,11 @@ private:
     bool isDesktopHostWindow(HWND hwnd) const;
     bool isWindowUnderDesktopHost(HWND hwnd) const;
     bool isOwnProcessWindow(HWND hwnd) const;
+    bool isOwnWidgetHostWindow(HWND hwnd) const;
+    bool isOwnWidgetHostWindowOrDescendant(HWND hwnd) const;
     bool isCandidateThirdPartyWindow(HWND hwnd) const;
     QString windowClassName(HWND hwnd) const;
+    QString windowProcessImageName(HWND hwnd) const;
 
     QString m_configPath;
     QPixmap m_backImagePixmap;

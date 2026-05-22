@@ -1325,6 +1325,8 @@ void RightMenu::setLargeIconsChecked(bool checked)
         m_largeIconsAction->setChecked(true);
         m_mediumIconsAction->setChecked(false);
         m_smallIconsAction->setChecked(false);
+    } else {
+        m_largeIconsAction->setChecked(false);
     }
 }
 
@@ -1334,6 +1336,8 @@ void RightMenu::setMediumIconsChecked(bool checked)
         m_largeIconsAction->setChecked(false);
         m_mediumIconsAction->setChecked(true);
         m_smallIconsAction->setChecked(false);
+    } else {
+        m_mediumIconsAction->setChecked(false);
     }
 }
 
@@ -1343,6 +1347,8 @@ void RightMenu::setSmallIconsChecked(bool checked)
         m_largeIconsAction->setChecked(false);
         m_mediumIconsAction->setChecked(false);
         m_smallIconsAction->setChecked(true);
+    } else {
+        m_smallIconsAction->setChecked(false);
     }
 }
 

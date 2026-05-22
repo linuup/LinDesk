@@ -1,4 +1,4 @@
-#include "desktop/DesktopComponentItem.h"
+#include "desktop/widgets/DesktopComponentItem.h"
 
 #include <QUuid>
 #include <QtGlobal>

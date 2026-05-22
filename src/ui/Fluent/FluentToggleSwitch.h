@@ -47,6 +47,24 @@ protected:
         // Core Fluent 2 Colors
         QColor accentColor(0, 120, 212); // Fluent Blue #0078d4
         QColor offColor(118, 118, 118);  // Neutral Dark Gray
+
+        if (!isEnabled()) {
+            const QColor bgColor = m_checked ? QColor(199, 224, 244) : QColor(229, 229, 229);
+            const QColor thumbColor = m_checked ? QColor(255, 255, 255) : QColor(189, 189, 189);
+
+            p.setPen(Qt::NoPen);
+            p.setBrush(bgColor);
+            p.drawRoundedRect(rect(), height() / 2, height() / 2);
+
+            const int margin = 3;
+            const int d = height() - margin * 2;
+            const int startX = margin;
+            const int endX = width() - margin - d;
+            const int currentX = startX + static_cast<int>((endX - startX) * m_thumbPos);
+            p.setBrush(thumbColor);
+            p.drawEllipse(currentX, margin, d, d);
+            return;
+        }
         
         // Background Pill (Interpolated during animation)
         int r = offColor.red() + (accentColor.red() - offColor.red()) * m_thumbPos;
@@ -71,7 +89,7 @@ protected:
     }
 
     void mousePressEvent(QMouseEvent* event) override {
-        if (event->button() == Qt::LeftButton) {
+        if (isEnabled() && event->button() == Qt::LeftButton) {
             setChecked(!m_checked);
         }
     }

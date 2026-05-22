@@ -30,6 +30,53 @@ inline QString userPluginConfigDir()
     return dirPath;
 }
 
+inline QString userLocalConfigDir()
+{
+    QString basePath = qEnvironmentVariable("LOCALAPPDATA");
+    QString dirPath;
+    if (!basePath.isEmpty()) {
+        dirPath = QDir(basePath).filePath(QStringLiteral("LinDesk"));
+    } else {
+        dirPath = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    }
+    if (dirPath.isEmpty()) {
+        dirPath = QDir::home().filePath(QStringLiteral("LinDesk"));
+    }
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
+inline QString userLinWidgetsDir()
+{
+    const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("LinWidgets"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
+inline QString linWidgetRegistryFilePath()
+{
+    return QDir(userLinWidgetsDir()).filePath(QStringLiteral("registry.json"));
+}
+
+inline QString userLinWidgetRuntimeDir()
+{
+    const QString dirPath = QDir(userLinWidgetsDir()).filePath(QStringLiteral("LinWidgetRuntime"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
+inline QString userLinWidgetRuntimeHostFilePath()
+{
+    return QDir(userLinWidgetRuntimeDir()).filePath(QStringLiteral("host.html"));
+}
+
+inline QString linWidgetLogsDir()
+{
+    const QString dirPath = userLocalConfigDir();
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
 inline QString configFilePath()
 {
     return QDir(userConfigDir()).filePath(QStringLiteral("config.ini"));

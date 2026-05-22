@@ -1,0 +1,21 @@
+{
+  "id": "lindesk.clock",
+  "name": "Clock Lin",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "A bundled transparent clock widget for the LinDesk desktop.",
+  "width": 320,
+  "height": 140,
+  "minWidth": 160,
+  "minHeight": 160,
+  "maxWidth": 360,
+  "maxHeight": 360,
+  "autoLoad": true,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": [
+    "storage"
+  ]
+}

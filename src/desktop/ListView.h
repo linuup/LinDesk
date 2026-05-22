@@ -26,7 +26,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include "desktop/DesktopRootItemState.h"
-#include "desktop/DesktopComponentItem.h"
+#include "desktop/widgets/DesktopComponentItem.h"
 #include <windows.h>
 #include <shlobj_core.h>
 #include "services/DesktopItemLoader.h"
@@ -50,6 +50,9 @@ class DesktopSnakeGameController;
 struct DesktopSnakeGameIcon;
 class DesktopComponentManager;
 class DesktopComponentFloatingWindow;
+namespace LinWidget {
+class WidgetManager;
+}
 
 class ListView : public QWidget {
 	Q_OBJECT
@@ -92,7 +95,10 @@ public:
 	enum class ViewMode {
 		LargeIcon,
 		MediumIcon,
-		SmallIcon
+		SmallIcon,
+		SmallMediumIcon,
+		MediumLargeIcon,
+		HugeIcon
 	};
 
 	enum class FocusMoveDirection {
@@ -106,6 +112,9 @@ public:
 	static constexpr int kLargeIconW = 100, kLargeIconH = 104;
 	static constexpr int kMediumIconW = 76, kMediumIconH = 78;
 	static constexpr int kSmallIconW = 62, kSmallIconH = 64;
+	static constexpr int kSmallMediumIconW = 68;
+	static constexpr int kMediumLargeIconW = 88;
+	static constexpr int kHugeIconW = 120;
 	//
 	static constexpr int kLargeRowSpacing = 14;
 	static constexpr int kLargeColSpacing = 10;
@@ -311,6 +320,7 @@ public:
 	void showSettings(LinBox* target = nullptr);
 	void showTransientTip(const QString& message, int autoHideMs = 2500);
 	void showDebugPanel();
+	LinWidget::WidgetManager* linWidgetManager();
 
 	// 调试工具
 	QString dumpAllItemsJson() const;
@@ -383,6 +393,8 @@ private:
 	void syncFloatingComponentWindows();
 	void syncFloatingComponentWindow(const DesktopComponentItemModel& item);
 	void removeFloatingComponentWindow(const QString& componentId);
+	void ensureBundledLinWidgetsInstalled();
+	void initializeLinWidgets();
 	QRect desktopAutoArrangeInsertionIndicatorRect() const;
 	QRect desktopAutoArrangeInsertionIndicatorRectForIndex(int insertIndex, const QVector<DesktopRootItemState*>& orderedStates) const;
 	QVector<QPoint> layoutAutoArrangeItems(const QVector<DesktopRootItemState*>& states) const;
@@ -454,6 +466,8 @@ private:
 	void flushBackgroundSelectionUpdate();
 	int currentBackgroundSelectionThrottleMs() const;
 	void updateBackgroundSelectionThrottle(qint64 refreshElapsedMs, const QRect& selectionRect);
+	bool applyIconViewMode(ViewMode mode);
+	bool stepIconViewMode(int direction);
 	bool startDesktopItemDrag(const QPoint& clickPos);
 	void finalizeActiveDrag(LinBox* box, QMouseEvent* event);
 	void updateGhostDragHoverPreview(const QPoint& globalPos);
@@ -520,6 +534,7 @@ private:
 	QPointer<ListViewDebugPanel> m_debugPanel;
 	DesktopSnakeGameController* m_snakeGameController = nullptr;
 	DesktopComponentManager* m_componentManager = nullptr;
+	LinWidget::WidgetManager* m_linWidgetManager = nullptr;
 	QLabel* m_dragTip = nullptr;
 	FluentInfoTip* m_infoTip = nullptr;
 

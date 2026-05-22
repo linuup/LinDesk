@@ -1,0 +1,411 @@
+#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
+
+#include "desktop/widgets/linwidget/PermissionManager.h"
+#include "desktop/widgets/linwidget/WidgetPackage.h"
+#include "services/AppPaths.h"
+
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+
+namespace LinWidget {
+
+bool WidgetRegistryManager::load(QString* errorMessage)
+{
+    m_entries.clear();
+
+    QFile file(AppPaths::linWidgetRegistryFilePath());
+    if (!file.exists()) {
+        if (errorMessage) {
+            errorMessage->clear();
+        }
+        return true;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Cannot open LinWidget registry: %1").arg(file.errorString());
+        }
+        return false;
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("LinWidget registry must be a JSON object.");
+        }
+        return false;
+    }
+
+    const QJsonArray widgets = document.object().value(QStringLiteral("widgets")).toArray();
+    for (const QJsonValue& value : widgets) {
+        WidgetRegistryEntry entry;
+        if (!registryEntryFromJson(value.toObject(), &entry)) {
+            continue;
+        }
+        m_entries.insert(registryKey(entry.id, entry.isDevelopment), entry);
+    }
+
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+bool WidgetRegistryManager::save(QString* errorMessage) const
+{
+    QFileInfo info(AppPaths::linWidgetRegistryFilePath());
+    if (!QDir().mkpath(info.absolutePath())) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Cannot create LinWidget registry directory.");
+        }
+        return false;
+    }
+
+    QJsonObject root;
+    QFile existingFile(info.absoluteFilePath());
+    if (existingFile.exists() && existingFile.open(QIODevice::ReadOnly)) {
+        const QJsonDocument existingDocument = QJsonDocument::fromJson(existingFile.readAll());
+        if (existingDocument.isObject()) {
+            root = existingDocument.object();
+        }
+    }
+
+    QJsonArray widgets;
+    const QVector<WidgetRegistryEntry> sortedEntries = entries();
+    for (const WidgetRegistryEntry& entry : sortedEntries) {
+        widgets.append(registryEntryToJson(entry));
+    }
+
+    QFile file(info.absoluteFilePath());
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Cannot save LinWidget registry: %1").arg(file.errorString());
+        }
+        return false;
+    }
+
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("widgets"), widgets);
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+QVector<WidgetRegistryEntry> WidgetRegistryManager::entries() const
+{
+    QVector<WidgetRegistryEntry> result = m_entries.values().toVector();
+    std::sort(result.begin(), result.end(), [](const WidgetRegistryEntry& left, const WidgetRegistryEntry& right) {
+        return left.name.compare(right.name, Qt::CaseInsensitive) < 0;
+    });
+    return result;
+}
+
+WidgetRegistryEntry WidgetRegistryManager::entryById(const QString& id) const
+{
+    const QString installedKey = registryKey(id, false);
+    if (m_entries.contains(installedKey)) {
+        return m_entries.value(installedKey);
+    }
+    return m_entries.value(registryKey(id, true));
+}
+
+bool WidgetRegistryManager::syncFromFolder(const QString& widgetsDir, QString* errorMessage)
+{
+    const QDir dir(widgetsDir);
+    if (!dir.exists()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("LinWidgets directory does not exist.");
+        }
+        return false;
+    }
+
+    bool ok = true;
+    QStringList errors;
+    const QFileInfoList entries = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        QString packageError;
+        if (!upsertFromPackage(entry.absoluteFilePath(), &packageError)) {
+            ok = false;
+            if (!packageError.isEmpty()) {
+                errors.append(packageError);
+            }
+        }
+    }
+
+    if (errorMessage) {
+        *errorMessage = errors.join(QStringLiteral("\n"));
+    }
+    return ok;
+}
+
+bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QString* errorMessage)
+{
+    WidgetManifest manifest;
+    if (!WidgetPackage::loadManifest(packagePath, &manifest, errorMessage)) {
+        return false;
+    }
+
+    if (normalizedId(manifest.id).isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget manifest is missing id.");
+        }
+        return false;
+    }
+
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    WidgetRegistryEntry entry = m_entries.value(registryKey(manifest.id, false));
+    if (entry.id.isEmpty()) {
+        entry.id = manifest.id;
+        entry.enabled = true;
+        entry.trusted = false;
+        entry.installedAt = now;
+        entry.lastRunState = QStringLiteral("stopped");
+    }
+
+    entry.id = manifest.id;
+    entry.name = manifest.name;
+    entry.version = manifest.version;
+    entry.author = manifest.author;
+    entry.description = manifest.description;
+    entry.packagePath = QFileInfo(packagePath).absoluteFilePath();
+    entry.runtimeType = runtimeTypeToString(manifest.type);
+    entry.defaultSize = QSize(manifest.width, manifest.height);
+    entry.isDevelopment = false;
+    entry.sourcePath.clear();
+    entry.autoReload = false;
+    entry.autoLoad = manifest.autoLoad;
+    PermissionManager permissions;
+    entry.permissionsGranted = permissions.normalizePermissions(entry.permissionsGranted + manifest.permissions);
+    entry.updatedAt = now;
+
+    m_entries.insert(registryKey(manifest.id, false), entry);
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+bool WidgetRegistryManager::addDevelopmentProject(const QString& sourcePath, QString* errorMessage)
+{
+    WidgetManifest manifest;
+    if (!WidgetPackage::loadManifest(sourcePath, &manifest, errorMessage)) {
+        return false;
+    }
+
+    const QString entryPath = WidgetPackage::entryPath(sourcePath, manifest);
+    if (!QFileInfo::exists(entryPath)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget entry file does not exist: %1").arg(entryPath);
+        }
+        return false;
+    }
+
+    const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    WidgetRegistryEntry entry = m_entries.value(registryKey(manifest.id, true));
+    if (entry.id.isEmpty()) {
+        entry.id = manifest.id;
+        entry.enabled = true;
+        entry.trusted = true;
+        entry.installedAt = now;
+        entry.lastRunState = QStringLiteral("stopped");
+    }
+
+    entry.id = manifest.id;
+    entry.name = manifest.name;
+    entry.version = manifest.version;
+    entry.author = manifest.author;
+    entry.description = manifest.description;
+    entry.packagePath = QFileInfo(sourcePath).absoluteFilePath();
+    entry.runtimeType = runtimeTypeToString(manifest.type);
+    entry.defaultSize = QSize(manifest.width, manifest.height);
+    entry.isDevelopment = true;
+    entry.sourcePath = entry.packagePath;
+    entry.autoReload = true;
+    entry.autoLoad = manifest.autoLoad;
+    entry.permissionsGranted = PermissionManager().normalizePermissions(
+        entry.permissionsGranted + QStringList{ QStringLiteral("network"), QStringLiteral("storage"), QStringLiteral("desktop") });
+    entry.updatedAt = now;
+
+    m_entries.insert(registryKey(manifest.id, true), entry);
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+bool WidgetRegistryManager::installDevelopmentProject(const QString& id, QString* installedPath, QString* errorMessage)
+{
+    const WidgetRegistryEntry entry = m_entries.value(registryKey(id, true));
+    if (entry.id.isEmpty() || !entry.isDevelopment) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Development widget is not registered.");
+        }
+        return false;
+    }
+
+    WidgetManifest manifest;
+    if (!WidgetPackage::loadManifest(entry.packagePath, &manifest, errorMessage)) {
+        return false;
+    }
+    const QString entryPath = WidgetPackage::entryPath(entry.packagePath, manifest);
+    if (!QFileInfo::exists(entryPath)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget entry file does not exist: %1").arg(entryPath);
+        }
+        return false;
+    }
+
+    const QString targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(safePackageDirectoryName(manifest.id));
+    if (!copyDirectoryForInstall(entry.packagePath, targetPath, errorMessage)) {
+        return false;
+    }
+    if (!upsertFromPackage(targetPath, errorMessage)) {
+        return false;
+    }
+    if (installedPath) {
+        *installedPath = targetPath;
+    }
+    return true;
+}
+
+bool WidgetRegistryManager::setEnabled(const QString& id, bool enabled)
+{
+    auto it = m_entries.find(normalizedId(id));
+    if (it == m_entries.end()) {
+        it = m_entries.find(registryKey(id, false));
+    }
+    if (it == m_entries.end()) {
+        it = m_entries.find(registryKey(id, true));
+    }
+    if (it == m_entries.end()) {
+        return false;
+    }
+    it->enabled = enabled;
+    it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    return true;
+}
+
+bool WidgetRegistryManager::setEnabled(const QString& id, bool isDevelopment, bool enabled)
+{
+    auto it = m_entries.find(registryKey(id, isDevelopment));
+    if (it == m_entries.end()) {
+        return false;
+    }
+    it->enabled = enabled;
+    it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    return true;
+}
+
+bool WidgetRegistryManager::setLastRunState(const QString& id, const QString& state)
+{
+    auto it = m_entries.find(normalizedId(id));
+    if (it == m_entries.end()) {
+        it = m_entries.find(registryKey(id, false));
+    }
+    if (it == m_entries.end()) {
+        it = m_entries.find(registryKey(id, true));
+    }
+    if (it == m_entries.end()) {
+        return false;
+    }
+    it->lastRunState = state == QStringLiteral("running")
+        ? QStringLiteral("running")
+        : QStringLiteral("stopped");
+    it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    return true;
+}
+
+bool WidgetRegistryManager::setLastRunState(const QString& id, bool isDevelopment, const QString& state)
+{
+    auto it = m_entries.find(registryKey(id, isDevelopment));
+    if (it == m_entries.end()) {
+        return false;
+    }
+    it->lastRunState = state == QStringLiteral("running")
+        ? QStringLiteral("running")
+        : QStringLiteral("stopped");
+    it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    return true;
+}
+
+bool WidgetRegistryManager::removeById(const QString& id)
+{
+    return m_entries.remove(normalizedId(id)) > 0 ||
+        m_entries.remove(registryKey(id, false)) > 0 ||
+        m_entries.remove(registryKey(id, true)) > 0;
+}
+
+bool WidgetRegistryManager::removeDevelopmentProject(const QString& id)
+{
+    return m_entries.remove(registryKey(id, true)) > 0;
+}
+
+QString WidgetRegistryManager::normalizedId(const QString& id) const
+{
+    return id.trimmed().toLower();
+}
+
+QString WidgetRegistryManager::registryKey(const QString& id, bool isDevelopment) const
+{
+    return QStringLiteral("%1:%2").arg(isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"), normalizedId(id));
+}
+
+QString WidgetRegistryManager::safePackageDirectoryName(const QString& id) const
+{
+    QString safe = id.trimmed();
+    for (QChar& ch : safe) {
+        if (!ch.isLetterOrNumber() && ch != QLatin1Char('.') && ch != QLatin1Char('-') && ch != QLatin1Char('_')) {
+            ch = QLatin1Char('_');
+        }
+    }
+    return safe.isEmpty() ? QStringLiteral("widget") : safe;
+}
+
+bool WidgetRegistryManager::copyDirectoryForInstall(const QString& sourcePath, const QString& targetPath, QString* errorMessage) const
+{
+    const QDir sourceDir(sourcePath);
+    if (!sourceDir.exists()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Source widget directory does not exist.");
+        }
+        return false;
+    }
+
+    QDir().mkpath(targetPath);
+    const QFileInfoList entries = sourceDir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        const QString name = entry.fileName();
+        if (name == QStringLiteral(".git") || name == QStringLiteral(".webview2") || name == QStringLiteral("node_modules")) {
+            continue;
+        }
+
+        const QString targetEntryPath = QDir(targetPath).filePath(name);
+        if (entry.isDir()) {
+            if (!copyDirectoryForInstall(entry.absoluteFilePath(), targetEntryPath, errorMessage)) {
+                return false;
+            }
+            continue;
+        }
+
+        if (QFileInfo::exists(targetEntryPath)) {
+            QFile::remove(targetEntryPath);
+        }
+        if (!QFile::copy(entry.absoluteFilePath(), targetEntryPath)) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Cannot copy widget file: %1").arg(entry.absoluteFilePath());
+            }
+            return false;
+        }
+    }
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+}
