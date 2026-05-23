@@ -126,6 +126,7 @@ private:
     bool m_hostPageReady = false;
     bool m_showWebViewBounds = false;
     bool m_pendingOpenDevTools = false;
+    quint64 m_lastReportedWebViewWindow = 0;
 };
 
 }

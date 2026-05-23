@@ -630,8 +630,11 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
     HWND widgetWindow = reinterpret_cast<HWND>(static_cast<quintptr>(widgetWindowId));
     HWND layerWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_desktopLayerWindow));
     diagnostics.hostWindow = widgetWindowId;
+    diagnostics.webViewWindow = m_sharedWebViewWindow;
     diagnostics.listViewWindow = m_desktopLayerWindow;
     diagnostics.hasHostWindow = widgetWindow && IsWindow(widgetWindow);
+    diagnostics.hasWebViewWindow = m_sharedWebViewWindow != 0 &&
+        IsWindow(reinterpret_cast<HWND>(static_cast<quintptr>(m_sharedWebViewWindow)));
     diagnostics.hasListViewWindow = layerWindow && IsWindow(layerWindow);
     if (!IsWindow(widgetWindow) || !IsWindow(layerWindow)) {
         diagnostics.reason = QStringLiteral("invalid host or ListView window");
@@ -671,6 +674,14 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), hostGeometryMessage);
     }
     diagnostics.hostRect = windowRect(widgetWindow);
+    diagnostics.webViewRectMatchesHost = diagnostics.visibleWidgetCount == 0;
+    if (diagnostics.hasWebViewWindow) {
+        HWND webViewWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_sharedWebViewWindow));
+        diagnostics.webViewRect = windowRect(webViewWindow);
+        diagnostics.webViewRectMatchesHost =
+            diagnostics.webViewRect == QRect(0, 0, diagnostics.hostRect.width(), diagnostics.hostRect.height()) ||
+            diagnostics.webViewRect == diagnostics.hostRect;
+    }
     diagnostics.hostRectMatchesListView = diagnostics.hostRect == diagnostics.listViewRect;
     diagnostics.hostAboveListView = GetWindow(layerWindow, GW_HWNDPREV) == widgetWindow;
     const POINT center {
@@ -716,8 +727,10 @@ WidgetManager::LayerDiagnostics WidgetManager::verifyWidgetLayerAndClickThrough(
 #ifdef Q_OS_WIN
     HWND hostWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_widgetWindows.value(QString::fromLatin1(kSharedHostId), 0)));
     HWND layerWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_desktopLayerWindow));
+    HWND webViewWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_sharedWebViewWindow));
     diagnostics.hasHostWindow = hostWindow && IsWindow(hostWindow);
     diagnostics.hasListViewWindow = layerWindow && IsWindow(layerWindow);
+    diagnostics.hasWebViewWindow = webViewWindow && IsWindow(webViewWindow);
     if (!diagnostics.hasHostWindow || !diagnostics.hasListViewWindow) {
         diagnostics.reason = QStringLiteral("cannot verify without valid host and ListView windows");
         m_lastLayerDiagnostics = diagnostics;
@@ -726,6 +739,9 @@ WidgetManager::LayerDiagnostics WidgetManager::verifyWidgetLayerAndClickThrough(
 
     diagnostics.hostRect = windowRect(hostWindow);
     diagnostics.listViewRect = windowRect(layerWindow);
+    if (diagnostics.hasWebViewWindow) {
+        diagnostics.webViewRect = windowRect(webViewWindow);
+    }
     diagnostics.hostRectMatchesListView = diagnostics.hostRect == diagnostics.listViewRect;
     diagnostics.hostAboveListView = GetWindow(layerWindow, GW_HWNDPREV) == hostWindow;
     diagnostics.visibleWidgetCount = 0;
@@ -740,6 +756,10 @@ WidgetManager::LayerDiagnostics WidgetManager::verifyWidgetLayerAndClickThrough(
         }
     }
     diagnostics.regionRectCount = diagnostics.visibleWidgetCount;
+    diagnostics.webViewRectMatchesHost = diagnostics.visibleWidgetCount == 0 ||
+        (diagnostics.hasWebViewWindow &&
+         (diagnostics.webViewRect == QRect(0, 0, diagnostics.hostRect.width(), diagnostics.hostRect.height()) ||
+          diagnostics.webViewRect == diagnostics.hostRect));
 
     QPoint emptyPoint = diagnostics.listViewRect.topLeft() + QPoint(8, 8);
     for (const WidgetLayoutState& state : m_layout.states()) {
@@ -759,17 +779,30 @@ WidgetManager::LayerDiagnostics WidgetManager::verifyWidgetLayerAndClickThrough(
         const QPoint widgetPoint = diagnostics.listViewRect.topLeft() + firstVisibleWidgetRect.center();
         HWND widgetHitWindow = WindowFromPoint(POINT{ widgetPoint.x(), widgetPoint.y() });
         diagnostics.widgetPointHitsHost = widgetHitWindow == hostWindow || IsChild(hostWindow, widgetHitWindow);
+        diagnostics.widgetPointHitsWebView = diagnostics.hasWebViewWindow &&
+            (widgetHitWindow == webViewWindow || IsChild(webViewWindow, widgetHitWindow));
+        diagnostics.pointWindow = reinterpret_cast<WId>(widgetHitWindow);
     } else {
         diagnostics.widgetPointHitsHost = true;
+        diagnostics.widgetPointHitsWebView = true;
     }
 
     const bool needsRecovery = !diagnostics.syncSucceeded ||
         !diagnostics.hostAboveListView ||
-        !diagnostics.hostRectMatchesListView;
+        !diagnostics.hostRectMatchesListView ||
+        !diagnostics.webViewRectMatchesHost;
     if (needsRecovery) {
         qDebug() << "[LinWidgetLayer] verify mismatch, resyncing"
                  << layerDiagnosticsText(diagnostics);
         syncAllWidgetWindowLayers();
+        if (diagnostics.hasHostWindow && diagnostics.hasListViewWindow) {
+            QJsonObject hostGeometryMessage = makeIpcMessage(QString::fromLatin1(IpcType::UpdateHostGeometry), QString::fromLatin1(kSharedHostId));
+            hostGeometryMessage.insert(QStringLiteral("x"), diagnostics.listViewRect.x());
+            hostGeometryMessage.insert(QStringLiteral("y"), diagnostics.listViewRect.y());
+            hostGeometryMessage.insert(QStringLiteral("width"), diagnostics.listViewRect.width());
+            hostGeometryMessage.insert(QStringLiteral("height"), diagnostics.listViewRect.height());
+            m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), hostGeometryMessage);
+        }
     }
     diagnostics.reason = needsRecovery ? QStringLiteral("verified with recovery") : QStringLiteral("verified");
     m_lastLayerDiagnostics = diagnostics;
@@ -785,19 +818,24 @@ QString WidgetManager::layerDiagnosticsText(const LayerDiagnostics& diagnostics)
     return QStringLiteral(
         "ListView HWND: %1\n"
         "Host HWND: %2\n"
-        "Point HWND: %3\n"
-        "ListView rect: %4,%5 %6x%7\n"
-        "Host rect: %8,%9 %10x%11\n"
-        "visible widgets: %12\n"
-        "region rects: %13\n"
-        "sync: %14\n"
-        "host above ListView: %15\n"
-        "rect matches: %16\n"
-        "empty click through: %17\n"
-        "widget hit: %18\n"
-        "reason: %19")
+        "WebView HWND: %3\n"
+        "Hit HWND: %4\n"
+        "ListView rect: %5,%6 %7x%8\n"
+        "Host rect: %9,%10 %11x%12\n"
+        "WebView rect: %13,%14 %15x%16\n"
+        "visible widgets: %17\n"
+        "region rects: %18\n"
+        "sync: %19\n"
+        "host above ListView: %20\n"
+        "host rect matches: %21\n"
+        "webview rect matches: %22\n"
+        "empty click through: %23\n"
+        "widget hits host: %24\n"
+        "widget hits webview: %25\n"
+        "reason: %26")
         .arg(widText(diagnostics.listViewWindow),
              widText(diagnostics.hostWindow),
+             widText(diagnostics.webViewWindow),
              widText(diagnostics.pointWindow),
              QString::number(diagnostics.listViewRect.x()),
              QString::number(diagnostics.listViewRect.y()),
@@ -807,13 +845,19 @@ QString WidgetManager::layerDiagnosticsText(const LayerDiagnostics& diagnostics)
              QString::number(diagnostics.hostRect.y()),
              QString::number(diagnostics.hostRect.width()),
              QString::number(diagnostics.hostRect.height()),
+             QString::number(diagnostics.webViewRect.x()),
+             QString::number(diagnostics.webViewRect.y()),
+             QString::number(diagnostics.webViewRect.width()),
+             QString::number(diagnostics.webViewRect.height()),
              QString::number(diagnostics.visibleWidgetCount),
              QString::number(diagnostics.regionRectCount),
              diagnostics.syncSucceeded ? QStringLiteral("pass") : QStringLiteral("fail"),
              diagnostics.hostAboveListView ? QStringLiteral("pass") : QStringLiteral("fail"),
              diagnostics.hostRectMatchesListView ? QStringLiteral("pass") : QStringLiteral("fail"),
+             diagnostics.webViewRectMatchesHost ? QStringLiteral("pass") : QStringLiteral("fail"),
              diagnostics.emptyPointPassesThrough ? QStringLiteral("pass") : QStringLiteral("fail"),
              diagnostics.widgetPointHitsHost ? QStringLiteral("pass") : QStringLiteral("fail"),
+             diagnostics.widgetPointHitsWebView ? QStringLiteral("pass") : QStringLiteral("fail"),
              diagnostics.reason);
 }
 
@@ -1246,6 +1290,26 @@ void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject&
             }
             return;
         }
+        if (type == QString::fromLatin1(IpcType::WebViewWindowReady)) {
+            const WId windowId = static_cast<WId>(message.value(QStringLiteral("hwnd")).toString().toULongLong());
+            if (windowId != 0) {
+                m_sharedWebViewWindow = windowId;
+                m_sharedWebViewWindowClass = message.value(QStringLiteral("className")).toString();
+                syncWidgetWindowLayer(QString::fromLatin1(kSharedHostId));
+            }
+            return;
+        }
+        if (type == QString::fromLatin1(IpcType::WebViewWindowLost)) {
+            m_sharedWebViewWindow = 0;
+            m_sharedWebViewWindowClass.clear();
+            qDebug() << "[LinWidgetLayer] WebView child window lost"
+                     << "reason=" << message.value(QStringLiteral("reason")).toString();
+            if (visibleWidgetCount() > 0) {
+                emit widgetError(QString(), QStringLiteral("Shared WebView child window was lost. Restarting widgets."));
+                restartSharedHost();
+            }
+            return;
+        }
         if (type == QString::fromLatin1(IpcType::WidgetGeometryChanged)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString());
             WidgetLayoutState state = m_layout.state(instanceId);
@@ -1343,6 +1407,32 @@ void WidgetManager::resendVisibleWidgetsToSharedHost()
     }
 }
 
+int WidgetManager::visibleWidgetCount() const
+{
+    int count = 0;
+    const QVector<WidgetLayoutState> states = m_layout.states();
+    for (const WidgetLayoutState& state : states) {
+        if (state.visible && state.geometry.isValid()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool WidgetManager::sharedWebViewMissingForVisibleWidgets() const
+{
+#ifdef Q_OS_WIN
+    if (visibleWidgetCount() == 0) {
+        return false;
+    }
+    HWND hostWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_widgetWindows.value(QString::fromLatin1(kSharedHostId), 0)));
+    HWND webViewWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_sharedWebViewWindow));
+    return hostWindow && IsWindow(hostWindow) && (!webViewWindow || !IsWindow(webViewWindow));
+#else
+    return false;
+#endif
+}
+
 bool WidgetManager::sharedHostLayerNeedsRecovery() const
 {
 #ifdef Q_OS_WIN
@@ -1351,7 +1441,9 @@ bool WidgetManager::sharedHostLayerNeedsRecovery() const
     if (!hostWindow || !layerWindow || !IsWindow(hostWindow) || !IsWindow(layerWindow)) {
         return false;
     }
-    return GetWindow(layerWindow, GW_HWNDPREV) != hostWindow || windowRect(hostWindow) != windowRect(layerWindow);
+    return GetWindow(layerWindow, GW_HWNDPREV) != hostWindow ||
+        windowRect(hostWindow) != windowRect(layerWindow) ||
+        sharedWebViewMissingForVisibleWidgets();
 #else
     return false;
 #endif
@@ -1366,6 +1458,12 @@ void WidgetManager::checkHeartbeats()
         return;
     }
     if (m_sharedHost && sharedHostLayerNeedsRecovery()) {
+        if (sharedWebViewMissingForVisibleWidgets()) {
+            qDebug() << "[LinWidgetLayer] heartbeat recovery restarting shared host because WebView child is missing";
+            emit widgetError(QString(), QStringLiteral("Shared WebView child window is missing. Restarting widgets."));
+            restartSharedHost();
+            return;
+        }
         syncAllWidgetWindowLayers();
         LayerDiagnostics diagnostics = m_lastLayerDiagnostics;
         if (!diagnostics.hostAboveListView || !diagnostics.hostRectMatchesListView) {

@@ -174,15 +174,15 @@ html, body {
 
 /* Rings */
 .rings-container { display: flex; justify-content: space-between; gap: 0.8rem; flex: 1; min-height: 0; }
-.ring-box { flex: 1; min-width: 0; background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 1rem; padding: 0.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
-.progress-ring { width: 85px; height: 85px; }
+.ring-box { flex: 1; min-width: 0; background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 1rem; padding: 0.5rem; display: grid; align-content: center; justify-items: center; grid-template-columns: 100%; }
+.progress-ring { grid-area: 1 / 1; width: 85px; height: 85px; }
 .ring-bg { fill: none; stroke: rgba(0,0,0,0.06); stroke-width: 7; }
 .ring-fill { fill: none; stroke: var(--accent-cyan); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 251.2; stroke-dashoffset: 251.2; transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.5s ease; }
-.ring-content { position: absolute; top: 1rem; left: 0; width: 100%; height: 85px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-content { grid-area: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .ring-value { font-size: 1.3rem; font-weight: 700; margin-bottom: -2px; }
 .ring-value .percent { font-size: 0.7rem; color: var(--text-muted); }
 .ring-label { font-size: 0.65rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.05rem; }
-.ring-detail { margin-top: 0.6rem; font-size: 0.65rem; color: var(--text-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; box-sizing: border-box; padding: 0 4px; }
+.ring-detail { grid-area: 2 / 1; margin-top: 0.6rem; font-size: 0.65rem; color: var(--text-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; box-sizing: border-box; padding: 0 4px; }
 
 #ramRing { stroke: var(--accent-purple); }
 
@@ -255,7 +255,7 @@ html, body {
   flex: 1;
 }
 .micro-mode .progress-ring { width: 75px; height: 75px; }
-.micro-mode .ring-content { height: 75px; top: 0; }
+.micro-mode .ring-content { height: 75px; }
 .micro-mode .ring-value { font-size: 1.1rem; }
 .micro-mode .ring-label { font-size: 0.65rem; margin-top: -2px; }
 

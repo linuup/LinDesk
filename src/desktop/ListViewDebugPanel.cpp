@@ -1474,10 +1474,13 @@ void ListViewDebugPanel::updateLinWidgetLayerDiagnostics()
     const bool pass = diagnostics.hasListViewWindow &&
         diagnostics.hasHostWindow &&
         diagnostics.syncSucceeded &&
+        diagnostics.hasWebViewWindow &&
         diagnostics.hostAboveListView &&
         diagnostics.hostRectMatchesListView &&
+        diagnostics.webViewRectMatchesHost &&
         diagnostics.emptyPointPassesThrough &&
         diagnostics.widgetPointHitsHost &&
+        diagnostics.widgetPointHitsWebView &&
         diagnostics.regionRectCount == diagnostics.visibleWidgetCount;
     m_linWidgetLayerDiagnosticsLabel->setText(QStringLiteral("%1\n\n%2")
         .arg(pass ? QStringLiteral("PASS") : QStringLiteral("FAIL"),

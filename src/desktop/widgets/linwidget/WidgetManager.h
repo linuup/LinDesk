@@ -22,16 +22,21 @@ public:
     struct LayerDiagnostics {
         bool hasListViewWindow = false;
         bool hasHostWindow = false;
+        bool hasWebViewWindow = false;
         bool syncSucceeded = false;
         bool hostAboveListView = false;
         bool hostRectMatchesListView = false;
+        bool webViewRectMatchesHost = false;
         bool emptyPointPassesThrough = false;
         bool widgetPointHitsHost = false;
+        bool widgetPointHitsWebView = false;
         WId listViewWindow = 0;
         WId hostWindow = 0;
+        WId webViewWindow = 0;
         WId pointWindow = 0;
         QRect listViewRect;
         QRect hostRect;
+        QRect webViewRect;
         int visibleWidgetCount = 0;
         int regionRectCount = 0;
         QString reason;
@@ -103,6 +108,8 @@ private:
                               const QString& watchId,
                               const QJsonObject& data);
     void stopSystemInfoWatchesForInstance(const QString& instanceId);
+    int visibleWidgetCount() const;
+    bool sharedWebViewMissingForVisibleWidgets() const;
     bool sendGeometryToHost(const QString& instanceId, const QRect& geometry);
     void resendVisibleWidgetsToSharedHost();
     bool sharedHostLayerNeedsRecovery() const;
@@ -119,6 +126,8 @@ private:
     PermissionManager m_permissions;
     WId m_hostParentWindow = 0;
     WId m_desktopLayerWindow = 0;
+    WId m_sharedWebViewWindow = 0;
+    QString m_sharedWebViewWindowClass;
     QHash<QString, WId> m_widgetWindows;
     QHash<QString, WidgetHostController*> m_hosts;
     QTimer m_heartbeatTimer;

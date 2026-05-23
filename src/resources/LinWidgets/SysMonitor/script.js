@@ -379,7 +379,15 @@ async function startMonitoring() {
              return `
               <div class="disk-drive">
                 <div class="disk-header">
-                  <span class="detail-label">Drive ${drive.root}</span>
+                  <span class="detail-label" style="display: flex; align-items: center; gap: 4px;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.8;">
+                      <rect x="2" y="3" width="20" height="18" rx="2" ry="2"></rect>
+                      <line x1="2" y1="12" x2="22" y2="12"></line>
+                      <line x1="6" y1="17" x2="6.01" y2="17"></line>
+                      <line x1="10" y1="17" x2="10.01" y2="17"></line>
+                    </svg>
+                    Drive ${drive.root}
+                  </span>
                   <span class="detail-val">${diskP}% Used</span>
                 </div>
                 <div class="progress-bar" style="margin-bottom: 0.3rem; height: 8px; background: rgba(0,0,0,0.1);">

@@ -126,6 +126,7 @@ private:
     bool m_desktopHostRescanAgain = false;
     bool m_linWidgetLayerRecoveryPending = false;
     UINT m_shellHookMessage = 0;
+    bool m_shellHookRegistered = false;
     bool m_desktopHostConflictDialogShown = false;
     QPointer<FluentDialog> m_desktopHostConflictDialog;
 

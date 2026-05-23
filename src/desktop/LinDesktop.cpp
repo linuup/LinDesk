@@ -105,7 +105,11 @@ LinDesktop::LinDesktop(QWidget* parent)
 
     embedToDesktop();
     m_shellHookMessage = RegisterWindowMessageW(L"SHELLHOOK");
-    RegisterShellHookWindow(reinterpret_cast<HWND>(winId()));
+    m_shellHookRegistered = RegisterShellHookWindow(reinterpret_cast<HWND>(winId())) != FALSE;
+    qDebug() << "[LinDesktop] shell hook"
+             << "registered=" << m_shellHookRegistered
+             << "message=" << m_shellHookMessage
+             << "hwnd=" << QString::number(static_cast<quintptr>(winId()), 16);
     startDesktopHostWindowMonitor();
 
     m_monitor = new DesktopInfoMonitor(this);
@@ -135,7 +139,9 @@ LinDesktop::LinDesktop(QWidget* parent)
 
 LinDesktop::~LinDesktop()
 {
-    DeregisterShellHookWindow(reinterpret_cast<HWND>(winId()));
+    if (m_shellHookRegistered) {
+        DeregisterShellHookWindow(reinterpret_cast<HWND>(winId()));
+    }
     stopDesktopHostWindowMonitor();
 
     if (m_trayIcon) {

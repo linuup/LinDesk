@@ -1488,6 +1488,20 @@ void WidgetHostRuntime::syncSharedRegion(const QString& reason)
     }
     if (webViewSearch.window) {
         updateNativeWindowRegion(webViewSearch.window);
+        const quint64 webViewWindowId = static_cast<quint64>(reinterpret_cast<quintptr>(webViewSearch.window));
+        if (webViewWindowId != m_lastReportedWebViewWindow) {
+            m_lastReportedWebViewWindow = webViewWindowId;
+            sendIpcMessage(QString::fromLatin1(IpcType::WebViewWindowReady), {
+                { QStringLiteral("hwnd"), QString::number(webViewWindowId) },
+                { QStringLiteral("className"), webViewSearch.className },
+                { QStringLiteral("reason"), reason }
+            });
+        }
+    } else if (m_lastReportedWebViewWindow != 0) {
+        m_lastReportedWebViewWindow = 0;
+        sendIpcMessage(QString::fromLatin1(IpcType::WebViewWindowLost), {
+            { QStringLiteral("reason"), reason }
+        });
     }
     appendLog(QStringLiteral("region"), QStringLiteral("synced shared window region reason=%1 rectCount=%2 host=%3 webview=%4 class=%5 visualization=%6 empty=%7")
         .arg(reason,

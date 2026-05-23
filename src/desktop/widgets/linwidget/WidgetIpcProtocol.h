@@ -12,6 +12,8 @@ namespace IpcType {
     constexpr const char* Ready = "ready";
     constexpr const char* Error = "error";
     constexpr const char* HostWindowReady = "host_window_ready";
+    constexpr const char* WebViewWindowReady = "webview_window_ready";
+    constexpr const char* WebViewWindowLost = "webview_window_lost";
     constexpr const char* AddWidget = "add_widget";
     constexpr const char* RemoveWidget = "remove_widget";
     constexpr const char* UpdateWidgetGeometry = "update_widget_geometry";
