@@ -58,18 +58,6 @@ inline QString linWidgetRegistryFilePath()
     return QDir(userLinWidgetsDir()).filePath(QStringLiteral("registry.json"));
 }
 
-inline QString userLinWidgetRuntimeDir()
-{
-    const QString dirPath = QDir(userLinWidgetsDir()).filePath(QStringLiteral("LinWidgetRuntime"));
-    QDir().mkpath(dirPath);
-    return dirPath;
-}
-
-inline QString userLinWidgetRuntimeHostFilePath()
-{
-    return QDir(userLinWidgetRuntimeDir()).filePath(QStringLiteral("host.html"));
-}
-
 inline QString linWidgetLogsDir()
 {
     const QString dirPath = userLocalConfigDir();

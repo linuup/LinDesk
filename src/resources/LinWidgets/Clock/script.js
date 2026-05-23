@@ -60,6 +60,25 @@ function updateClock() {
 
   const dateShortEl = document.getElementById("date-short");
   if (dateShortEl) dateShortEl.textContent = dateShortStr;
+
+  // Analog Clock Update
+  const hourHand = document.getElementById("hourHand");
+  const minuteHand = document.getElementById("minuteHand");
+  const secondHand = document.getElementById("secondHand");
+  
+  if (hourHand) {
+    const hours = now.getHours() % 12;
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+    
+    const secDeg = (seconds / 60) * 360;
+    const minDeg = ((minutes + seconds / 60) / 60) * 360;
+    const hourDeg = ((hours + minutes / 60) / 12) * 360;
+    
+    hourHand.style.transform = `rotate(${hourDeg}deg)`;
+    minuteHand.style.transform = `rotate(${minDeg}deg)`;
+    secondHand.style.transform = `rotate(${secDeg}deg)`;
+  }
 }
 
 updateClock();
@@ -86,3 +105,76 @@ function bindThemeToggle() {
 }
 
 bindThemeToggle();
+
+// Style Switcher Logic
+function bindStyleSwitcher() {
+  const styleDots = document.querySelectorAll('.style-dot');
+  let currentStyle = localStorage.getItem('clockStyle') || 'digital';
+
+  function setStyle(style) {
+    currentStyle = style;
+    if (style === 'analog') {
+      document.body.classList.add('style-analog');
+    } else {
+      document.body.classList.remove('style-analog');
+    }
+    
+    styleDots.forEach(dot => {
+      if (dot.getAttribute('data-style') === style) {
+        dot.classList.add('active');
+      } else {
+        dot.classList.remove('active');
+      }
+    });
+    
+    localStorage.setItem('clockStyle', style);
+  }
+
+  setStyle(currentStyle);
+
+  styleDots.forEach(dot => {
+    dot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setStyle(dot.getAttribute('data-style'));
+    });
+  });
+}
+
+bindStyleSwitcher();
+
+// Analog Clock Markers Init
+function initAnalogClock() {
+  const container = document.getElementById("clockMarkers");
+  if (!container) return;
+  container.innerHTML = "";
+  for (let i = 0; i < 30; i++) {
+    const marker = document.createElement("div");
+    marker.className = "marker";
+    if (i % 5 === 0) {
+      marker.classList.add("main");
+      if (i === 0 || i === 15) {
+        marker.classList.add("cardinal");
+      }
+    } else {
+      marker.classList.add("minor");
+    }
+    marker.style.transform = `rotate(${i * 6}deg)`;
+    container.appendChild(marker);
+  }
+  
+  // Draw 12 numbers
+  for (let i = 1; i <= 12; i++) {
+    const numWrap = document.createElement("div");
+    numWrap.className = "number-wrap";
+    numWrap.style.transform = `rotate(${i * 30}deg)`;
+    
+    const num = document.createElement("div");
+    num.className = "number";
+    num.style.transform = `rotate(-${i * 30}deg)`;
+    num.textContent = i;
+    
+    numWrap.appendChild(num);
+    container.appendChild(numWrap);
+  }
+}
+initAnalogClock();

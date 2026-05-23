@@ -68,17 +68,24 @@ private:
                                       bool isDevelopment,
                                       bool autoReload,
                                       const QString& entryUrl) const;
-    QString virtualHostNameForInstance(const QString& instanceId) const;
+    QString virtualHostNameForInstance(const QString& instanceId,
+                                       const QStringList& permissions,
+                                       bool isDevelopment) const;
     bool mapWidgetVirtualHost(const QString& hostName, const QString& packagePath);
+    void installSharedWebResourceGuards(void* environment);
+    void openDevToolsWhenReady();
     void setSharedWindowGeometry();
     void updateSharedWindowRegion();
+    void syncSharedRegion(const QString& reason);
     void updateNativeWindowRegion(void* windowHandle);
     void installWebViewDragBridge();
     void installWebConsoleLogging();
     void installWebPermissionGuards();
     void handleWebMessageJson(const QString& json);
     void appendLog(const QString& level, const QString& message) const;
+    void appendInstanceLog(const QString& instanceId, const QString& level, const QString& message) const;
     QString logFilePath() const;
+    QString logFilePathForId(const QString& id) const;
     void focusWebView();
     void moveByDelta(const QPoint& delta);
     QSize clampWidgetSize(const QSize& requestedSize) const;
@@ -114,9 +121,11 @@ private:
     bool m_dragMoveStarted = false;
     QMap<QString, QRect> m_sharedWidgetGeometries;
     QMap<QString, QString> m_sharedWidgetHosts;
+    QMap<QString, QStringList> m_sharedWidgetPermissions;
     QVector<QJsonObject> m_pendingHostPageMessages;
     bool m_hostPageReady = false;
     bool m_showWebViewBounds = false;
+    bool m_pendingOpenDevTools = false;
 };
 
 }

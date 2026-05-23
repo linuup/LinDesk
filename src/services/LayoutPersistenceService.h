@@ -29,7 +29,6 @@ struct LayoutPersistenceState {
     bool showShortCutArrow = true;
     QVector<QMap<QString, QVariant>> boxData;
     QMap<QString, QMap<QString, QVariant>> iconPositions;
-    QVector<QMap<QString, QVariant>> desktopComponents;
 };
 
 class LayoutPersistenceService {

@@ -52,6 +52,11 @@ body {
   box-sizing: border-box;
 }
 
+.linwidget-panel[data-resize-mode]:not([data-resize-mode=""]) .linwidget-resize-frame,
+body.resizing .linwidget-panel .linwidget-resize-frame {
+  opacity: 1;
+}
+
 .linwidget-panel iframe {
   position: relative;
   z-index: 0;
@@ -83,4 +88,89 @@ body {
 
 body.dragging .linwidget-drag-shield {
   display: block;
+}
+
+body.resizing .linwidget-drag-shield {
+  display: block;
+}
+
+.linwidget-resize-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  border: 1px solid rgba(15, 111, 191, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.52);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.linwidget-panel.resize-ui-hidden .linwidget-resize-frame {
+  display: none;
+}
+
+.linwidget-resize-hit {
+  position: absolute;
+  z-index: 4;
+  background: transparent;
+}
+
+.linwidget-panel.resize-ui-hidden .linwidget-resize-hit {
+  display: none;
+}
+
+.linwidget-resize-n {
+  left: 8px;
+  right: 8px;
+  top: 0;
+  height: 8px;
+}
+
+.linwidget-resize-s {
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 8px;
+}
+
+.linwidget-resize-e {
+  right: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+}
+
+.linwidget-resize-w {
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+}
+
+.linwidget-resize-ne,
+.linwidget-resize-nw,
+.linwidget-resize-se,
+.linwidget-resize-sw {
+  width: 12px;
+  height: 12px;
+}
+
+.linwidget-resize-ne {
+  right: 0;
+  top: 0;
+}
+
+.linwidget-resize-nw {
+  left: 0;
+  top: 0;
+}
+
+.linwidget-resize-se {
+  right: 0;
+  bottom: 0;
+}
+
+.linwidget-resize-sw {
+  left: 0;
+  bottom: 0;
 }

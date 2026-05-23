@@ -1,0 +1,21 @@
+html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Inter', sans-serif; color: #333; }
+.widget { width: 100%; height: 100%; padding: 0; box-sizing: border-box; }
+.glass-panel { width: 100%; height: 100%; background: rgba(255, 250, 230, 0.85); backdrop-filter: blur(25px); border-radius: 0.8rem; border: 1px solid rgba(255, 230, 150, 0.6); display: flex; flex-direction: column; padding: 0.5rem; box-sizing: border-box; box-shadow: 0 8px 32px rgba(0,0,0,0.1); transition: background 0.3s ease; }
+.glass-panel:hover { background: rgba(255, 250, 230, 0.95); }
+.drag-handle { width: 100%; height: 1.2rem; flex: none; -webkit-app-region: drag; cursor: grab; opacity: 0.5; display: flex; justify-content: center; align-items: center; margin-bottom: 0.2rem; }
+.drag-handle::after { content: ''; width: 30px; height: 3px; background: rgba(0,0,0,0.15); border-radius: 2px; }
+textarea { flex: 1; background: transparent; border: none; outline: none; color: #333; font-size: 0.95rem; font-weight: 500; line-height: 1.5; resize: none; font-family: inherit; -webkit-app-region: no-drag; padding: 0 0.5rem; }
+textarea::placeholder { color: rgba(0,0,0,0.3); font-weight: 400; }
+
+/* Custom scrollbar */
+textarea::-webkit-scrollbar { width: 6px; }
+textarea::-webkit-scrollbar-track { background: transparent; }
+textarea::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+textarea::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+
+@media (max-height: 120px) {
+  .glass-panel { padding: 0.2rem; border-radius: 0.4rem; }
+  .drag-handle { height: 10px; margin-bottom: 2px; }
+  .drag-handle::after { height: 2px; }
+  textarea { font-size: 0.8rem; }
+}

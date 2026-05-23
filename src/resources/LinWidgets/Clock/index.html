@@ -1,23 +1,29 @@
 <!doctype html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Clock Lin</title>
+  <title>Clock</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <main class="widget">
     <div class="glass-panel">
+      <!-- Theme/Style Switcher Dots -->
+      <div class="style-switcher">
+        <button type="button" class="style-dot active" data-style="digital" title="Digital Clock"></button>
+        <button type="button" class="style-dot" data-style="analog" title="Analog Clock"></button>
+      </div>
+
       <!-- Header -->
       <header class="header">
-        <div class="label">Clock Lin</div>
         <button type="button" id="themeToggle" class="theme-toggle" title="切换主题">☀️</button>
       </header>
-      
       <!-- Main Content -->
       <section class="main-clock">
         <div class="time-block">
@@ -34,8 +40,20 @@
           </div>
         </div>
       </section>
+
+      <!-- Analog Clock -->
+      <section class="analog-clock">
+        <div class="clock-face">
+          <div class="clock-markers" id="clockMarkers"></div>
+          <div class="hand hour-hand" id="hourHand"></div>
+          <div class="hand minute-hand" id="minuteHand"></div>
+          <div class="hand second-hand" id="secondHand"></div>
+          <div class="clock-center"></div>
+        </div>
+      </section>
     </div>
   </main>
   <script src="script.js"></script>
 </body>
+
 </html>

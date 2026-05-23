@@ -1,0 +1,16 @@
+{
+  "id": "lindesk.notes.lin",
+  "name": "Notes",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "Sticky Notes.",
+  "width": 260,
+  "height": 260,
+  "minWidth": 150,
+  "minHeight": 150,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": ["storage"]
+}

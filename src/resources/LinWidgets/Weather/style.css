@@ -518,31 +518,4 @@ body.light-theme .theme-toggle:hover {
   }
 }
 
-/* Resize Grip */
-.resize-grip {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 2rem;
-  height: 2rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 0.5rem;
-  cursor: se-resize;
-  color: rgba(255, 255, 255, 0.4);
-  z-index: 100;
-  box-sizing: border-box;
-}
 
-.resize-grip:hover {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-body.light-theme .resize-grip {
-  color: rgba(0, 0, 0, 0.3);
-}
-
-body.light-theme .resize-grip:hover {
-  color: rgba(0, 0, 0, 0.7);
-}

@@ -179,8 +179,7 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
     entry.sourcePath.clear();
     entry.autoReload = false;
     entry.autoLoad = manifest.autoLoad;
-    PermissionManager permissions;
-    entry.permissionsGranted = permissions.normalizePermissions(entry.permissionsGranted + manifest.permissions);
+    entry.permissionsGranted = PermissionManager().normalizePermissions(entry.permissionsGranted);
     entry.updatedAt = now;
 
     m_entries.insert(registryKey(manifest.id, false), entry);
@@ -329,6 +328,17 @@ bool WidgetRegistryManager::setLastRunState(const QString& id, bool isDevelopmen
     it->lastRunState = state == QStringLiteral("running")
         ? QStringLiteral("running")
         : QStringLiteral("stopped");
+    it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    return true;
+}
+
+bool WidgetRegistryManager::setPermissionsGranted(const QString& id, bool isDevelopment, const QStringList& permissions)
+{
+    auto it = m_entries.find(registryKey(id, isDevelopment));
+    if (it == m_entries.end()) {
+        return false;
+    }
+    it->permissionsGranted = PermissionManager().normalizePermissions(permissions);
     it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     return true;
 }

@@ -25,6 +25,7 @@ public:
     bool setEnabled(const QString& id, bool isDevelopment, bool enabled);
     bool setLastRunState(const QString& id, const QString& state);
     bool setLastRunState(const QString& id, bool isDevelopment, const QString& state);
+    bool setPermissionsGranted(const QString& id, bool isDevelopment, const QStringList& permissions);
     bool removeById(const QString& id);
     bool removeDevelopmentProject(const QString& id);
 

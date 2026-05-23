@@ -8,6 +8,8 @@
 #include <QSettings>
 #include "desktop/ListView.h"
 #include "desktop/LinDesktop.h"
+#include "desktop/widgets/linwidget/WidgetPackage.h"
+#include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 #include "app/AppFonts.h"
 #include "desktop/ListViewMappedBoxHelper.h"
 #include "models/DesktopQuadTree.h"
@@ -34,7 +36,10 @@
 #include <QFontMetrics>
 #include <QInputDialog>
 #include <QMenu>
+#include <QMoveEvent>
 #include <QRegion>
+#include <QResizeEvent>
+#include <QShowEvent>
 #include <QWheelEvent>
 #include <climits>
 #include <shobjidl.h>
@@ -53,13 +58,12 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/widgets/DesktopComponentManager.h"
-#include "desktop/widgets/DesktopComponentRenderer.h"
-#include "desktop/widgets/DesktopComponentFloatingWindow.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 namespace {
+constexpr double kLinWidgetCellBlockThreshold = 0.15;
+
 #ifdef Q_OS_WIN
 bool windowClassNameContains(HWND window, const QString& needle)
 {
@@ -374,11 +378,6 @@ QString runtimeLinWidgetsDir()
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets"));
 }
 
-QString runtimeLinWidgetHostDir()
-{
-    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgetRuntime"));
-}
-
 bool isMappedDragStillInsideSourceBox(const QObject* source, const QPoint& globalPos)
 {
     const auto* box = qobject_cast<const LinBox*>(source);
@@ -500,10 +499,28 @@ int ListView::desktopItemFootprintHeight() const
     return scalePx(1) + iconSide + scalePx(kDesktopIconTextGap) + qMax(lineHeight, lineHeight * 2) + scalePx(2);
 }
 
-void ListView::refreshComponentLayoutMetrics()
+QVector<QRect> ListView::desktopLinWidgetOccupiedRects() const
 {
-    if (!m_componentManager) {
-        return;
+    QVector<QRect> rects;
+    if (!m_linWidgetManager) {
+        return rects;
+    }
+
+    for (const LinWidget::WidgetLayoutState& state : m_linWidgetManager->layoutStates()) {
+        if (!state.visible || state.geometry.isEmpty() || !state.geometry.isValid()) {
+            continue;
+        }
+        rects.append(state.geometry);
+    }
+    return rects;
+}
+
+QSet<quint64> ListView::desktopLinWidgetOccupiedCells() const
+{
+    QSet<quint64> cells;
+    const QVector<QRect> widgetRects = desktopLinWidgetOccupiedRects();
+    if (widgetRects.isEmpty()) {
+        return cells;
     }
 
     const int itemHeight = desktopItemFootprintHeight();
@@ -511,31 +528,49 @@ void ListView::refreshComponentLayoutMetrics()
     const int strideY = qMax(1, itemHeight + m_rowSpacing);
     const int layoutLeft = desktopLayoutLeft();
     const int layoutTop = desktopLayoutTop();
+    const int maxRows = qMax(1, maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY));
+    const int maxCols = qMax(1, maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX));
 
-    DesktopComponentLayoutMetrics metrics;
-    metrics.layoutLeft = layoutLeft;
-    metrics.layoutTop = layoutTop;
-    metrics.usableRight = desktopUsableRight();
-    metrics.usableBottom = desktopUsableBottom();
-    metrics.itemWidth = m_iconWidth;
-    metrics.itemHeight = itemHeight;
-    metrics.strideX = strideX;
-    metrics.strideY = strideY;
-    metrics.maxRows = maxGridRowsForBounds(layoutTop, metrics.usableBottom, itemHeight, strideY);
-    metrics.maxCols = maxGridColsForBounds(layoutLeft, metrics.usableRight, m_iconWidth, strideX);
-    metrics.dpiScale = currentDpiScale();
-    m_componentManager->setLayoutMetrics(metrics);
-    m_componentOccupancyDirty = true;
-    rebuildDesktopComponentOccupancyCache();
+    const QSize itemSize(m_iconWidth, itemHeight);
+    for (const QRect& widgetRect : widgetRects) {
+        for (int x = 0; x < maxCols; ++x) {
+            for (int y = 0; y < maxRows; ++y) {
+                const QRect itemRect(gridCellToPoint(x, y, layoutLeft, layoutTop, strideX, strideY), itemSize);
+                const QRect overlap = itemRect.intersected(widgetRect);
+                if (overlap.isEmpty()) {
+                    continue;
+                }
+                const double xOverlapRatio = static_cast<double>(overlap.width()) / static_cast<double>(qMax(1, itemSize.width()));
+                const double yOverlapRatio = static_cast<double>(overlap.height()) / static_cast<double>(qMax(1, itemSize.height()));
+                if (xOverlapRatio <= kLinWidgetCellBlockThreshold || yOverlapRatio <= kLinWidgetCellBlockThreshold) {
+                    continue;
+                }
+                cells.insert(packGridCell(x, y));
+            }
+        }
+    }
+
+    return cells;
 }
 
-void ListView::rebuildDesktopComponentOccupancyCache() const
+QVector<QRect> ListView::desktopBlockedOccupiedRects() const
 {
-    m_componentOccupiedCells.clear();
-    m_componentOccupiedRects.clear();
-    m_componentOccupancyDirty = false;
+    return desktopLinWidgetOccupiedRects();
+}
 
-    if (!m_componentManager) {
+QSet<quint64> ListView::desktopBlockedOccupiedCells() const
+{
+    return desktopLinWidgetOccupiedCells();
+}
+
+void ListView::paintLinWidgetBlockedCellsOverlay(QPainter& painter, const QRegion& dirtyRegion) const
+{
+    if (!m_showLinWidgetBlockedCells) {
+        return;
+    }
+
+    const QSet<quint64> cells = desktopLinWidgetOccupiedCells();
+    if (cells.isEmpty()) {
         return;
     }
 
@@ -547,37 +582,37 @@ void ListView::rebuildDesktopComponentOccupancyCache() const
     const int maxRows = qMax(1, maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY));
     const int maxCols = qMax(1, maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX));
 
-    for (const DesktopComponentItemModel& component : m_componentManager->items()) {
-        if (!component.rect.isEmpty()) {
-            m_componentOccupiedRects.append(component.rect);
-        }
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(QPen(QColor(220, 38, 38, 190), 1));
+    painter.setBrush(QColor(239, 68, 68, 58));
 
-        const QPoint cell = pointToGridCell(component.position, layoutLeft, layoutTop, strideX, strideY);
-        const QSize span(qMax(1, component.gridSpan.width()), qMax(1, component.gridSpan.height()));
-        for (int dx = 0; dx < span.width(); ++dx) {
-            for (int dy = 0; dy < span.height(); ++dy) {
-                const int x = qBound(0, cell.x() + dx, maxCols - 1);
-                const int y = qBound(0, cell.y() + dy, maxRows - 1);
-                m_componentOccupiedCells.insert(packGridCell(x, y));
+    for (int x = 0; x < maxCols; ++x) {
+        for (int y = 0; y < maxRows; ++y) {
+            if (!cells.contains(packGridCell(x, y))) {
+                continue;
             }
+
+            const QRect cellRect(gridCellToPoint(x, y, layoutLeft, layoutTop, strideX, strideY),
+                                 QSize(m_iconWidth, itemHeight));
+            if (!dirtyRegion.intersects(cellRect)) {
+                continue;
+            }
+
+            painter.drawRoundedRect(cellRect.adjusted(1, 1, -1, -1), 5, 5);
         }
     }
-}
 
-QSet<quint64> ListView::desktopComponentOccupiedCells() const
-{
-    if (m_componentOccupancyDirty) {
-        rebuildDesktopComponentOccupancyCache();
+    painter.setPen(QPen(QColor(14, 165, 233, 230), 2));
+    painter.setBrush(QColor(14, 165, 233, 34));
+    for (const QRect& widgetRect : desktopLinWidgetOccupiedRects()) {
+        if (!dirtyRegion.intersects(widgetRect)) {
+            continue;
+        }
+        painter.drawRoundedRect(widgetRect.adjusted(1, 1, -1, -1), 6, 6);
     }
-    return m_componentOccupiedCells;
-}
 
-QVector<QRect> ListView::desktopComponentOccupiedRects() const
-{
-    if (m_componentOccupancyDirty) {
-        rebuildDesktopComponentOccupancyCache();
-    }
-    return m_componentOccupiedRects;
+    painter.restore();
 }
 
 QPoint ListView::resolveNearestGridCreatePosition(const QPoint& requestedPos, const QSet<quint64>& occupiedSlots) const
@@ -649,7 +684,7 @@ QPoint ListView::resolveNearestFreeCreatePosition(const QPoint& requestedPos) co
     const QPoint clampedPos(qBound(minX, requestedPos.x(), maxX),
                             qBound(minY, requestedPos.y(), maxY));
     const QSize itemSize(m_iconWidth, itemHeight);
-    const QVector<QRect> componentRects = desktopComponentOccupiedRects();
+    const QVector<QRect> componentRects = desktopBlockedOccupiedRects();
 
     auto isFree = [&](const QPoint& candidatePos) {
         const QRect candidateRect(candidatePos, itemSize);
@@ -722,9 +757,9 @@ QPoint ListView::localPosFromGhostWidget(const QWidget* ghostWidget) const
     return mapFromGlobal(ghostWidget->pos());
 }
 
-bool ListView::rectIntersectsDesktopComponent(const QRect& rect) const
+bool ListView::rectIntersectsDesktopBlockedArea(const QRect& rect) const
 {
-    for (const QRect& componentRect : desktopComponentOccupiedRects()) {
+    for (const QRect& componentRect : desktopBlockedOccupiedRects()) {
         if (rect.intersects(componentRect)) {
             return true;
         }
@@ -933,7 +968,7 @@ QMap<QString, QPoint> ListView::resolveDesktopDragFinalPositions(const QStringLi
             relativeCells.append(relativeCell);
         }
 
-        QSet<quint64> occupiedSlots = collectDesktopComponentOccupiedCells();
+        QSet<quint64> occupiedSlots = desktopBlockedOccupiedCells();
         for (const auto& state : m_itemStates) {
             if (!shouldPaintDesktopModelState(state)) {
                 continue;
@@ -965,7 +1000,7 @@ QMap<QString, QPoint> ListView::resolveDesktopDragFinalPositions(const QStringLi
         return result;
     }
 
-    QVector<QRect> occupiedRects = desktopComponentOccupiedRects();
+    QVector<QRect> occupiedRects = desktopBlockedOccupiedRects();
     for (const auto& state : m_itemStates) {
         if (!shouldPaintDesktopModelState(state)) {
             continue;
@@ -1080,40 +1115,6 @@ QSet<quint64> ListView::collectDesktopIconOccupiedCells(const QStringList& ignor
     return occupiedCells;
 }
 
-QSet<quint64> ListView::collectDesktopComponentOccupiedCells(const QString& ignoredId) const
-{
-    if (!m_componentManager) {
-        return {};
-    }
-    if (ignoredId.isEmpty()) {
-        return desktopComponentOccupiedCells();
-    }
-    return m_componentManager->occupiedCells(ignoredId);
-}
-
-bool ListView::isPositionBlockedByComponent(const QPoint& pos, const QSize& span, const QString& ignoredComponentId) const
-{
-    const int itemHeight = desktopItemFootprintHeight();
-    const int strideX = qMax(1, m_iconWidth + m_colSpacing);
-    const int strideY = qMax(1, itemHeight + m_rowSpacing);
-    const int layoutLeft = desktopLayoutLeft();
-    const int layoutTop = desktopLayoutTop();
-    const int maxRows = maxGridRowsForBounds(layoutTop, desktopUsableBottom(), itemHeight, strideY);
-    const int maxCols = maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX);
-    const QPoint cell = pointToGridCell(pos, layoutLeft, layoutTop, strideX, strideY);
-    const QSet<quint64> componentCells = collectDesktopComponentOccupiedCells(ignoredComponentId);
-    for (int dx = 0; dx < qMax(1, span.width()); ++dx) {
-        for (int dy = 0; dy < qMax(1, span.height()); ++dy) {
-            const int x = qBound(0, cell.x() + dx, maxCols - 1);
-            const int y = qBound(0, cell.y() + dy, maxRows - 1);
-            if (componentCells.contains(packGridCell(x, y))) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 // 闂傚倸鐗婇悷锕傚焵椤戣法鍔嶉柛銊﹀哺瀹曘劌螣閸濆嫮浠存繝娈垮枛椤戝懐鈧?
 ListView* ListView::m_instance = nullptr;
 int ListItemData::s_targetIconSize = ListView::kMediumIconW;
@@ -1197,12 +1198,6 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     m_backgroundSelectionThrottleTimer->setSingleShot(true);
     connect(m_backgroundSelectionThrottleTimer, &QTimer::timeout, this, &ListView::flushBackgroundSelectionUpdate);
     m_snakeGameController = new DesktopSnakeGameController(this);
-    m_componentManager = new DesktopComponentManager(this);
-    connect(m_componentManager, &DesktopComponentManager::changed, this, [this]() {
-        m_componentOccupancyDirty = true;
-        syncFloatingComponentWindows();
-        update();
-    });
     m_persistencePath = AppPaths::desktopDataFilePath();
     
     // Load view mode configuration before initializing desktop item models.
@@ -1239,14 +1234,74 @@ LinWidget::WidgetManager* ListView::linWidgetManager()
 {
     if (!m_linWidgetManager) {
         m_linWidgetManager = new LinWidget::WidgetManager(this);
+        m_linWidgetManager->setDesktopLayerWindow(winId());
+        connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetSettingsRequested,
+                this, &ListView::openLinWidgetSettings);
+    } else if (m_linWidgetManager->desktopLayerWindow() != winId()) {
+        m_linWidgetManager->setDesktopLayerWindow(winId());
     }
     return m_linWidgetManager;
 }
 
+void ListView::openLinWidgetSettings(const QString& instanceId)
+{
+    LinWidget::WidgetManager* manager = linWidgetManager();
+    if (!manager || instanceId.trimmed().isEmpty()) {
+        return;
+    }
+
+    const LinWidget::WidgetInstance instance = manager->widgetInstance(instanceId.trimmed());
+    if (instance.instanceId.isEmpty()) {
+        qWarning() << "[LinWidgetSettings] instance not found" << instanceId;
+        return;
+    }
+
+    LinWidget::WidgetManifest manifest;
+    QString errorMessage;
+    if (!LinWidget::WidgetPackage::loadManifest(instance.packagePath, &manifest, &errorMessage)) {
+        qWarning() << "[LinWidgetSettings] manifest load failed" << instanceId << errorMessage;
+        return;
+    }
+
+    const QString settingsPath = manifest.settings.trimmed();
+    if (settingsPath.isEmpty() || !QFileInfo::exists(QDir(instance.packagePath).filePath(settingsPath))) {
+        qWarning() << "[LinWidgetSettings] settings page missing" << instanceId << settingsPath;
+        return;
+    }
+
+    auto* dialog = new LinWidget::WidgetSettingsDialog(
+        instance.packagePath,
+        manifest,
+        instance.grantedPermissions,
+        instance.isDevelopment,
+        instance.instanceId,
+        this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->initialize(&errorMessage);
+    connect(dialog, &QDialog::finished, this, [this, instanceId]() {
+        if (LinWidget::WidgetManager* manager = linWidgetManager()) {
+            manager->restartWidget(instanceId);
+        }
+    });
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+    if (!errorMessage.isEmpty()) {
+        qWarning() << "[LinWidgetSettings]" << errorMessage;
+    }
+}
+
+void ListView::setShowLinWidgetBlockedCells(bool show)
+{
+    if (m_showLinWidgetBlockedCells == show) {
+        return;
+    }
+    m_showLinWidgetBlockedCells = show;
+    update();
+}
+
 void ListView::ensureBundledLinWidgetsInstalled()
 {
-    copyLinWidgetResourceDirectory(runtimeLinWidgetHostDir(), AppPaths::userLinWidgetRuntimeDir());
-
     const QDir bundledDir(runtimeLinWidgetsDir());
     if (!bundledDir.exists()) {
         qDebug() << "[LinWidgetAutoLoad] runtime bundled widgets missing" << bundledDir.absolutePath();
@@ -1279,7 +1334,11 @@ void ListView::initializeLinWidgets()
     ensureBundledLinWidgetsInstalled();
 
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
-    linWidgetManager()->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
+    LinWidget::WidgetManager* manager = linWidgetManager();
+    const bool linWidgetsEnabled = settings.value("LinWidgets/Enabled", true).toBool();
+    manager->setEnabled(linWidgetsEnabled);
+    manager->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
+    setShowLinWidgetBlockedCells(settings.value("LinWidgets/ShowBlockedCells", false).toBool());
 
     LinWidget::WidgetRegistryManager registry;
     QString registryError;
@@ -1287,10 +1346,24 @@ void ListView::initializeLinWidgets()
     registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
     registry.save(&registryError);
 
+    if (!linWidgetsEnabled) {
+        qDebug() << "[LinWidgetAutoLoad] runtime disabled";
+        return;
+    }
+
     QString restoreError;
-    if (!linWidgetManager()->restoreFromConfig(QString(), &restoreError) && !restoreError.isEmpty()) {
+    if (!manager->restoreFromConfig(QString(), &restoreError) && !restoreError.isEmpty()) {
         qDebug() << "[LinWidgetAutoLoad] restore failed" << restoreError;
     }
+}
+
+void ListView::syncLinWidgetLayer()
+{
+    if (!m_linWidgetManager) {
+        return;
+    }
+    m_linWidgetManager->setDesktopLayerWindow(winId());
+    m_linWidgetManager->syncAllWidgetWindowLayers();
 }
 
 void ListView::showDebugPanel()
@@ -1417,6 +1490,14 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         }
         return true;
     }
+    if (msg && (msg->message == WM_SHOWWINDOW ||
+                msg->message == WM_WINDOWPOSCHANGED ||
+                msg->message == WM_ACTIVATE ||
+                msg->message == WM_ACTIVATEAPP)) {
+        QTimer::singleShot(0, this, [this]() {
+            syncLinWidgetLayer();
+        });
+    }
 
     return QWidget::nativeEvent(eventType, message, result);
 }
@@ -1450,14 +1531,6 @@ ListView::~ListView() {
     }
     m_ghosts.clear();
 
-    for (auto it = m_componentFloatingWindows.begin(); it != m_componentFloatingWindows.end(); ++it) {
-        if (it.value()) {
-            it.value()->close();
-            it.value()->deleteLater();
-        }
-    }
-    m_componentFloatingWindows.clear();
-    
 }
 DesktopRootItemState* ListView::findAnyItemStateByPath(const QString& filePath)
 {
@@ -1486,9 +1559,6 @@ const DesktopRootItemState* ListView::findAnyItemStateByPath(const QString& file
 }
 void ListView::clearCheckedItem()
 {
-    if (m_componentManager) {
-        m_componentManager->clearSelection();
-    }
     clearDesktopSelection();
     m_focusedDesktopPath.clear();
     m_anchorDesktopPath.clear();
@@ -2509,16 +2579,6 @@ void ListView::paintEvent(QPaintEvent* event)
         paintDesktopRootItemStatic(painter, state.model.renderData);
     };
 
-    if (m_componentManager) {
-        refreshComponentLayoutMetrics();
-        for (const DesktopComponentItemModel& item : m_componentManager->items()) {
-            if (item.pinned) {
-                continue;
-            }
-            paintDesktopComponent(painter, item, dirtyRegion, currentDpiScale());
-        }
-    }
-
     // Paint normal items first so expanded filename labels can sit above siblings.
     for (const auto& state : m_itemStates) {
         if (state.model.renderData.expandedFullName) {
@@ -2544,22 +2604,13 @@ void ListView::paintEvent(QPaintEvent* event)
         painter.drawRoundedRect(indicatorRect, 2, 2);
         painter.restore();
     }
+
+    paintLinWidgetBlockedCellsOverlay(painter, dirtyRegion);
 }
 
 void ListView::contextMenuEvent(QContextMenuEvent* event)
 {
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
-        if (m_componentManager) {
-            refreshComponentLayoutMetrics();
-            if (DesktopComponentItemModel* component = m_componentManager->itemAt(event->pos())) {
-                clearCheckedItem();
-                m_componentManager->selectItem(component->id);
-                showComponentContextMenu(component->id, event->globalPos());
-                event->accept();
-                return;
-            }
-        }
-
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             const QString itemPath = normalizeDesktopItemPath(hitState->model.filePath);
             if (!isDesktopPathSelected(itemPath)) {
@@ -2600,23 +2651,6 @@ void ListView::mousePressEvent(QMouseEvent* event)
 {
     RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
-        if (m_componentManager) {
-            refreshComponentLayoutMetrics();
-            if (DesktopComponentItemModel* component = m_componentManager->itemAt(event->pos())) {
-                this->activateWindow();
-                this->setFocus(Qt::MouseFocusReason);
-                clearCheckedItem();
-                m_componentManager->selectItem(component->id);
-                m_draggedComponentId = component->id;
-                m_componentDragOffset = event->pos() - component->position;
-                m_isDragging = true;
-                m_startPos = event->pos();
-                event->accept();
-                return;
-            }
-            m_componentManager->clearSelection();
-        }
-
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             this->activateWindow();
             this->setFocus(Qt::MouseFocusReason);
@@ -2693,16 +2727,6 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
-    if (m_isDragging && !m_draggedComponentId.isEmpty()) {
-        if (m_componentManager && (event->pos() - m_startPos).manhattanLength() > QApplication::startDragDistance()) {
-            refreshComponentLayoutMetrics();
-            const QPoint requestedPos = event->pos() - m_componentDragOffset;
-            m_componentManager->moveItemTo(m_draggedComponentId, requestedPos, collectDesktopIconOccupiedCells());
-        }
-        event->accept();
-        return;
-    }
-
     // handle multi-dragging
     if (m_isDragging && !m_ghosts.isEmpty()) {
         QPoint mousePos = event->globalPos();
@@ -2741,12 +2765,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
         return;
     }
 
-    updateHoveredComponent(event->pos());
-    if (m_hoveredComponentId.isEmpty()) {
-        updateHoveredDesktopItem(event->pos());
-    } else {
-        clearHoveredDesktopItem();
-    }
+    updateHoveredDesktopItem(event->pos());
 
 
     event->ignore();
@@ -2757,13 +2776,6 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
     // No-op for Item-based drags, as QDropEvent now handles them
     if (m_isDragging) {
-        if (!m_draggedComponentId.isEmpty()) {
-            m_draggedComponentId.clear();
-            m_isDragging = false;
-            requestSaveBoxes();
-            event->accept();
-            return;
-        }
         if (!m_draggedDesktopPath.isEmpty()) {
             finalizeActiveDrag(nullptr, event);
             m_draggedDesktopPath.clear();
@@ -3682,10 +3694,7 @@ void ListView::dropEvent(QDropEvent* event)
                 for (const QString& draggedPath : activeDesktopDragPaths) {
                     activeDraggedPathSet.insert(normalizeDesktopItemPath(draggedPath));
                 }
-                if (m_componentManager) {
-                    refreshComponentLayoutMetrics();
-                    occupiedSlots.unite(collectDesktopComponentOccupiedCells());
-                }
+                occupiedSlots.unite(desktopBlockedOccupiedCells());
                 for (const auto& otherState : m_itemStates) {
                     if (!shouldPaintDesktopModelState(otherState)) {
                         continue;
@@ -3773,16 +3782,6 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
     RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
-        if (m_componentManager) {
-            refreshComponentLayoutMetrics();
-            if (DesktopComponentItemModel* component = m_componentManager->itemAt(event->pos())) {
-                m_componentManager->toggleTimer(component->id);
-                requestSaveBoxes();
-                event->accept();
-                return;
-            }
-        }
-
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             clearCutMarks();
             openDesktopRootItem(hitState->model);
@@ -3808,18 +3807,6 @@ void ListView::wheelEvent(QWheelEvent* event)
             stepIconViewMode(delta > 0 ? 1 : -1);
             event->accept();
             return;
-        }
-    }
-
-    if (m_componentManager) {
-        refreshComponentLayoutMetrics();
-        if (DesktopComponentItemModel* component = m_componentManager->itemAt(event->pos())) {
-            const int deltaMinutes = event->angleDelta().y() > 0 ? 1 : -1;
-            if (m_componentManager->adjustTimerMinutes(component->id, deltaMinutes)) {
-                requestSaveBoxes();
-                event->accept();
-                return;
-            }
         }
     }
 
@@ -4036,6 +4023,27 @@ void ListView::leaveEvent(QEvent* event)
 {
     clearHoveredDesktopItem();
     QWidget::leaveEvent(event);
+}
+
+void ListView::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    syncLinWidgetLayer();
+}
+
+void ListView::moveEvent(QMoveEvent* event)
+{
+    QWidget::moveEvent(event);
+    syncLinWidgetLayer();
+}
+
+void ListView::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    syncLinWidgetLayer();
+    QTimer::singleShot(100, this, [this]() {
+        syncLinWidgetLayer();
+    });
 }
 
 ListView* ListView::instance(QWidget* parent) {
@@ -4364,7 +4372,7 @@ bool ListView::applyGridAlignedDesktopDropLayout(const QStringList& draggedPaths
     targetTopLeftCell.setX(qBound(0, targetTopLeftCell.x(), maxCols - selectionWidth));
     targetTopLeftCell.setY(qBound(0, targetTopLeftCell.y(), maxRows - selectionHeight));
 
-    QSet<quint64> occupiedSlots = collectDesktopComponentOccupiedCells();
+    QSet<quint64> occupiedSlots = desktopBlockedOccupiedCells();
 
     for (DesktopRootItemState* state : orderedDraggedStates) {
         if (!state || !originalDraggedCells.contains(state)) {
@@ -4925,7 +4933,7 @@ QVector<QPoint> ListView::layoutAutoArrangeItems(const QVector<DesktopRootItemSt
     const int maxRows = maxGridRowsForBounds(desktopLayoutTop(), usableBottom, itemHeight, strideY);
     const int maxCols = maxGridColsForBounds(desktopLayoutLeft(), desktopUsableRight(), itemWidth, strideX);
     const int visibleCapacity = qMax(1, maxRows * maxCols);
-    QSet<quint64> occupiedSlots = collectDesktopComponentOccupiedCells();
+    QSet<quint64> occupiedSlots = desktopBlockedOccupiedCells();
     int searchIndex = 0;
     logDesktopLayoutMetrics("AutoArrangeModel",
                             this,
@@ -5108,10 +5116,7 @@ void ListView::loadGridLayout()
         const int maxCols = maxGridColsForBounds(layoutLeft, desktopUsableRight(), m_iconWidth, strideX);
         const int visibleCapacity = qMax(1, maxCols * maxRows);
         QSet<quint64> occupiedSlots;
-        if (m_componentManager) {
-            refreshComponentLayoutMetrics();
-            occupiedSlots.unite(collectDesktopComponentOccupiedCells());
-        }
+        occupiedSlots.unite(desktopBlockedOccupiedCells());
         int overflowIndex = 0;
 
         for (auto& state : m_itemStates) {
@@ -5406,10 +5411,7 @@ QPoint ListView::resolveCreatePosition(const QPoint& requestedPos) const
         Q_UNUSED(maxCols);
 
         QSet<quint64> occupiedSlots;
-        if (m_componentManager) {
-            const_cast<ListView*>(this)->refreshComponentLayoutMetrics();
-            occupiedSlots.unite(collectDesktopComponentOccupiedCells());
-        }
+        occupiedSlots.unite(desktopBlockedOccupiedCells());
         for (const auto& state : m_itemStates) {
             if (!state.model.boxId.isEmpty() || !state.model.visible) continue;
             const QPoint gridCell = pointToGridCell(state.model.position, layoutLeft, layoutTop, strideX, strideY);
@@ -5526,10 +5528,7 @@ QPoint ListView::generateItemPosition()
     const int visibleCapacity = qMax(1, maxCols * maxRows);
     QSet<quint64> occupiedSlots;
     int desktopItemCount = 0;
-    if (m_componentManager) {
-        refreshComponentLayoutMetrics();
-        occupiedSlots.unite(collectDesktopComponentOccupiedCells());
-    }
+    occupiedSlots.unite(desktopBlockedOccupiedCells());
 
     for (const auto& state : m_itemStates) {
         if (!state.model.boxId.isEmpty() || !state.model.visible) {
@@ -5589,7 +5588,6 @@ void ListView::initRightMenuConnections() {
     connect(menu, &RightMenu::pasteTriggered, this, &ListView::onMenuPaste);
     connect(menu, &RightMenu::pasteShortcutTriggered, this, &ListView::onMenuPasteShortcut);
     connect(menu, &RightMenu::createBoxTriggered, this, &ListView::onMenuCreateBox);
-    connect(menu, &RightMenu::createTimerTriggered, this, &ListView::onMenuCreateTimer);
     connect(menu, &RightMenu::mapFolderTriggered, this, &ListView::onMenuMapFolder);
     connect(menu, &RightMenu::organizeDesktopTriggered, this, &ListView::onMenuOrganizeDesktopByNameSort);
     connect(menu, &RightMenu::linDeskTriggered, this, &ListView::onMenuLinDesk);
@@ -7379,14 +7377,6 @@ void ListView::onMenuCreateBox()
     manager->setupConnections(box, this);
 }
 
-void ListView::onMenuCreateTimer()
-{
-    const QPoint requestedPos = m_lastRightClickPos == QPoint(-1, -1)
-        ? QPoint(desktopLayoutLeft() + scalePx(24), desktopLayoutTop() + scalePx(24))
-        : m_lastRightClickPos;
-    createTimerComponentAt(requestedPos);
-}
-
 void ListView::onMenuMapFolder()
 {
     const QString selectedDir = QFileDialog::getExistingDirectory(
@@ -7435,207 +7425,6 @@ void ListView::onMenuOrganizeDesktop()
     const QVector<QPoint> positions = layoutAutoArrangeItems(states);
     finalizeAutoArrangeLayout(states, positions, true, false);
     updateRightMenuState();
-}
-
-bool ListView::createTimerComponentAt(const QPoint& requestedPos)
-{
-    if (!m_componentManager) {
-        return false;
-    }
-
-    refreshComponentLayoutMetrics();
-    DesktopComponentItemModel* item = m_componentManager->createTimer(requestedPos, collectDesktopIconOccupiedCells());
-    if (!item) {
-        return false;
-    }
-
-    m_componentManager->selectItem(item->id);
-    requestSaveBoxes();
-    update();
-    return true;
-}
-
-void ListView::showComponentContextMenu(const QString& componentId, const QPoint& globalPos)
-{
-    DesktopComponentItemModel* component = m_componentManager ? m_componentManager->itemById(componentId) : nullptr;
-    if (!component) {
-        return;
-    }
-
-    const bool currentlyPinned = component->pinned;
-    QMenu menu(this);
-    menu.setWindowFlags(menu.windowFlags() | Qt::WindowStaysOnTopHint);
-    QAction* startPause = menu.addAction(tr("Start / Pause"));
-    QAction* reset = menu.addAction(tr("Reset"));
-    QAction* pin = menu.addAction(currentlyPinned ? tr("Unpin") : tr("Pin"));
-    menu.addSeparator();
-    QAction* preset5 = menu.addAction(tr("5 minutes"));
-    QAction* preset25 = menu.addAction(tr("25 minutes"));
-    QAction* preset45 = menu.addAction(tr("45 minutes"));
-    QAction* custom = menu.addAction(tr("Custom minutes..."));
-    menu.addSeparator();
-    QAction* mini = menu.addAction(tr("Mini mode"));
-    QAction* card = menu.addAction(tr("Card mode"));
-    QAction* expanded = menu.addAction(tr("Expanded mode"));
-    menu.addSeparator();
-    QAction* sound = menu.addAction(component->timer.soundEnabled ? tr("Turn sound off") : tr("Turn sound on"));
-    QAction* remove = menu.addAction(tr("Remove timer"));
-
-    QAction* chosen = menu.exec(globalPos);
-    if (!chosen) {
-        return;
-    }
-
-    bool changed = false;
-    if (chosen == startPause) {
-        changed = m_componentManager->toggleTimer(componentId);
-    } else if (chosen == reset) {
-        changed = m_componentManager->resetTimer(componentId);
-    } else if (chosen == pin) {
-        changed = m_componentManager->setTimerPinned(componentId, !currentlyPinned);
-    } else if (chosen == preset5) {
-        changed = m_componentManager->setTimerDuration(componentId, 5 * 60 * 1000, QStringLiteral("5 min"));
-    } else if (chosen == preset25) {
-        changed = m_componentManager->setTimerDuration(componentId, 25 * 60 * 1000, QStringLiteral("25 min"));
-    } else if (chosen == preset45) {
-        changed = m_componentManager->setTimerDuration(componentId, 45 * 60 * 1000, QStringLiteral("45 min"));
-    } else if (chosen == custom) {
-        bool ok = false;
-        const int minutes = QInputDialog::getInt(this, tr("Custom Timer"), tr("Minutes"), 25, 1, 24 * 60, 1, &ok);
-        if (ok) {
-            changed = m_componentManager->setTimerDuration(componentId, static_cast<qint64>(minutes) * 60 * 1000, QStringLiteral("%1 min").arg(minutes));
-        }
-    } else if (chosen == mini) {
-        changed = m_componentManager->setItemMode(componentId, DesktopComponentMode::Mini, collectDesktopIconOccupiedCells());
-    } else if (chosen == card) {
-        changed = m_componentManager->setItemMode(componentId, DesktopComponentMode::Card, collectDesktopIconOccupiedCells());
-    } else if (chosen == expanded) {
-        changed = m_componentManager->setItemMode(componentId, DesktopComponentMode::Expanded, collectDesktopIconOccupiedCells());
-    } else if (chosen == sound) {
-        changed = m_componentManager->toggleTimerSound(componentId);
-    } else if (chosen == remove) {
-        changed = m_componentManager->removeItem(componentId);
-    }
-
-    if (changed) {
-        requestSaveBoxes();
-        syncFloatingComponentWindows();
-        update();
-    }
-}
-
-void ListView::syncFloatingComponentWindows()
-{
-    if (!m_componentManager) {
-        for (auto it = m_componentFloatingWindows.begin(); it != m_componentFloatingWindows.end(); ++it) {
-            if (it.value()) {
-                it.value()->hide();
-                it.value()->deleteLater();
-            }
-        }
-        m_componentFloatingWindows.clear();
-        return;
-    }
-
-    QSet<QString> livePinnedIds;
-    refreshComponentLayoutMetrics();
-    for (const DesktopComponentItemModel& item : m_componentManager->items()) {
-        if (!item.pinned) {
-            continue;
-        }
-        livePinnedIds.insert(item.id);
-        syncFloatingComponentWindow(item);
-    }
-
-    for (auto it = m_componentFloatingWindows.begin(); it != m_componentFloatingWindows.end();) {
-        if (!livePinnedIds.contains(it.key()) || it.value().isNull()) {
-            if (it.value()) {
-                it.value()->hide();
-                it.value()->deleteLater();
-            }
-            it = m_componentFloatingWindows.erase(it);
-            continue;
-        }
-        ++it;
-    }
-}
-
-void ListView::syncFloatingComponentWindow(const DesktopComponentItemModel& item)
-{
-    if (item.id.isEmpty() || item.rect.isEmpty()) {
-        return;
-    }
-
-    QPointer<DesktopComponentFloatingWindow> window = m_componentFloatingWindows.value(item.id);
-    if (!window) {
-        window = new DesktopComponentFloatingWindow();
-        m_componentFloatingWindows.insert(item.id, window);
-        connect(window, &DesktopComponentFloatingWindow::startPauseRequested, this, [this](const QString& id) {
-            if (m_componentManager && m_componentManager->toggleTimer(id)) {
-                requestSaveBoxes();
-            }
-        });
-        connect(window, &DesktopComponentFloatingWindow::wheelAdjustRequested, this, [this](const QString& id, int deltaMinutes) {
-            if (m_componentManager && m_componentManager->adjustTimerMinutes(id, deltaMinutes)) {
-                requestSaveBoxes();
-            }
-        });
-        connect(window, &DesktopComponentFloatingWindow::movedRequested, this, [this](const QString& id, const QPoint& globalTopLeft) {
-            if (m_componentManager) {
-                m_componentManager->setTimerPinnedPosition(id, globalTopLeft);
-            }
-        });
-        connect(window, &DesktopComponentFloatingWindow::moveFinished, this, [this](const QString& id) {
-            Q_UNUSED(id);
-            requestSaveBoxes();
-        });
-        connect(window, &DesktopComponentFloatingWindow::contextMenuRequested, this, [this](const QString& id, const QPoint& globalPos) {
-            showComponentContextMenu(id, globalPos);
-        });
-    }
-
-    window->setComponent(item, currentDpiScale());
-    const QPoint topLeft = item.hasPinnedPosition ? item.pinnedPosition : mapToGlobal(item.rect.topLeft());
-    window->setGeometry(QRect(topLeft, item.rect.size()));
-    if (!window->isVisible()) {
-        window->show();
-    }
-    window->raise();
-}
-
-void ListView::removeFloatingComponentWindow(const QString& componentId)
-{
-    QPointer<DesktopComponentFloatingWindow> window = m_componentFloatingWindows.take(componentId);
-    if (window) {
-        window->hide();
-        window->deleteLater();
-    }
-}
-
-void ListView::updateHoveredComponent(const QPoint& pos)
-{
-    if (!m_componentManager) {
-        return;
-    }
-
-    const DesktopComponentItemModel* hit = m_componentManager->itemAt(pos);
-    const QString nextId = hit ? hit->id : QString();
-    if (m_hoveredComponentId == nextId) {
-        return;
-    }
-    m_hoveredComponentId = nextId;
-    m_componentManager->setHoveredItemAt(pos);
-}
-
-void ListView::clearHoveredComponent()
-{
-    if (m_hoveredComponentId.isEmpty()) {
-        return;
-    }
-    m_hoveredComponentId.clear();
-    if (m_componentManager) {
-        m_componentManager->setHoveredItemAt(QPoint(-100000, -100000));
-    }
 }
 
 void ListView::onMenuOrganizeDesktopByNameSort()
@@ -8393,10 +8182,6 @@ void ListView::saveBoxes() {
         m_itemStates,
         BoxManager::instance()->allBoxes()
     );
-    if (m_componentManager) {
-        state.desktopComponents = m_componentManager->toPersistence();
-    }
-
     m_savedIconPositions = persistenceService.toSavedIconPositions(state.iconPositions);
     persistenceService.save(m_persistencePath, state);
 }
@@ -8592,12 +8377,6 @@ void ListView::loadBoxes(bool autoUpdateState) {
     applySavedPositionsToItems(iconPositions);
 
     m_savedIconPositions = persistenceService.toSavedIconPositions(iconPositions);
-    if (m_componentManager) {
-        refreshComponentLayoutMetrics();
-        m_componentManager->setItemsFromPersistence(state.desktopComponents, collectDesktopIconOccupiedCells());
-        syncFloatingComponentWindows();
-    }
-
     loadIconLayer();
     m_forceConfigLayout = false;
     update();
@@ -9237,7 +9016,7 @@ void ListView::moveDesktopGhostsForPreview(const QPoint& globalPos)
         }
 
         const QRect ghostRect(ghostLocalPos, itemSize);
-        if (rectIntersectsDesktopComponent(ghostRect)) {
+        if (rectIntersectsDesktopBlockedArea(ghostRect)) {
             overlapsComponent = true;
             continue;
         }
@@ -9252,7 +9031,7 @@ void ListView::moveDesktopGhostsForPreview(const QPoint& globalPos)
             const QPoint cell = pointToGridCell(ghostLocalPos, layoutLeft, layoutTop, strideX, strideY);
             const int cellX = qBound(0, cell.x(), maxCols - 1);
             const int cellY = qBound(0, cell.y(), maxRows - 1);
-            if (desktopComponentOccupiedCells().contains(packGridCell(cellX, cellY))) {
+            if (desktopBlockedOccupiedCells().contains(packGridCell(cellX, cellY))) {
                 overlapsComponent = true;
             }
         }

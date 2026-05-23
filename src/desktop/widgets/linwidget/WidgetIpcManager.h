@@ -16,6 +16,7 @@ public:
     explicit WidgetIpcManager(QObject* parent = nullptr);
 
     bool start(const QString& serverName);
+    void stop();
     QString serverName() const { return m_serverName; }
     bool sendToWidget(const QString& widgetId, const QJsonObject& message);
 

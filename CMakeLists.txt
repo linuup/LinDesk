@@ -84,11 +84,14 @@ add_compile_options("/utf-8")
 
 # Find Qt5
 find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools REQUIRED)
+find_package(GTest CONFIG REQUIRED)
 
 # 启用 Qt MOC、RCC、UIC 自动生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
+enable_testing()
 
 add_subdirectory("OS")
 add_subdirectory("LinDeskUpdate")
@@ -130,6 +133,8 @@ add_executable(WidgetHost
     src/widgethost/main.cpp
     src/widgethost/WidgetHostRuntime.cpp
     src/widgethost/WidgetHostRuntime.h
+    src/services/SystemInfo/SystemInfoService.cpp
+    src/services/SystemInfo/SystemInfoService.h
     ${LINWIDGET_SHARED_SOURCES}
 )
 add_dependencies(LinDesk LinDeskUpdate)
@@ -145,6 +150,9 @@ set_target_properties(LinDesk PROPERTIES
 
 target_link_libraries(WidgetHost
     PRIVATE
+        Iphlpapi
+        Dxgi
+        Pdh
         Qt5::Widgets
         Qt5::Core
         Qt5::Network
@@ -162,6 +170,9 @@ if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/include/WebView2.h")
     target_compile_definitions(WidgetHost PRIVATE LINDESK_HAS_WEBVIEW2)
     target_include_directories(WidgetHost PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
     target_link_libraries(WidgetHost PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
+    target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_WEBVIEW2)
+    target_include_directories(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
+    target_link_libraries(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
 endif()
 
 target_link_libraries(LinDesk
@@ -173,7 +184,10 @@ target_link_libraries(LinDesk
         Uuid
         Comctl32
         dwmapi
-        Winmm
+        Winmm
+        Iphlpapi
+        Dxgi
+        Pdh
         Qt5::Widgets
         Qt5::Core
         Qt5::Network
@@ -203,6 +217,28 @@ target_include_directories(LinDesk
         ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins
 )
 
+add_executable(LinDeskSystemInfoTests
+    tests/SystemInfoServiceTests.cpp
+    src/services/SystemInfo/SystemInfoService.cpp
+    src/services/SystemInfo/SystemInfoService.h
+)
+
+target_link_libraries(LinDeskSystemInfoTests
+    PRIVATE
+        Iphlpapi
+        Dxgi
+        Pdh
+        Qt5::Core
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskSystemInfoTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_test(NAME LinDeskSystemInfoTests COMMAND LinDeskSystemInfoTests)
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)
 if(LINDESK_BUILD_OCR_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/OCRModule/CMakeLists.txt")
     add_subdirectory("Plugins/OCRModule")

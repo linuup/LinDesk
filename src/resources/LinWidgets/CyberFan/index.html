@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="widget">
+    <div class="fan-container">
+      <div class="led-ring"></div>
+      <div class="blades-container" id="blades">
+        <div class="blade" style="--i:0"></div>
+        <div class="blade" style="--i:1"></div>
+        <div class="blade" style="--i:2"></div>
+        <div class="blade" style="--i:3"></div>
+        <div class="blade" style="--i:4"></div>
+        <div class="center-cap"></div>
+      </div>
+      <div class="fan-grill">
+        <div class="grill-line" style="transform: rotate(0deg)"></div>
+        <div class="grill-line" style="transform: rotate(45deg)"></div>
+        <div class="grill-line" style="transform: rotate(90deg)"></div>
+        <div class="grill-line" style="transform: rotate(135deg)"></div>
+        <div class="grill-circle" style="width: 40px; height: 40px;"></div>
+        <div class="grill-circle" style="width: 80px; height: 80px;"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="speed-indicator">
+        <div class="led" id="led1"></div>
+        <div class="led" id="led2"></div>
+        <div class="led" id="led3"></div>
+      </div>
+      <button class="cyber-btn" id="toggleBtn">MODE</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

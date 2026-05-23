@@ -37,6 +37,53 @@
 
 namespace LinWidget {
 
+namespace {
+QStringList normalizedPermissionList(const QStringList& permissions)
+{
+    return PermissionManager().normalizePermissions(permissions);
+}
+
+bool hasNetworkPermission(const QStringList& permissions)
+{
+    return PermissionManager().canUseNetwork(permissions);
+}
+
+#ifdef LINDESK_HAS_WEBVIEW2
+QString webResourceHeaderValue(ICoreWebView2HttpRequestHeaders* headers, const wchar_t* name)
+{
+    if (!headers || !name) {
+        return QString();
+    }
+    LPWSTR rawValue = nullptr;
+    if (FAILED(headers->GetHeader(name, &rawValue)) || !rawValue) {
+        return QString();
+    }
+    const QString value = QString::fromWCharArray(rawValue);
+    CoTaskMemFree(rawValue);
+    return value;
+}
+#endif
+
+QString permissionHostSegment(const QStringList& permissions, bool isDevelopment)
+{
+    if (isDevelopment) {
+        return QStringLiteral("pdevnsd");
+    }
+
+    QString marker = QStringLiteral("p");
+    if (PermissionManager().canUseNetwork(permissions)) {
+        marker.append(QLatin1Char('n'));
+    }
+    if (PermissionManager().canUseStorage(permissions)) {
+        marker.append(QLatin1Char('s'));
+    }
+    if (PermissionManager().canUseDesktopApi(permissions)) {
+        marker.append(QLatin1Char('d'));
+    }
+    return marker;
+}
+}
+
 #ifdef Q_OS_WIN
 QString nativeWindowClassName(HWND window)
 {
@@ -548,7 +595,7 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             if (hostGeometry.isValid()) {
                 setGeometry(hostGeometry);
                 updateWebViewBounds();
-                updateSharedWindowRegion();
+                syncSharedRegion(QStringLiteral("host geometry"));
                 appendLog(QStringLiteral("info"), QStringLiteral("updated shared host geometry %1,%2 %3x%4")
                     .arg(QString::number(hostGeometry.x()),
                          QString::number(hostGeometry.y()),
@@ -559,7 +606,7 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
         }
         if (type == QString::fromLatin1(IpcType::UpdateHostOptions)) {
             m_showWebViewBounds = message.value(QStringLiteral("showWebViewBounds")).toBool(false);
-            updateSharedWindowRegion();
+            syncSharedRegion(QStringLiteral("host options"));
             queueOrSendHostPageMessage({
                 { QStringLiteral("type"), QString::fromLatin1(IpcType::UpdateHostOptions) },
                 { QStringLiteral("showWebViewBounds"), m_showWebViewBounds }
@@ -571,6 +618,16 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
         if (type == QString::fromLatin1(IpcType::AddWidget)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString()).trimmed();
             const QString packagePath = message.value(QStringLiteral("packagePath")).toString().trimmed();
+            QStringList permissions;
+            const QJsonArray permissionArray = message.value(QStringLiteral("permissions")).toArray();
+            for (const QJsonValue& value : permissionArray) {
+                const QString permission = value.toString().trimmed();
+                if (!permission.isEmpty()) {
+                    permissions.append(permission);
+                }
+            }
+            permissions = normalizedPermissionList(permissions);
+            const bool isDevelopment = message.value(QStringLiteral("development")).toBool(false);
             WidgetManifest manifest;
             QString manifestError;
             if (instanceId.isEmpty() || !WidgetPackage::loadManifest(packagePath, &manifest, &manifestError)) {
@@ -580,14 +637,19 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                 });
                 return;
             }
-            const QString hostName = virtualHostNameForInstance(instanceId);
+            const QString hostName = virtualHostNameForInstance(instanceId, permissions, isDevelopment);
             QString entryUrl;
             if (!mapWidgetVirtualHost(hostName, packagePath)) {
-                appendLog(QStringLiteral("warn"), QStringLiteral("Failed to map widget virtual host for %1, falling back to file URL.").arg(instanceId));
-                entryUrl = QUrl::fromLocalFile(WidgetPackage::entryPath(packagePath, manifest)).toString();
-            } else {
-                entryUrl = QStringLiteral("https://%1/%2").arg(hostName, manifest.entry);
+                const QString error = QStringLiteral("Failed to map widget virtual host for %1.").arg(instanceId);
+                appendLog(QStringLiteral("error"), error);
+                appendInstanceLog(instanceId, QStringLiteral("error"), error);
+                sendIpcMessage(QString::fromLatin1(IpcType::WidgetError), {
+                    { QStringLiteral("instanceId"), instanceId },
+                    { QStringLiteral("message"), error }
+                });
+                return;
             }
+            entryUrl = QStringLiteral("https://%1/%2").arg(hostName, manifest.entry);
 
             const QJsonObject geometry = message.value(QStringLiteral("geometry")).toObject();
             const QRect rect(
@@ -597,7 +659,7 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                 geometry.value(QStringLiteral("height")).toInt(manifest.height));
             m_sharedWidgetGeometries.insert(instanceId, rect);
             m_sharedWidgetHosts.insert(instanceId, hostName);
-            updateSharedWindowRegion();
+            syncSharedRegion(QStringLiteral("add widget"));
             appendLog(QStringLiteral("hit"), QStringLiteral("added shared rect id=%1 rect=%2,%3 %4x%5 rectCount=%6")
                 .arg(instanceId,
                      QString::number(rect.x()),
@@ -605,29 +667,27 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                      QString::number(rect.width()),
                      QString::number(rect.height()),
                      QString::number(m_sharedWidgetGeometries.size())));
-            QStringList permissions;
-            const QJsonArray permissionArray = message.value(QStringLiteral("permissions")).toArray();
-            for (const QJsonValue& value : permissionArray) {
-                const QString permission = value.toString().trimmed();
-                if (!permission.isEmpty()) {
-                    permissions.append(permission);
-                }
-            }
+            m_sharedWidgetPermissions.insert(instanceId, permissions);
             queueOrSendHostPageMessage(widgetInstancePayload(instanceId,
                                                              packagePath,
                                                              manifest,
                                                              rect,
                                                              permissions,
-                                                             message.value(QStringLiteral("development")).toBool(false),
+                                                             isDevelopment,
                                                              message.value(QStringLiteral("autoReload")).toBool(false),
                                                              entryUrl));
+            if (isDevelopment) {
+                m_pendingOpenDevTools = true;
+                openDevToolsWhenReady();
+            }
             return;
         }
         if (type == QString::fromLatin1(IpcType::RemoveWidget)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString()).trimmed();
             m_sharedWidgetGeometries.remove(instanceId);
             m_sharedWidgetHosts.remove(instanceId);
-            updateSharedWindowRegion();
+            m_sharedWidgetPermissions.remove(instanceId);
+            syncSharedRegion(QStringLiteral("remove widget"));
             appendLog(QStringLiteral("hit"), QStringLiteral("removed shared rect id=%1 rectCount=%2")
                 .arg(instanceId, QString::number(m_sharedWidgetGeometries.size())));
             queueOrSendHostPageMessage({
@@ -653,7 +713,7 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             }
             if (rect.isValid()) {
                 m_sharedWidgetGeometries.insert(instanceId, rect);
-                updateSharedWindowRegion();
+                syncSharedRegion(QStringLiteral("update widget geometry"));
                 appendLog(QStringLiteral("hit"), QStringLiteral("updated shared rect id=%1 rect=%2,%3 %4x%5 rectCount=%6")
                     .arg(instanceId,
                          QString::number(rect.x()),
@@ -666,6 +726,11 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             return;
         }
         if (type == QString::fromLatin1(IpcType::ReloadWidget)) {
+            queueOrSendHostPageMessage(message);
+            return;
+        }
+        if (type == QString::fromLatin1(IpcType::SystemInfoResponse) ||
+            type == QString::fromLatin1(IpcType::SystemInfoUpdate)) {
             queueOrSendHostPageMessage(message);
             return;
         }
@@ -824,7 +889,7 @@ void WidgetHostRuntime::renderHtmlWidget()
                 environment->CreateCoreWebView2Controller(
                     parentWindow,
                     Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                        [this, entryPath](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                        [this, entryPath, environment](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
                             if (FAILED(controllerResult) || !controller) {
                                 appendLog(QStringLiteral("error"), QStringLiteral("Failed to create WebView2 controller"));
                                 renderHtmlPlaceholder(tr("Failed to create WebView2 controller."));
@@ -837,6 +902,7 @@ void WidgetHostRuntime::renderHtmlWidget()
                             controller->get_CoreWebView2(&webView);
                             m_webView = webView;
                             updateWebViewBounds();
+                            openDevToolsWhenReady();
 
                             ComPtr<ICoreWebView2Controller2> controller2;
                             if (SUCCEEDED(controller->QueryInterface(IID_PPV_ARGS(&controller2)))) {
@@ -928,7 +994,7 @@ void WidgetHostRuntime::renderSharedHtmlRuntime()
                 environment->CreateCoreWebView2Controller(
                     parentWindow,
                     Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                        [this, entryPath](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                        [this, entryPath, environment](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
                             if (FAILED(controllerResult) || !controller) {
                                 appendLog(QStringLiteral("error"), QStringLiteral("Failed to create shared WebView2 controller"));
                                 renderHtmlPlaceholder(tr("Failed to create WebView2 controller."));
@@ -961,6 +1027,7 @@ void WidgetHostRuntime::renderSharedHtmlRuntime()
                             if (webView) {
                                 installWebConsoleLogging();
                                 installSharedWidgetApiBridge();
+                                installSharedWebResourceGuards(environment);
                                 EventRegistrationToken token = {};
                                 webView->add_WebMessageReceived(
                                     Callback<ICoreWebView2WebMessageReceivedEventHandler>(
@@ -989,35 +1056,35 @@ void WidgetHostRuntime::renderSharedHtmlRuntime()
 #endif
 }
 
+void WidgetHostRuntime::openDevToolsWhenReady()
+{
+#ifdef LINDESK_HAS_WEBVIEW2
+    if (!m_pendingOpenDevTools) {
+        return;
+    }
+    auto* webView = static_cast<ICoreWebView2*>(m_webView);
+    if (!webView) {
+        return;
+    }
+    if (SUCCEEDED(webView->OpenDevToolsWindow())) {
+        m_pendingOpenDevTools = false;
+    }
+#endif
+}
+
 QString WidgetHostRuntime::sharedRuntimeEntryPath() const
 {
     const QString relativePath = QStringLiteral("resources/LinWidgetRuntime/host.html");
     const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList candidates = {
-        AppPaths::userLinWidgetRuntimeHostFilePath(),
-        QDir(appDir).filePath(relativePath),
-        QDir(QDir::currentPath()).filePath(relativePath),
-        QDir(appDir).filePath(QStringLiteral("../resources/LinWidgetRuntime/host.html")),
-        QDir(appDir).filePath(QStringLiteral("../../resources/LinWidgetRuntime/host.html"))
-    };
-
-    QStringList checkedPaths;
-    for (const QString& candidate : candidates) {
-        const QString cleanPath = QDir::cleanPath(candidate);
-        if (checkedPaths.contains(cleanPath, Qt::CaseInsensitive)) {
-            continue;
-        }
-        checkedPaths.append(cleanPath);
-        if (QFileInfo::exists(cleanPath)) {
-            appendLog(QStringLiteral("info"), QStringLiteral("shared runtime page=%1").arg(cleanPath));
-            return cleanPath;
-        }
+    const QString entryPath = QDir::cleanPath(QDir(appDir).filePath(relativePath));
+    if (QFileInfo::exists(entryPath)) {
+        appendLog(QStringLiteral("info"), QStringLiteral("shared runtime page=%1").arg(entryPath));
+        return entryPath;
     }
 
     appendLog(QStringLiteral("error"),
-              QStringLiteral("shared runtime page missing. appDir=%1 cwd=%2 checked=%3")
-                  .arg(appDir, QDir::currentPath(), checkedPaths.join(QStringLiteral("; "))));
-    return checkedPaths.isEmpty() ? QDir(appDir).filePath(relativePath) : checkedPaths.first();
+              QStringLiteral("shared runtime page missing. path=%1").arg(entryPath));
+    return entryPath;
 }
 
 void WidgetHostRuntime::installSharedWidgetApiBridge()
@@ -1031,6 +1098,67 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
     const QString script = QStringLiteral(
         "(() => {"
         "try {"
+        "const host = String(location.hostname || '').toLowerCase();"
+        "const labels = host.split('.');"
+        "const marker = labels.length >= 3 ? labels[labels.length - 3] : '';"
+        "const isWidget = host.endsWith('.linwidget.local') && marker.startsWith('p');"
+        "if (isWidget) {"
+        " const installSelectionStyle = () => {"
+        "  try {"
+        "   if (document.getElementById('linwidget-selection-style')) return;"
+        "   const style = document.createElement('style');"
+        "   style.id = 'linwidget-selection-style';"
+        "   style.textContent = 'html,body,#app,.lin-widget-root,body *{user-select:none!important;-webkit-user-select:none!important;}input,textarea,select,[contenteditable=\"true\"],[contenteditable=\"true\"] *,.selectable-text,.selectable-text *,.linwidget-selectable-text,.linwidget-selectable-text *{user-select:text!important;-webkit-user-select:text!important;}';"
+        "   const target = document.head || document.documentElement;"
+        "   if (target) target.appendChild(style);"
+        "  } catch (_) {}"
+        " };"
+        " installSelectionStyle();"
+        " if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSelectionStyle, {once:true});"
+        "}"
+        "const hasNetwork = marker.includes('n');"
+        "const hasStorage = marker.includes('s');"
+        "const postDenied = (permission, url) => {"
+        " try {"
+        "  const payload = {type:'permission_denied', permission:permission};"
+        "  if (url) payload.url = String(url);"
+        "  if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');"
+        "  else if (window.chrome && chrome.webview) chrome.webview.postMessage(payload);"
+        " } catch (_) {}"
+        "};"
+        "if (isWidget && !hasNetwork) {"
+        " const resourceUrl = value => { try { return new URL(typeof value === 'string' ? value : (value && value.url) || '', location.href).href; } catch (_) { return ''; } };"
+        " const denyNetwork = value => { postDenied('network', resourceUrl(value)); throw new Error('LinWidget network permission denied'); };"
+        " const rejectNetwork = value => { postDenied('network', resourceUrl(value)); return Promise.reject(new Error('LinWidget network permission denied')); };"
+        " const isOwnResource = value => {"
+        "  try { const url = new URL(typeof value === 'string' ? value : (value && value.url) || '', location.href); return url.origin === location.origin && url.hostname === location.hostname; } catch (_) { return false; }"
+        " };"
+        " try {"
+        "  const originalFetch = window.fetch;"
+        "  window.fetch = (resource, init) => isOwnResource(resource) ? originalFetch.call(window, resource, init) : rejectNetwork(resource);"
+        " } catch (_) {}"
+        " try {"
+        "  const OriginalXMLHttpRequest = window.XMLHttpRequest;"
+        "  window.XMLHttpRequest = function(){"
+        "   const xhr = new OriginalXMLHttpRequest();"
+        "   const originalOpen = xhr.open;"
+        "   xhr.open = function(method, url){ if (!isOwnResource(url)) denyNetwork(url); return originalOpen.apply(xhr, arguments); };"
+        "   return xhr;"
+        "  };"
+        " } catch (_) {}"
+        " try { window.WebSocket = function(url){ denyNetwork(url); }; } catch (_) {}"
+        " try { window.EventSource = function(url){ denyNetwork(url); }; } catch (_) {}"
+        " try {"
+        "  const originalSendBeacon = navigator.sendBeacon;"
+        "  navigator.sendBeacon = (url, data) => isOwnResource(url) ? originalSendBeacon.call(navigator, url, data) : (postDenied('network', resourceUrl(url)), false);"
+        " } catch (_) {}"
+        "}"
+        "if (isWidget && !hasStorage) {"
+        " const denyStorage = () => { postDenied('storage'); throw new Error('LinWidget storage permission denied'); };"
+        " try { Object.defineProperty(window, 'localStorage', { configurable:false, get: denyStorage }); } catch (_) {}"
+        " try { Object.defineProperty(window, 'sessionStorage', { configurable:false, get: denyStorage }); } catch (_) {}"
+        " try { Object.defineProperty(window, 'indexedDB', { configurable:false, get: denyStorage }); } catch (_) {}"
+        "}"
         "const postToHost = (type, value) => {"
         " const payload = Object.assign({type:type}, value && typeof value === 'object' ? value : {});"
         " if (window.parent && window.parent !== window) {"
@@ -1039,10 +1167,70 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
         " }"
         " try { chrome.webview.postMessage(payload); } catch (_) {}"
         "};"
+        "let systemInfoSeq = 0;"
+        "const systemInfoPending = new Map();"
+        "const systemInfoWatchers = new Map();"
+        "const sendSystemInfo = (action, value) => new Promise((resolve, reject) => {"
+        " const requestId = 'system-info-' + Date.now() + '-' + (++systemInfoSeq);"
+        " systemInfoPending.set(requestId, {resolve:resolve, reject:reject});"
+        " postToHost('linwidget_system_info_request', Object.assign({action:action, requestId:requestId}, value && typeof value === 'object' ? value : {}));"
+        "});"
+        "const installSystemInfoApi = target => {"
+        " const systemInfo = target.systemInfo && typeof target.systemInfo === 'object' ? target.systemInfo : {};"
+        " systemInfo.getSnapshot = () => sendSystemInfo('snapshot');"
+        " systemInfo.watch = (callback, intervalMs) => {"
+        "  const watchId = 'watch-' + Date.now() + '-' + (++systemInfoSeq);"
+        "  if (typeof callback === 'function') systemInfoWatchers.set(watchId, callback);"
+        "  sendSystemInfo('watch', {watchId:watchId, intervalMs:Number(intervalMs) || 1000}).then(data => {"
+        "   const cb = systemInfoWatchers.get(watchId);"
+        "   if (cb) { try { cb(data); } catch (error) { setTimeout(() => { throw error; }, 0); } }"
+        "  }).catch(error => { try { console.error(error); } catch (_) {} });"
+        "  return watchId;"
+        " };"
+        " systemInfo.unwatch = watchId => {"
+        "  const id = String(watchId || '');"
+        "  systemInfoWatchers.delete(id);"
+        "  return sendSystemInfo('unwatch', {watchId:id});"
+        " };"
+        " target.systemInfo = systemInfo;"
+        "};"
         "const api = window.desktop && typeof window.desktop === 'object' ? window.desktop : {};"
+        "api.context = 'widget';"
+        "api.widgetId = api.widgetId || '';"
+        "api.instanceId = api.instanceId || '';"
+        "api.widgetName = api.widgetName || '';"
         "api.resizeWidget = value => postToHost('linwidget_resize_widget', value);"
         "api.setWidgetGeometry = value => postToHost('linwidget_set_widget_geometry', value);"
+        "api.setResizeUiVisible = value => postToHost('linwidget_set_resize_ui_visible', {visible: !!value});"
+        "api.openSettings = () => postToHost('linwidget_open_settings');"
+        "installSystemInfoApi(api);"
         "window.desktop = api;"
+        "window.addEventListener('message', event => {"
+        " const message = event.data || {};"
+        " if (!message || !message.type) return;"
+        " if (message.type === 'linwidget_system_info_response') {"
+        "  const pending = systemInfoPending.get(message.requestId || '');"
+        "  if (!pending) return;"
+        "  systemInfoPending.delete(message.requestId || '');"
+        "  if (message.ok === false) pending.reject(new Error(message.error || 'System information request failed'));"
+        "  else pending.resolve(message.data || {});"
+        "  return;"
+        " }"
+        " if (message.type === 'linwidget_system_info_update') {"
+        "  const cb = systemInfoWatchers.get(message.watchId || '');"
+        "  if (cb) { try { cb(message.data || {}); } catch (error) { setTimeout(() => { throw error; }, 0); } }"
+        "  return;"
+        " }"
+        " if (message.type !== 'linwidget_context') return;"
+        " const nextApi = window.desktop && typeof window.desktop === 'object' ? window.desktop : api;"
+        " nextApi.context = message.context || 'widget';"
+        " nextApi.widgetId = message.widgetId || '';"
+        " nextApi.instanceId = message.instanceId || '';"
+        " nextApi.widgetName = message.widgetName || '';"
+        " nextApi.openSettings = nextApi.openSettings || (() => postToHost('linwidget_open_settings'));"
+        " installSystemInfoApi(nextApi);"
+        " window.desktop = nextApi;"
+        "});"
         "} catch (error) { try { console.error('LinWidget desktop bridge failed', error); } catch (_) {} }"
         "})();");
 
@@ -1112,6 +1300,7 @@ QJsonObject WidgetHostRuntime::widgetInstancePayload(const QString& instanceId,
     payload.insert(QStringLiteral("type"), QString::fromLatin1(IpcType::AddWidget));
     payload.insert(QStringLiteral("instanceId"), instanceId);
     payload.insert(QStringLiteral("widgetId"), instanceId);
+    payload.insert(QStringLiteral("manifestId"), manifest.id);
     payload.insert(QStringLiteral("packagePath"), packagePath);
     payload.insert(QStringLiteral("name"), manifest.name);
     payload.insert(QStringLiteral("resizable"), manifest.resizable);
@@ -1127,7 +1316,9 @@ QJsonObject WidgetHostRuntime::widgetInstancePayload(const QString& instanceId,
     return payload;
 }
 
-QString WidgetHostRuntime::virtualHostNameForInstance(const QString& instanceId) const
+QString WidgetHostRuntime::virtualHostNameForInstance(const QString& instanceId,
+                                                      const QStringList& permissions,
+                                                      bool isDevelopment) const
 {
     QString safe = instanceId.toLower();
     for (QChar& ch : safe) {
@@ -1148,7 +1339,7 @@ QString WidgetHostRuntime::virtualHostNameForInstance(const QString& instanceId)
     if (safe.isEmpty()) {
         safe = QStringLiteral("widget");
     }
-    return safe + QStringLiteral(".linwidget.local");
+    return safe + QLatin1Char('.') + permissionHostSegment(permissions, isDevelopment) + QStringLiteral(".linwidget.local");
 }
 
 bool WidgetHostRuntime::mapWidgetVirtualHost(const QString& hostName, const QString& packagePath)
@@ -1175,6 +1366,94 @@ bool WidgetHostRuntime::mapWidgetVirtualHost(const QString& hostName, const QStr
 #endif
 }
 
+void WidgetHostRuntime::installSharedWebResourceGuards(void* environment)
+{
+#ifdef LINDESK_HAS_WEBVIEW2
+    auto* webView = static_cast<ICoreWebView2*>(m_webView);
+    auto* webEnvironment = static_cast<ICoreWebView2Environment*>(environment);
+    if (!webView || !webEnvironment) {
+        return;
+    }
+
+    webView->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+    EventRegistrationToken token = {};
+    webView->add_WebResourceRequested(
+        Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+            [this, webEnvironment](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+                if (!args) {
+                    return S_OK;
+                }
+                ComPtr<ICoreWebView2WebResourceRequest> request;
+                if (FAILED(args->get_Request(&request)) || !request) {
+                    return S_OK;
+                }
+                LPWSTR rawUri = nullptr;
+                if (FAILED(request->get_Uri(&rawUri)) || !rawUri) {
+                    return S_OK;
+                }
+                const QString uriText = QString::fromWCharArray(rawUri);
+                CoTaskMemFree(rawUri);
+
+                const QUrl url(uriText);
+                const QString scheme = url.scheme().toLower();
+                if (scheme == QStringLiteral("file")) {
+                    const QString runtimePath = QDir::cleanPath(QFileInfo(sharedRuntimeEntryPath()).absoluteFilePath());
+                    const QString runtimeDir = QDir::cleanPath(QFileInfo(runtimePath).absolutePath()).toLower();
+                    const QString requestedPath = QDir::cleanPath(url.toLocalFile()).toLower();
+                    if (requestedPath == runtimePath.toLower() ||
+                        requestedPath.startsWith(runtimeDir + QLatin1Char('/')) ||
+                        requestedPath.startsWith(runtimeDir + QLatin1Char('\\'))) {
+                        return S_OK;
+                    }
+                }
+
+                QString refererHost;
+                QString originHost;
+                ComPtr<ICoreWebView2HttpRequestHeaders> headers;
+                if (SUCCEEDED(request->get_Headers(&headers)) && headers) {
+                    refererHost = QUrl(webResourceHeaderValue(headers.Get(), L"Referer")).host().toLower();
+                    originHost = QUrl(webResourceHeaderValue(headers.Get(), L"Origin")).host().toLower();
+                }
+                const QString host = url.host().toLower();
+                const QString requestInstanceId = m_sharedWidgetHosts.key(host);
+                const QString refererInstanceId = refererHost.isEmpty() ? QString() : m_sharedWidgetHosts.key(refererHost);
+                const QString originInstanceId = originHost.isEmpty() ? QString() : m_sharedWidgetHosts.key(originHost);
+                QString instanceId = !refererInstanceId.isEmpty() ? refererInstanceId : (!originInstanceId.isEmpty() ? originInstanceId : requestInstanceId);
+                if (!instanceId.isEmpty()) {
+                    if (scheme == QStringLiteral("https") && host.endsWith(QStringLiteral(".linwidget.local"))) {
+                        const QString ownHost = m_sharedWidgetHosts.value(instanceId);
+                        if (host == ownHost) {
+                            return S_OK;
+                        }
+                        appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: network url=%2").arg(instanceId, uriText));
+                        appendInstanceLog(instanceId, QStringLiteral("permission"), QStringLiteral("%1 permission denied: network url=%2").arg(instanceId, uriText));
+                    } else if ((scheme == QStringLiteral("http") || scheme == QStringLiteral("https")) &&
+                               hasNetworkPermission(m_sharedWidgetPermissions.value(instanceId))) {
+                        return S_OK;
+                    } else {
+                        appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: network url=%2").arg(instanceId, uriText));
+                        appendInstanceLog(instanceId, QStringLiteral("permission"), QStringLiteral("%1 permission denied: network url=%2").arg(instanceId, uriText));
+                    }
+                } else if (scheme == QStringLiteral("about") || scheme == QStringLiteral("data") || scheme == QStringLiteral("blob")) {
+                    return S_OK;
+                } else {
+                    appendLog(QStringLiteral("permission"), QStringLiteral("permission denied: unknown resource url=%1").arg(uriText));
+                }
+
+                ComPtr<ICoreWebView2WebResourceResponse> response;
+                const std::wstring reason = L"LinWidget Permission Denied";
+                const std::wstring responseHeaders = L"Content-Type: text/plain\r\nAccess-Control-Allow-Origin: *";
+                if (SUCCEEDED(webEnvironment->CreateWebResourceResponse(nullptr, 403, reason.c_str(), responseHeaders.c_str(), &response)) && response) {
+                    args->put_Response(response.Get());
+                }
+                return S_OK;
+            }).Get(),
+        &token);
+#else
+    Q_UNUSED(environment);
+#endif
+}
+
 void WidgetHostRuntime::setSharedWindowGeometry()
 {
     const QRect virtualRect = QGuiApplication::primaryScreen()
@@ -1191,6 +1470,11 @@ void WidgetHostRuntime::setSharedWindowGeometry()
 
 void WidgetHostRuntime::updateSharedWindowRegion()
 {
+    syncSharedRegion(QStringLiteral("legacy update"));
+}
+
+void WidgetHostRuntime::syncSharedRegion(const QString& reason)
+{
     if (!m_sharedRuntime) {
         return;
     }
@@ -1205,10 +1489,14 @@ void WidgetHostRuntime::updateSharedWindowRegion()
     if (webViewSearch.window) {
         updateNativeWindowRegion(webViewSearch.window);
     }
-    appendLog(QStringLiteral("hit"), QStringLiteral("synced shared window region rectCount=%1 webview=%2 class=%3")
-        .arg(QString::number(m_sharedWidgetGeometries.size()),
+    appendLog(QStringLiteral("region"), QStringLiteral("synced shared window region reason=%1 rectCount=%2 host=%3 webview=%4 class=%5 visualization=%6 empty=%7")
+        .arg(reason,
+             QString::number(m_sharedWidgetGeometries.size()),
+             QString::number(reinterpret_cast<quintptr>(hostWindow), 16),
              QString::number(reinterpret_cast<quintptr>(webViewSearch.window), 16),
-             webViewSearch.className));
+             webViewSearch.className,
+             m_showWebViewBounds ? QStringLiteral("true") : QStringLiteral("false"),
+             m_sharedWidgetGeometries.isEmpty() ? QStringLiteral("true") : QStringLiteral("false")));
 #endif
 }
 
@@ -1327,14 +1615,15 @@ void WidgetHostRuntime::installWebPermissionGuards()
             "window.fetch=(...args)=>Promise.reject(new Error('LinWidget network permission denied'));"
             "window.XMLHttpRequest=function(){denyNetwork();};"
             "window.WebSocket=function(){denyNetwork();};"
-            "window.EventSource=function(){denyNetwork();};");
+            "window.EventSource=function(){denyNetwork();};"
+            "try{navigator.sendBeacon=()=>false;}catch(_){ }");
     }
     if (!permissions.canUseStorage(m_grantedPermissions)) {
         script += QStringLiteral(
             "const denyStorage=()=>{throw new Error('LinWidget storage permission denied');};"
-            "try{Object.defineProperty(window,'localStorage',{get:denyStorage});}catch(_){ }"
-            "try{Object.defineProperty(window,'sessionStorage',{get:denyStorage});}catch(_){ }"
-            "try{Object.defineProperty(window,'indexedDB',{get:denyStorage});}catch(_){ }");
+            "try{Object.defineProperty(window,'localStorage',{configurable:false,get:denyStorage});}catch(_){ }"
+            "try{Object.defineProperty(window,'sessionStorage',{configurable:false,get:denyStorage});}catch(_){ }"
+            "try{Object.defineProperty(window,'indexedDB',{configurable:false,get:denyStorage});}catch(_){ }");
     }
     script += QStringLiteral("})();");
 
@@ -1427,16 +1716,61 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
                          object.value(QStringLiteral("height")).toInt());
         if (rect.isValid()) {
             m_sharedWidgetGeometries.insert(instanceId, rect);
-            updateSharedWindowRegion();
+            syncSharedRegion(QStringLiteral("live widget geometry"));
         }
         if (!object.value(QStringLiteral("live")).toBool(false)) {
             sendIpcMessage(QString::fromLatin1(IpcType::WidgetGeometryChanged), object);
         }
         return;
     }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_open_settings")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        sendIpcMessage(QString::fromLatin1(IpcType::OpenWidgetSettings), {
+            { QStringLiteral("instanceId"), instanceId }
+        });
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_system_info_request")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        QJsonObject message = object;
+        message.insert(QStringLiteral("instanceId"), instanceId);
+        message.insert(QStringLiteral("widgetId"), instanceId);
+        message.remove(QStringLiteral("type"));
+        sendIpcMessage(QString::fromLatin1(IpcType::SystemInfoRequest), message);
+        return;
+    }
     if (type == QStringLiteral("console_log")) {
-        appendLog(QStringLiteral("console.") + object.value(QStringLiteral("level")).toString(QStringLiteral("log")),
-                  object.value(QStringLiteral("message")).toString());
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        const QString level = QStringLiteral("console.") + object.value(QStringLiteral("level")).toString(QStringLiteral("log"));
+        const QString message = object.value(QStringLiteral("message")).toString();
+        appendLog(level, message);
+        if (!instanceId.isEmpty()) {
+            appendInstanceLog(instanceId, level, message);
+        }
+        return;
+    }
+    if (type == QStringLiteral("permission_denied")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        const QString permission = object.value(QStringLiteral("permission")).toString();
+        const QString url = object.value(QStringLiteral("url")).toString();
+        const QString message = url.isEmpty()
+            ? QStringLiteral("%1 permission denied: %2")
+                .arg(instanceId.isEmpty() ? QStringLiteral("unknown") : instanceId,
+                     permission.isEmpty() ? QStringLiteral("unknown") : permission)
+            : QStringLiteral("%1 permission denied: %2 url=%3")
+                .arg(instanceId.isEmpty() ? QStringLiteral("unknown") : instanceId,
+                     permission.isEmpty() ? QStringLiteral("unknown") : permission,
+                     url);
+        appendLog(QStringLiteral("permission"), message);
+        if (!instanceId.isEmpty()) {
+            appendInstanceLog(instanceId, QStringLiteral("permission"), message);
+        }
         return;
     }
     if (type == QStringLiteral("js_error")) {
@@ -1522,7 +1856,24 @@ void WidgetHostRuntime::appendLog(const QString& level, const QString& message) 
 
 QString WidgetHostRuntime::logFilePath() const
 {
-    QString safeId = m_widgetId.trimmed();
+    return logFilePathForId(m_widgetId);
+}
+
+void WidgetHostRuntime::appendInstanceLog(const QString& instanceId, const QString& level, const QString& message) const
+{
+    const QString line = QStringLiteral("[%1] [%2] %3\n")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")),
+             level,
+             message);
+    QFile file(logFilePathForId(instanceId));
+    if (file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        file.write(line.toUtf8());
+    }
+}
+
+QString WidgetHostRuntime::logFilePathForId(const QString& id) const
+{
+    QString safeId = id.trimmed();
     for (QChar& ch : safeId) {
         if (!ch.isLetterOrNumber() && ch != QLatin1Char('.') && ch != QLatin1Char('-') && ch != QLatin1Char('_')) {
             ch = QLatin1Char('_');
@@ -1668,7 +2019,7 @@ void WidgetHostRuntime::updateWebViewBounds()
              QString::number(height()),
              QString::number(static_cast<qulonglong>(result), 16)));
     if (m_sharedRuntime) {
-        updateSharedWindowRegion();
+        syncSharedRegion(QStringLiteral("webview bounds"));
     }
 #endif
 }

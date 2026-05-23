@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="widget state-ready" id="timerWidget">
+    <div class="glass-panel">
+      <!-- Glow ambient background -->
+      <div class="ambient-glow"></div>
+      
+      <!-- Windows 11 Fluent Progress Ring -->
+      <div class="fluent-progress-container">
+        <svg class="fluent-progress-ring" viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="46"></circle>
+          <circle class="ring-progress" id="ringProgress" cx="50" cy="50" r="46"></circle>
+        </svg>
+      </div>
+
+      <!-- Theme/Style Switcher Dots -->
+      <div class="style-switcher">
+        <button class="style-dot active" data-style="neon" title="Neon Style"></button>
+        <button class="style-dot" data-style="fluent" title="Fluent Style"></button>
+      </div>
+      
+      <!-- Top header with theme control -->
+      <header class="top-bar">
+        <button id="themeToggle" class="icon-btn" title="Toggle Theme">
+          <svg id="iconSun" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" style="display:none;"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          <svg id="iconMoon" viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </header>
+
+      <!-- Time Display / Input -->
+      <div class="time-container">
+        <input type="text" id="timeInput" class="time-input" value="05:00" spellcheck="false" autocomplete="off" title="Click to edit time" />
+      </div>
+
+      <!-- Controls (Play) -->
+      <div class="controls-container">
+        <button id="actionBtn" class="action-btn">
+          <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+          <svg id="iconStop" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 6h12v12H6z"/></svg>
+        </button>
+      </div>
+    </div>
+    
+    <!-- 右键快捷菜单 -->
+    <div id="contextMenu" class="context-menu">
+      <div class="menu-item" data-time="1">1 分钟</div>
+      <div class="menu-item" data-time="3">3 分钟</div>
+      <div class="menu-item" data-time="5">5 分钟</div>
+      <div class="menu-item" data-time="10">10 分钟</div>
+      <div class="menu-item" data-time="25">25 分钟 (番茄钟)</div>
+      <div class="menu-separator"></div>
+      <div class="menu-item" data-time="60">1 小时</div>
+    </div>
+  </main>
+  
+  <audio id="timeEndAudio" src="TimeEnd.wav" preload="auto"></audio>
+  <script src="script.js"></script>
+</body>
+</html>

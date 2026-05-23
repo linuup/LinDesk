@@ -18,13 +18,18 @@
 #include <QMenu>
 #include <QAction>
 #include <QPointer>
+#include <QHash>
 #include "services/update/UpdateTypes.h"
 #include "ui/Fluent/FluentBaseWidget.h"
 #include <QCloseEvent>
 
 class LinBox;
+class QCheckBox;
+class QFileSystemWatcher;
+class QPlainTextEdit;
 class QProgressBar;
 class QStackedWidget;
+class QTabWidget;
 class QTimer;
 class UpdateChecker;
 class UpdateDownloader;
@@ -64,6 +69,7 @@ private:
     QWidget* createWindows11MenuPanel(QWidget* page);
     QWidget* createContextMenuPage();
     QWidget* createGridPage();
+    QWidget* createLinWidgetsPage();
     QWidget* createPluginsPage();
     QWidget* createAboutPage();
     QWidget* wrapScrollablePage(QWidget* content);
@@ -80,6 +86,29 @@ private:
     void startUpdateDownload();
     void installDownloadedUpdate();
     void resetUpdatePanel();
+    void reloadLinWidgetsSettingsPage();
+    void refreshLinWidgetSettingsButtons();
+    void refreshLinWidgetSettingsInspector();
+    void refreshLinWidgetSettingsRunningMaps();
+    void loadSelectedSettingsLinWidget();
+    void unloadSelectedSettingsLinWidget();
+    void reloadSelectedSettingsLinWidget();
+    void installOfficialSettingsLinWidget(const QString& packagePath);
+    void resetOfficialSettingsLinWidget(const QString& packagePath);
+    void addDevelopmentSettingsLinWidget();
+    void createDevelopmentSettingsLinWidget();
+    void exportDevelopmentSettingsLinWidget();
+    void deleteSelectedSettingsLinWidget();
+    void setSelectedSettingsLinWidgetPermission(const QString& permission, bool granted);
+    QListWidget* activeSettingsLinWidgetList() const;
+    QString selectedSettingsLinWidgetPackagePath() const;
+    QString selectedSettingsLinWidgetRegistryId() const;
+    bool selectedSettingsLinWidgetIsDevelopment() const;
+    QString selectedSettingsLinWidgetInstanceId() const;
+    QString selectedSettingsLinWidgetRegistryKey() const;
+    QString settingsLinWidgetRegistryKey(const QString& id, bool isDevelopment) const;
+    QString settingsLinWidgetPackageKey(const QString& packagePath) const;
+    QString settingsLinWidgetLogPath(const QString& instanceId) const;
 
     QPointer<LinBox> m_targetBox;
     QVector<QPointer<LinBox>> m_allBoxes;
@@ -91,6 +120,7 @@ private:
     QListWidgetItem* m_desktopTabItem = nullptr;
     QListWidgetItem* m_contextMenuTabItem = nullptr;
     QListWidgetItem* m_boxTabItem = nullptr;
+    QListWidgetItem* m_linWidgetsTabItem = nullptr;
     QListWidgetItem* m_pluginsTabItem = nullptr;
     QListWidgetItem* m_aboutTabItem = nullptr;
 
@@ -101,6 +131,10 @@ private:
     QLabel* m_aboutNameLabel = nullptr;
     QLabel* m_aboutVersionLabel = nullptr;
     QLabel* m_pluginsPageTitle = nullptr;
+    QLabel* m_linWidgetsPageTitle = nullptr;
+    QLabel* m_linWidgetsStatusLabel = nullptr;
+    QLabel* m_linWidgetsInspectorLabel = nullptr;
+    QLabel* m_linWidgetsErrorsLabel = nullptr;
     QLabel* m_pluginsEmptyLabel = nullptr;
     QLabel* m_previewLabel = nullptr;
     QLabel* m_previewBackground = nullptr;
@@ -157,6 +191,30 @@ private:
     QPushButton* m_settingsMinBtn = nullptr;
     QPushButton* m_settingsMaxBtn = nullptr;
     QPushButton* m_settingsCloseBtn = nullptr;
+    QTabWidget* m_linWidgetsTabs = nullptr;
+    QListWidget* m_officialLinWidgetsList = nullptr;
+    QListWidget* m_marketplaceLinWidgetsList = nullptr;
+    QListWidget* m_installedLinWidgetsList = nullptr;
+    QListWidget* m_developmentLinWidgetsList = nullptr;
+    QPlainTextEdit* m_linWidgetsLogView = nullptr;
+    QCheckBox* m_linWidgetNetworkPermissionCheck = nullptr;
+    QCheckBox* m_linWidgetStoragePermissionCheck = nullptr;
+    QCheckBox* m_linWidgetDesktopPermissionCheck = nullptr;
+    FluentToggleSwitch* m_linWidgetsRuntimeToggle = nullptr;
+    QPushButton* m_linWidgetLoadButton = nullptr;
+    QPushButton* m_linWidgetUnloadButton = nullptr;
+    QPushButton* m_linWidgetReloadButton = nullptr;
+    QPushButton* m_linWidgetOpenFolderButton = nullptr;
+    QPushButton* m_linWidgetDeleteButton = nullptr;
+    QPushButton* m_linWidgetAddDevButton = nullptr;
+    QPushButton* m_linWidgetNewProjectButton = nullptr;
+    QPushButton* m_linWidgetExportZipButton = nullptr;
+    QPushButton* m_linWidgetRemoveDevButton = nullptr;
+    QFileSystemWatcher* m_linWidgetsLogWatcher = nullptr;
+    QTimer* m_linWidgetsLogReloadTimer = nullptr;
+    QString m_currentLinWidgetLogPath;
+    QHash<QString, QString> m_linWidgetInstancesByPackage;
+    QHash<QString, QString> m_linWidgetInstancesById;
     QTimer* m_resizeRefreshTimer = nullptr;
     bool m_isQuittingFromTray = false;
     bool m_hasShownTrayHint = false;

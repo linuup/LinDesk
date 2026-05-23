@@ -4,9 +4,11 @@
 #include "desktop/widgets/linwidget/WidgetIpcManager.h"
 #include "desktop/widgets/linwidget/LayoutManager.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
+#include "services/SystemInfo/SystemInfoService.h"
 
 #include <QHash>
 #include <QObject>
+#include <QRect>
 #include <QTimer>
 #include <QFileSystemWatcher>
 #include <qwindowdefs.h>
@@ -17,6 +19,24 @@ class WidgetManager : public QObject {
     Q_OBJECT
 
 public:
+    struct LayerDiagnostics {
+        bool hasListViewWindow = false;
+        bool hasHostWindow = false;
+        bool syncSucceeded = false;
+        bool hostAboveListView = false;
+        bool hostRectMatchesListView = false;
+        bool emptyPointPassesThrough = false;
+        bool widgetPointHitsHost = false;
+        WId listViewWindow = 0;
+        WId hostWindow = 0;
+        WId pointWindow = 0;
+        QRect listViewRect;
+        QRect hostRect;
+        int visibleWidgetCount = 0;
+        int regionRectCount = 0;
+        QString reason;
+    };
+
     explicit WidgetManager(QObject* parent = nullptr);
     ~WidgetManager() override;
 
@@ -38,6 +58,8 @@ public:
     bool moveWidget(const QString& instanceId, const QPoint& pos);
     bool resizeWidget(const QString& instanceId, const QSize& size);
     bool removeWidgetState(const QString& instanceId);
+    void setEnabled(bool enabled);
+    bool isEnabled() const;
     void setHostParentWindow(WId parentWindow);
     WId hostParentWindow() const;
     void setDesktopLayerWindow(WId layerWindow);
@@ -46,13 +68,18 @@ public:
     bool showWebViewBounds() const;
     void syncWidgetWindowLayer(const QString& instanceId);
     void syncAllWidgetWindowLayers();
+    LayerDiagnostics layerDiagnostics() const;
+    LayerDiagnostics verifyWidgetLayerAndClickThrough();
+    QString layerDiagnosticsText(const LayerDiagnostics& diagnostics) const;
     void stopWidget(const QString& instanceId);
     void stopAll();
+    WidgetInstance widgetInstance(const QString& instanceId) const;
 
 signals:
     void widgetLaunched(const QString& instanceId);
     void widgetStopped(const QString& instanceId);
     void widgetError(const QString& instanceId, const QString& errorMessage);
+    void widgetSettingsRequested(const QString& instanceId);
 
 private:
     QString makeInstanceId(const WidgetManifest& manifest) const;
@@ -65,13 +92,27 @@ private:
                               const WidgetLayoutState& layoutState,
                               QString* errorMessage = nullptr);
     void handleIpcMessage(const QString& widgetId, const QJsonObject& message);
+    void handleSystemInfoRequest(const QJsonObject& message);
+    void sendSystemInfoResponse(const QString& instanceId,
+                                const QString& requestId,
+                                const QString& action,
+                                bool ok,
+                                const QJsonObject& data = QJsonObject(),
+                                const QString& errorMessage = QString());
+    void sendSystemInfoUpdate(const QString& instanceId,
+                              const QString& watchId,
+                              const QJsonObject& data);
+    void stopSystemInfoWatchesForInstance(const QString& instanceId);
     bool sendGeometryToHost(const QString& instanceId, const QRect& geometry);
+    void resendVisibleWidgetsToSharedHost();
+    bool sharedHostLayerNeedsRecovery() const;
     void checkHeartbeats();
     void scheduleSaveToConfig();
     void saveToDefaultConfig();
     void configureDevelopmentWatcher(const WidgetInstance& instance);
     void clearDevelopmentWatcher(const QString& instanceId);
     QStringList watchedFilesForPackage(const QString& packagePath) const;
+    QStringList watchedDirectoriesForPackage(const QString& packagePath) const;
 
     WidgetIpcManager m_ipc;
     LayoutManager m_layout;
@@ -84,10 +125,14 @@ private:
     QTimer m_saveTimer;
     QHash<QString, QFileSystemWatcher*> m_developmentWatchers;
     QHash<QString, QTimer*> m_developmentReloadTimers;
+    QHash<QString, QTimer*> m_systemInfoWatchTimers;
+    SystemInfo::SystemInfoService m_systemInfoService;
     WidgetHostController* m_sharedHost = nullptr;
     QHash<QString, WidgetInstance> m_instances;
     bool m_stoppingAll = false;
     bool m_showWebViewBounds = false;
+    bool m_enabled = true;
+    LayerDiagnostics m_lastLayerDiagnostics;
 };
 
 }

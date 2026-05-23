@@ -390,7 +390,6 @@ void RightMenu::initializeCustomMenu()
     m_sortByTypeAction = nullptr;
     m_pasteAction = nullptr;
     m_createBoxAction = nullptr;
-    m_createTimerAction = nullptr;
     m_mapFolderAction = nullptr;
     m_linDeskAction = nullptr;
     pasteShortcutAction = nullptr;
@@ -454,11 +453,6 @@ void RightMenu::initializeCustomMenu()
     connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
     m_customMenu->addAction(m_createBoxAction);
 
-    m_createTimerAction = new QAction(tr("New Timer"), linDeskMenu);
-    m_createTimerAction->setIcon(QIcon(gridPix));
-    connect(m_createTimerAction, &QAction::triggered, this, &RightMenu::onCreateTimer);
-    linDeskMenu->addAction(m_createTimerAction);
-
     m_mapFolderAction = new QAction(tr("Map Folder"), linDeskMenu);
     m_mapFolderAction->setIcon(QIcon(":/Assets/folder-share.svg"));
     connect(m_mapFolderAction, &QAction::triggered, this, &RightMenu::onMapFolder);
@@ -510,7 +504,6 @@ void RightMenu::onRefresh() { emit refreshTriggered(); }
 void RightMenu::onPaste() { emit pasteTriggered(); }
 void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
 void RightMenu::onCreateBox() { emit createBoxTriggered(); }
-void RightMenu::onCreateTimer() { emit createTimerTriggered(); }
 void RightMenu::onMapFolder() { emit mapFolderTriggered(); }
 void RightMenu::onOrganizeDesktop() { emit organizeDesktopTriggered(); }
 void RightMenu::onQuitApp() { emit quitAppTriggered(); }
@@ -954,10 +947,6 @@ QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSessi
     sortItems.append(actionItem(shellMenuText("Date modified", "修改日期"), QStringLiteral("sort_date"), true, true, m_sortByDateAction && m_sortByDateAction->isChecked()));
 
     QJsonArray linDeskItems;
-    const QJsonObject timerItem = desktopActionItem(tr("New Timer"), QStringLiteral("create_timer"), QStringLiteral("NewTimer.png"));
-    if (!timerItem.isEmpty()) {
-        linDeskItems.append(timerItem);
-    }
     const QJsonObject mapFolderItem = desktopActionItem(tr("Map Folder"), QStringLiteral("map_folder"), QStringLiteral("MapFolder.png"));
     if (!mapFolderItem.isEmpty()) {
         linDeskItems.append(mapFolderItem);
@@ -1071,8 +1060,6 @@ void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoin
         openUriWithShell(L"ms-settings:personalization");
     } else if (commandId == QStringLiteral("create_box")) {
         onCreateBox();
-    } else if (commandId == QStringLiteral("create_timer")) {
-        onCreateTimer();
     } else if (commandId == QStringLiteral("map_folder")) {
         onMapFolder();
     } else if (commandId == QStringLiteral("organize_desktop")) {

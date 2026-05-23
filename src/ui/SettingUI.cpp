@@ -15,13 +15,21 @@
 #include <QCheckBox>
 #include "desktop/ListView.h"
 #include "desktop/LinDesktop.h"
+#include "desktop/widgets/linwidget/ConfigManager.h"
+#include "desktop/widgets/linwidget/LinWidgetProjectTools.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/linwidget/WidgetPackage.h"
+#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInput.h"
 #include "services/update/UpdateChecker.h"
 #include "services/update/UpdateDownloader.h"
 #include <QProcess>
 #include <QProgressBar>
+#include <QPlainTextEdit>
+#include <QMessageBox>
 #include <QScrollArea>
+#include <QTextCursor>
 #include <QDateTime>
 #include <windowsx.h>
 #include <QStackedWidget>
@@ -40,16 +48,20 @@
 #include "services/ShellMenuExclusionStore.h"
 #include "services/SysInfoUtil.h" // For ShortcutArrowManager
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QComboBox>
 #include <QListWidget>
 #include <QLayoutItem>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QDesktopServices>
 #include <QSignalBlocker>
 #include <QSettings>
+#include <QTabWidget>
 #include <QUrl>
 #include <QDir>
 #include <QShowEvent>
@@ -473,6 +485,31 @@ QFrame* createDivider(QWidget* parent)
     return divider;
 }
 
+QPushButton* createSettingsActionButton(const QString& text, QWidget* parent, bool accent = false, bool destructive = false)
+{
+    QPushButton* button = new QPushButton(text, parent);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setMinimumHeight(32);
+    button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    button->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: %1;"
+        "  color: %2;"
+        "  border: 1px solid %3;"
+        "  border-radius: 7px;"
+        "  padding: 0 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 700;"
+        "}"
+        "QPushButton:hover { background: %4; }"
+        "QPushButton:disabled { background: #e5e7eb; border-color: #d1d5db; color: #9ca3af; }")
+        .arg(accent ? QStringLiteral("#0078d4") : (destructive ? QStringLiteral("#fff1f2") : QStringLiteral("#ffffff")),
+             accent ? QStringLiteral("#ffffff") : (destructive ? QStringLiteral("#b91c1c") : QStringLiteral("#111827")),
+             accent ? QStringLiteral("#0078d4") : (destructive ? QStringLiteral("#fecdd3") : QStringLiteral("#cfd8e6")),
+             accent ? QStringLiteral("#0b86e8") : (destructive ? QStringLiteral("#ffe4e6") : QStringLiteral("#f5f9ff"))));
+    return button;
+}
+
 QWidget* createSwitchRow(const QString& icon,
                          const QString& title,
                          const QString& subtitle,
@@ -739,6 +776,7 @@ void SettingUI::initUI() {
         {0xE7F8, tr("Window")},
         {0xECAA, tr("Context Menu")},
         {0xF133, tr("Box")},
+        {0xE8A5, tr("LinWidgets")},
         {0xF22C, tr("Plugins")},
         {0xE946, tr("About")}
     };
@@ -753,8 +791,9 @@ void SettingUI::initUI() {
         case 1: m_desktopTabItem = item; break;
         case 2: m_contextMenuTabItem = item; break;
         case 3: m_boxTabItem = item; break;
-        case 4: m_pluginsTabItem = item; break;
-        case 5: m_aboutTabItem = item; break;
+        case 4: m_linWidgetsTabItem = item; break;
+        case 5: m_pluginsTabItem = item; break;
+        case 6: m_aboutTabItem = item; break;
         default: break;
         }
     }
@@ -813,6 +852,7 @@ void SettingUI::initUI() {
     m_contentStack->addWidget(wrapScrollablePage(createDesktopPage()));
     m_contentStack->addWidget(wrapScrollablePage(createContextMenuPage()));
     m_contentStack->addWidget(wrapScrollablePage(createGridPage()));
+    m_contentStack->addWidget(wrapScrollablePage(createLinWidgetsPage()));
     m_contentStack->addWidget(createPluginsPage());
     m_contentStack->addWidget(wrapScrollablePage(createAboutPage()));
 
@@ -2513,6 +2553,1418 @@ QWidget* SettingUI::createGridPage() {
     return page;
 }
 
+namespace {
+QString runtimeLinWidgetsDirForSettings()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets"));
+}
+
+QString marketplaceFilePathForSettings()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgetMarketplace/marketplace.json"));
+}
+
+QString safeLinWidgetFileName(QString id)
+{
+    for (QChar& ch : id) {
+        if (!ch.isLetterOrNumber() && ch != QLatin1Char('.') && ch != QLatin1Char('-') && ch != QLatin1Char('_')) {
+            ch = QLatin1Char('_');
+        }
+    }
+    return id.isEmpty() ? QStringLiteral("widget") : id;
+}
+
+bool settingsSkipLinWidgetCopyEntry(const QString& name)
+{
+    return name == QStringLiteral(".git") ||
+        name == QStringLiteral(".webview2") ||
+        name == QStringLiteral("node_modules") ||
+        name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
+        name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
+        name.compare(QStringLiteral("temp"), Qt::CaseInsensitive) == 0;
+}
+
+bool settingsCopyLinWidgetDirectory(const QString& sourcePath, const QString& targetPath, QString* errorMessage)
+{
+    const QDir source(sourcePath);
+    if (!source.exists()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Source widget directory does not exist: %1").arg(sourcePath);
+        }
+        return false;
+    }
+    if (!QDir().mkpath(targetPath)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Cannot create widget directory: %1").arg(targetPath);
+        }
+        return false;
+    }
+
+    const QFileInfoList entries = source.entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        if (settingsSkipLinWidgetCopyEntry(entry.fileName())) {
+            continue;
+        }
+        const QString targetEntryPath = QDir(targetPath).filePath(entry.fileName());
+        if (entry.isDir()) {
+            if (!settingsCopyLinWidgetDirectory(entry.absoluteFilePath(), targetEntryPath, errorMessage)) {
+                return false;
+            }
+        } else {
+            QFile::remove(targetEntryPath);
+            if (!QFile::copy(entry.absoluteFilePath(), targetEntryPath)) {
+                if (errorMessage) {
+                    *errorMessage = QStringLiteral("Cannot copy widget file: %1").arg(entry.absoluteFilePath());
+                }
+                return false;
+            }
+        }
+    }
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+bool settingsRemoveDirectory(const QString& path, QString* errorMessage)
+{
+    const QFileInfo info(path);
+    if (!info.exists()) {
+        if (errorMessage) {
+            errorMessage->clear();
+        }
+        return true;
+    }
+    if (!info.isDir() || !QDir(path).removeRecursively()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Cannot remove directory: %1").arg(path);
+        }
+        return false;
+    }
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+QString settingsInstalledTargetForManifest(const LinWidget::WidgetManifest& manifest)
+{
+    QString safe = manifest.id.trimmed();
+    for (QChar& ch : safe) {
+        if (!ch.isLetterOrNumber() && ch != QLatin1Char('.') && ch != QLatin1Char('-') && ch != QLatin1Char('_')) {
+            ch = QLatin1Char('_');
+        }
+    }
+    if (safe.isEmpty()) {
+        safe = QStringLiteral("widget");
+    }
+    return QDir(AppPaths::userLinWidgetsDir()).filePath(safe);
+}
+
+QString safeLinWidgetInstanceFileNameForSettings(QString instanceId)
+{
+    for (QChar& ch : instanceId) {
+        if (!ch.isLetterOrNumber() && ch != QLatin1Char('.') && ch != QLatin1Char('-') && ch != QLatin1Char('_')) {
+            ch = QLatin1Char('_');
+        }
+    }
+    return instanceId.isEmpty() ? QStringLiteral("widget") : instanceId;
+}
+
+bool settingsEnsureDefaultLinWidgetsInstalled()
+{
+    const QDir sourceRoot(runtimeLinWidgetsDirForSettings());
+    if (!sourceRoot.exists()) {
+        return false;
+    }
+
+    const QString targetRoot = AppPaths::userLinWidgetsDir();
+    const QString markerPath = QDir(targetRoot).filePath(QStringLiteral(".defaults-installed"));
+    if (QFileInfo::exists(markerPath)) {
+        return true;
+    }
+
+    const QFileInfoList entries = sourceRoot.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        const QString targetPath = QDir(targetRoot).filePath(entry.fileName());
+        if (QFileInfo::exists(targetPath)) {
+            continue;
+        }
+        QString copyError;
+        settingsCopyLinWidgetDirectory(entry.absoluteFilePath(), targetPath, &copyError);
+    }
+
+    QFile marker(markerPath);
+    if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        marker.write("1\n");
+    }
+    return true;
+}
+
+bool settingsRemoveLinWidgetLayoutState(const QString& instanceId, const QString& packagePath)
+{
+    QVector<LinWidget::WidgetLayoutState> states;
+    QString errorMessage;
+    if (!LinWidget::ConfigManager::loadLayout(LinWidget::ConfigManager::defaultConfigPath(), &states, &errorMessage)) {
+        return false;
+    }
+
+    const QString packageKey = QDir::cleanPath(QFileInfo(packagePath).absoluteFilePath()).toLower();
+    QVector<LinWidget::WidgetLayoutState> keptStates;
+    keptStates.reserve(states.size());
+    for (const LinWidget::WidgetLayoutState& state : states) {
+        const QString statePackageKey = QDir::cleanPath(QFileInfo(state.packagePath).absoluteFilePath()).toLower();
+        if (state.instanceId == instanceId || (!packageKey.isEmpty() && statePackageKey == packageKey)) {
+            continue;
+        }
+        keptStates.append(state);
+    }
+    return LinWidget::ConfigManager::saveLayout(LinWidget::ConfigManager::defaultConfigPath(), keptStates, nullptr);
+}
+
+constexpr int SettingsLinWidgetPackagePathRole = Qt::UserRole;
+constexpr int SettingsLinWidgetRegistryIdRole = Qt::UserRole + 1;
+constexpr int SettingsLinWidgetRuntimeTypeRole = Qt::UserRole + 2;
+constexpr int SettingsLinWidgetDefaultSizeRole = Qt::UserRole + 3;
+constexpr int SettingsLinWidgetDevelopmentRole = Qt::UserRole + 4;
+constexpr int SettingsLinWidgetNameRole = Qt::UserRole + 5;
+constexpr int SettingsLinWidgetVersionRole = Qt::UserRole + 6;
+constexpr int SettingsLinWidgetAuthorRole = Qt::UserRole + 7;
+constexpr int SettingsLinWidgetDescriptionRole = Qt::UserRole + 8;
+constexpr int SettingsLinWidgetAutoLoadRole = Qt::UserRole + 9;
+constexpr int SettingsLinWidgetGrantedPermissionsRole = Qt::UserRole + 10;
+constexpr int SettingsLinWidgetRequestedPermissionsRole = Qt::UserRole + 11;
+constexpr int SettingsLinWidgetSourcePathRole = Qt::UserRole + 12;
+constexpr int SettingsLinWidgetCategoryRole = Qt::UserRole + 13;
+constexpr int SettingsLinWidgetTrustedRole = Qt::UserRole + 14;
+constexpr int SettingsLinWidgetOfficialInstalledPathRole = Qt::UserRole + 15;
+
+QString settingsPermissionsText(const QStringList& permissions)
+{
+    return permissions.isEmpty() ? QStringLiteral("none") : permissions.join(QStringLiteral(", "));
+}
+
+QString settingsWidgetStateText(const QHash<QString, QString>& runningById,
+                                const QHash<QString, QString>& runningByPackage,
+                                const QString& registryKey,
+                                const QString& packageKey)
+{
+    return runningById.contains(registryKey) || runningByPackage.contains(packageKey)
+        ? QStringLiteral("running")
+        : QStringLiteral("stopped");
+}
+
+QString settingsWidgetItemText(const QString& name,
+                               const QString& id,
+                               const QString& version,
+                               bool isDevelopment,
+                               bool autoLoad,
+                               const QString& path,
+                               const QString& state)
+{
+    return QStringLiteral("%1\nid: %2\nversion: %3\nmode: %4    state: %5    autoLoad: %6\npath: %7")
+        .arg(name.isEmpty() ? id : name)
+        .arg(id)
+        .arg(version.isEmpty() ? QStringLiteral("unknown") : version)
+        .arg(isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"))
+        .arg(state)
+        .arg(autoLoad ? QStringLiteral("true") : QStringLiteral("false"))
+        .arg(path);
+}
+}
+
+QWidget* SettingUI::createLinWidgetsPage()
+{
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
+
+    m_linWidgetsPageTitle = createPageTitle(tr("LinWidgets"), page);
+    m_linWidgetsPageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(m_linWidgetsPageTitle, 0, Qt::AlignLeft);
+    layout->addSpacing(8);
+    layout->addWidget(createPageSubtitle(tr("Discover, install, and manage desktop widgets."), page));
+    layout->addSpacing(14);
+
+    auto* topPanel = createPanel(page);
+    topPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto* topLayout = new QVBoxLayout(topPanel);
+    topLayout->setContentsMargins(22, 18, 22, 18);
+    topLayout->setSpacing(0);
+    topLayout->addWidget(createCardTitle(tr("Widget Runtime"), topPanel));
+    topLayout->addSpacing(12);
+    m_linWidgetsRuntimeToggle = new FluentToggleSwitch(topPanel);
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    m_linWidgetsRuntimeToggle->setChecked(settings.value("LinWidgets/Enabled", true).toBool(), false);
+    topLayout->addWidget(createSwitchRow(glyph(0xE7B8), tr("Runtime"), tr("Enable or unload the shared LinWidget runtime."), m_linWidgetsRuntimeToggle, topPanel));
+    topLayout->addWidget(createDivider(topPanel));
+    auto* topActionsRow = new QWidget(topPanel);
+    topActionsRow->setObjectName(QStringLiteral("settingsInnerRow"));
+    auto* topActionsLayout = new QHBoxLayout(topActionsRow);
+    topActionsLayout->setContentsMargins(14, 10, 14, 10);
+    topActionsLayout->setSpacing(10);
+    auto* topActionsText = new QVBoxLayout();
+    topActionsText->setContentsMargins(0, 0, 0, 0);
+    topActionsText->setSpacing(2);
+    auto* topActionsTitle = new QLabel(tr("Library"), topActionsRow);
+    topActionsTitle->setObjectName(QStringLiteral("rowTitle"));
+    auto* topActionsSubtitle = new QLabel(tr("Refresh widget metadata or open the installed widget folder."), topActionsRow);
+    topActionsSubtitle->setObjectName(QStringLiteral("rowSubtitle"));
+    topActionsSubtitle->setWordWrap(true);
+    topActionsText->addWidget(topActionsTitle);
+    topActionsText->addWidget(topActionsSubtitle);
+    topActionsLayout->addLayout(topActionsText, 1);
+    auto* refreshButton = createSettingsActionButton(tr("Refresh"), topPanel);
+    auto* openFolderButton = createSettingsActionButton(tr("Open Widgets Folder"), topPanel);
+    topActionsLayout->addWidget(refreshButton);
+    topActionsLayout->addWidget(openFolderButton);
+    topLayout->addWidget(topActionsRow);
+    layout->addWidget(topPanel);
+    layout->addSpacing(16);
+
+    m_linWidgetsTabs = new QTabWidget(page);
+    m_linWidgetsTabs->setDocumentMode(true);
+    m_linWidgetsTabs->setObjectName(QStringLiteral("linWidgetsTabs"));
+    layout->addWidget(m_linWidgetsTabs, 1);
+
+    auto createListPage = [this, page](QListWidget*& list, const QString& title, const QString& subtitle) {
+        auto* tab = new QWidget(page);
+        auto* tabLayout = new QVBoxLayout(tab);
+        tabLayout->setContentsMargins(0, 16, 0, 0);
+        tabLayout->setSpacing(0);
+        auto* panel = createPanel(tab);
+        auto* panelLayout = new QVBoxLayout(panel);
+        panelLayout->setContentsMargins(22, 18, 22, 18);
+        panelLayout->setSpacing(10);
+        panelLayout->addWidget(createCardTitle(title, panel));
+        panelLayout->addWidget(createCardSubtitle(subtitle, panel));
+        list = new QListWidget(panel);
+        list->setObjectName(QStringLiteral("linWidgetSettingsList"));
+        list->setSelectionMode(QAbstractItemView::SingleSelection);
+        list->setMinimumHeight(320);
+        list->setWordWrap(true);
+        list->setMouseTracking(true);
+        panelLayout->addWidget(list, 1);
+        tabLayout->addWidget(panel, 1);
+        return tab;
+    };
+
+    m_linWidgetsTabs->addTab(createListPage(m_officialLinWidgetsList,
+                                            tr("Official Widgets"),
+                                            tr("Install or reset the widgets bundled with LinDesk.")),
+                             tr("Official"));
+    m_linWidgetsTabs->addTab(createListPage(m_marketplaceLinWidgetsList,
+                                            tr("Widget Marketplace"),
+                                            tr("Browse local marketplace sources. Online discovery can be added later.")),
+                             tr("Marketplace"));
+
+    auto* installedTab = new QWidget(page);
+    auto* installedLayout = new QGridLayout(installedTab);
+    installedLayout->setContentsMargins(0, 16, 0, 0);
+    installedLayout->setHorizontalSpacing(16);
+    installedLayout->setVerticalSpacing(0);
+    auto* installedListPanel = createPanel(installedTab);
+    auto* installedListLayout = new QVBoxLayout(installedListPanel);
+    installedListLayout->setContentsMargins(22, 18, 22, 18);
+    installedListLayout->setSpacing(10);
+    installedListLayout->addWidget(createCardTitle(tr("Installed Widgets"), installedListPanel));
+    installedListLayout->addWidget(createCardSubtitle(tr("Manage widgets copied into the Roaming LinWidgets folder."), installedListPanel));
+    m_installedLinWidgetsList = new QListWidget(installedListPanel);
+    m_installedLinWidgetsList->setObjectName(QStringLiteral("linWidgetSettingsList"));
+    m_installedLinWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_installedLinWidgetsList->setMinimumHeight(340);
+    m_installedLinWidgetsList->setWordWrap(true);
+    m_installedLinWidgetsList->setMouseTracking(true);
+    installedListLayout->addWidget(m_installedLinWidgetsList, 1);
+    installedLayout->addWidget(installedListPanel, 0, 0, 1, 1);
+
+    auto* inspectorPanel = createPanel(installedTab);
+    auto* inspectorLayout = new QVBoxLayout(inspectorPanel);
+    inspectorLayout->setContentsMargins(22, 18, 22, 18);
+    inspectorLayout->setSpacing(10);
+    inspectorLayout->addWidget(createCardTitle(tr("Inspector"), inspectorPanel));
+    m_linWidgetsInspectorLabel = createCardSubtitle(tr("Select a widget to inspect details."), inspectorPanel);
+    inspectorLayout->addWidget(m_linWidgetsInspectorLabel);
+    inspectorLayout->addWidget(createDivider(inspectorPanel));
+    inspectorLayout->addWidget(createCardSubtitle(tr("Permissions"), inspectorPanel));
+    auto* permissionRow = new QHBoxLayout();
+    permissionRow->setContentsMargins(0, 0, 0, 0);
+    permissionRow->setSpacing(10);
+    m_linWidgetNetworkPermissionCheck = new QCheckBox(QStringLiteral("network"), inspectorPanel);
+    m_linWidgetStoragePermissionCheck = new QCheckBox(QStringLiteral("storage"), inspectorPanel);
+    m_linWidgetDesktopPermissionCheck = new QCheckBox(QStringLiteral("desktop"), inspectorPanel);
+    permissionRow->addWidget(m_linWidgetNetworkPermissionCheck);
+    permissionRow->addWidget(m_linWidgetStoragePermissionCheck);
+    permissionRow->addWidget(m_linWidgetDesktopPermissionCheck);
+    permissionRow->addStretch();
+    inspectorLayout->addLayout(permissionRow);
+    inspectorLayout->addWidget(createDivider(inspectorPanel));
+    inspectorLayout->addWidget(createCardSubtitle(tr("Actions"), inspectorPanel));
+    auto* actionRow = new QHBoxLayout();
+    actionRow->setContentsMargins(0, 0, 0, 0);
+    actionRow->setSpacing(8);
+    m_linWidgetLoadButton = createSettingsActionButton(tr("Load"), inspectorPanel, true);
+    m_linWidgetUnloadButton = createSettingsActionButton(tr("Unload"), inspectorPanel);
+    m_linWidgetReloadButton = createSettingsActionButton(tr("Reload"), inspectorPanel);
+    m_linWidgetOpenFolderButton = createSettingsActionButton(tr("Open Folder"), inspectorPanel);
+    m_linWidgetDeleteButton = createSettingsActionButton(tr("Delete"), inspectorPanel, false, true);
+    actionRow->addWidget(m_linWidgetLoadButton);
+    actionRow->addWidget(m_linWidgetUnloadButton);
+    actionRow->addWidget(m_linWidgetReloadButton);
+    actionRow->addWidget(m_linWidgetOpenFolderButton);
+    actionRow->addWidget(m_linWidgetDeleteButton);
+    inspectorLayout->addLayout(actionRow);
+    inspectorLayout->addWidget(createDivider(inspectorPanel));
+    inspectorLayout->addWidget(createCardTitle(tr("Live Log"), inspectorPanel));
+    m_linWidgetsLogView = new QPlainTextEdit(inspectorPanel);
+    m_linWidgetsLogView->setReadOnly(true);
+    m_linWidgetsLogView->setMinimumHeight(170);
+    m_linWidgetsLogView->setStyleSheet(QStringLiteral(
+        "QPlainTextEdit { background: #0f172a; color: #dbeafe; border: none; border-radius: 8px; padding: 8px; font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; }"));
+    inspectorLayout->addWidget(m_linWidgetsLogView, 1);
+    inspectorLayout->addWidget(createCardTitle(tr("Recent Errors"), inspectorPanel));
+    m_linWidgetsErrorsLabel = createCardSubtitle(tr("No errors."), inspectorPanel);
+    inspectorLayout->addWidget(m_linWidgetsErrorsLabel);
+    installedLayout->addWidget(inspectorPanel, 0, 1, 1, 1);
+    installedLayout->setColumnStretch(0, 1);
+    installedLayout->setColumnStretch(1, 1);
+    m_linWidgetsTabs->addTab(installedTab, tr("Installed"));
+
+    auto* advancedTab = new QWidget(page);
+    auto* advancedLayout = new QGridLayout(advancedTab);
+    advancedLayout->setContentsMargins(0, 16, 0, 0);
+    advancedLayout->setHorizontalSpacing(16);
+    advancedLayout->setVerticalSpacing(0);
+    auto* developmentListPanel = createPanel(advancedTab);
+    auto* developmentListLayout = new QVBoxLayout(developmentListPanel);
+    developmentListLayout->setContentsMargins(22, 18, 22, 18);
+    developmentListLayout->setSpacing(10);
+    developmentListLayout->addWidget(createCardTitle(tr("Development Projects"), developmentListPanel));
+    developmentListLayout->addWidget(createCardSubtitle(tr("Run widgets directly from source folders and export local packages."), developmentListPanel));
+    m_developmentLinWidgetsList = new QListWidget(developmentListPanel);
+    m_developmentLinWidgetsList->setObjectName(QStringLiteral("linWidgetSettingsList"));
+    m_developmentLinWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_developmentLinWidgetsList->setWordWrap(true);
+    m_developmentLinWidgetsList->setMinimumHeight(340);
+    m_developmentLinWidgetsList->setMouseTracking(true);
+    developmentListLayout->addWidget(m_developmentLinWidgetsList, 1);
+    advancedLayout->addWidget(developmentListPanel, 0, 0, 1, 1);
+    auto* advancedPanel = createPanel(advancedTab);
+    auto* advancedPanelLayout = new QVBoxLayout(advancedPanel);
+    advancedPanelLayout->setContentsMargins(22, 18, 22, 18);
+    advancedPanelLayout->setSpacing(0);
+    advancedPanelLayout->addWidget(createCardTitle(tr("Developer Tools"), advancedPanel));
+    advancedPanelLayout->addWidget(createCardSubtitle(tr("Create, add, run, and export development widgets."), advancedPanel));
+    advancedPanelLayout->addSpacing(12);
+    m_linWidgetAddDevButton = createSettingsActionButton(tr("Add Dev Project"), advancedPanel);
+    m_linWidgetNewProjectButton = createSettingsActionButton(tr("New Widget Project"), advancedPanel);
+    m_linWidgetExportZipButton = createSettingsActionButton(tr("Export Zip Package"), advancedPanel);
+    m_linWidgetRemoveDevButton = createSettingsActionButton(tr("Remove Dev Record"), advancedPanel, false, true);
+    auto* openLogsButton = createSettingsActionButton(tr("Open Logs"), advancedPanel);
+    auto* openRoamingButton = createSettingsActionButton(tr("Open Roaming Widgets"), advancedPanel);
+    advancedPanelLayout->addWidget(m_linWidgetAddDevButton);
+    advancedPanelLayout->addSpacing(8);
+    advancedPanelLayout->addWidget(m_linWidgetNewProjectButton);
+    advancedPanelLayout->addSpacing(8);
+    advancedPanelLayout->addWidget(m_linWidgetExportZipButton);
+    advancedPanelLayout->addSpacing(8);
+    advancedPanelLayout->addWidget(m_linWidgetRemoveDevButton);
+    advancedPanelLayout->addWidget(createDivider(advancedPanel));
+    advancedPanelLayout->addWidget(openLogsButton);
+    advancedPanelLayout->addSpacing(8);
+    advancedPanelLayout->addWidget(openRoamingButton);
+    advancedPanelLayout->addStretch();
+    advancedLayout->addWidget(advancedPanel, 0, 1, 1, 1);
+    advancedLayout->setColumnStretch(0, 1);
+    advancedLayout->setColumnStretch(1, 1);
+    m_linWidgetsTabs->addTab(advancedTab, tr("Advanced"));
+
+    m_linWidgetsStatusLabel = createCardSubtitle(QString(), page);
+    layout->addSpacing(12);
+    layout->addWidget(m_linWidgetsStatusLabel);
+
+    m_linWidgetsLogWatcher = new QFileSystemWatcher(page);
+    m_linWidgetsLogReloadTimer = new QTimer(page);
+    m_linWidgetsLogReloadTimer->setSingleShot(true);
+    m_linWidgetsLogReloadTimer->setInterval(120);
+    connect(m_linWidgetsLogWatcher, &QFileSystemWatcher::fileChanged, this, [this](const QString& path) {
+        if (!path.isEmpty() && QFileInfo::exists(path) && !m_linWidgetsLogWatcher->files().contains(path)) {
+            m_linWidgetsLogWatcher->addPath(path);
+        }
+        if (m_linWidgetsLogReloadTimer) {
+            m_linWidgetsLogReloadTimer->start();
+        }
+    });
+    connect(m_linWidgetsLogReloadTimer, &QTimer::timeout, this, &SettingUI::refreshLinWidgetSettingsInspector);
+
+    connect(m_linWidgetsRuntimeToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
+        QSettings s(settingsConfigPath(), QSettings::IniFormat);
+        s.setValue("LinWidgets/Enabled", checked);
+        s.sync();
+        if (ListView* view = ListView::instance()) {
+            LinWidget::WidgetManager* manager = view->linWidgetManager();
+            manager->setEnabled(checked);
+            if (checked) {
+                QString error;
+                manager->restoreFromConfig(QString(), &error);
+            }
+        }
+        reloadLinWidgetsSettingsPage();
+    });
+    connect(refreshButton, &QPushButton::clicked, this, &SettingUI::reloadLinWidgetsSettingsPage);
+    connect(openFolderButton, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLinWidgetsDir()));
+    });
+    connect(openLogsButton, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::linWidgetLogsDir()));
+    });
+    connect(openRoamingButton, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLinWidgetsDir()));
+    });
+    connect(m_installedLinWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* current) {
+        if (current && m_developmentLinWidgetsList) {
+            m_developmentLinWidgetsList->clearSelection();
+        }
+        refreshLinWidgetSettingsButtons();
+        refreshLinWidgetSettingsInspector();
+    });
+    connect(m_developmentLinWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* current) {
+        if (current && m_installedLinWidgetsList) {
+            m_installedLinWidgetsList->clearSelection();
+        }
+        refreshLinWidgetSettingsButtons();
+        refreshLinWidgetSettingsInspector();
+    });
+    connect(m_linWidgetLoadButton, &QPushButton::clicked, this, &SettingUI::loadSelectedSettingsLinWidget);
+    connect(m_linWidgetUnloadButton, &QPushButton::clicked, this, &SettingUI::unloadSelectedSettingsLinWidget);
+    connect(m_linWidgetReloadButton, &QPushButton::clicked, this, &SettingUI::reloadSelectedSettingsLinWidget);
+    connect(m_linWidgetOpenFolderButton, &QPushButton::clicked, this, [this]() {
+        const QString path = selectedSettingsLinWidgetPackagePath();
+        if (!path.isEmpty()) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        }
+    });
+    connect(m_linWidgetDeleteButton, &QPushButton::clicked, this, &SettingUI::deleteSelectedSettingsLinWidget);
+    connect(m_linWidgetAddDevButton, &QPushButton::clicked, this, &SettingUI::addDevelopmentSettingsLinWidget);
+    connect(m_linWidgetNewProjectButton, &QPushButton::clicked, this, &SettingUI::createDevelopmentSettingsLinWidget);
+    connect(m_linWidgetExportZipButton, &QPushButton::clicked, this, &SettingUI::exportDevelopmentSettingsLinWidget);
+    connect(m_linWidgetRemoveDevButton, &QPushButton::clicked, this, [this]() {
+        LinWidget::WidgetRegistryManager registry;
+        registry.load();
+        registry.removeDevelopmentProject(selectedSettingsLinWidgetRegistryId());
+        registry.save();
+        reloadLinWidgetsSettingsPage();
+    });
+    connect(m_linWidgetNetworkPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        setSelectedSettingsLinWidgetPermission(QStringLiteral("network"), checked);
+    });
+    connect(m_linWidgetStoragePermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        setSelectedSettingsLinWidgetPermission(QStringLiteral("storage"), checked);
+    });
+    connect(m_linWidgetDesktopPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        setSelectedSettingsLinWidgetPermission(QStringLiteral("desktop"), checked);
+    });
+
+    reloadLinWidgetsSettingsPage();
+    return page;
+}
+
+void SettingUI::reloadLinWidgetsSettingsPage()
+{
+    if (!m_officialLinWidgetsList || !m_marketplaceLinWidgetsList || !m_installedLinWidgetsList || !m_developmentLinWidgetsList) {
+        return;
+    }
+
+    const QString selectedKey = selectedSettingsLinWidgetRegistryKey();
+    settingsEnsureDefaultLinWidgetsInstalled();
+
+    m_officialLinWidgetsList->clear();
+    m_marketplaceLinWidgetsList->clear();
+    m_installedLinWidgetsList->clear();
+    m_developmentLinWidgetsList->clear();
+
+    LinWidget::WidgetRegistryManager registry;
+    QString registryError;
+    registry.load(&registryError);
+    registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
+    registry.save(&registryError);
+
+    refreshLinWidgetSettingsRunningMaps();
+
+    QHash<QString, LinWidget::WidgetRegistryEntry> installedEntriesById;
+    int installedCount = 0;
+    int developmentCount = 0;
+    for (const LinWidget::WidgetRegistryEntry& entry : registry.entries()) {
+        if (!entry.enabled || !QFileInfo::exists(entry.packagePath)) {
+            continue;
+        }
+
+        if (!entry.isDevelopment) {
+            installedEntriesById.insert(entry.id.trimmed().toLower(), entry);
+        }
+
+        LinWidget::WidgetManifest manifest;
+        LinWidget::WidgetPackage::loadManifest(entry.packagePath, &manifest, nullptr);
+        const QString registryKey = settingsLinWidgetRegistryKey(entry.id, entry.isDevelopment);
+        const QString packageKey = settingsLinWidgetPackageKey(entry.packagePath);
+        const QString state = settingsWidgetStateText(m_linWidgetInstancesById, m_linWidgetInstancesByPackage, registryKey, packageKey);
+
+        auto* item = new QListWidgetItem();
+        item->setData(SettingsLinWidgetPackagePathRole, entry.packagePath);
+        item->setData(SettingsLinWidgetRegistryIdRole, entry.id);
+        item->setData(SettingsLinWidgetRuntimeTypeRole, entry.runtimeType);
+        item->setData(SettingsLinWidgetDefaultSizeRole, entry.defaultSize);
+        item->setData(SettingsLinWidgetDevelopmentRole, entry.isDevelopment);
+        item->setData(SettingsLinWidgetNameRole, entry.name);
+        item->setData(SettingsLinWidgetVersionRole, entry.version);
+        item->setData(SettingsLinWidgetAuthorRole, entry.author);
+        item->setData(SettingsLinWidgetDescriptionRole, entry.description);
+        item->setData(SettingsLinWidgetAutoLoadRole, entry.autoLoad);
+        item->setData(SettingsLinWidgetGrantedPermissionsRole, entry.permissionsGranted);
+        item->setData(SettingsLinWidgetRequestedPermissionsRole, manifest.permissions);
+        item->setData(SettingsLinWidgetSourcePathRole, entry.sourcePath);
+        item->setText(settingsWidgetItemText(entry.name,
+                                            entry.id,
+                                            entry.version,
+                                            entry.isDevelopment,
+                                            entry.autoLoad,
+                                            entry.packagePath,
+                                            state));
+        item->setToolTip(item->text());
+
+        if (entry.isDevelopment) {
+            m_developmentLinWidgetsList->addItem(item);
+            ++developmentCount;
+            if (!selectedKey.isEmpty() && selectedKey == registryKey) {
+                m_developmentLinWidgetsList->setCurrentItem(item);
+            }
+        } else {
+            m_installedLinWidgetsList->addItem(item);
+            ++installedCount;
+            if (!selectedKey.isEmpty() && selectedKey == registryKey) {
+                m_installedLinWidgetsList->setCurrentItem(item);
+            }
+        }
+    }
+
+    const QDir officialDir(runtimeLinWidgetsDirForSettings());
+    const QFileInfoList officialEntries = officialDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : officialEntries) {
+        LinWidget::WidgetManifest manifest;
+        QString errorMessage;
+        if (!LinWidget::WidgetPackage::loadManifest(entry.absoluteFilePath(), &manifest, &errorMessage)) {
+            continue;
+        }
+        const LinWidget::WidgetRegistryEntry installed = installedEntriesById.value(manifest.id.trimmed().toLower());
+        const bool isInstalled = !installed.id.isEmpty() && QFileInfo::exists(installed.packagePath);
+        const QString installedKey = settingsLinWidgetRegistryKey(manifest.id, false);
+        const QString packageKey = isInstalled ? settingsLinWidgetPackageKey(installed.packagePath) : QString();
+        const QString state = isInstalled
+            ? settingsWidgetStateText(m_linWidgetInstancesById, m_linWidgetInstancesByPackage, installedKey, packageKey)
+            : QStringLiteral("not installed");
+
+        auto* item = new QListWidgetItem();
+        item->setData(SettingsLinWidgetPackagePathRole, entry.absoluteFilePath());
+        item->setData(SettingsLinWidgetRegistryIdRole, manifest.id);
+        item->setData(SettingsLinWidgetRuntimeTypeRole, LinWidget::runtimeTypeToString(manifest.type));
+        item->setData(SettingsLinWidgetDefaultSizeRole, QSize(manifest.width, manifest.height));
+        item->setData(SettingsLinWidgetDevelopmentRole, false);
+        item->setData(SettingsLinWidgetNameRole, manifest.name);
+        item->setData(SettingsLinWidgetVersionRole, manifest.version);
+        item->setData(SettingsLinWidgetAuthorRole, manifest.author);
+        item->setData(SettingsLinWidgetDescriptionRole, manifest.description);
+        item->setData(SettingsLinWidgetAutoLoadRole, manifest.autoLoad);
+        item->setData(SettingsLinWidgetRequestedPermissionsRole, manifest.permissions);
+        item->setData(SettingsLinWidgetOfficialInstalledPathRole, installed.packagePath);
+        const QString officialDisplayText = QStringLiteral("%1\nid: %2\nversion: %3    author: %4\npermissions: %5\nstate: %6\n%7")
+            .arg(manifest.name)
+            .arg(manifest.id)
+            .arg(manifest.version.isEmpty() ? QStringLiteral("unknown") : manifest.version)
+            .arg(manifest.author.isEmpty() ? QStringLiteral("Unknown") : manifest.author)
+            .arg(settingsPermissionsText(manifest.permissions))
+            .arg(state)
+            .arg(manifest.description.isEmpty() ? entry.absoluteFilePath() : manifest.description);
+        item->setText(QString());
+        item->setToolTip(officialDisplayText);
+        m_officialLinWidgetsList->addItem(item);
+
+        auto* row = new QWidget(m_officialLinWidgetsList);
+        auto* rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(10, 8, 10, 8);
+        rowLayout->setSpacing(8);
+        auto* label = new QLabel(officialDisplayText, row);
+        label->setWordWrap(true);
+        label->setStyleSheet(QStringLiteral("background: transparent; color: #142033; font-size: 12px; font-weight: 600;"));
+        rowLayout->addWidget(label, 1);
+        auto* installButton = createSettingsActionButton(isInstalled ? tr("Installed") : tr("Install"), row, !isInstalled);
+        auto* loadButton = createSettingsActionButton(state == QStringLiteral("running") ? tr("Unload") : tr("Load"), row);
+        auto* resetButton = createSettingsActionButton(tr("Reset"), row);
+        installButton->setEnabled(!isInstalled);
+        loadButton->setEnabled(isInstalled && (!m_linWidgetsRuntimeToggle || m_linWidgetsRuntimeToggle->checked()));
+        resetButton->setEnabled(isInstalled);
+        rowLayout->addWidget(installButton);
+        rowLayout->addWidget(loadButton);
+        rowLayout->addWidget(resetButton);
+        connect(installButton, &QPushButton::clicked, this, [this, path = entry.absoluteFilePath()]() {
+            installOfficialSettingsLinWidget(path);
+        });
+        connect(resetButton, &QPushButton::clicked, this, [this, path = entry.absoluteFilePath()]() {
+            resetOfficialSettingsLinWidget(path);
+        });
+        connect(loadButton, &QPushButton::clicked, this, [this, id = manifest.id, installedPath = installed.packagePath, running = (state == QStringLiteral("running"))]() {
+            if (installedPath.isEmpty()) {
+                return;
+            }
+            m_linWidgetsTabs->setCurrentIndex(2);
+            for (int i = 0; i < m_installedLinWidgetsList->count(); ++i) {
+                QListWidgetItem* installedItem = m_installedLinWidgetsList->item(i);
+                if (installedItem && installedItem->data(SettingsLinWidgetRegistryIdRole).toString().compare(id, Qt::CaseInsensitive) == 0) {
+                    m_installedLinWidgetsList->setCurrentItem(installedItem);
+                    break;
+                }
+            }
+            running ? unloadSelectedSettingsLinWidget() : loadSelectedSettingsLinWidget();
+        });
+        item->setSizeHint(row->sizeHint());
+        m_officialLinWidgetsList->setItemWidget(item, row);
+    }
+
+    QFile marketplaceFile(marketplaceFilePathForSettings());
+    if (!marketplaceFile.exists() || !marketplaceFile.open(QIODevice::ReadOnly)) {
+        auto* item = new QListWidgetItem(tr("Widget marketplace is coming soon."));
+        item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+        m_marketplaceLinWidgetsList->addItem(item);
+    } else {
+        const QJsonDocument document = QJsonDocument::fromJson(marketplaceFile.readAll());
+        const QJsonArray widgets = document.isArray()
+            ? document.array()
+            : document.object().value(QStringLiteral("widgets")).toArray();
+        if (widgets.isEmpty()) {
+            auto* item = new QListWidgetItem(tr("Widget marketplace is coming soon."));
+            item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+            m_marketplaceLinWidgetsList->addItem(item);
+        }
+        for (const QJsonValue& value : widgets) {
+            const QJsonObject object = value.toObject();
+            const QString id = object.value(QStringLiteral("id")).toString();
+            const QString sourcePath = object.value(QStringLiteral("sourcePath")).toString();
+            QStringList permissions;
+            const QJsonArray permissionsArray = object.value(QStringLiteral("permissions")).toArray();
+            for (const QJsonValue& permissionValue : permissionsArray) {
+                const QString permission = permissionValue.toString().trimmed();
+                if (!permission.isEmpty()) {
+                    permissions.append(permission);
+                }
+            }
+
+            auto* item = new QListWidgetItem();
+            item->setData(SettingsLinWidgetPackagePathRole, sourcePath);
+            item->setData(SettingsLinWidgetRegistryIdRole, id);
+            item->setData(SettingsLinWidgetNameRole, object.value(QStringLiteral("name")).toString(id));
+            item->setData(SettingsLinWidgetVersionRole, object.value(QStringLiteral("version")).toString());
+            item->setData(SettingsLinWidgetAuthorRole, object.value(QStringLiteral("author")).toString());
+            item->setData(SettingsLinWidgetDescriptionRole, object.value(QStringLiteral("description")).toString());
+            item->setData(SettingsLinWidgetRequestedPermissionsRole, permissions);
+            item->setData(SettingsLinWidgetCategoryRole, object.value(QStringLiteral("category")).toString());
+            item->setData(SettingsLinWidgetTrustedRole, object.value(QStringLiteral("trusted")).toBool());
+            const QString marketplaceDisplayText = QStringLiteral("%1\nid: %2\nversion: %3    category: %4    trusted: %5\npermissions: %6\n%7")
+                .arg(item->data(SettingsLinWidgetNameRole).toString())
+                .arg(id)
+                .arg(item->data(SettingsLinWidgetVersionRole).toString().isEmpty() ? QStringLiteral("unknown") : item->data(SettingsLinWidgetVersionRole).toString())
+                .arg(item->data(SettingsLinWidgetCategoryRole).toString().isEmpty() ? QStringLiteral("General") : item->data(SettingsLinWidgetCategoryRole).toString())
+                .arg(item->data(SettingsLinWidgetTrustedRole).toBool() ? QStringLiteral("true") : QStringLiteral("false"))
+                .arg(settingsPermissionsText(permissions))
+                .arg(item->data(SettingsLinWidgetDescriptionRole).toString().isEmpty() ? sourcePath : item->data(SettingsLinWidgetDescriptionRole).toString());
+            item->setText(QString());
+            item->setToolTip(marketplaceDisplayText);
+            m_marketplaceLinWidgetsList->addItem(item);
+
+            auto* row = new QWidget(m_marketplaceLinWidgetsList);
+            auto* rowLayout = new QHBoxLayout(row);
+            rowLayout->setContentsMargins(10, 8, 10, 8);
+            rowLayout->setSpacing(8);
+            auto* label = new QLabel(marketplaceDisplayText, row);
+            label->setWordWrap(true);
+            label->setStyleSheet(QStringLiteral("background: transparent; color: #142033; font-size: 12px; font-weight: 600;"));
+            rowLayout->addWidget(label, 1);
+            auto* installButton = createSettingsActionButton(tr("Install"), row, true);
+            installButton->setEnabled(QFileInfo(sourcePath).isDir());
+            rowLayout->addWidget(installButton);
+            connect(installButton, &QPushButton::clicked, this, [this, sourcePath]() {
+                LinWidget::WidgetManifest manifest;
+                QString errorMessage;
+                if (!LinWidget::WidgetPackage::loadManifest(sourcePath, &manifest, &errorMessage)) {
+                    if (m_linWidgetsStatusLabel) {
+                        m_linWidgetsStatusLabel->setText(tr("Marketplace install failed: %1").arg(errorMessage));
+                    }
+                    return;
+                }
+                const QString targetPath = settingsInstalledTargetForManifest(manifest);
+                if (!settingsRemoveDirectory(targetPath, &errorMessage) ||
+                    !settingsCopyLinWidgetDirectory(sourcePath, targetPath, &errorMessage)) {
+                    if (m_linWidgetsStatusLabel) {
+                        m_linWidgetsStatusLabel->setText(tr("Marketplace install failed: %1").arg(errorMessage));
+                    }
+                    return;
+                }
+                LinWidget::WidgetRegistryManager reg;
+                reg.load();
+                reg.upsertFromPackage(targetPath, &errorMessage);
+                reg.save();
+                if (m_linWidgetsStatusLabel) {
+                    m_linWidgetsStatusLabel->setText(tr("Installed marketplace widget: %1").arg(manifest.name));
+                }
+                reloadLinWidgetsSettingsPage();
+            });
+            item->setSizeHint(row->sizeHint());
+            m_marketplaceLinWidgetsList->setItemWidget(item, row);
+        }
+    }
+
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Installed: %1    Development: %2    Official source: %3")
+            .arg(installedCount)
+            .arg(developmentCount)
+            .arg(runtimeLinWidgetsDirForSettings()));
+    }
+    refreshLinWidgetSettingsButtons();
+    refreshLinWidgetSettingsInspector();
+}
+
+void SettingUI::refreshLinWidgetSettingsButtons()
+{
+    refreshLinWidgetSettingsRunningMaps();
+    const QString packagePath = selectedSettingsLinWidgetPackagePath();
+    const bool hasSelection = !packagePath.isEmpty();
+    const bool running = !selectedSettingsLinWidgetInstanceId().isEmpty();
+    const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
+    const bool runtimeEnabled = !m_linWidgetsRuntimeToggle || m_linWidgetsRuntimeToggle->checked();
+
+    if (m_linWidgetLoadButton) {
+        m_linWidgetLoadButton->setEnabled(hasSelection && !running && runtimeEnabled);
+    }
+    if (m_linWidgetUnloadButton) {
+        m_linWidgetUnloadButton->setEnabled(hasSelection && running && runtimeEnabled);
+    }
+    if (m_linWidgetReloadButton) {
+        m_linWidgetReloadButton->setEnabled(hasSelection && running && runtimeEnabled);
+    }
+    if (m_linWidgetOpenFolderButton) {
+        m_linWidgetOpenFolderButton->setEnabled(hasSelection);
+    }
+    if (m_linWidgetDeleteButton) {
+        m_linWidgetDeleteButton->setEnabled(hasSelection && !isDevelopment && !running);
+    }
+    if (m_linWidgetExportZipButton) {
+        m_linWidgetExportZipButton->setEnabled(hasSelection && isDevelopment && !running);
+    }
+    if (m_linWidgetRemoveDevButton) {
+        m_linWidgetRemoveDevButton->setEnabled(hasSelection && isDevelopment && !running);
+    }
+
+    const QStringList granted = activeSettingsLinWidgetList() && activeSettingsLinWidgetList()->currentItem()
+        ? activeSettingsLinWidgetList()->currentItem()->data(SettingsLinWidgetGrantedPermissionsRole).toStringList()
+        : QStringList();
+    auto updatePermissionCheck = [&](QCheckBox* check, const QString& permission) {
+        if (!check) {
+            return;
+        }
+        const QSignalBlocker blocker(check);
+        check->setChecked(isDevelopment || granted.contains(permission));
+        check->setEnabled(hasSelection && !isDevelopment);
+    };
+    updatePermissionCheck(m_linWidgetNetworkPermissionCheck, QStringLiteral("network"));
+    updatePermissionCheck(m_linWidgetStoragePermissionCheck, QStringLiteral("storage"));
+    updatePermissionCheck(m_linWidgetDesktopPermissionCheck, QStringLiteral("desktop"));
+}
+
+void SettingUI::refreshLinWidgetSettingsInspector()
+{
+    QListWidget* list = activeSettingsLinWidgetList();
+    QListWidgetItem* item = list ? list->currentItem() : nullptr;
+    if (!item) {
+        if (m_linWidgetsInspectorLabel) {
+            m_linWidgetsInspectorLabel->setText(tr("Select an installed widget or development project."));
+        }
+        if (m_linWidgetsLogView) {
+            m_linWidgetsLogView->setPlainText(tr("Select a widget to view its log."));
+        }
+        if (m_linWidgetsErrorsLabel) {
+            m_linWidgetsErrorsLabel->setText(tr("No errors."));
+        }
+        return;
+    }
+
+    const QString id = item->data(SettingsLinWidgetRegistryIdRole).toString();
+    const QString name = item->data(SettingsLinWidgetNameRole).toString();
+    const QString version = item->data(SettingsLinWidgetVersionRole).toString();
+    const QString author = item->data(SettingsLinWidgetAuthorRole).toString();
+    const QString description = item->data(SettingsLinWidgetDescriptionRole).toString();
+    const QString packagePath = item->data(SettingsLinWidgetPackagePathRole).toString();
+    const bool isDevelopment = item->data(SettingsLinWidgetDevelopmentRole).toBool();
+    const QStringList requested = item->data(SettingsLinWidgetRequestedPermissionsRole).toStringList();
+    const QStringList granted = item->data(SettingsLinWidgetGrantedPermissionsRole).toStringList();
+    QStringList missing;
+    for (const QString& permission : requested) {
+        if (!granted.contains(permission)) {
+            missing.append(permission);
+        }
+    }
+    const QString instanceId = selectedSettingsLinWidgetInstanceId();
+    const QString logInstanceId = instanceId.isEmpty()
+        ? settingsLinWidgetRegistryKey(id, isDevelopment)
+        : instanceId;
+
+    if (m_linWidgetsInspectorLabel) {
+        m_linWidgetsInspectorLabel->setText(QStringLiteral(
+            "name: %1\n"
+            "id: %2\n"
+            "version: %3\n"
+            "mode: %4\n"
+            "state: %5\n"
+            "autoLoad: %6\n"
+            "requested permissions: %7\n"
+            "granted permissions: %8\n"
+            "missing permissions: %9\n"
+            "author: %10\n"
+            "description: %11\n"
+            "path: %12")
+            .arg(name.isEmpty() ? id : name)
+            .arg(id)
+            .arg(version.isEmpty() ? QStringLiteral("unknown") : version)
+            .arg(isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"))
+            .arg(instanceId.isEmpty() ? QStringLiteral("stopped") : QStringLiteral("running"))
+            .arg(item->data(SettingsLinWidgetAutoLoadRole).toBool() ? QStringLiteral("true") : QStringLiteral("false"))
+            .arg(settingsPermissionsText(requested))
+            .arg(isDevelopment ? QStringLiteral("network, storage, desktop") : settingsPermissionsText(granted))
+            .arg(isDevelopment || missing.isEmpty() ? QStringLiteral("none") : missing.join(QStringLiteral(", ")))
+            .arg(author.isEmpty() ? QStringLiteral("Unknown") : author)
+            .arg(description.isEmpty() ? QStringLiteral("No description") : description)
+            .arg(packagePath));
+    }
+
+    const QString logPath = settingsLinWidgetLogPath(logInstanceId);
+    if (m_linWidgetsLogWatcher && m_currentLinWidgetLogPath != logPath) {
+        const QStringList watchedFiles = m_linWidgetsLogWatcher->files();
+        if (!watchedFiles.isEmpty()) {
+            m_linWidgetsLogWatcher->removePaths(watchedFiles);
+        }
+        m_currentLinWidgetLogPath = logPath;
+        if (!logPath.isEmpty() && QFileInfo::exists(logPath)) {
+            m_linWidgetsLogWatcher->addPath(logPath);
+        }
+    }
+
+    QString logText;
+    if (logPath.isEmpty()) {
+        logText = tr("No log instance.");
+    } else {
+        QFile file(logPath);
+        if (!file.exists()) {
+            const QString sharedLogPath = settingsLinWidgetLogPath(QStringLiteral("__shared__"));
+            if (QFileInfo::exists(sharedLogPath)) {
+                file.setFileName(sharedLogPath);
+            } else {
+                logText = tr("Log file has not been created yet:\n%1").arg(logPath);
+            }
+        }
+        if (logText.isEmpty()) {
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                logText = tr("Cannot open log file:\n%1").arg(file.fileName());
+            } else {
+                QByteArray content = file.readAll();
+                constexpr int maxLogBytes = 200 * 1024;
+                if (content.size() > maxLogBytes) {
+                    content = content.right(maxLogBytes);
+                }
+                logText = QString::fromUtf8(content);
+            }
+        }
+    }
+    if (m_linWidgetsLogView) {
+        m_linWidgetsLogView->setPlainText(logText);
+        QTextCursor cursor = m_linWidgetsLogView->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        m_linWidgetsLogView->setTextCursor(cursor);
+    }
+
+    QStringList errorLines;
+    const QStringList lines = logText.split(QLatin1Char('\n'));
+    for (const QString& line : lines) {
+        const QString lower = line.toLower();
+        if (lower.contains(QStringLiteral("permission denied")) ||
+            lower.contains(QStringLiteral("error")) ||
+            lower.contains(QStringLiteral("failed")) ||
+            lower.contains(QStringLiteral("js.rejection"))) {
+            errorLines.append(line);
+        }
+    }
+    if (m_linWidgetsErrorsLabel) {
+        if (errorLines.isEmpty()) {
+            m_linWidgetsErrorsLabel->setText(tr("No errors."));
+        } else {
+            while (errorLines.size() > 8) {
+                errorLines.removeFirst();
+            }
+            m_linWidgetsErrorsLabel->setText(errorLines.join(QLatin1Char('\n')));
+        }
+    }
+}
+
+void SettingUI::refreshLinWidgetSettingsRunningMaps()
+{
+    m_linWidgetInstancesByPackage.clear();
+    m_linWidgetInstancesById.clear();
+
+    ListView* view = ListView::instance();
+    LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
+    if (!manager) {
+        return;
+    }
+
+    for (const LinWidget::WidgetLayoutState& state : manager->layoutStates()) {
+        if (!state.visible) {
+            continue;
+        }
+        m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(state.packagePath), state.instanceId);
+        LinWidget::WidgetManifest manifest;
+        if (LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
+            m_linWidgetInstancesById.insert(settingsLinWidgetRegistryKey(manifest.id, state.instanceId.startsWith(QStringLiteral("dev:"))),
+                                           state.instanceId);
+        }
+    }
+}
+
+void SettingUI::loadSelectedSettingsLinWidget()
+{
+    const QString packagePath = selectedSettingsLinWidgetPackagePath();
+    const QString registryId = selectedSettingsLinWidgetRegistryId();
+    const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
+    if (packagePath.isEmpty()) {
+        return;
+    }
+
+    LinWidget::WidgetManifest manifest;
+    QString errorMessage;
+    if (!LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Load failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+
+    ListView* view = ListView::instance();
+    LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
+    QString instanceId;
+    const QRect geometry(260, 220, manifest.width, manifest.height);
+    if (!manager || !manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Load failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.setLastRunState(registryId, isDevelopment, QStringLiteral("running"));
+    registry.save();
+
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Loaded into WebView: %1").arg(instanceId));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::unloadSelectedSettingsLinWidget()
+{
+    const QString instanceId = selectedSettingsLinWidgetInstanceId();
+    if (instanceId.isEmpty()) {
+        refreshLinWidgetSettingsButtons();
+        return;
+    }
+    const QString registryId = selectedSettingsLinWidgetRegistryId();
+    const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
+
+    if (ListView* view = ListView::instance()) {
+        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
+            manager->stopWidget(instanceId);
+        }
+    }
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
+    registry.save();
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Unloaded from WebView: %1").arg(instanceId));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::reloadSelectedSettingsLinWidget()
+{
+    const QString instanceId = selectedSettingsLinWidgetInstanceId();
+    if (instanceId.isEmpty()) {
+        refreshLinWidgetSettingsButtons();
+        return;
+    }
+    if (ListView* view = ListView::instance()) {
+        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
+            if (manager->restartWidget(instanceId)) {
+                if (m_linWidgetsStatusLabel) {
+                    m_linWidgetsStatusLabel->setText(tr("Reloaded widget iframe: %1").arg(instanceId));
+                }
+            }
+        }
+    }
+    refreshLinWidgetSettingsInspector();
+    refreshLinWidgetSettingsButtons();
+}
+
+void SettingUI::installOfficialSettingsLinWidget(const QString& packagePath)
+{
+    LinWidget::WidgetManifest manifest;
+    QString errorMessage;
+    if (!LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Official install failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+    const QString targetPath = settingsInstalledTargetForManifest(manifest);
+    if (!QFileInfo::exists(targetPath) &&
+        !settingsCopyLinWidgetDirectory(packagePath, targetPath, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Official install failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.upsertFromPackage(targetPath, &errorMessage);
+    registry.save();
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Installed official widget: %1").arg(manifest.name));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::resetOfficialSettingsLinWidget(const QString& packagePath)
+{
+    LinWidget::WidgetManifest manifest;
+    QString errorMessage;
+    if (!LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Official reset failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+    const QString targetPath = settingsInstalledTargetForManifest(manifest);
+    if (!settingsRemoveDirectory(targetPath, &errorMessage) ||
+        !settingsCopyLinWidgetDirectory(packagePath, targetPath, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Official reset failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.upsertFromPackage(targetPath, &errorMessage);
+    registry.save();
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Reset official widget: %1").arg(manifest.name));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::addDevelopmentSettingsLinWidget()
+{
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Select LinWidget development project"));
+    if (dir.isEmpty()) {
+        return;
+    }
+    LinWidget::WidgetRegistryManager registry;
+    QString errorMessage;
+    registry.load();
+    if (!registry.addDevelopmentProject(dir, &errorMessage) || !registry.save(&errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Add development project failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Added development project: %1").arg(dir));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::createDevelopmentSettingsLinWidget()
+{
+    const QString targetDir = QFileDialog::getExistingDirectory(this, tr("Choose parent folder for new widget project"));
+    if (targetDir.isEmpty()) {
+        return;
+    }
+    bool ok = false;
+    const QString id = QInputDialog::getText(this, tr("Widget Id"), tr("Use reverse domain style, for example com.example.weather"), QLineEdit::Normal, QStringLiteral("com.example.widget"), &ok).trimmed();
+    if (!ok || id.isEmpty()) {
+        return;
+    }
+    const QString name = QInputDialog::getText(this, tr("Widget Name"), tr("Display name"), QLineEdit::Normal, QStringLiteral("New Widget"), &ok).trimmed();
+    if (!ok || name.isEmpty()) {
+        return;
+    }
+    const QString author = QInputDialog::getText(this, tr("Author"), tr("Author"), QLineEdit::Normal, qEnvironmentVariable("USERNAME"), &ok).trimmed();
+    if (!ok) {
+        return;
+    }
+    const QString description = QInputDialog::getText(this, tr("Description"), tr("Short description"), QLineEdit::Normal, QStringLiteral("A LinWidget project."), &ok).trimmed();
+    if (!ok) {
+        return;
+    }
+
+    LinWidget::WidgetProjectMetadata metadata;
+    metadata.id = id;
+    metadata.name = name;
+    metadata.author = author;
+    metadata.description = description;
+
+    const QString projectDir = QDir(targetDir).filePath(safeLinWidgetFileName(id));
+    QString errorMessage;
+    if (!LinWidget::LinWidgetProjectTools::createProject(projectDir, metadata, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Create project failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.addDevelopmentProject(projectDir, &errorMessage);
+    registry.save();
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Created development project: %1").arg(projectDir));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::exportDevelopmentSettingsLinWidget()
+{
+    const QString packagePath = selectedSettingsLinWidgetPackagePath();
+    if (packagePath.isEmpty() || !selectedSettingsLinWidgetIsDevelopment() || !selectedSettingsLinWidgetInstanceId().isEmpty()) {
+        refreshLinWidgetSettingsButtons();
+        return;
+    }
+    const QString id = selectedSettingsLinWidgetRegistryId();
+    const QString outputPath = QFileDialog::getSaveFileName(this,
+                                                           tr("Export LinWidget Zip"),
+                                                           QDir::home().filePath(safeLinWidgetFileName(id) + QStringLiteral(".zip")),
+                                                           tr("Zip package (*.zip)"));
+    if (outputPath.isEmpty()) {
+        return;
+    }
+    QString errorMessage;
+    if (!LinWidget::LinWidgetProjectTools::exportProjectZip(packagePath, outputPath, &errorMessage)) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Export zip failed: %1").arg(errorMessage));
+        }
+        return;
+    }
+    if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Exported zip package: %1").arg(outputPath));
+    }
+}
+
+void SettingUI::deleteSelectedSettingsLinWidget()
+{
+    const QString packagePath = selectedSettingsLinWidgetPackagePath();
+    const QString registryId = selectedSettingsLinWidgetRegistryId();
+    const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
+    if (packagePath.isEmpty() || registryId.isEmpty()) {
+        return;
+    }
+    if (!selectedSettingsLinWidgetInstanceId().isEmpty()) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Unload the widget before deleting it."));
+        }
+        return;
+    }
+
+    if (isDevelopment) {
+        LinWidget::WidgetRegistryManager registry;
+        registry.load();
+        registry.removeDevelopmentProject(registryId);
+        registry.save();
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Removed development record: %1").arg(registryId));
+        }
+        reloadLinWidgetsSettingsPage();
+        return;
+    }
+
+    const int answer = QMessageBox::question(this,
+                                             tr("Delete LinWidget"),
+                                             tr("Delete this installed widget and its saved record?\n%1").arg(packagePath),
+                                             QMessageBox::Yes | QMessageBox::No,
+                                             QMessageBox::No);
+    if (answer != QMessageBox::Yes) {
+        return;
+    }
+
+    const QString instanceId = settingsLinWidgetRegistryKey(registryId, false);
+    if (ListView* view = ListView::instance()) {
+        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
+            manager->removeWidgetState(instanceId);
+        }
+    }
+    settingsRemoveLinWidgetLayoutState(instanceId, packagePath);
+
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.removeById(registryId);
+    registry.save();
+    QString errorMessage;
+    if (!settingsRemoveDirectory(packagePath, &errorMessage) && m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Widget record removed, folder delete failed: %1").arg(errorMessage));
+    } else if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Deleted installed widget: %1").arg(registryId));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::setSelectedSettingsLinWidgetPermission(const QString& permission, bool granted)
+{
+    QListWidget* list = activeSettingsLinWidgetList();
+    QListWidgetItem* item = list ? list->currentItem() : nullptr;
+    if (!item || selectedSettingsLinWidgetIsDevelopment()) {
+        refreshLinWidgetSettingsButtons();
+        return;
+    }
+
+    QStringList permissions = item->data(SettingsLinWidgetGrantedPermissionsRole).toStringList();
+    const QString normalized = permission.trimmed().toLower();
+    if (granted && !permissions.contains(normalized)) {
+        permissions.append(normalized);
+    } else if (!granted) {
+        permissions.removeAll(normalized);
+    }
+    permissions.sort();
+
+    LinWidget::WidgetRegistryManager registry;
+    registry.load();
+    registry.setPermissionsGranted(selectedSettingsLinWidgetRegistryId(), false, permissions);
+    registry.save();
+
+    item->setData(SettingsLinWidgetGrantedPermissionsRole, permissions);
+    const QString selectedKey = selectedSettingsLinWidgetRegistryKey();
+    const QString instanceId = selectedSettingsLinWidgetInstanceId();
+    if (!instanceId.isEmpty()) {
+        if (ListView* view = ListView::instance()) {
+            if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
+                manager->restartWidget(instanceId);
+            }
+        }
+    }
+    reloadLinWidgetsSettingsPage();
+    if (!selectedKey.isEmpty()) {
+        auto restoreSelection = [this, selectedKey](QListWidget* targetList) {
+            if (!targetList) {
+                return false;
+            }
+            for (int i = 0; i < targetList->count(); ++i) {
+                QListWidgetItem* candidate = targetList->item(i);
+                if (!candidate) {
+                    continue;
+                }
+                const QString candidateKey = settingsLinWidgetRegistryKey(
+                    candidate->data(SettingsLinWidgetRegistryIdRole).toString(),
+                    candidate->data(SettingsLinWidgetDevelopmentRole).toBool());
+                if (candidateKey == selectedKey) {
+                    targetList->setCurrentItem(candidate);
+                    return true;
+                }
+            }
+            return false;
+        };
+        restoreSelection(m_installedLinWidgetsList) || restoreSelection(m_developmentLinWidgetsList);
+    }
+    refreshLinWidgetSettingsButtons();
+    refreshLinWidgetSettingsInspector();
+}
+
+QListWidget* SettingUI::activeSettingsLinWidgetList() const
+{
+    if (m_developmentLinWidgetsList && m_developmentLinWidgetsList->currentItem()) {
+        return m_developmentLinWidgetsList;
+    }
+    if (m_installedLinWidgetsList && m_installedLinWidgetsList->currentItem()) {
+        return m_installedLinWidgetsList;
+    }
+    return nullptr;
+}
+
+QString SettingUI::selectedSettingsLinWidgetPackagePath() const
+{
+    QListWidget* list = activeSettingsLinWidgetList();
+    return list && list->currentItem()
+        ? list->currentItem()->data(SettingsLinWidgetPackagePathRole).toString()
+        : QString();
+}
+
+QString SettingUI::selectedSettingsLinWidgetRegistryId() const
+{
+    QListWidget* list = activeSettingsLinWidgetList();
+    return list && list->currentItem()
+        ? list->currentItem()->data(SettingsLinWidgetRegistryIdRole).toString()
+        : QString();
+}
+
+bool SettingUI::selectedSettingsLinWidgetIsDevelopment() const
+{
+    QListWidget* list = activeSettingsLinWidgetList();
+    return list && list->currentItem() && list->currentItem()->data(SettingsLinWidgetDevelopmentRole).toBool();
+}
+
+QString SettingUI::selectedSettingsLinWidgetInstanceId() const
+{
+    const QString registryKey = selectedSettingsLinWidgetRegistryKey();
+    if (m_linWidgetInstancesById.contains(registryKey)) {
+        return m_linWidgetInstancesById.value(registryKey);
+    }
+
+    const QString packageKey = settingsLinWidgetPackageKey(selectedSettingsLinWidgetPackagePath());
+    if (m_linWidgetInstancesByPackage.contains(packageKey)) {
+        return m_linWidgetInstancesByPackage.value(packageKey);
+    }
+    return QString();
+}
+
+QString SettingUI::selectedSettingsLinWidgetRegistryKey() const
+{
+    return settingsLinWidgetRegistryKey(selectedSettingsLinWidgetRegistryId(), selectedSettingsLinWidgetIsDevelopment());
+}
+
+QString SettingUI::settingsLinWidgetRegistryKey(const QString& id, bool isDevelopment) const
+{
+    return QStringLiteral("%1:%2").arg(isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"),
+                                       id.trimmed().toLower());
+}
+
+QString SettingUI::settingsLinWidgetPackageKey(const QString& packagePath) const
+{
+    const QFileInfo info(packagePath);
+    const QString path = info.exists() ? info.absoluteFilePath() : packagePath;
+    return QDir::cleanPath(path).toLower();
+}
+
+QString SettingUI::settingsLinWidgetLogPath(const QString& instanceId) const
+{
+    if (instanceId.isEmpty()) {
+        return QString();
+    }
+    return QDir(AppPaths::linWidgetLogsDir()).filePath(safeLinWidgetInstanceFileNameForSettings(instanceId) + QStringLiteral(".log"));
+}
+
 
 
 
@@ -3195,6 +4647,46 @@ void SettingUI::setupStyles() {
         "   font-weight: 700; "
         "} "
         "QPushButton#pluginSettingsButton:hover { background: #f5f9ff; border-color: #a9c7ef; } "
+        "QTabWidget#linWidgetsTabs::pane { "
+        "   border: none; "
+        "   background: transparent; "
+        "} "
+        "QTabWidget#linWidgetsTabs QTabBar::tab { "
+        "   height: 36px; "
+        "   min-width: 104px; "
+        "   padding: 0 16px; "
+        "   margin-right: 8px; "
+        "   background: transparent; "
+        "   border: none; "
+        "   color: #66738c; "
+        "   font-size: 13px; "
+        "   font-weight: 700; "
+        "} "
+        "QTabWidget#linWidgetsTabs QTabBar::tab:hover { color: #142033; } "
+        "QTabWidget#linWidgetsTabs QTabBar::tab:selected { "
+        "   color: #0078d4; "
+        "   border-bottom: 3px solid #0078d4; "
+        "} "
+        "QListWidget#linWidgetSettingsList { "
+        "   background: rgba(247, 250, 255, 0.76); "
+        "   border: 1px solid rgba(214, 223, 236, 0.76); "
+        "   border-radius: 8px; "
+        "   padding: 6px; "
+        "   outline: none; "
+        "} "
+        "QListWidget#linWidgetSettingsList::item { "
+        "   color: #142033; "
+        "   background: rgba(255, 255, 255, 0.62); "
+        "   border: none; "
+        "   border-radius: 6px; "
+        "   padding: 10px; "
+        "   margin: 2px; "
+        "} "
+        "QListWidget#linWidgetSettingsList::item:hover { background: #eef6ff; } "
+        "QListWidget#linWidgetSettingsList::item:selected { "
+        "   background: #e6f1ff; "
+        "   color: #005fb8; "
+        "} "
         "QPushButton#updatePrimaryButton { "
         "   background: #0078d4; "
         "   border: 1px solid #0078d4; "

@@ -40,6 +40,7 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("resizable"), manifest.resizable);
     object.insert(QStringLiteral("autoLoad"), manifest.autoLoad);
     object.insert(QStringLiteral("entry"), manifest.entry);
+    object.insert(QStringLiteral("settings"), manifest.settings);
     object.insert(QStringLiteral("permissions"), permissions);
     return object;
 }
@@ -67,6 +68,7 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
     parsed.resizable = object.value(QStringLiteral("resizable")).toBool(true);
     parsed.autoLoad = object.value(QStringLiteral("autoLoad")).toBool(false);
     parsed.entry = object.value(QStringLiteral("entry")).toString(QStringLiteral("index.html")).trimmed();
+    parsed.settings = object.value(QStringLiteral("settings")).toString().trimmed();
 
     const QJsonArray permissions = object.value(QStringLiteral("permissions")).toArray();
     for (const QJsonValue& value : permissions) {

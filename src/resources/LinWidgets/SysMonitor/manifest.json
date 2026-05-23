@@ -1,0 +1,21 @@
+{
+  "id": "lindesk.sysmonitor",
+  "name": "SysMonitor",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "Real-time system performance monitor dashboard.",
+  "width": 340,
+  "height": 440,
+  "minWidth": 150,
+  "minHeight": 60,
+  "maxWidth": 600,
+  "maxHeight": 800,
+  "autoLoad": true,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": [
+    "desktop"
+  ]
+}

@@ -104,6 +104,8 @@ LinDesktop::LinDesktop(QWidget* parent)
     setFocusProxy(listView);
 
     embedToDesktop();
+    m_shellHookMessage = RegisterWindowMessageW(L"SHELLHOOK");
+    RegisterShellHookWindow(reinterpret_cast<HWND>(winId()));
     startDesktopHostWindowMonitor();
 
     m_monitor = new DesktopInfoMonitor(this);
@@ -133,6 +135,7 @@ LinDesktop::LinDesktop(QWidget* parent)
 
 LinDesktop::~LinDesktop()
 {
+    DeregisterShellHookWindow(reinterpret_cast<HWND>(winId()));
     stopDesktopHostWindowMonitor();
 
     if (m_trayIcon) {
@@ -541,6 +544,13 @@ void LinDesktop::stopDesktopHostWindowMonitor()
 
 void LinDesktop::handleDesktopHostWindowEvent(HWND hwnd, DWORD event)
 {
+    if (event == EVENT_OBJECT_REORDER ||
+        event == EVENT_OBJECT_SHOW ||
+        event == EVENT_OBJECT_HIDE ||
+        event == EVENT_SYSTEM_FOREGROUND) {
+        scheduleLinWidgetLayerRecovery();
+    }
+
     if (event == EVENT_OBJECT_DESTROY || event == EVENT_OBJECT_HIDE || event == EVENT_OBJECT_PARENTCHANGE) {
         scheduleDesktopHostChildrenRescan();
         return;
@@ -548,6 +558,26 @@ void LinDesktop::handleDesktopHostWindowEvent(HWND hwnd, DWORD event)
 
     if (!hwnd || isWindowUnderDesktopHost(hwnd) || isDesktopHostWindow(hwnd) || hwnd == reinterpret_cast<HWND>(winId())) {
         scheduleDesktopHostChildrenRescan();
+    }
+}
+
+void LinDesktop::scheduleLinWidgetLayerRecovery()
+{
+    if (!listView || m_linWidgetLayerRecoveryPending) {
+        return;
+    }
+
+    m_linWidgetLayerRecoveryPending = true;
+    const int delays[] = { 50, 200, 600, 1200 };
+    for (int delay : delays) {
+        QTimer::singleShot(delay, this, [this, delay]() {
+            if (listView) {
+                listView->syncLinWidgetLayer();
+            }
+            if (delay == 1200) {
+                m_linWidgetLayerRecoveryPending = false;
+            }
+        });
     }
 }
 
@@ -978,6 +1008,17 @@ void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
     MSG* msg = static_cast<MSG*>(message);
+    if (msg && m_shellHookMessage != 0 && msg->message == m_shellHookMessage) {
+        const WPARAM shellEvent = msg->wParam;
+        if (shellEvent == HSHELL_WINDOWACTIVATED ||
+            shellEvent == HSHELL_RUDEAPPACTIVATED ||
+            shellEvent == HSHELL_REDRAW ||
+            shellEvent == HSHELL_WINDOWREPLACED ||
+            shellEvent == HSHELL_WINDOWREPLACING) {
+            scheduleLinWidgetLayerRecovery();
+        }
+        return QWidget::nativeEvent(eventType, message, result);
+    }
     if (msg && msg->message == WM_DPICHANGED) {
         if (RECT* suggestedRect = reinterpret_cast<RECT*>(msg->lParam)) {
             setGeometry(QRect(

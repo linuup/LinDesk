@@ -4,6 +4,7 @@
 
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QList>
 
 namespace LinWidget {
 
@@ -32,6 +33,25 @@ bool WidgetIpcManager::start(const QString& serverName)
 
     emit errorOccurred(m_server->errorString());
     return false;
+}
+
+void WidgetIpcManager::stop()
+{
+    if (m_server->isListening()) {
+        m_server->close();
+    }
+
+    const QList<QLocalSocket*> sockets = m_socketToWidget.keys();
+    m_socketToWidget.clear();
+    m_widgetToSocket.clear();
+    for (QLocalSocket* socket : sockets) {
+        if (!socket) {
+            continue;
+        }
+        socket->disconnect(this);
+        socket->disconnectFromServer();
+        socket->deleteLater();
+    }
 }
 
 bool WidgetIpcManager::sendToWidget(const QString& widgetId, const QJsonObject& message)

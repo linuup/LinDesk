@@ -1,0 +1,13 @@
+{
+  "id": "lindesk.timer",
+  "name": "Timer",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "A fluent design countdown timer widget.",
+  "main": "index.html",
+  "minWidth": 180,
+  "minHeight": 100,
+  "width": 220,
+  "height": 240,
+  "permissions": []
+}

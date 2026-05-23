@@ -78,6 +78,7 @@ private:
     void stopDesktopHostWindowMonitor();
     void rescanDesktopHostChildren();
     void scheduleDesktopHostChildrenRescan();
+    void scheduleLinWidgetLayerRecovery();
     void showDesktopHostConflictDialog(HWND conflictHwnd);
     void repairDesktopHostPresentation();
     HWND findThirdPartyDesktopHostChild() const;
@@ -123,6 +124,8 @@ private:
     HWND m_desktopHostConflictHwnd = nullptr;
     bool m_desktopHostRescanPending = false;
     bool m_desktopHostRescanAgain = false;
+    bool m_linWidgetLayerRecoveryPending = false;
+    UINT m_shellHookMessage = 0;
     bool m_desktopHostConflictDialogShown = false;
     QPointer<FluentDialog> m_desktopHostConflictDialog;
 

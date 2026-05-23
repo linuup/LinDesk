@@ -273,43 +273,4 @@ function bindThemeToggle() {
 
 bindThemeToggle();
 
-// Resize Logic
-function bindResize() {
-  const grip = document.getElementById("resizeGrip");
-  if (!grip) return;
 
-  let startX, startY, startWidth, startHeight;
-
-  grip.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    startX = e.clientX;
-    startY = e.clientY;
-    startWidth = window.innerWidth;
-    startHeight = window.innerHeight;
-
-    const onMouseMove = (e) => {
-      if (e.buttons === 0) {
-        onMouseUp();
-        return;
-      }
-      const deltaX = e.clientX - startX;
-      const deltaY = e.clientY - startY;
-      const newWidth = startWidth + deltaX;
-      const newHeight = startHeight + deltaY;
-
-      if (window.desktop && window.desktop.resizeWidget) {
-        window.desktop.resizeWidget({ width: newWidth, height: newHeight });
-      }
-    };
-
-    const onMouseUp = () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  });
-}
-
-bindResize();

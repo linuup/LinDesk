@@ -31,6 +31,7 @@ struct WidgetManifest {
     bool resizable = true;
     bool autoLoad = false;
     QString entry;
+    QString settings;
     QStringList permissions;
 };
 

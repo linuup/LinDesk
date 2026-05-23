@@ -1,0 +1,16 @@
+{
+  "id": "lindesk.cyberfan.lin",
+  "name": "Cyber Fan",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "3D Cyberpunk Desktop Fan.",
+  "width": 200,
+  "height": 220,
+  "minWidth": 160,
+  "minHeight": 180,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": []
+}

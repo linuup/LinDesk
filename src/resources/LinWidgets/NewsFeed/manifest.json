@@ -1,0 +1,16 @@
+{
+  "id": "lindesk.newsfeed.lin",
+  "name": "NewsFeed",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "HackerNews RSS Ticker.",
+  "width": 380,
+  "height": 50,
+  "minWidth": 200,
+  "minHeight": 40,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": ["network"]
+}

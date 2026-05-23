@@ -84,7 +84,6 @@ void LayoutPersistenceService::save(const QString& persistencePath,
         persistencePath,
         state.enablePersistence,
         state.iconPositions,
-        state.desktopComponents,
         state.viewMode,
         state.sortType,
         state.preAutoSort,
@@ -118,12 +117,10 @@ bool LayoutPersistenceService::load(const QString& persistencePath,
         state.doubleClickHideIcons,
         state.showShortCutArrow,
         state.boxData,
-        state.iconPositions,
-        state.desktopComponents
+        state.iconPositions
     );
 
     return !state.boxData.isEmpty() ||
            !state.iconPositions.isEmpty() ||
-           !state.desktopComponents.isEmpty() ||
            state.enablePersistence != previousEnablePersistence;
 }

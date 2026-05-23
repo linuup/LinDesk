@@ -1,0 +1,16 @@
+{
+  "id": "lindesk.watertracker.lin",
+  "name": "Water Tracker",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "Drink more water!",
+  "width": 260,
+  "height": 140,
+  "minWidth": 220,
+  "minHeight": 120,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": ["storage"]
+}
