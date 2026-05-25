@@ -4,6 +4,7 @@
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInfoTip.h"
 #include "services/AppPaths.h"
+#include "services/DpiCoordinateHelper.h"
 #include <QCoreApplication>
 #include <QFutureWatcher>
 #include <QSettings>
@@ -54,6 +55,37 @@ void CALLBACK desktopHostWindowEventProc(HWINEVENTHOOK,
             },
             Qt::QueuedConnection);
     }
+}
+
+QRect nativeWindowRect(HWND hwnd)
+{
+    RECT rect = {};
+    if (!hwnd || !GetWindowRect(hwnd, &rect)) {
+        return {};
+    }
+
+    return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+}
+
+void logDesktopDpiTrace(const char* source, QWidget* widget, const QRect& suggestedNativeRect = QRect())
+{
+    QScreen* screen = widget ? widget->screen() : nullptr;
+    if (!screen) {
+        screen = QApplication::primaryScreen();
+    }
+
+    const HWND hwnd = widget ? reinterpret_cast<HWND>(widget->winId()) : nullptr;
+    qDebug() << "[DpiTrace][LinDesktop]"
+             << "source=" << source
+             << "qtGeometry=" << (widget ? widget->geometry() : QRect())
+             << "qtFrameGeometry=" << (widget ? widget->frameGeometry() : QRect())
+             << "nativeWindowRect=" << nativeWindowRect(hwnd)
+             << "suggestedNativeRect=" << suggestedNativeRect
+             << "nativeDpi=" << (hwnd ? GetDpiForWindow(hwnd) : 0)
+             << "widgetDpr=" << (widget ? widget->devicePixelRatioF() : 0.0)
+             << "screenDpr=" << (screen ? screen->devicePixelRatio() : 0.0)
+             << "screenGeometry=" << (screen ? screen->geometry() : QRect())
+             << "screenAvailable=" << (screen ? screen->availableGeometry() : QRect());
 }
 }
 
@@ -525,11 +557,13 @@ void LinDesktop::embedToDesktop()
 {
     HWND hwnd = CSystemApi::FindRealDesktop();
     if (hwnd) {
+        logDesktopDpiTrace("embedBefore", this);
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
         setGeometry(QApplication::primaryScreen()->geometry());
         SetParent((HWND)this->winId(), hwnd);
         m_isEmbedded = true;
         show();
+        logDesktopDpiTrace("embedAfter", this);
         forceDesktopRepaint();
     }
 }
@@ -1060,16 +1094,22 @@ bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* r
         return QWidget::nativeEvent(eventType, message, result);
     }
     if (msg && msg->message == WM_DPICHANGED) {
+        QRect suggestedNativeRect;
         if (RECT* suggestedRect = reinterpret_cast<RECT*>(msg->lParam)) {
-            setGeometry(QRect(
+            suggestedNativeRect = QRect(
                 suggestedRect->left,
                 suggestedRect->top,
                 suggestedRect->right - suggestedRect->left,
-                suggestedRect->bottom - suggestedRect->top));
+                suggestedRect->bottom - suggestedRect->top);
+            logDesktopDpiTrace("wmDpiChangedBefore", this, suggestedNativeRect);
+            const UINT newDpi = HIWORD(msg->wParam);
+            const QRect logicalGeometry = DpiCoordinateHelper::nativeRectToQtGlobalRectForDpi(*suggestedRect, newDpi);
+            setGeometry(logicalGeometry);
         }
         QTimer::singleShot(0, this, [this]() {
             connectScreenSignals(screen());
             handleDpiOrScreenMetricsChanged();
+            logDesktopDpiTrace("wmDpiChangedAfter", this);
         });
         if (result) {
             *result = 0;

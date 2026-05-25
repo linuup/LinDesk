@@ -22,6 +22,7 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QClipboard>
+#include <QCursor>
 #include "SystemApi/SystemApi.h"
 #include <QDrag>
 #include <QMimeData>
@@ -182,6 +183,101 @@ QRect clampedRestoredBoxGeometry(const QRect& geometry)
 
     return safeGeometry;
 }
+
+#ifdef Q_OS_WIN
+QPoint nativeCursorPosition()
+{
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    return QPoint(cursor.x, cursor.y);
+}
+
+QRect nativeWindowRect(QWidget* widget)
+{
+    if (!widget) {
+        return {};
+    }
+
+    RECT rect = {};
+    if (!GetWindowRect(reinterpret_cast<HWND>(widget->winId()), &rect)) {
+        return {};
+    }
+
+    return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+}
+
+UINT nativeWindowDpi(QWidget* widget)
+{
+    if (!widget) {
+        return 0;
+    }
+
+    return GetDpiForWindow(reinterpret_cast<HWND>(widget->winId()));
+}
+
+QString nativeWindowClassName(HWND window)
+{
+    if (!window) {
+        return QString();
+    }
+
+    wchar_t className[256] = {};
+    GetClassNameW(window, className, 256);
+    return QString::fromWCharArray(className);
+}
+
+QString nativeHwndText(HWND window)
+{
+    return QString::number(reinterpret_cast<quintptr>(window), 16);
+}
+
+void logListViewNativeFocusTrace(const char* source)
+{
+    const HWND foregroundWindow = GetForegroundWindow();
+    DWORD foregroundProcessId = 0;
+    const DWORD foregroundThreadId = foregroundWindow
+        ? GetWindowThreadProcessId(foregroundWindow, &foregroundProcessId)
+        : 0;
+
+    GUITHREADINFO guiInfo = {};
+    guiInfo.cbSize = sizeof(guiInfo);
+    if (foregroundThreadId != 0) {
+        GetGUIThreadInfo(foregroundThreadId, &guiInfo);
+    }
+
+    const HWND currentThreadFocus = GetFocus();
+    qDebug() << "[LinWidgetFocus][ListViewKey]"
+             << "source=" << source
+             << "foreground=" << nativeHwndText(foregroundWindow)
+             << "foregroundClass=" << nativeWindowClassName(foregroundWindow)
+             << "foregroundThread=" << foregroundThreadId
+             << "foregroundProcess=" << foregroundProcessId
+             << "guiFocus=" << nativeHwndText(guiInfo.hwndFocus)
+             << "guiFocusClass=" << nativeWindowClassName(guiInfo.hwndFocus)
+             << "guiActive=" << nativeHwndText(guiInfo.hwndActive)
+             << "guiActiveClass=" << nativeWindowClassName(guiInfo.hwndActive)
+             << "threadFocus=" << nativeHwndText(currentThreadFocus)
+             << "threadFocusClass=" << nativeWindowClassName(currentThreadFocus);
+}
+
+void logListViewDpiTrace(const char* source, QWidget* widget, const QPoint& localPos, const QPoint& globalPos)
+{
+    QScreen* widgetScreen = widget ? widget->screen() : nullptr;
+    qDebug() << "[DpiTrace][ListView]"
+             << "source=" << source
+             << "local=" << localPos
+             << "qtGlobal=" << globalPos
+             << "mapToGlobal=" << (widget ? widget->mapToGlobal(localPos) : QPoint())
+             << "qtCursor=" << QCursor::pos()
+             << "nativeCursor=" << nativeCursorPosition()
+             << "widgetDpr=" << (widget ? widget->devicePixelRatioF() : 0.0)
+             << "screenDpr=" << (widgetScreen ? widgetScreen->devicePixelRatio() : 0.0)
+             << "screenGeometry=" << (widgetScreen ? widgetScreen->geometry() : QRect())
+             << "screenAvailable=" << (widgetScreen ? widgetScreen->availableGeometry() : QRect())
+             << "nativeWindowRect=" << nativeWindowRect(widget)
+             << "nativeDpi=" << nativeWindowDpi(widget);
+}
+#endif
 
 quint64 packGridCell(int gridX, int gridY)
 {
@@ -2561,6 +2657,9 @@ void ListView::paintEvent(QPaintEvent* event)
 
 void ListView::contextMenuEvent(QContextMenuEvent* event)
 {
+#ifdef Q_OS_WIN
+    logListViewDpiTrace("contextMenu", this, event->pos(), event->globalPos());
+#endif
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             const QString itemPath = normalizeDesktopItemPath(hitState->model.filePath);
@@ -2600,6 +2699,11 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
+#ifdef Q_OS_WIN
+    if (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) {
+        logListViewDpiTrace("mousePress", this, event->pos(), event->globalPos());
+    }
+#endif
     RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
@@ -3766,6 +3870,9 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+#ifdef Q_OS_WIN
+    logListViewNativeFocusTrace("keyPress");
+#endif
     // 闁兼儳鍢茶ぐ鍥┾偓鍦仦濡炲倿鎯冮崟顖涙殯闁烩晜顭囨慨鎼佸箑?
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;

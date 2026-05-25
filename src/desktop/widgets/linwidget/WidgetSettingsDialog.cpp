@@ -416,6 +416,11 @@ void WidgetSettingsDialog::updateWebViewBounds()
         return;
     }
     RECT bounds = { 0, 0, width(), height() };
+    HWND hostWindow = reinterpret_cast<HWND>(winId());
+    RECT clientRect = {};
+    if (hostWindow && GetClientRect(hostWindow, &clientRect)) {
+        bounds = clientRect;
+    }
     controller->put_Bounds(bounds);
 #endif
 }

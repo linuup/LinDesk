@@ -6,6 +6,7 @@
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "services/AppPaths.h"
+#include "services/DpiCoordinateHelper.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -17,6 +18,8 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QDebug>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QSet>
 #include <QStringList>
 
@@ -160,6 +163,26 @@ QRect windowRect(HWND window)
 QString hwndString(HWND window)
 {
     return QString::number(reinterpret_cast<quintptr>(window), 16);
+}
+
+QRect bestLogicalLayerRect(HWND layerWindow, const RECT& layerNativeRect)
+{
+    const QRect rawRect = windowRect(layerWindow);
+    const QRect convertedRect = DpiCoordinateHelper::nativeRectToQtGlobalRect(layerWindow, layerNativeRect);
+    QScreen* screen = QGuiApplication::screenAt(rawRect.center());
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    if (!screen) {
+        return convertedRect.isValid() ? convertedRect : rawRect;
+    }
+
+    const QRect screenGeometry = screen->geometry();
+    const int rawDelta = qAbs(rawRect.width() - screenGeometry.width()) +
+        qAbs(rawRect.height() - screenGeometry.height());
+    const int convertedDelta = qAbs(convertedRect.width() - screenGeometry.width()) +
+        qAbs(convertedRect.height() - screenGeometry.height());
+    return rawDelta <= convertedDelta ? rawRect : convertedRect;
 }
 
 #endif
@@ -677,11 +700,17 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         return;
     }
 
-    const QRect geometry = windowRect(layerWindow);
+    RECT layerNativeRect = {};
+    if (!GetWindowRect(layerWindow, &layerNativeRect)) {
+        return;
+    }
+    const QRect nativeLayerGeometry = windowRect(layerWindow);
+    const QRect logicalLayerGeometry = bestLogicalLayerRect(layerWindow, layerNativeRect);
     RECT clientRect = {};
     GetClientRect(layerWindow, &clientRect);
     const int clientWidth = clientRect.right - clientRect.left;
     const int clientHeight = clientRect.bottom - clientRect.top;
+    const QSize logicalClientSize = logicalLayerGeometry.size();
 
     const bool childLayer = GetParent(widgetWindow) == layerWindow;
     HWND insertAfter = childLayer
@@ -698,21 +727,21 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
 
     const BOOL ok = SetWindowPos(widgetWindow,
                                  insertAfter,
-                                 childLayer ? 0 : geometry.x(),
-                                 childLayer ? 0 : geometry.y(),
-                                 childLayer ? clientWidth : geometry.width(),
-                                 childLayer ? clientHeight : geometry.height(),
+                                 childLayer ? 0 : nativeLayerGeometry.x(),
+                                 childLayer ? 0 : nativeLayerGeometry.y(),
+                                 childLayer ? clientWidth : nativeLayerGeometry.width(),
+                                 childLayer ? clientHeight : nativeLayerGeometry.height(),
                                  setWindowFlags);
     if (ok) {
         QJsonObject hostGeometryMessage = makeIpcMessage(QString::fromLatin1(IpcType::UpdateHostGeometry), QString::fromLatin1(kSharedHostId));
-        hostGeometryMessage.insert(QStringLiteral("x"), childLayer ? 0 : geometry.x());
-        hostGeometryMessage.insert(QStringLiteral("y"), childLayer ? 0 : geometry.y());
-        hostGeometryMessage.insert(QStringLiteral("width"), childLayer ? clientWidth : geometry.width());
-        hostGeometryMessage.insert(QStringLiteral("height"), childLayer ? clientHeight : geometry.height());
+        hostGeometryMessage.insert(QStringLiteral("x"), childLayer ? 0 : logicalLayerGeometry.x());
+        hostGeometryMessage.insert(QStringLiteral("y"), childLayer ? 0 : logicalLayerGeometry.y());
+        hostGeometryMessage.insert(QStringLiteral("width"), childLayer ? logicalClientSize.width() : logicalLayerGeometry.width());
+        hostGeometryMessage.insert(QStringLiteral("height"), childLayer ? logicalClientSize.height() : logicalLayerGeometry.height());
         m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), hostGeometryMessage);
     }
     const QRect hostRect = windowRect(widgetWindow);
-    const bool hostRectMatchesListView = hostRect == geometry;
+    const bool hostRectMatchesListView = hostRect == nativeLayerGeometry;
     const bool hostAboveListView = !m_embedInDesktopLayer || (childLayer
         ? GetWindow(layerWindow, GW_CHILD) == widgetWindow
         : GetWindow(layerWindow, GW_HWNDPREV) == widgetWindow);
@@ -723,7 +752,7 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
     HWND pointWindow = WindowFromPoint(center);
     if (!ok || !hostAboveListView || !hostRectMatchesListView) {
         appendSharedLog(QStringLiteral("layer"),
-                        QStringLiteral("sync mismatch id=%1 ok=%2 widget=%3 widgetClass=%4 layer=%5 layerClass=%6 insertAfter=%7 rect=%8,%9 %10x%11 aboveListView=%12 pointWindow=%13 pointClass=%14")
+                        QStringLiteral("sync mismatch id=%1 ok=%2 widget=%3 widgetClass=%4 layer=%5 layerClass=%6 insertAfter=%7 rect=%8,%9 %10x%11 logicalRect=%12,%13 %14x%15 client=%16x%17 aboveListView=%18 pointWindow=%19 pointClass=%20")
                             .arg(instanceId,
                                  ok ? QStringLiteral("true") : QStringLiteral("false"),
                                  hwndString(widgetWindow),
@@ -735,6 +764,12 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
                                  QString::number(hostRect.y()),
                                  QString::number(hostRect.width()),
                                  QString::number(hostRect.height()),
+                                 QString::number(logicalLayerGeometry.x()),
+                                 QString::number(logicalLayerGeometry.y()),
+                                 QString::number(logicalLayerGeometry.width()),
+                                 QString::number(logicalLayerGeometry.height()),
+                                 QString::number(clientWidth),
+                                 QString::number(clientHeight),
                                  hostAboveListView ? QStringLiteral("true") : QStringLiteral("false"),
                                  hwndString(pointWindow),
                                  windowClassName(pointWindow)));
@@ -748,6 +783,8 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
                  << "insertAfter=" << hwndString(insertAfter)
                  << "insertAfterClass=" << windowClassName(insertAfter)
                  << "rect=" << hostRect
+                 << "logicalRect=" << logicalLayerGeometry
+                 << "client=" << QSize(clientWidth, clientHeight)
                  << "aboveListView=" << hostAboveListView
                  << "pointWindow=" << hwndString(pointWindow)
                  << "pointClass=" << windowClassName(pointWindow);

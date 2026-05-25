@@ -10,12 +10,14 @@
 #include <QAction>
 #include <QDir>
 #include <QApplication>
+#include <QGuiApplication>
 #include <QScreen>
 #include <QTimer>
 #include <QWindow>
 #include <QStyleFactory>
 #include <QFileInfo>
 #include <QClipboard>
+#include <QCursor>
 #include <QMimeData>
 #include <QDrag>
 #include <QFileDialog>
@@ -37,6 +39,7 @@
 #include "desktop/RightMenu.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "services/DpiScaleHelper.h"
+#include "services/DpiCoordinateHelper.h"
 #include "services/ShellMenuExclusionStore.h"
 #include "services/WinBlurHelper.h"
 #include "ui/Fluent/FluentDragTip.h"
@@ -77,6 +80,46 @@ QString normalizeMappedFolderPath(const QString& path)
         normalized.chop(1);
     }
     return normalized;
+}
+
+QPoint nativeCursorPosition()
+{
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    return QPoint(cursor.x, cursor.y);
+}
+
+QRect nativeWindowRect(HWND hwnd)
+{
+    RECT rect = {};
+    if (!hwnd || !GetWindowRect(hwnd, &rect)) {
+        return {};
+    }
+
+    return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+}
+
+void logBoxDpiTrace(const char* source, QWidget* widget, const QPoint& globalPos)
+{
+    QScreen* screen = QGuiApplication::screenAt(globalPos);
+    if (!screen) {
+        screen = widget ? widget->screen() : QApplication::primaryScreen();
+    }
+
+    const HWND hwnd = widget ? reinterpret_cast<HWND>(widget->winId()) : nullptr;
+    qDebug() << "[DpiTrace][LinBox]"
+             << "source=" << source
+             << "qtGlobal=" << globalPos
+             << "nativeGlobal=" << DpiCoordinateHelper::qtGlobalPointToNativePoint(hwnd, globalPos)
+             << "qtCursor=" << QCursor::pos()
+             << "nativeCursor=" << nativeCursorPosition()
+             << "ownerHwnd=" << QString::number(reinterpret_cast<quintptr>(hwnd), 16)
+             << "ownerRect=" << nativeWindowRect(hwnd)
+             << "ownerDpi=" << (hwnd ? GetDpiForWindow(hwnd) : 0)
+             << "widgetDpr=" << (widget ? widget->devicePixelRatioF() : 0.0)
+             << "screenDpr=" << (screen ? screen->devicePixelRatio() : 0.0)
+             << "screenGeometry=" << (screen ? screen->geometry() : QRect())
+             << "screenAvailable=" << (screen ? screen->availableGeometry() : QRect());
 }
 
 QHash<QString, HBITMAP>& menuBitmapCache()
@@ -3827,7 +3870,9 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
     }
 
     ShellContextMenu scm;
-    POINT p = { globalPos.x(), globalPos.y() };
+    logBoxDpiTrace("showCustomContextMenu", this, globalPos);
+    const QPoint nativeGlobalPos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this, globalPos);
+    POINT p = { nativeGlobalPos.x(), nativeGlobalPos.y() };
     const POINT* position = &p;
     HWND ownerHwnd = (HWND)this->winId();
 

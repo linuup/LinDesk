@@ -4,6 +4,7 @@
 #include "desktop/widgets/linwidget/WidgetIpcProtocol.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "services/AppPaths.h"
+#include "services/DpiCoordinateHelper.h"
 
 #include <QDateTime>
 #include <QDebug>
@@ -47,6 +48,67 @@ bool hasNetworkPermission(const QStringList& permissions)
 {
     return PermissionManager().canUseNetwork(permissions);
 }
+
+#ifdef Q_OS_WIN
+QRect nativeRectFromRect(const RECT& rect)
+{
+    return QRect(rect.left,
+                 rect.top,
+                 qMax(0L, rect.right - rect.left),
+                 qMax(0L, rect.bottom - rect.top));
+}
+
+QRect parentClientNativeRect(HWND parentWindow)
+{
+    RECT rect = {};
+    if (!parentWindow || !IsWindow(parentWindow) || !GetClientRect(parentWindow, &rect)) {
+        return {};
+    }
+    return nativeRectFromRect(rect);
+}
+
+QRect parentClientLogicalRect(HWND parentWindow)
+{
+    const QRect nativeClientRect = parentClientNativeRect(parentWindow);
+    if (!nativeClientRect.isValid()) {
+        return {};
+    }
+
+    RECT parentNativeRect = {};
+    if (!GetWindowRect(parentWindow, &parentNativeRect)) {
+        return nativeClientRect;
+    }
+
+    const QRect nativeParentRect = nativeRectFromRect(parentNativeRect);
+    const QRect logicalParentRect = DpiCoordinateHelper::nativeRectToQtGlobalRect(parentWindow, parentNativeRect);
+    if (!nativeParentRect.isValid() || !logicalParentRect.isValid()) {
+        return nativeClientRect;
+    }
+
+    const qreal scaleX = static_cast<qreal>(logicalParentRect.width()) / qMax(1, nativeParentRect.width());
+    const qreal scaleY = static_cast<qreal>(logicalParentRect.height()) / qMax(1, nativeParentRect.height());
+    return QRect(0,
+                 0,
+                 qRound(nativeClientRect.width() * scaleX),
+                 qRound(nativeClientRect.height() * scaleY));
+}
+
+QRect childLogicalRectToNative(HWND parentWindow, const QRect& logicalRect)
+{
+    const QRect nativeClientRect = parentClientNativeRect(parentWindow);
+    const QRect logicalClientRect = parentClientLogicalRect(parentWindow);
+    if (!nativeClientRect.isValid() || !logicalClientRect.isValid()) {
+        return logicalRect;
+    }
+
+    const qreal scaleX = static_cast<qreal>(nativeClientRect.width()) / qMax(1, logicalClientRect.width());
+    const qreal scaleY = static_cast<qreal>(nativeClientRect.height()) / qMax(1, logicalClientRect.height());
+    return QRect(qRound(logicalRect.x() * scaleX),
+                 qRound(logicalRect.y() * scaleY),
+                 qRound(logicalRect.width() * scaleX),
+                 qRound(logicalRect.height() * scaleY));
+}
+#endif
 
 #ifdef LINDESK_HAS_WEBVIEW2
 QString webResourceHeaderValue(ICoreWebView2HttpRequestHeaders* headers, const wchar_t* name)
@@ -496,12 +558,15 @@ void WidgetHostRuntime::attachToParentWindow()
     }
     SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
 
-    const QRect clampedGeometry = m_sharedRuntime
-        ? QRect(QPoint(0, 0), parentClientRect().size())
+    const QRect logicalGeometry = m_sharedRuntime
+        ? QRect(QPoint(0, 0), parentClientLogicalRect(parentWindow).size())
         : QRect(clampToParent(geometry().topLeft()), geometry().size());
+    const QRect nativeGeometry = m_sharedRuntime
+        ? QRect(QPoint(0, 0), parentClientNativeRect(parentWindow).size())
+        : childLogicalRectToNative(parentWindow, logicalGeometry);
     SetWindowPos(hostWindow, HWND_TOP,
-                 clampedGeometry.x(), clampedGeometry.y(),
-                 clampedGeometry.width(), clampedGeometry.height(),
+                 nativeGeometry.x(), nativeGeometry.y(),
+                 nativeGeometry.width(), nativeGeometry.height(),
                  SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
     m_embedded = true;
 #endif
@@ -589,11 +654,7 @@ QRect WidgetHostRuntime::parentClientRect() const
     if (!parentWindow || !IsWindow(parentWindow)) {
         return QRect();
     }
-    RECT rect = {};
-    if (!GetClientRect(parentWindow, &rect)) {
-        return QRect();
-    }
-    return QRect(0, 0, rect.right - rect.left, rect.bottom - rect.top);
+    return parentClientLogicalRect(parentWindow);
 #else
     return QRect();
 #endif
@@ -1303,6 +1364,7 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
         " try { chrome.webview.postMessage(payload); } catch (_) {}"
         "};"
         "const describeLinWidgetTarget = target => target ? ((target.tagName||'').toLowerCase() + (target.id ? '#'+target.id : '') + (target.className ? '.'+String(target.className).replace(/\\s+/g,'.') : '')) : '';"
+        "const isLinWidgetInteractiveTarget = target => !!(target && target.closest && target.closest(\"input,textarea,select,button,a,[contenteditable='true'],[contenteditable=''],[data-no-drag]\"));"
         "let lastLinWidgetFocusRequest=0;"
         "const requestLinWidgetFocus = (focusSource, force) => {"
         " const now = Date.now();"
@@ -1310,8 +1372,7 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
         " lastLinWidgetFocusRequest = now;"
         " postToHost('linwidget_focus_request', {focusSource:focusSource||''});"
         "};"
-        "window.addEventListener('pointerdown', () => requestLinWidgetFocus('iframe_pointerdown', false), true);"
-        "window.addEventListener('focusin', () => setTimeout(() => requestLinWidgetFocus('iframe_focusin', true), 0), true);"
+        "window.addEventListener('pointerdown', event => { requestLinWidgetFocus(isLinWidgetInteractiveTarget(event.target) ? 'iframe_interactive_pointerdown' : 'iframe_pointerdown', true); }, true);"
         "window.addEventListener('keydown', event => {"
         " postToHost('linwidget_keydown', {key:event.key||'', code:event.code||'', target:describeLinWidgetTarget(event.target), defaultPrevented:!!event.defaultPrevented});"
         "}, true);"
@@ -1681,14 +1742,34 @@ void WidgetHostRuntime::updateNativeWindowRegion(void* windowHandle)
     }
 
     HRGN combinedRegion = CreateRectRgn(0, 0, 0, 0);
+    RECT clientRect = {};
+    const bool hasClientRect = GetClientRect(window, &clientRect);
+    const int nativeClientWidth = hasClientRect ? qMax(0L, clientRect.right - clientRect.left) : width();
+    const int nativeClientHeight = hasClientRect ? qMax(0L, clientRect.bottom - clientRect.top) : height();
+    const qreal scaleX = static_cast<qreal>(nativeClientWidth) / qMax(1, width());
+    const qreal scaleY = static_cast<qreal>(nativeClientHeight) / qMax(1, height());
+    appendLog(QStringLiteral("region"), QStringLiteral("region scale window=%1 class=%2 logical=%3x%4 native=%5x%6 scale=%7,%8 rectCount=%9")
+        .arg(QString::number(reinterpret_cast<quintptr>(window), 16),
+             nativeWindowClassName(window),
+             QString::number(width()),
+             QString::number(height()),
+             QString::number(nativeClientWidth),
+             QString::number(nativeClientHeight),
+             QString::number(scaleX, 'f', 3),
+             QString::number(scaleY, 'f', 3),
+             QString::number(m_sharedWidgetGeometries.size())));
     for (const QRect& rect : m_sharedWidgetGeometries) {
         if (!rect.isValid()) {
             continue;
         }
-        HRGN widgetRegion = CreateRectRgn(rect.left(),
-                                          rect.top(),
-                                          rect.right() + 1,
-                                          rect.bottom() + 1);
+        const QRect nativeRect(qRound(rect.x() * scaleX),
+                               qRound(rect.y() * scaleY),
+                               qRound(rect.width() * scaleX),
+                               qRound(rect.height() * scaleY));
+        HRGN widgetRegion = CreateRectRgn(nativeRect.left(),
+                                          nativeRect.top(),
+                                          nativeRect.left() + nativeRect.width(),
+                                          nativeRect.top() + nativeRect.height());
         CombineRgn(combinedRegion, combinedRegion, widgetRegion, RGN_OR);
         DeleteObject(widgetRegion);
     }
@@ -1843,7 +1924,7 @@ void WidgetHostRuntime::installWebViewDragBridge()
         "window.addEventListener('pointerdown', e => {"
         " if (e.button !== 0) return;"
         " if (isInteractiveTarget(e.target)) {"
-        "  post({type:'focus_request'});"
+        "  post({type:'focus_request', focusSource:'interactive_pointerdown'});"
         "  return;"
         " }"
         " post({type:'focus_request'});"
@@ -1982,10 +2063,13 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
         return;
     }
     if (type == QStringLiteral("dom_focusin")) {
-        appendLog(QStringLiteral("dom"), QStringLiteral("focusin target=%1")
-            .arg(object.value(QStringLiteral("target")).toString()));
-        if (m_sharedRuntime) {
-            focusWebView();
+        const QString target = object.value(QStringLiteral("target")).toString();
+        appendLog(QStringLiteral("dom"), QStringLiteral("focusin target=%1").arg(target));
+        if (target.startsWith(QStringLiteral("input"), Qt::CaseInsensitive) ||
+            target.startsWith(QStringLiteral("textarea"), Qt::CaseInsensitive) ||
+            target.startsWith(QStringLiteral("select"), Qt::CaseInsensitive) ||
+            target.contains(QStringLiteral("contenteditable"), Qt::CaseInsensitive)) {
+            focusWebView(QStringLiteral("dom_focusin"));
         }
         return;
     }
@@ -2118,7 +2202,7 @@ void WidgetHostRuntime::focusWebView(const QString& source)
 #endif
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* controller = static_cast<ICoreWebView2Controller*>(m_webViewController);
-    if (controller) {
+    if (controller && !webViewSearch.window) {
         controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
     }
 #endif
@@ -2190,10 +2274,12 @@ void WidgetHostRuntime::applyHostPosition(const QPoint& topLeft)
 #ifdef Q_OS_WIN
     if (m_embedded) {
         HWND hostWindow = reinterpret_cast<HWND>(winId());
-        if (hostWindow) {
+        HWND parentWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_parentWindowId));
+        if (hostWindow && parentWindow) {
+            const QRect nativeGeometry = childLogicalRectToNative(parentWindow, QRect(finalTopLeft, size()));
             SetWindowPos(hostWindow, nullptr,
-                         finalTopLeft.x(), finalTopLeft.y(),
-                         width(), height(),
+                         nativeGeometry.x(), nativeGeometry.y(),
+                         nativeGeometry.width(), nativeGeometry.height(),
                          SWP_NOZORDER | SWP_NOACTIVATE);
         }
     }
@@ -2208,10 +2294,12 @@ void WidgetHostRuntime::applyHostGeometry(const QRect& geometry)
 #ifdef Q_OS_WIN
     if (m_embedded) {
         HWND hostWindow = reinterpret_cast<HWND>(winId());
-        if (hostWindow) {
+        HWND parentWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_parentWindowId));
+        if (hostWindow && parentWindow) {
+            const QRect nativeGeometry = childLogicalRectToNative(parentWindow, QRect(finalTopLeft, finalSize));
             SetWindowPos(hostWindow, nullptr,
-                         finalTopLeft.x(), finalTopLeft.y(),
-                         finalSize.width(), finalSize.height(),
+                         nativeGeometry.x(), nativeGeometry.y(),
+                         nativeGeometry.width(), nativeGeometry.height(),
                          SWP_NOZORDER | SWP_NOACTIVATE);
         }
     }
@@ -2231,7 +2319,12 @@ void WidgetHostRuntime::updateWebViewBounds()
             .arg(m_widgetId, QString::number(width()), QString::number(height())));
         return;
     }
-    const RECT bounds = { 0, 0, width(), height() };
+    RECT bounds = { 0, 0, width(), height() };
+    HWND hostWindow = reinterpret_cast<HWND>(winId());
+    RECT clientRect = {};
+    if (hostWindow && GetClientRect(hostWindow, &clientRect)) {
+        bounds = clientRect;
+    }
     const HRESULT result = controller->put_Bounds(bounds);
     Q_UNUSED(result);
     if (m_sharedRuntime) {

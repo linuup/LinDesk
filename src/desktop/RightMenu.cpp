@@ -4,6 +4,7 @@
 #include "desktop/Win11MenuBridge.h"
 #include "app/AppFonts.h"
 #include "services/AppPaths.h"
+#include "services/DpiCoordinateHelper.h"
 #include "services/ShellMenuExclusionStore.h"
 #include "ui/Fluent/FluentDialog.h"
 #include <QCoreApplication>
@@ -14,7 +15,9 @@
 #include "../SystemApi/Tool.h"
 #include <QtWinExtras/QtWin>
 #include <QGuiApplication>
+#include <QScreen>
 #include <QClipboard>
+#include <QCursor>
 #include <QMimeData>
 #include <QUrl>
 #include <QApplication>
@@ -74,6 +77,49 @@ void setBoolMenuSetting(const char* key, bool enabled)
     QSettings settings(rightMenuConfigPath(), QSettings::IniFormat);
     settings.setValue(QString::fromLatin1(key), enabled);
     settings.sync();
+}
+
+QPoint nativeCursorPosition()
+{
+    POINT cursor = {};
+    GetCursorPos(&cursor);
+    return QPoint(cursor.x, cursor.y);
+}
+
+QRect nativeWindowRect(HWND hwnd)
+{
+    RECT rect = {};
+    if (!hwnd || !GetWindowRect(hwnd, &rect)) {
+        return {};
+    }
+
+    return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+}
+
+UINT nativeWindowDpi(HWND hwnd)
+{
+    return hwnd ? GetDpiForWindow(hwnd) : 0;
+}
+
+void logRightMenuDpiTrace(const char* source, HWND hwnd, const QPoint& pos)
+{
+    QScreen* screen = QGuiApplication::screenAt(pos);
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+
+    qDebug() << "[DpiTrace][RightMenu]"
+             << "source=" << source
+             << "qtPos=" << pos
+             << "nativePos=" << DpiCoordinateHelper::qtGlobalPointToNativePoint(hwnd, pos)
+             << "qtCursor=" << QCursor::pos()
+             << "nativeCursor=" << nativeCursorPosition()
+             << "ownerHwnd=" << QString::number(reinterpret_cast<quintptr>(hwnd), 16)
+             << "ownerRect=" << nativeWindowRect(hwnd)
+             << "ownerDpi=" << nativeWindowDpi(hwnd)
+             << "screenDpr=" << (screen ? screen->devicePixelRatio() : 0.0)
+             << "screenGeometry=" << (screen ? screen->geometry() : QRect())
+             << "screenAvailable=" << (screen ? screen->availableGeometry() : QRect());
 }
 
 bool isSupportedSpecialFolderMenu(SpecialFolders folder)
@@ -1080,7 +1126,9 @@ void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoin
 void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
 {
     ShellContextMenu scm;
-    POINT p = { pos.x(), pos.y() };
+    logRightMenuDpiTrace("defaultDesktopShellMenu", this->hwnd, pos);
+    const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);
+    POINT p = { nativePos.x(), nativePos.y() };
     scm.DisplayDesktopContextMenu();
     const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
     scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
@@ -1092,6 +1140,7 @@ void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
 
 bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 {
+    logRightMenuDpiTrace("windows11DesktopMenu", this->hwnd, pos);
     ShellContextMenu shellMenu;
     ShellMenuCommandSession shellSession;
     const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
@@ -1102,7 +1151,8 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
     }
 
     QString commandId;
-    if (!Win11MenuBridge::showDesktopMenu(pos, buildWindows11DesktopMenuItems(&shellSession), &commandId)) {
+    const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);
+    if (!Win11MenuBridge::showDesktopMenu(nativePos, buildWindows11DesktopMenuItems(&shellSession), &commandId)) {
         return false;
     }
 
@@ -1115,7 +1165,9 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool extendedVerbs) const
 {
     ShellContextMenu scm;
-    POINT p = { pos.x(), pos.y() };
+    logRightMenuDpiTrace("showMenu", this->hwnd, pos);
+    const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);
+    POINT p = { nativePos.x(), nativePos.y() };
     const POINT* position = &p;
 	if (this->fileType == ObjectType::BackGround) {
 		preparePasteActionsForMenu();
@@ -1267,7 +1319,9 @@ void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemMode
         }
     }
 
-    POINT p = { pos.x(), pos.y() };
+    logRightMenuDpiTrace("showMultObjectMenu", this->hwnd, pos);
+    const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);
+    POINT p = { nativePos.x(), nativePos.y() };
     const POINT* position = &p;
     ShellContextMenu scm;
     scm.DisplayMultipleContextMenu(pidls);
