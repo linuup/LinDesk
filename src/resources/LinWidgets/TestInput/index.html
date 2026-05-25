@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Test Widget</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 8px;
+      font: 13px "Segoe UI", sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
+    }
+
+    .drag-bar {
+      height: 30px;
+      background: #f3f4f6;
+      border-bottom: 1px solid #e5e7eb;
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      font-weight: 600;
+      color: #374151;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+      user-select: none;
+    }
+
+    .content {
+      padding: 15px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    input, textarea, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-family: inherit;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    input:focus, textarea:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
+      outline: none;
+    }
+
+    button {
+      background: #f9fafb;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    
+    button:hover {
+      background: #f3f4f6;
+    }
+
+    button:active {
+      background: #e5e7eb;
+    }
+
+    .log-area {
+      flex: 1;
+      background: #111827;
+      color: #10b981;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      padding: 8px;
+      border-radius: 4px;
+      overflow-y: auto;
+      margin-top: 5px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .section-title {
+      font-weight: 600;
+      margin-top: 5px;
+      color: #4b5563;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="drag-bar">Drag Region (-webkit-app-region: drag)</div>
+  <div class="content">
+    <div class="section-title">Input Controls</div>
+    <input type="text" id="testInput" placeholder="Text input...">
+    <textarea id="testTextarea" placeholder="Textarea..."></textarea>
+    
+    <div class="section-title">Actions</div>
+    <button id="btnLog">console.log("Test")</button>
+    <div class="section-title">Permissions Test</div>
+    <button id="btnNetwork">Test Network (Fetch)</button>
+    <button id="btnStorage">Test Storage (localStorage)</button>
+    <button id="btnApi">Test Desktop API (requestSystemInfo)</button>
+
+    <div class="section-title">Event Log <button id="btnClear" style="width: auto; padding: 2px 5px; font-size: 10px; float: right;">Clear</button></div>
+    <div class="log-area" id="logArea"></div>
+  </div>
+
+  <script>
+    const logArea = document.getElementById('logArea');
+    
+    function logEvent(msg) {
+      const time = new Date().toISOString().split('T')[1].slice(0, -1);
+      logArea.textContent += `[${time}] ${msg}\n`;
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // Input events
+    const input = document.getElementById('testInput');
+    const textarea = document.getElementById('testTextarea');
+
+    ['focus', 'blur', 'keydown', 'keyup', 'input'].forEach(evt => {
+      input.addEventListener(evt, (e) => {
+        if (evt === 'keydown' || evt === 'keyup') {
+          logEvent(`input: ${evt} (${e.key})`);
+        } else if (evt === 'input') {
+          logEvent(`input: value changed`);
+        } else {
+          logEvent(`input: ${evt}`);
+        }
+      });
+      
+      textarea.addEventListener(evt, (e) => {
+        if (evt === 'keydown' || evt === 'keyup') {
+          logEvent(`textarea: ${evt} (${e.key})`);
+        } else if (evt === 'input') {
+          logEvent(`textarea: value changed`);
+        } else {
+          logEvent(`textarea: ${evt}`);
+        }
+      });
+    });
+
+    // Button actions
+    document.getElementById('btnLog').addEventListener('click', () => {
+      logEvent('Button clicked -> console.log');
+      console.log('Test click from widget');
+      if (window.linwidget && window.linwidget.log) {
+         window.linwidget.log("info", "Test from linwidget.log API");
+      }
+    });
+
+    document.getElementById('btnApi').addEventListener('click', () => {
+      logEvent('Requesting System Info (Desktop Perm)...');
+      if (window.linwidget && window.linwidget.requestSystemInfo) {
+        window.linwidget.requestSystemInfo();
+      } else {
+        logEvent('window.linwidget API not available');
+      }
+    });
+
+    document.getElementById('btnNetwork').addEventListener('click', async () => {
+      logEvent('Testing Network Permission...');
+      try {
+        const response = await fetch('https://api.github.com/users/github');
+        if (response.ok) {
+          logEvent('Network OK: Successfully fetched data');
+        } else {
+          logEvent(`Network failed: HTTP ${response.status}`);
+        }
+      } catch (err) {
+        logEvent(`Network Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('btnStorage').addEventListener('click', () => {
+      logEvent('Testing Storage Permission...');
+      try {
+        localStorage.setItem('linwidget_test', Date.now().toString());
+        const val = localStorage.getItem('linwidget_test');
+        logEvent(`Storage OK: Wrote and read value (${val})`);
+      } catch (err) {
+        logEvent(`Storage Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('btnClear').addEventListener('click', () => {
+      logArea.textContent = '';
+    });
+
+    // Global focus tracking
+    window.addEventListener('focus', () => logEvent('Window: focus'));
+    window.addEventListener('blur', () => logEvent('Window: blur'));
+    
+    // System info listener
+    if (window.linwidget && window.linwidget.onSystemInfoUpdate) {
+      window.linwidget.onSystemInfoUpdate((info) => {
+        logEvent('Received System Info update');
+      });
+    }
+
+    logEvent('Widget loaded and ready.');
+  </script>
+</body>
+</html>

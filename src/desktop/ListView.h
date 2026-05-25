@@ -602,6 +602,7 @@ private:
 	bool m_isSelecting = false;
 	bool m_wasSelectedBeforeClick = false;
 	bool m_showHiddenFiles = false;
+	bool m_hideDesktopItemsForRefresh = false;
 
 	// 坐标和区域
 	QPoint m_dragOffset;

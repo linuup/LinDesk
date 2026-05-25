@@ -181,8 +181,7 @@ void LinDesktop::loadBackImage()
     qDebug() << "[LinDesktop] Loading wallpaper from:" << path;
 
     if (path.isEmpty()) {
-        qDebug() << "[LinDesktop] Wallpaper path is empty. Retrying in 2s...";
-        QTimer::singleShot(2000, this, &LinDesktop::loadBackImage);
+        applyFallbackWallpaper(QString(), QStringLiteral("wallpaper path is empty"));
         return;
     }
 
@@ -203,8 +202,7 @@ void LinDesktop::loadBackImage()
 
         m_pendingWallpaperPath.clear();
         if (image.isNull()) {
-            qDebug() << "[LinDesktop] Failed to decode wallpaper asynchronously. Retrying in 2s...";
-            QTimer::singleShot(2000, this, &LinDesktop::loadBackImage);
+            applyFallbackWallpaper(path, QStringLiteral("failed to decode wallpaper"));
             return;
         }
 
@@ -224,6 +222,7 @@ void LinDesktop::applyLoadedWallpaper(const QString& path, const QImage& image)
     }
 
     m_currentWallpaperPath = path;
+    m_fallbackWallpaperPath.clear();
 
     if (!m_backImagePixmap.isNull()) {
         m_prevBackImagePixmap = m_backImagePixmap;
@@ -231,6 +230,36 @@ void LinDesktop::applyLoadedWallpaper(const QString& path, const QImage& image)
     }
 
     m_backImagePixmap = QPixmap::fromImage(image);
+    rebuildScaledWallpaperPixmaps();
+
+    if (!m_prevScaledBackImagePixmap.isNull()) {
+        m_transitionAnimation->stop();
+        m_transitionAnimation->start();
+    } else {
+        m_transitionOpacity = 1.0f;
+        update();
+    }
+}
+
+void LinDesktop::applyFallbackWallpaper(const QString& path, const QString& reason)
+{
+    const QString fallbackKey = path.isEmpty() ? QStringLiteral("__black_wallpaper__") : path;
+    if (m_fallbackWallpaperPath == fallbackKey && !m_backImagePixmap.isNull()) {
+        return;
+    }
+
+    qDebug() << "[LinDesktop] Using generated black wallpaper fallback:" << reason << "path=" << path;
+
+    if (!m_backImagePixmap.isNull()) {
+        m_prevBackImagePixmap = m_backImagePixmap;
+        m_prevScaledBackImagePixmap = m_scaledBackImagePixmap;
+    }
+
+    QPixmap fallback(1, 1);
+    fallback.fill(Qt::black);
+    m_backImagePixmap = fallback;
+    m_currentWallpaperPath = fallbackKey;
+    m_fallbackWallpaperPath = fallbackKey;
     rebuildScaledWallpaperPixmaps();
 
     if (!m_prevScaledBackImagePixmap.isNull()) {
@@ -254,6 +283,11 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
     const auto buildFittedPixmap = [targetSize](const QPixmap& source) {
         if (source.isNull()) {
             return QPixmap();
+        }
+        if (source.size() == QSize(1, 1)) {
+            QPixmap fitted(targetSize);
+            fitted.fill(source.toImage().pixelColor(0, 0));
+            return fitted;
         }
 
         QPixmap fitted(targetSize);

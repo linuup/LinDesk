@@ -19,29 +19,6 @@ class WidgetManager : public QObject {
     Q_OBJECT
 
 public:
-    struct LayerDiagnostics {
-        bool hasListViewWindow = false;
-        bool hasHostWindow = false;
-        bool hasWebViewWindow = false;
-        bool syncSucceeded = false;
-        bool hostAboveListView = false;
-        bool hostRectMatchesListView = false;
-        bool webViewRectMatchesHost = false;
-        bool emptyPointPassesThrough = false;
-        bool widgetPointHitsHost = false;
-        bool widgetPointHitsWebView = false;
-        WId listViewWindow = 0;
-        WId hostWindow = 0;
-        WId webViewWindow = 0;
-        WId pointWindow = 0;
-        QRect listViewRect;
-        QRect hostRect;
-        QRect webViewRect;
-        int visibleWidgetCount = 0;
-        int regionRectCount = 0;
-        QString reason;
-    };
-
     explicit WidgetManager(QObject* parent = nullptr);
     ~WidgetManager() override;
 
@@ -69,13 +46,12 @@ public:
     WId hostParentWindow() const;
     void setDesktopLayerWindow(WId layerWindow);
     WId desktopLayerWindow() const;
+    void setEmbedInDesktopLayer(bool enabled);
+    bool embedInDesktopLayer() const;
     void setShowWebViewBounds(bool enabled);
     bool showWebViewBounds() const;
     void syncWidgetWindowLayer(const QString& instanceId);
     void syncAllWidgetWindowLayers();
-    LayerDiagnostics layerDiagnostics() const;
-    LayerDiagnostics verifyWidgetLayerAndClickThrough();
-    QString layerDiagnosticsText(const LayerDiagnostics& diagnostics) const;
     void stopWidget(const QString& instanceId);
     void stopAll();
     WidgetInstance widgetInstance(const QString& instanceId) const;
@@ -139,9 +115,9 @@ private:
     WidgetHostController* m_sharedHost = nullptr;
     QHash<QString, WidgetInstance> m_instances;
     bool m_stoppingAll = false;
+    bool m_embedInDesktopLayer = true;
     bool m_showWebViewBounds = false;
     bool m_enabled = true;
-    LayerDiagnostics m_lastLayerDiagnostics;
 };
 
 }

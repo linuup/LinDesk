@@ -64,60 +64,6 @@
 namespace {
 constexpr double kLinWidgetCellBlockThreshold = 0.15;
 
-#ifdef Q_OS_WIN
-bool windowClassNameContains(HWND window, const QString& needle)
-{
-    if (!window) {
-        return false;
-    }
-    wchar_t className[256] = {};
-    GetClassNameW(window, className, 256);
-    return QString::fromWCharArray(className).contains(needle, Qt::CaseInsensitive);
-}
-
-bool focusedWindowIsLinWidgetChild(HWND listViewWindow)
-{
-    if (!listViewWindow) {
-        return false;
-    }
-
-    GUITHREADINFO guiInfo = {};
-    guiInfo.cbSize = sizeof(guiInfo);
-    const HWND foregroundWindow = GetForegroundWindow();
-    DWORD foregroundProcessId = 0;
-    const DWORD foregroundThreadId = foregroundWindow
-        ? GetWindowThreadProcessId(foregroundWindow, &foregroundProcessId)
-        : 0;
-    if (foregroundThreadId != 0) {
-        GetGUIThreadInfo(foregroundThreadId, &guiInfo);
-    }
-
-    HWND focusedWindow = guiInfo.hwndFocus ? guiInfo.hwndFocus : GetFocus();
-    if (!focusedWindow) {
-        return false;
-    }
-
-    HWND current = focusedWindow;
-    bool hasWebViewChild = windowClassNameContains(current, QStringLiteral("Chrome_WidgetWin")) ||
-        windowClassNameContains(current, QStringLiteral("WebView"));
-    while (current && current != listViewWindow) {
-        if (windowClassNameContains(current, QStringLiteral("Chrome_WidgetWin")) ||
-            windowClassNameContains(current, QStringLiteral("WebView"))) {
-            hasWebViewChild = true;
-        }
-        current = GetParent(current);
-    }
-    const bool insideLinWidget = current == listViewWindow && hasWebViewChild;
-    if (insideLinWidget) {
-        qDebug() << "[LinWidgetFocus] hwndFocus="
-                 << QString::number(reinterpret_cast<quintptr>(focusedWindow), 16)
-                 << "foreground="
-                 << QString::number(reinterpret_cast<quintptr>(foregroundWindow), 16);
-    }
-    return insideLinWidget;
-}
-#endif
-
 QString normalizeDesktopPath(const QString& path)
 {
     QString normalized = QDir::toNativeSeparators(path);
@@ -1211,7 +1157,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     BoxManager::instance(this);
     BoxManager::instance()->setPersistencePath(m_persistencePath);
     connect(BoxManager::instance(), &BoxManager::saveRequested, this, &ListView::saveBoxes);
-    
+    this->hide();
     // Defer loading boxes to ensure the event loop is running and windows can be properly shown/mapped
     QTimer::singleShot(100, [this](){
         this->loadBoxes(true);
@@ -1337,6 +1283,7 @@ void ListView::initializeLinWidgets()
     LinWidget::WidgetManager* manager = linWidgetManager();
     const bool linWidgetsEnabled = settings.value("LinWidgets/Enabled", true).toBool();
     manager->setEnabled(linWidgetsEnabled);
+    manager->setEmbedInDesktopLayer(settings.value("LinWidgets/EmbedInDesktopLayer", true).toBool());
     manager->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
     setShowLinWidgetBlockedCells(settings.value("LinWidgets/ShowBlockedCells", false).toBool());
 
@@ -2565,6 +2512,10 @@ void ListView::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::Antialiasing, !reducePaintCostForSelection);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, !reducePaintCostForSelection);
     painter.setRenderHint(QPainter::TextAntialiasing);
+
+    if (m_hideDesktopItemsForRefresh) {
+        return;
+    }
 
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
@@ -3815,13 +3766,6 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
-#ifdef Q_OS_WIN
-    if (focusedWindowIsLinWidgetChild(reinterpret_cast<HWND>(winId()))) {
-        qDebug() << "[LinWidgetFocus] ListView ignored key because focus is inside LinWidget WebView";
-        event->ignore();
-        return;
-    }
-#endif
     // 闁兼儳鍢茶ぐ鍥┾偓鍦仦濡炲倿鎯冮崟顖涙殯闁烩晜顭囨慨鎼佸箑?
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
@@ -3831,10 +3775,11 @@ void ListView::keyPressEvent(QKeyEvent* event)
     const bool shortcutNewFolder = ctrlPressed && extendSelection && (event->key() == Qt::Key_N);
     const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
 
-    qDebug() << "Use GetAsyncKeyState check: Shift =" << shiftPressed
-        << ", Delete =" << (event->key() == Qt::Key_Delete)
-        << ", permanentDelete =" << permanentDelete;
-    
+    qDebug() << QString("Press Key: %1, Shift: %2, Delete: %3, permanentDelete: %4")
+            .arg(QKeySequence(event->key()).toString())
+            .arg(shiftPressed ? "Yes" : "No")
+            .arg(event->key() == Qt::Key_Delete ? "Yes" : "No")
+            .arg(permanentDelete ? "Yes" : "No");
     if (event->matches(QKeySequence::SelectAll)) {
         QStringList desktopPaths;
         for (const auto& state : m_itemStates) {
@@ -6974,14 +6919,24 @@ void ListView::onMenuSortByDate() {
 }
 
 void ListView::onMenuRefresh() {
-    // 1. Start Fake Animation: Hide the entire desktop layer
-    this->hide();
     syncBoxVisibilityWithDesktopIcons();
 
-    // 2. Delay the actual logical refresh
-    QTimer::singleShot(80, this, [this]() {
-        this->show();
-        this->raise();
+    const QVector<QPointer<LinBox>> flashBoxes = BoxManager::instance()->allBoxes();
+    m_hideDesktopItemsForRefresh = true;
+    update();
+    for (const auto& box : flashBoxes) {
+        if (box) {
+            box->hide();
+        }
+    }
+
+    QTimer::singleShot(80, this, [this, flashBoxes]() {
+        m_hideDesktopItemsForRefresh = false;
+        for (const auto& box : flashBoxes) {
+            if (box) {
+                box->show();
+            }
+        }
         syncBoxVisibilityWithDesktopIcons();
         this->update();
         QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
@@ -7075,6 +7030,7 @@ void ListView::onMenuRefresh() {
             this->update();
             QTimer::singleShot(0, this, [this]() {
                 syncBoxVisibilityWithDesktopIcons();
+                syncLinWidgetLayer();
             });
         });
     });

@@ -81,12 +81,13 @@ private:
     void installWebViewDragBridge();
     void installWebConsoleLogging();
     void installWebPermissionGuards();
+    void installWebZoomGuards();
     void handleWebMessageJson(const QString& json);
     void appendLog(const QString& level, const QString& message) const;
     void appendInstanceLog(const QString& instanceId, const QString& level, const QString& message) const;
     QString logFilePath() const;
     QString logFilePathForId(const QString& id) const;
-    void focusWebView();
+    void focusWebView(const QString& source = QString());
     void moveByDelta(const QPoint& delta);
     QSize clampWidgetSize(const QSize& requestedSize) const;
     void applyHostPosition(const QPoint& topLeft);

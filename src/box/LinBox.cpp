@@ -3433,9 +3433,13 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
         const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
         const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
         const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
-        qDebug() << "Use GetAsyncKeyState check: Shift =" << shiftPressed
-            << ", Delete =" << (event->key() == Qt::Key_Delete)
-            << ", permanentDelete =" << permanentDelete;
+        //输出对应的键值
+        qDebug() << QString("Press Key: %1, Shift: %2, Delete: %3, permanentDelete: %4")
+            .arg(QKeySequence(event->key()).toString())
+            .arg(shiftPressed ? "Yes" : "No")
+            .arg(event->key() == Qt::Key_Delete ? "Yes" : "No")
+            .arg(permanentDelete ? "Yes" : "No");
+
         //first judge if it's a Shift+Delete for permanent delete, if not, then handle regular Delete key
         if (permanentDelete) {
             lv->onMenuDelete(true);

@@ -25,6 +25,16 @@
     }
   };
 
+  const describeTarget = target => {
+    if (!target) {
+      return '';
+    }
+    const tag = String(target.tagName || '').toLowerCase();
+    const id = target.id ? `#${target.id}` : '';
+    const className = target.className ? `.${String(target.className).replace(/\s+/g, '.')}` : '';
+    return `${tag}${id}${className}`;
+  };
+
   const clampNumber = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const clampRange = (value, min, max) => Math.min(Math.max(value, min), max);
   const surfaceBounds = () => ({
@@ -585,6 +595,16 @@ select,
 
   window.addEventListener('resize', () => reclampAllWidgets(true));
 
+  window.addEventListener('keydown', event => {
+    post({
+      type: 'host_keydown',
+      key: event.key || '',
+      code: event.code || '',
+      target: describeTarget(event.target),
+      defaultPrevented: Boolean(event.defaultPrevented)
+    });
+  }, true);
+
   window.addEventListener('message', event => {
     const message = event.data || {};
     if (!message || typeof message !== 'object') {
@@ -602,6 +622,14 @@ select,
       applyResizeUiRequest(id, message);
     } else if (message.type === 'linwidget_open_settings') {
       post({ type: 'linwidget_open_settings', instanceId: id, widgetId: id });
+    } else if (message.type === 'linwidget_focus_request') {
+      post({ type: 'focus_request', instanceId: id, widgetId: id, focusSource: message.focusSource || '' });
+    } else if (message.type === 'linwidget_keydown') {
+      post(Object.assign({}, message, {
+        type: 'host_keydown',
+        instanceId: id,
+        widgetId: id
+      }));
     } else if (message.type === 'linwidget_system_info_request') {
       const record = widgets.get(id);
       if (!hasPermission(record, 'desktop')) {

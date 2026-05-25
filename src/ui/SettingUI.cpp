@@ -2738,6 +2738,8 @@ constexpr int SettingsLinWidgetSourcePathRole = Qt::UserRole + 12;
 constexpr int SettingsLinWidgetCategoryRole = Qt::UserRole + 13;
 constexpr int SettingsLinWidgetTrustedRole = Qt::UserRole + 14;
 constexpr int SettingsLinWidgetOfficialInstalledPathRole = Qt::UserRole + 15;
+constexpr int SettingsLinWidgetManifestValidRole = Qt::UserRole + 16;
+constexpr int SettingsLinWidgetManifestErrorRole = Qt::UserRole + 17;
 
 QString settingsPermissionsText(const QStringList& permissions)
 {
@@ -3106,7 +3108,8 @@ void SettingUI::reloadLinWidgetsSettingsPage()
         }
 
         LinWidget::WidgetManifest manifest;
-        LinWidget::WidgetPackage::loadManifest(entry.packagePath, &manifest, nullptr);
+        QString manifestError;
+        const bool manifestOk = LinWidget::WidgetPackage::loadManifest(entry.packagePath, &manifest, &manifestError);
         const QString registryKey = settingsLinWidgetRegistryKey(entry.id, entry.isDevelopment);
         const QString packageKey = settingsLinWidgetPackageKey(entry.packagePath);
         const QString state = settingsWidgetStateText(m_linWidgetInstancesById, m_linWidgetInstancesByPackage, registryKey, packageKey);
@@ -3125,13 +3128,17 @@ void SettingUI::reloadLinWidgetsSettingsPage()
         item->setData(SettingsLinWidgetGrantedPermissionsRole, entry.permissionsGranted);
         item->setData(SettingsLinWidgetRequestedPermissionsRole, manifest.permissions);
         item->setData(SettingsLinWidgetSourcePathRole, entry.sourcePath);
-        item->setText(settingsWidgetItemText(entry.name,
-                                            entry.id,
-                                            entry.version,
-                                            entry.isDevelopment,
-                                            entry.autoLoad,
-                                            entry.packagePath,
-                                            state));
+        item->setData(SettingsLinWidgetManifestValidRole, manifestOk);
+        item->setData(SettingsLinWidgetManifestErrorRole, manifestError);
+        item->setText(manifestOk
+            ? settingsWidgetItemText(entry.name,
+                                     entry.id,
+                                     entry.version,
+                                     entry.isDevelopment,
+                                     entry.autoLoad,
+                                     entry.packagePath,
+                                     state)
+            : tr("%1\nManifest error: %2\n%3").arg(entry.name.isEmpty() ? entry.id : entry.name, manifestError, entry.packagePath));
         item->setToolTip(item->text());
 
         if (entry.isDevelopment) {
@@ -3324,10 +3331,13 @@ void SettingUI::reloadLinWidgetsSettingsPage()
     }
 
     if (m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(tr("Installed: %1    Development: %2    Official source: %3")
+        const QString summary = tr("Installed: %1    Development: %2    Official source: %3")
             .arg(installedCount)
             .arg(developmentCount)
-            .arg(runtimeLinWidgetsDirForSettings()));
+            .arg(runtimeLinWidgetsDirForSettings());
+        m_linWidgetsStatusLabel->setText(registryError.isEmpty()
+            ? summary
+            : tr("%1\nManifest errors:\n%2").arg(summary, registryError));
     }
     refreshLinWidgetSettingsButtons();
     refreshLinWidgetSettingsInspector();
@@ -3341,9 +3351,12 @@ void SettingUI::refreshLinWidgetSettingsButtons()
     const bool running = !selectedSettingsLinWidgetInstanceId().isEmpty();
     const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
     const bool runtimeEnabled = !m_linWidgetsRuntimeToggle || m_linWidgetsRuntimeToggle->checked();
+    QListWidget* activeList = activeSettingsLinWidgetList();
+    QListWidgetItem* activeItem = activeList ? activeList->currentItem() : nullptr;
+    const bool manifestValid = !activeItem || activeItem->data(SettingsLinWidgetManifestValidRole).toBool();
 
     if (m_linWidgetLoadButton) {
-        m_linWidgetLoadButton->setEnabled(hasSelection && !running && runtimeEnabled);
+        m_linWidgetLoadButton->setEnabled(hasSelection && !running && runtimeEnabled && manifestValid);
     }
     if (m_linWidgetUnloadButton) {
         m_linWidgetUnloadButton->setEnabled(hasSelection && running && runtimeEnabled);
@@ -3364,8 +3377,8 @@ void SettingUI::refreshLinWidgetSettingsButtons()
         m_linWidgetRemoveDevButton->setEnabled(hasSelection && isDevelopment && !running);
     }
 
-    const QStringList granted = activeSettingsLinWidgetList() && activeSettingsLinWidgetList()->currentItem()
-        ? activeSettingsLinWidgetList()->currentItem()->data(SettingsLinWidgetGrantedPermissionsRole).toStringList()
+    const QStringList granted = activeItem
+        ? activeItem->data(SettingsLinWidgetGrantedPermissionsRole).toStringList()
         : QStringList();
     auto updatePermissionCheck = [&](QCheckBox* check, const QString& permission) {
         if (!check) {
@@ -3544,6 +3557,17 @@ void SettingUI::loadSelectedSettingsLinWidget()
     const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
     if (packagePath.isEmpty()) {
         return;
+    }
+    if (QListWidget* list = activeSettingsLinWidgetList()) {
+        if (QListWidgetItem* item = list->currentItem()) {
+            if (!item->data(SettingsLinWidgetManifestValidRole).toBool()) {
+                if (m_linWidgetsStatusLabel) {
+                    m_linWidgetsStatusLabel->setText(tr("Load blocked: %1").arg(item->data(SettingsLinWidgetManifestErrorRole).toString()));
+                }
+                refreshLinWidgetSettingsButtons();
+                return;
+            }
+        }
     }
 
     LinWidget::WidgetManifest manifest;

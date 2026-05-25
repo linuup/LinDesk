@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 
 namespace LinWidget {
@@ -34,7 +35,34 @@ bool WidgetPackage::loadManifest(const QString& packagePath, WidgetManifest* man
         return false;
     }
 
-    return manifestFromJson(document.object(), manifest, errorMessage);
+    WidgetManifest parsed;
+    if (!manifestFromJson(document.object(), &parsed, errorMessage)) {
+        return false;
+    }
+
+    const QFileInfo entryInfo(entryPath(packagePath, parsed));
+    if (!entryInfo.exists() || !entryInfo.isFile()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget entry file does not exist: %1").arg(entryInfo.absoluteFilePath());
+        }
+        return false;
+    }
+
+    if (!parsed.settings.isEmpty()) {
+        const QFileInfo settingsInfo(QDir(packagePath).filePath(parsed.settings));
+        if (!settingsInfo.exists() || !settingsInfo.isFile()) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Widget settings file does not exist: %1").arg(settingsInfo.absoluteFilePath());
+            }
+            return false;
+        }
+    }
+
+    *manifest = parsed;
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
 }
 
 }

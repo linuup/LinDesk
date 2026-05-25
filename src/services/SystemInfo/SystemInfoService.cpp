@@ -20,6 +20,8 @@
 #include <QVarLengthArray>
 #include <cwchar>
 #include <cstring>
+#include <exception>
+#include <functional>
 
 #ifdef Q_OS_WIN
 #include <dxgi.h>
@@ -120,6 +122,27 @@ QString dxgiAdapterIdentityKey(const DXGI_ADAPTER_DESC1& desc)
 }
 #endif
 
+QJsonObject failedSnapshot(const QString& message)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("available"), false);
+    object.insert(QStringLiteral("error"), message);
+    object.insert(QStringLiteral("timestampMs"), static_cast<double>(QDateTime::currentMSecsSinceEpoch()));
+    return object;
+}
+
+QJsonObject uptimeSnapshot()
+{
+    QJsonObject object;
+#ifdef Q_OS_WIN
+    object.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(GetTickCount64() / 1000ULL));
+#else
+    object.insert(QStringLiteral("uptimeSeconds"), 0);
+#endif
+    object.insert(QStringLiteral("timestampMs"), static_cast<double>(QDateTime::currentMSecsSinceEpoch()));
+    return object;
+}
+
 }  // namespace
 
 namespace SystemInfo {
@@ -138,20 +161,68 @@ SystemInfoService::~SystemInfoService()
 QJsonObject SystemInfoService::snapshot()
 {
     QJsonObject object;
-    object.insert(QStringLiteral("cpu"), cpuSnapshot());
-    object.insert(QStringLiteral("memory"), memorySnapshot());
-    object.insert(QStringLiteral("gpu"), gpuSnapshot());
-    object.insert(QStringLiteral("disk"), diskSnapshot());
-    object.insert(QStringLiteral("network"), networkSnapshot());
-    object.insert(QStringLiteral("battery"), batterySnapshot());
-    object.insert(QStringLiteral("osVersion"), windowsVersionText());
-#ifdef Q_OS_WIN
-    object.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(GetTickCount64() / 1000ULL));
-#else
-    object.insert(QStringLiteral("uptimeSeconds"), 0);
-#endif
+    auto insertCategory = [&](const QString& key, const std::function<QJsonObject()>& getter) {
+        try {
+            object.insert(key, getter());
+        } catch (const std::exception& error) {
+            object.insert(key, failedSnapshot(QString::fromLocal8Bit(error.what())));
+        } catch (...) {
+            object.insert(key, failedSnapshot(QStringLiteral("Unknown system information error.")));
+        }
+    };
+    insertCategory(QStringLiteral("cpu"), [this]() { return cpuSnapshot(); });
+    insertCategory(QStringLiteral("memory"), [this]() { return memorySnapshot(); });
+    insertCategory(QStringLiteral("gpu"), [this]() { return gpuSnapshot(); });
+    insertCategory(QStringLiteral("disk"), [this]() { return diskSnapshot(); });
+    insertCategory(QStringLiteral("network"), [this]() { return networkSnapshot(); });
+    insertCategory(QStringLiteral("battery"), [this]() { return batterySnapshot(); });
+    try {
+        object.insert(QStringLiteral("osVersion"), windowsVersionText());
+    } catch (...) {
+        object.insert(QStringLiteral("osVersion"), QString());
+    }
+    const QJsonObject uptime = uptimeSnapshot();
+    object.insert(QStringLiteral("uptimeSeconds"), uptime.value(QStringLiteral("uptimeSeconds")));
     object.insert(QStringLiteral("timestampMs"), static_cast<double>(QDateTime::currentMSecsSinceEpoch()));
     return object;
+}
+
+QJsonObject SystemInfoService::categorySnapshot(const QString& category)
+{
+    try {
+        const QString key = category.trimmed().toLower();
+        if (key == QStringLiteral("cpu")) {
+            return cpuSnapshot();
+        }
+        if (key == QStringLiteral("memory")) {
+            return memorySnapshot();
+        }
+        if (key == QStringLiteral("gpu")) {
+            return gpuSnapshot();
+        }
+        if (key == QStringLiteral("disk")) {
+            return diskSnapshot();
+        }
+        if (key == QStringLiteral("network")) {
+            return networkSnapshot();
+        }
+        if (key == QStringLiteral("battery")) {
+            return batterySnapshot();
+        }
+        if (key == QStringLiteral("os")) {
+            QJsonObject object = uptimeSnapshot();
+            object.insert(QStringLiteral("osVersion"), windowsVersionText());
+            return object;
+        }
+        if (key == QStringLiteral("uptime")) {
+            return uptimeSnapshot();
+        }
+    } catch (const std::exception& error) {
+        return failedSnapshot(QString::fromLocal8Bit(error.what()));
+    } catch (...) {
+        return failedSnapshot(QStringLiteral("Unknown system information error."));
+    }
+    return QJsonObject();
 }
 
 QString SystemInfoService::cpuName() const

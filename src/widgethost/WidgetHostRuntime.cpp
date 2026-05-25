@@ -225,6 +225,104 @@ HWND rootOwnerWindow(HWND window)
     }
     return current;
 }
+
+HWINEVENTHOOK g_focusEventHook = nullptr;
+HWND g_trackedWebViewWindow = nullptr;
+QString g_focusEventLogPath;
+QString g_lastFocusEventKey;
+
+void appendFocusEventLog(const QString& message)
+{
+    if (g_focusEventLogPath.isEmpty()) {
+        return;
+    }
+    QFile file(g_focusEventLogPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+        return;
+    }
+    const QString line = QStringLiteral("[%1] [focus.event] %2\n")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")),
+             message);
+    file.write(line.toUtf8());
+}
+
+void CALLBACK linWidgetFocusEventProc(HWINEVENTHOOK,
+                                      DWORD event,
+                                      HWND hwnd,
+                                      LONG idObject,
+                                      LONG idChild,
+                                      DWORD eventThread,
+                                      DWORD eventTime)
+{
+    if (event != EVENT_OBJECT_FOCUS || !hwnd) {
+        return;
+    }
+
+    DWORD processId = 0;
+    const DWORD windowThread = GetWindowThreadProcessId(hwnd, &processId);
+    const HWND foreground = GetForegroundWindow();
+    const HWND parent = GetParent(hwnd);
+    const HWND root = GetAncestor(hwnd, GA_ROOT);
+    const bool tracked = hwnd == g_trackedWebViewWindow;
+    const QString className = nativeWindowClassName(hwnd);
+    const QString key = QStringLiteral("%1:%2:%3:%4")
+        .arg(QString::number(reinterpret_cast<quintptr>(hwnd), 16),
+             QString::number(idObject),
+             QString::number(idChild),
+             className);
+    if (key == g_lastFocusEventKey) {
+        return;
+    }
+    g_lastFocusEventKey = key;
+
+    appendFocusEventLog(QStringLiteral("hwnd=%1 class=%2 trackedWebView=%3 parent=%4 root=%5 foreground=%6 process=%7 thread=%8 eventThread=%9 object=%10 child=%11 time=%12")
+        .arg(QString::number(reinterpret_cast<quintptr>(hwnd), 16),
+             className,
+             tracked ? QStringLiteral("true") : QStringLiteral("false"),
+             QString::number(reinterpret_cast<quintptr>(parent), 16),
+             QString::number(reinterpret_cast<quintptr>(root), 16),
+             QString::number(reinterpret_cast<quintptr>(foreground), 16),
+             QString::number(processId),
+             QString::number(windowThread),
+             QString::number(eventThread),
+             QString::number(idObject),
+             QString::number(idChild),
+             QString::number(eventTime)));
+}
+
+void installFocusEventDiagnostics(HWND webViewWindow, const QString& logPath)
+{
+    if (!webViewWindow || !IsWindow(webViewWindow)) {
+        return;
+    }
+    g_trackedWebViewWindow = webViewWindow;
+    g_focusEventLogPath = logPath;
+    if (g_focusEventHook) {
+        return;
+    }
+    g_focusEventHook = SetWinEventHook(EVENT_OBJECT_FOCUS,
+                                       EVENT_OBJECT_FOCUS,
+                                       nullptr,
+                                       linWidgetFocusEventProc,
+                                       0,
+                                       0,
+                                       WINEVENT_OUTOFCONTEXT);
+    appendFocusEventLog(QStringLiteral("hook installed tracked=%1 class=%2 hook=%3")
+        .arg(QString::number(reinterpret_cast<quintptr>(webViewWindow), 16),
+             nativeWindowClassName(webViewWindow),
+             QString::number(reinterpret_cast<quintptr>(g_focusEventHook), 16)));
+}
+
+void uninstallFocusEventDiagnostics()
+{
+    if (g_focusEventHook) {
+        UnhookWinEvent(g_focusEventHook);
+        appendFocusEventLog(QStringLiteral("hook uninstalled"));
+        g_focusEventHook = nullptr;
+    }
+    g_trackedWebViewWindow = nullptr;
+    g_lastFocusEventKey.clear();
+}
 #endif
 
 #ifdef LINDESK_HAS_WEBVIEW2
@@ -261,6 +359,11 @@ WidgetHostRuntime::WidgetHostRuntime(QString widgetId,
 
 WidgetHostRuntime::~WidgetHostRuntime()
 {
+#ifdef Q_OS_WIN
+    if (m_sharedRuntime) {
+        uninstallFocusEventDiagnostics();
+    }
+#endif
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* controller = static_cast<ICoreWebView2Controller*>(m_webViewController);
     if (controller) {
@@ -325,6 +428,7 @@ bool WidgetHostRuntime::initialize(QString* errorMessage)
 
 void WidgetHostRuntime::setupWindow()
 {
+    const bool sharedChildRuntime = m_sharedRuntime && m_parentWindowId != 0;
     if (m_parentWindowId != 0) {
         setWindowFlags(Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground, true);
@@ -335,7 +439,7 @@ void WidgetHostRuntime::setupWindow()
     setAttribute(Qt::WA_ShowWithoutActivating, false);
     setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
-    setFocusPolicy(m_parentWindowId == 0 ? Qt::StrongFocus : Qt::NoFocus);
+    setFocusPolicy((m_parentWindowId == 0 || sharedChildRuntime) ? Qt::StrongFocus : Qt::NoFocus);
 
     const QRect fallbackRect(QPoint(0, 0), QSize(m_manifest.width, m_manifest.height));
     QRect initialGeometry = m_initialGeometry.isEmpty() ? fallbackRect : m_initialGeometry;
@@ -384,14 +488,21 @@ void WidgetHostRuntime::attachToParentWindow()
     exStyle &= ~WS_EX_TOPMOST;
     exStyle &= ~WS_EX_TRANSPARENT;
     exStyle &= ~WS_EX_LAYERED;
-    exStyle &= ~WS_EX_NOACTIVATE;
+    if (m_sharedRuntime) {
+        exStyle &= ~WS_EX_NOACTIVATE;
+        exStyle |= WS_EX_TOOLWINDOW;
+    } else {
+        exStyle &= ~WS_EX_NOACTIVATE;
+    }
     SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
 
-    const QRect clampedGeometry(clampToParent(geometry().topLeft()), geometry().size());
-    SetWindowPos(hostWindow, nullptr,
+    const QRect clampedGeometry = m_sharedRuntime
+        ? QRect(QPoint(0, 0), parentClientRect().size())
+        : QRect(clampToParent(geometry().topLeft()), geometry().size());
+    SetWindowPos(hostWindow, HWND_TOP,
                  clampedGeometry.x(), clampedGeometry.y(),
                  clampedGeometry.width(), clampedGeometry.height(),
-                 SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+                 SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
     m_embedded = true;
 #endif
 }
@@ -596,11 +707,6 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                 setGeometry(hostGeometry);
                 updateWebViewBounds();
                 syncSharedRegion(QStringLiteral("host geometry"));
-                appendLog(QStringLiteral("info"), QStringLiteral("updated shared host geometry %1,%2 %3x%4")
-                    .arg(QString::number(hostGeometry.x()),
-                         QString::number(hostGeometry.y()),
-                         QString::number(hostGeometry.width()),
-                         QString::number(hostGeometry.height())));
             }
             return;
         }
@@ -914,11 +1020,14 @@ void WidgetHostRuntime::renderHtmlWidget()
                             if (webView && SUCCEEDED(webView->get_Settings(&settings))) {
                                 settings->put_AreDefaultContextMenusEnabled(FALSE);
                                 settings->put_AreDevToolsEnabled(TRUE);
+                                settings->put_IsZoomControlEnabled(FALSE);
                             }
+                            controller->put_ZoomFactor(1.0);
 
                             if (webView) {
                                 appendLog(QStringLiteral("info"), QStringLiteral("WebView2 initialized"));
                                 installWebConsoleLogging();
+                                installWebZoomGuards();
                                 installWebViewDragBridge();
                                 installWebPermissionGuards();
                                 EventRegistrationToken acceleratorToken = {};
@@ -1022,10 +1131,13 @@ void WidgetHostRuntime::renderSharedHtmlRuntime()
                             if (webView && SUCCEEDED(webView->get_Settings(&settings))) {
                                 settings->put_AreDefaultContextMenusEnabled(FALSE);
                                 settings->put_AreDevToolsEnabled(TRUE);
+                                settings->put_IsZoomControlEnabled(FALSE);
                             }
+                            controller->put_ZoomFactor(1.0);
 
                             if (webView) {
                                 installWebConsoleLogging();
+                                installWebZoomGuards();
                                 installSharedWidgetApiBridge();
                                 installSharedWebResourceGuards(environment);
                                 EventRegistrationToken token = {};
@@ -1040,6 +1152,29 @@ void WidgetHostRuntime::renderSharedHtmlRuntime()
                                             return S_OK;
                                         }).Get(),
                                     &token);
+                                EventRegistrationToken acceleratorToken = {};
+                                controller->add_AcceleratorKeyPressed(
+                                    Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
+                                        [this](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT {
+                                            COREWEBVIEW2_KEY_EVENT_KIND kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+                                            UINT key = 0;
+                                            INT lparam = 0;
+                                            BOOL handled = FALSE;
+                                            if (args) {
+                                                args->get_KeyEventKind(&kind);
+                                                args->get_VirtualKey(&key);
+                                                args->get_KeyEventLParam(&lparam);
+                                                args->get_Handled(&handled);
+                                            }
+                                            appendLog(QStringLiteral("key"),
+                                                      QStringLiteral("shared AcceleratorKeyPressed kind=%1 vk=%2 lparam=%3 handled=%4")
+                                                          .arg(QString::number(static_cast<int>(kind)),
+                                                               QString::number(key),
+                                                               QString::number(lparam),
+                                                               handled ? QStringLiteral("true") : QStringLiteral("false")));
+                                            return S_OK;
+                                        }).Get(),
+                                    &acceleratorToken);
                                 const QString uri = QUrl::fromLocalFile(entryPath).toString();
                                 appendLog(QStringLiteral("info"), QStringLiteral("navigate shared runtime=%1").arg(uri));
                                 webView->Navigate(reinterpret_cast<LPCWSTR>(uri.utf16()));
@@ -1167,6 +1302,19 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
         " }"
         " try { chrome.webview.postMessage(payload); } catch (_) {}"
         "};"
+        "const describeLinWidgetTarget = target => target ? ((target.tagName||'').toLowerCase() + (target.id ? '#'+target.id : '') + (target.className ? '.'+String(target.className).replace(/\\s+/g,'.') : '')) : '';"
+        "let lastLinWidgetFocusRequest=0;"
+        "const requestLinWidgetFocus = (focusSource, force) => {"
+        " const now = Date.now();"
+        " if (!force && now - lastLinWidgetFocusRequest < 150) return;"
+        " lastLinWidgetFocusRequest = now;"
+        " postToHost('linwidget_focus_request', {focusSource:focusSource||''});"
+        "};"
+        "window.addEventListener('pointerdown', () => requestLinWidgetFocus('iframe_pointerdown', false), true);"
+        "window.addEventListener('focusin', () => setTimeout(() => requestLinWidgetFocus('iframe_focusin', true), 0), true);"
+        "window.addEventListener('keydown', event => {"
+        " postToHost('linwidget_keydown', {key:event.key||'', code:event.code||'', target:describeLinWidgetTarget(event.target), defaultPrevented:!!event.defaultPrevented});"
+        "}, true);"
         "let systemInfoSeq = 0;"
         "const systemInfoPending = new Map();"
         "const systemInfoWatchers = new Map();"
@@ -1178,6 +1326,14 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
         "const installSystemInfoApi = target => {"
         " const systemInfo = target.systemInfo && typeof target.systemInfo === 'object' ? target.systemInfo : {};"
         " systemInfo.getSnapshot = () => sendSystemInfo('snapshot');"
+        " systemInfo.cpu = () => sendSystemInfo('cpu');"
+        " systemInfo.memory = () => sendSystemInfo('memory');"
+        " systemInfo.gpu = () => sendSystemInfo('gpu');"
+        " systemInfo.disk = () => sendSystemInfo('disk');"
+        " systemInfo.network = () => sendSystemInfo('network');"
+        " systemInfo.battery = () => sendSystemInfo('battery');"
+        " systemInfo.os = () => sendSystemInfo('os');"
+        " systemInfo.uptime = () => sendSystemInfo('uptime');"
         " systemInfo.watch = (callback, intervalMs) => {"
         "  const watchId = 'watch-' + Date.now() + '-' + (++systemInfoSeq);"
         "  if (typeof callback === 'function') systemInfoWatchers.set(watchId, callback);"
@@ -1491,6 +1647,7 @@ void WidgetHostRuntime::syncSharedRegion(const QString& reason)
         const quint64 webViewWindowId = static_cast<quint64>(reinterpret_cast<quintptr>(webViewSearch.window));
         if (webViewWindowId != m_lastReportedWebViewWindow) {
             m_lastReportedWebViewWindow = webViewWindowId;
+            installFocusEventDiagnostics(webViewSearch.window, logFilePath());
             sendIpcMessage(QString::fromLatin1(IpcType::WebViewWindowReady), {
                 { QStringLiteral("hwnd"), QString::number(webViewWindowId) },
                 { QStringLiteral("className"), webViewSearch.className },
@@ -1499,18 +1656,11 @@ void WidgetHostRuntime::syncSharedRegion(const QString& reason)
         }
     } else if (m_lastReportedWebViewWindow != 0) {
         m_lastReportedWebViewWindow = 0;
+        uninstallFocusEventDiagnostics();
         sendIpcMessage(QString::fromLatin1(IpcType::WebViewWindowLost), {
             { QStringLiteral("reason"), reason }
         });
     }
-    appendLog(QStringLiteral("region"), QStringLiteral("synced shared window region reason=%1 rectCount=%2 host=%3 webview=%4 class=%5 visualization=%6 empty=%7")
-        .arg(reason,
-             QString::number(m_sharedWidgetGeometries.size()),
-             QString::number(reinterpret_cast<quintptr>(hostWindow), 16),
-             QString::number(reinterpret_cast<quintptr>(webViewSearch.window), 16),
-             webViewSearch.className,
-             m_showWebViewBounds ? QStringLiteral("true") : QStringLiteral("false"),
-             m_sharedWidgetGeometries.isEmpty() ? QStringLiteral("true") : QStringLiteral("false")));
 #endif
 }
 
@@ -1645,6 +1795,32 @@ void WidgetHostRuntime::installWebPermissionGuards()
 #endif
 }
 
+void WidgetHostRuntime::installWebZoomGuards()
+{
+#ifdef LINDESK_HAS_WEBVIEW2
+    auto* webView = static_cast<ICoreWebView2*>(m_webView);
+    if (!webView) {
+        return;
+    }
+
+    const QString script = QStringLiteral(
+        "(() => {"
+        "try {"
+        "window.addEventListener('wheel', event => {"
+        " if (event.ctrlKey) { event.preventDefault(); event.stopPropagation(); }"
+        "}, { passive:false, capture:true });"
+        "window.addEventListener('keydown', event => {"
+        " if (event.ctrlKey && (event.key === '+' || event.key === '-' || event.key === '=' || event.key === '0')) {"
+        "  event.preventDefault(); event.stopPropagation();"
+        " }"
+        "}, { capture:true });"
+        "} catch (_) {}"
+        "})();");
+
+    webView->AddScriptToExecuteOnDocumentCreated(reinterpret_cast<LPCWSTR>(script.utf16()), nullptr);
+#endif
+}
+
 void WidgetHostRuntime::installWebViewDragBridge()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
@@ -1667,6 +1843,7 @@ void WidgetHostRuntime::installWebViewDragBridge()
         "window.addEventListener('pointerdown', e => {"
         " if (e.button !== 0) return;"
         " if (isInteractiveTarget(e.target)) {"
+        "  post({type:'focus_request'});"
         "  return;"
         " }"
         " post({type:'focus_request'});"
@@ -1801,12 +1978,15 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
         return;
     }
     if (type == QStringLiteral("focus_request")) {
-        focusWebView();
+        focusWebView(object.value(QStringLiteral("focusSource")).toString());
         return;
     }
     if (type == QStringLiteral("dom_focusin")) {
         appendLog(QStringLiteral("dom"), QStringLiteral("focusin target=%1")
             .arg(object.value(QStringLiteral("target")).toString()));
+        if (m_sharedRuntime) {
+            focusWebView();
+        }
         return;
     }
     if (type == QStringLiteral("dom_keydown")) {
@@ -1815,6 +1995,20 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
                  object.value(QStringLiteral("code")).toString(),
                  object.value(QStringLiteral("target")).toString(),
                  object.value(QStringLiteral("defaultPrevented")).toBool(false) ? QStringLiteral("true") : QStringLiteral("false")));
+        return;
+    }
+    if (type == QStringLiteral("host_keydown")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        const QString message = QStringLiteral("keydown instance=%1 key=%2 code=%3 target=%4 prevented=%5")
+            .arg(instanceId.isEmpty() ? QStringLiteral("<host>") : instanceId,
+                 object.value(QStringLiteral("key")).toString(),
+                 object.value(QStringLiteral("code")).toString(),
+                 object.value(QStringLiteral("target")).toString(),
+                 object.value(QStringLiteral("defaultPrevented")).toBool(false) ? QStringLiteral("true") : QStringLiteral("false"));
+        appendLog(QStringLiteral("host.key"), message);
+        if (!instanceId.isEmpty()) {
+            appendInstanceLog(instanceId, QStringLiteral("host.key"), message);
+        }
         return;
     }
     if (type == QStringLiteral("dom_input")) {
@@ -1899,7 +2093,7 @@ QString WidgetHostRuntime::logFilePathForId(const QString& id) const
     return QDir(AppPaths::linWidgetLogsDir()).filePath(safeId + QStringLiteral(".log"));
 }
 
-void WidgetHostRuntime::focusWebView()
+void WidgetHostRuntime::focusWebView(const QString& source)
 {
 #ifdef Q_OS_WIN
     HWND hostWindow = reinterpret_cast<HWND>(winId());
@@ -1908,11 +2102,18 @@ void WidgetHostRuntime::focusWebView()
         SetForegroundWindow(rootWindow);
     }
     if (m_embedded && hostWindow) {
-        SetActiveWindow(hostWindow);
+        focusNativeWindow(hostWindow);
     }
     WebViewWindowSearch webViewSearch;
     if (hostWindow) {
         EnumChildWindows(hostWindow, findWebViewChildWindow, reinterpret_cast<LPARAM>(&webViewSearch));
+    }
+    if (webViewSearch.window && GetFocus() == webViewSearch.window) {
+        appendLog(QStringLiteral("focus"), QStringLiteral("source=%1 skipped because WebView already has focus webview=%2 foreground=%3")
+            .arg(source.isEmpty() ? QStringLiteral("<native>") : source,
+                 QString::number(reinterpret_cast<quintptr>(webViewSearch.window), 16),
+                 QString::number(reinterpret_cast<quintptr>(GetForegroundWindow()), 16)));
+        return;
     }
 #endif
 #ifdef LINDESK_HAS_WEBVIEW2
@@ -1923,11 +2124,16 @@ void WidgetHostRuntime::focusWebView()
 #endif
 #ifdef Q_OS_WIN
     if (webViewSearch.window) {
-        activateNativeWindow(webViewSearch.window);
+        if (m_embedded || m_parentWindowId != 0) {
+            focusNativeWindow(webViewSearch.window);
+        } else {
+            activateNativeWindow(webViewSearch.window);
+        }
     }
     const HWND focusedWindow = GetFocus();
-    appendLog(QStringLiteral("focus"), QStringLiteral("root=%1 host=%2 webview=%3 webviewClass=%4 focused=%5 focusedClass=%6 foreground=%7")
-        .arg(QString::number(reinterpret_cast<quintptr>(rootWindow), 16),
+    appendLog(QStringLiteral("focus"), QStringLiteral("source=%1 root=%2 host=%3 webview=%4 webviewClass=%5 focused=%6 focusedClass=%7 foreground=%8")
+        .arg(source.isEmpty() ? QStringLiteral("<native>") : source,
+             QString::number(reinterpret_cast<quintptr>(rootWindow), 16),
              QString::number(reinterpret_cast<quintptr>(hostWindow), 16),
              QString::number(reinterpret_cast<quintptr>(webViewSearch.window), 16),
              webViewSearch.className,
@@ -2027,11 +2233,7 @@ void WidgetHostRuntime::updateWebViewBounds()
     }
     const RECT bounds = { 0, 0, width(), height() };
     const HRESULT result = controller->put_Bounds(bounds);
-    appendLog(QStringLiteral("bounds"), QStringLiteral("WebView bounds set widget=%1 size=%2x%3 result=0x%4")
-        .arg(m_widgetId,
-             QString::number(width()),
-             QString::number(height()),
-             QString::number(static_cast<qulonglong>(result), 16)));
+    Q_UNUSED(result);
     if (m_sharedRuntime) {
         syncSharedRegion(QStringLiteral("webview bounds"));
     }

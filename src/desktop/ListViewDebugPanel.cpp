@@ -117,6 +117,8 @@ constexpr int LinWidgetPermissionsRole = Qt::UserRole + 10;
 constexpr int LinWidgetRequestedPermissionsRole = Qt::UserRole + 11;
 constexpr int LinWidgetDisplayTextRole = Qt::UserRole + 12;
 constexpr int LinWidgetSettingsRole = Qt::UserRole + 13;
+constexpr int LinWidgetManifestValidRole = Qt::UserRole + 14;
+constexpr int LinWidgetManifestErrorRole = Qt::UserRole + 15;
 
 bool shouldSkipLinWidgetInstallEntry(const QString& name)
 {
@@ -689,6 +691,7 @@ LinWidget::WidgetManager* ListViewDebugPanel::linWidgetManager()
         }
         QSettings settings(debugConfigPath(), QSettings::IniFormat);
         m_linWidgetManager->setEnabled(settings.value("LinWidgets/Enabled", true).toBool());
+        m_linWidgetManager->setEmbedInDesktopLayer(settings.value("LinWidgets/EmbedInDesktopLayer", true).toBool());
         refreshLinWidgetRunningMaps();
         connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetLaunched, this, [this](const QString& instanceId) {
             if (m_linWidgetsPageStatusLabel) {
@@ -757,13 +760,16 @@ void ListViewDebugPanel::reloadLinWidgetsList()
         item->setData(LinWidgetDescriptionRole, entry.description);
         item->setData(LinWidgetAutoLoadRole, entry.autoLoad);
         LinWidget::WidgetManifest manifest;
-        LinWidget::WidgetPackage::loadManifest(entry.packagePath, &manifest, nullptr);
+        QString manifestError;
+        const bool manifestOk = LinWidget::WidgetPackage::loadManifest(entry.packagePath, &manifest, &manifestError);
         item->setData(LinWidgetSettingsRole, manifest.settings);
         const QString permissionsText = entry.permissionsGranted.isEmpty()
             ? QStringLiteral("none")
             : entry.permissionsGranted.join(QStringLiteral(", "));
         item->setData(LinWidgetPermissionsRole, permissionsText);
         item->setData(LinWidgetRequestedPermissionsRole, manifest.permissions);
+        item->setData(LinWidgetManifestValidRole, manifestOk);
+        item->setData(LinWidgetManifestErrorRole, manifestError);
         updateLinWidgetItemText(item);
         if (entry.isDevelopment) {
             m_developmentLinWidgetsList->addItem(item);
@@ -776,7 +782,9 @@ void ListViewDebugPanel::reloadLinWidgetsList()
     }
 
     if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText(QStringLiteral("Found %1 registered widget package(s).").arg(visibleCount));
+        m_linWidgetsPageStatusLabel->setText(registryError.isEmpty()
+            ? QStringLiteral("Found %1 registered widget package(s).").arg(visibleCount)
+            : QStringLiteral("Found %1 registered widget package(s). Manifest errors:\n%2").arg(visibleCount).arg(registryError));
     }
     updateLinWidgetsButtons();
     updateLinWidgetPermissionControls();
@@ -1024,6 +1032,17 @@ void ListViewDebugPanel::updateLinWidgetItemText(QListWidgetItem* item) const
     const QString permissions = item->data(LinWidgetPermissionsRole).toString().isEmpty()
         ? QStringLiteral("none")
         : item->data(LinWidgetPermissionsRole).toString();
+    const QString manifestError = item->data(LinWidgetManifestErrorRole).toString();
+    if (!item->data(LinWidgetManifestValidRole).toBool()) {
+        const QString displayText = QStringLiteral("%1\n%2\n%3")
+            .arg(name.isEmpty() ? id : name)
+            .arg(QStringLiteral("Manifest error: %1").arg(manifestError))
+            .arg(packagePath);
+        item->setData(LinWidgetDisplayTextRole, displayText);
+        item->setText(QString());
+        item->setToolTip(displayText);
+        return;
+    }
 
     const QString displayText = QStringLiteral("%1\n%2")
         .arg(name)
@@ -1089,16 +1108,17 @@ void ListViewDebugPanel::updateAllLinWidgetItemWidgets()
             const QString id = item->data(LinWidgetRegistryIdRole).toString();
             const bool isDevelopment = item->data(LinWidgetDevelopmentRole).toBool();
             const QString packagePath = item->data(LinWidgetPackagePathRole).toString();
+            const bool manifestValid = item->data(LinWidgetManifestValidRole).toBool();
             const bool running = m_linWidgetInstancesById.contains(linWidgetRegistryKey(id, isDevelopment)) ||
                 m_linWidgetInstancesByPackage.contains(linWidgetPackageKey(packagePath));
             const bool runtimeEnabled = !m_linWidgetManager || m_linWidgetManager->isEnabled();
             if (QToolButton* button = widget->findChild<QToolButton*>(QStringLiteral("linWidgetItemAction"))) {
                 button->setText(running ? QStringLiteral("Unload") : QStringLiteral("Load"));
-                button->setEnabled(runtimeEnabled);
+                button->setEnabled(runtimeEnabled && (manifestValid || running));
                 button->setToolTip(item->toolTip());
             }
             if (QToolButton* reloadButton = widget->findChild<QToolButton*>(QStringLiteral("linWidgetItemReload"))) {
-                reloadButton->setEnabled(runtimeEnabled && running);
+                reloadButton->setEnabled(runtimeEnabled && running && manifestValid);
                 reloadButton->setToolTip(QStringLiteral("Reload this widget"));
             }
             if (QToolButton* settingsButton = widget->findChild<QToolButton*>(QStringLiteral("linWidgetItemSettings"))) {
@@ -1279,8 +1299,16 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         return true;
     };
 
-    auto runAction = [this, selectItem]() {
+    auto runAction = [this, item, selectItem]() {
         if (!selectItem()) {
+            return;
+        }
+        if (item && !item->data(LinWidgetManifestValidRole).toBool()) {
+            if (m_linWidgetsPageStatusLabel) {
+                m_linWidgetsPageStatusLabel->setText(QStringLiteral("Load to WebView blocked: %1")
+                    .arg(item->data(LinWidgetManifestErrorRole).toString()));
+            }
+            updateLinWidgetsButtons();
             return;
         }
         if (selectedLinWidgetIsRunning()) {
@@ -1460,38 +1488,6 @@ void ListViewDebugPanel::setSelectedLinWidgetGrantedPermission(const QString& pe
     }
 }
 
-void ListViewDebugPanel::updateLinWidgetLayerDiagnostics()
-{
-    if (!m_linWidgetLayerDiagnosticsLabel) {
-        return;
-    }
-    LinWidget::WidgetManager* manager = linWidgetManager();
-    if (!manager) {
-        m_linWidgetLayerDiagnosticsLabel->setText(QStringLiteral("LinWidget manager is not available."));
-        return;
-    }
-    const LinWidget::WidgetManager::LayerDiagnostics diagnostics = manager->verifyWidgetLayerAndClickThrough();
-    const bool pass = diagnostics.hasListViewWindow &&
-        diagnostics.hasHostWindow &&
-        diagnostics.syncSucceeded &&
-        diagnostics.hasWebViewWindow &&
-        diagnostics.hostAboveListView &&
-        diagnostics.hostRectMatchesListView &&
-        diagnostics.webViewRectMatchesHost &&
-        diagnostics.emptyPointPassesThrough &&
-        diagnostics.widgetPointHitsHost &&
-        diagnostics.widgetPointHitsWebView &&
-        diagnostics.regionRectCount == diagnostics.visibleWidgetCount;
-    m_linWidgetLayerDiagnosticsLabel->setText(QStringLiteral("%1\n\n%2")
-        .arg(pass ? QStringLiteral("PASS") : QStringLiteral("FAIL"),
-             manager->layerDiagnosticsText(diagnostics)));
-    if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText(pass
-            ? QStringLiteral("Layer and click through check passed.")
-            : QStringLiteral("Layer and click through check found a mismatch. See diagnostics above."));
-    }
-}
-
 QWidget* ListViewDebugPanel::createLinWidgetsPage()
 {
     auto* page = new QWidget();
@@ -1571,6 +1567,26 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
                      QStringLiteral("Master switch for the shared WebView runtime. Turning it off unloads widgets and stops WidgetHost."),
                      m_linWidgetEnabledToggle);
 
+    m_linWidgetEmbedToggle = new FluentToggleSwitch(page);
+    m_linWidgetEmbedToggle->setChecked(settings.value("LinWidgets/EmbedInDesktopLayer", true).toBool(), false);
+    connect(m_linWidgetEmbedToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
+        QSettings s(debugConfigPath(), QSettings::IniFormat);
+        s.setValue("LinWidgets/EmbedInDesktopLayer", checked);
+        s.sync();
+        if (LinWidget::WidgetManager* manager = linWidgetManager()) {
+            manager->setEmbedInDesktopLayer(checked);
+            manager->syncAllWidgetWindowLayers();
+        }
+        if (m_linWidgetsPageStatusLabel) {
+            m_linWidgetsPageStatusLabel->setText(checked
+                ? QStringLiteral("Shared WidgetHost embedded into the desktop layer.")
+                : QStringLiteral("Shared WidgetHost launched as a separate window."));
+        }
+    });
+    addCompactSwitch(QStringLiteral("Embed Host"),
+                     QStringLiteral("Attach shared WidgetHost to the desktop layer. Turning this off uses a separate top level host window."),
+                     m_linWidgetEmbedToggle);
+
     m_linWidgetBoundsToggle = new FluentToggleSwitch(page);
     m_linWidgetBoundsToggle->setChecked(settings.value("LinWidgets/ShowWebViewBounds", false).toBool(), false);
     connect(m_linWidgetBoundsToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
@@ -1610,42 +1626,6 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
                      m_linWidgetBlockedCellsToggle);
     layout->addWidget(compactSwitchPanel);
     updateAdaptiveLayout();
-
-    auto* layerCheckPanel = new QWidget(page);
-    layerCheckPanel->setObjectName(QStringLiteral("linWidgetLayerCheckPanel"));
-    layerCheckPanel->setAttribute(Qt::WA_StyledBackground, true);
-    layerCheckPanel->setStyleSheet(QStringLiteral(
-        "QWidget#linWidgetLayerCheckPanel {"
-        "  background: #ffffff;"
-        "  border: 1px solid rgba(15, 23, 42, 0.10);"
-        "  border-radius: 10px;"
-        "}"));
-    auto* layerCheckLayout = new QVBoxLayout(layerCheckPanel);
-    layerCheckLayout->setContentsMargins(14, 12, 14, 12);
-    layerCheckLayout->setSpacing(10);
-    auto* layerCheckTitle = new QLabel(QStringLiteral("Layer And Click Through Check"), layerCheckPanel);
-    layerCheckTitle->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 13px; font-weight: 700; color: #111827;")
-        .arg(AppFonts::uiCssFamily()));
-    layerCheckLayout->addWidget(layerCheckTitle);
-    m_linWidgetLayerDiagnosticsLabel = new QLabel(layerCheckPanel);
-    m_linWidgetLayerDiagnosticsLabel->setWordWrap(true);
-    m_linWidgetLayerDiagnosticsLabel->setText(QStringLiteral("Run the check after loading a widget."));
-    m_linWidgetLayerDiagnosticsLabel->setStyleSheet(QStringLiteral(
-        "font-family: Consolas, 'Cascadia Mono', monospace; font-size: 12px; color: #334155;"));
-    layerCheckLayout->addWidget(m_linWidgetLayerDiagnosticsLabel);
-    auto* layerButtonsRow = new QHBoxLayout();
-    layerButtonsRow->setContentsMargins(0, 0, 0, 0);
-    layerButtonsRow->setSpacing(8);
-    auto* runLayerCheckButton = createActionButton(QStringLiteral("Run Check"), true, false);
-    auto* resyncLayerButton = createActionButton(QStringLiteral("Resync Layer"), false, false);
-    auto* toggleBoundsButton = createActionButton(QStringLiteral("Toggle Bounds Visualization"), false, false);
-    layerButtonsRow->addWidget(runLayerCheckButton);
-    layerButtonsRow->addWidget(resyncLayerButton);
-    layerButtonsRow->addWidget(toggleBoundsButton);
-    layerButtonsRow->addStretch();
-    layerCheckLayout->addLayout(layerButtonsRow);
-    layout->addWidget(layerCheckPanel);
 
     const QString listStyle = QStringLiteral(
         "QListWidget {"
@@ -1775,21 +1755,6 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     connect(m_linWidgetDesktopPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
         setSelectedLinWidgetGrantedPermission(QStringLiteral("desktop"), checked);
     });
-    connect(runLayerCheckButton, &QPushButton::clicked, this, &ListViewDebugPanel::updateLinWidgetLayerDiagnostics);
-    connect(resyncLayerButton, &QPushButton::clicked, this, [this]() {
-        if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-            manager->syncAllWidgetWindowLayers();
-        }
-        updateLinWidgetLayerDiagnostics();
-    });
-    connect(toggleBoundsButton, &QPushButton::clicked, this, [this]() {
-        if (!m_linWidgetBoundsToggle) {
-            return;
-        }
-        m_linWidgetBoundsToggle->setChecked(!m_linWidgetBoundsToggle->checked(), true);
-        updateLinWidgetLayerDiagnostics();
-    });
-
     m_linWidgetsActionGroupsGrid = new QGridLayout();
     m_linWidgetsActionGroupsGrid->setContentsMargins(0, 0, 0, 0);
     m_linWidgetsActionGroupsGrid->setHorizontalSpacing(12);
@@ -1991,7 +1956,6 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     });
     reloadLinWidgetsList();
     updateLinWidgetLogViewer();
-    updateLinWidgetLayerDiagnostics();
     return page;
 }
 

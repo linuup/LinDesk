@@ -223,6 +223,21 @@ console.log(info.cpu.usagePercent);
 console.log(info.memory.usagePercent);
 ```
 
+Read one category:
+
+```js
+const cpu = await desktop.systemInfo.cpu();
+const gpu = await desktop.systemInfo.gpu();
+const memory = await desktop.systemInfo.memory();
+const disk = await desktop.systemInfo.disk();
+const network = await desktop.systemInfo.network();
+const battery = await desktop.systemInfo.battery();
+const os = await desktop.systemInfo.os();
+const uptime = await desktop.systemInfo.uptime();
+```
+
+Category calls only collect the requested data. For example, `desktop.systemInfo.cpu()` does not collect GPU, disk, network, or battery data.
+
 Watch refreshed snapshots:
 
 ```js

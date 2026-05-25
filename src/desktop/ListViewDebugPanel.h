@@ -62,7 +62,6 @@ private:
     QStringList selectedLinWidgetRequestedPermissions() const;
     QStringList selectedLinWidgetGrantedPermissions() const;
     void setSelectedLinWidgetGrantedPermission(const QString& permission, bool granted);
-    void updateLinWidgetLayerDiagnostics();
     QPushButton* createActionButton(const QString& text, bool accent = false, bool destructive = false) const;
     QWidget* createSliderSettingRow(const QString& labelText,
                                     int minValue,
@@ -107,6 +106,7 @@ private:
     FluentToggleSwitch* m_embedToggle = nullptr;
     FluentToggleSwitch* m_persistToggle = nullptr;
     FluentToggleSwitch* m_linWidgetEnabledToggle = nullptr;
+    FluentToggleSwitch* m_linWidgetEmbedToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBoundsToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBlockedCellsToggle = nullptr;
     QCheckBox* m_linWidgetNetworkPermissionCheck = nullptr;
@@ -115,7 +115,6 @@ private:
     QLabel* m_openGLStatusLabel = nullptr;
     QLabel* m_linWidgetsPageStatusLabel = nullptr;
     QLabel* m_linWidgetPermissionsLabel = nullptr;
-    QLabel* m_linWidgetLayerDiagnosticsLabel = nullptr;
     QLabel* m_linWidgetsLogTitleLabel = nullptr;
     QPlainTextEdit* m_linWidgetsLogView = nullptr;
     QFileSystemWatcher* m_linWidgetsLogWatcher = nullptr;

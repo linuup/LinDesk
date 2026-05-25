@@ -54,6 +54,7 @@ public:
 	//QRect drawingMaskRect;    //拖拽选择框矩形
     void loadBackImage();
     void applyLoadedWallpaper(const QString& path, const QImage& image);
+    void applyFallbackWallpaper(const QString& path, const QString& reason);
     void rebuildScaledWallpaperPixmaps();
 	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
@@ -102,6 +103,7 @@ private:
     QPointer<QTimer> m_wallpaperLoadTimer;
     QString m_currentWallpaperPath;
     QString m_pendingWallpaperPath;
+    QString m_fallbackWallpaperPath;
     quint64 m_wallpaperLoadRequestId = 0;
     HANDLE m_singleInstanceMutex = nullptr;
     QPointer<QSystemTrayIcon> m_trayIcon;

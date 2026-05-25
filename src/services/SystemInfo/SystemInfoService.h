@@ -27,6 +27,7 @@ public:
     ~SystemInfoService();
 
     QJsonObject snapshot();
+    QJsonObject categorySnapshot(const QString& category);
 
 private:
     QString cpuName() const;
