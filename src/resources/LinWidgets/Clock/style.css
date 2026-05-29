@@ -23,12 +23,10 @@ html, body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  background: linear-gradient(135deg, rgba(20, 28, 42, 0.85), rgba(20, 28, 42, 0.65));
-  backdrop-filter: blur(2.4rem);
-  -webkit-backdrop-filter: blur(2.4rem);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
-  border-left: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
   border-radius: 2rem;
   padding: 1.5rem 1.8rem;
   display: flex;
@@ -37,9 +35,29 @@ html, body {
   gap: 1rem;
   position: relative;
   overflow: hidden;
+  transition:
+    background 0.35s ease,
+    backdrop-filter 0.35s ease,
+    -webkit-backdrop-filter 0.35s ease,
+    border-color 0.35s ease,
+    box-shadow 0.35s ease;
+}
+.glass-panel:hover {
+  background: linear-gradient(135deg, rgba(20, 28, 42, 0.75), rgba(20, 28, 42, 0.55));
+  backdrop-filter: blur(2rem);
+  -webkit-backdrop-filter: blur(2rem);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+body.light-theme .glass-panel:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(240, 244, 255, 0.65));
+  backdrop-filter: blur(2rem);
+  -webkit-backdrop-filter: blur(2rem);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 }
 
-/* Ambient glow effects */
+/* Ambient glow effects — hidden by default, fade in on hover */
 .glass-panel::before {
   content: '';
   position: absolute;
@@ -50,7 +68,10 @@ html, body {
   background: radial-gradient(circle, rgba(94, 129, 230, 0.4) 0%, rgba(94, 129, 230, 0) 70%);
   border-radius: 50%;
   z-index: -1;
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
+.glass-panel:hover::before { opacity: 1; }
 
 .glass-panel::after {
   content: '';
@@ -62,7 +83,10 @@ html, body {
   background: radial-gradient(circle, rgba(230, 94, 154, 0.3) 0%, rgba(230, 94, 154, 0) 70%);
   border-radius: 50%;
   z-index: -1;
+  opacity: 0;
+  transition: opacity 0.35s ease;
 }
+.glass-panel:hover::after { opacity: 1; }
 
 .header {
   position: absolute;
@@ -72,6 +96,11 @@ html, body {
   justify-content: flex-end;
   align-items: center;
   z-index: 20;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.glass-panel:hover .header {
+  opacity: 1;
 }
 
 
@@ -97,13 +126,8 @@ html, body {
   transform: scale(1.08);
 }
 
-.main-clock {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 10;
-  flex: 1;
-}
+
+
 
 .time-block {
   display: flex;
@@ -111,6 +135,10 @@ html, body {
   justify-content: center;
   align-items: center;
   text-align: center;
+  /* White glow lifts text on any background without adding visible dark halo */
+  filter:
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.25))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
 }
 
 .time-container {
@@ -121,14 +149,13 @@ html, body {
 }
 
 .time-main {
-  font-size: min(5.5rem, 11.5vw, 30vh);
+  font-size: min(7rem, 14.5vw, 38vh);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.1rem;
   background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0.2rem 0.6rem rgba(0, 0, 0, 0.15));
   font-variant-numeric: tabular-nums;
 }
 
@@ -138,27 +165,26 @@ html, body {
   align-items: baseline;
   color: rgba(255, 255, 255, 0.85);
   font-weight: 600;
-  margin-left: 0; /* Remove gap so seconds attach to minutes normally */
+  margin-left: 0;
 }
 
 .time-sec {
-  font-size: min(5.5rem, 11.5vw, 30vh); /* Same as time-main */
+  font-size: min(7rem, 14.5vw, 38vh);
   font-weight: 700;
   letter-spacing: -0.1rem;
   background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0.2rem 0.6rem rgba(0, 0, 0, 0.15));
   font-variant-numeric: tabular-nums;
 }
 
 .time-ampm {
-  font-size: min(2rem, 7vw, 14vh);
-  margin-left: 0.6rem; /* Add margin here instead to separate AM/PM from time */
+  font-size: min(2.5rem, 8.5vw, 17vh);
+  margin-left: 0.6rem;
 }
 
 .date {
-  font-size: min(1.8rem, 6vw); /* Increased base size */
+  font-size: min(2.2rem, 7.5vw);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   margin-top: 0.8rem;
@@ -174,30 +200,29 @@ body.light-theme {
   color: #2D3748;
 }
 
-body.light-theme .glass-panel {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.65));
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-top: 1px solid rgba(255, 255, 255, 0.9);
-  border-left: 1px solid rgba(255, 255, 255, 0.9);
-}
 
-body.light-theme .glass-panel::before {
-  background: radial-gradient(circle, rgba(255, 180, 50, 0.3) 0%, rgba(255, 180, 50, 0) 70%);
-}
 
-body.light-theme .glass-panel::after {
-  background: radial-gradient(circle, rgba(50, 200, 255, 0.3) 0%, rgba(50, 200, 255, 0) 70%);
-}
 
 body.light-theme .time-main,
 body.light-theme .time-sec {
   background: linear-gradient(180deg, #1A202C 0%, #4A5568 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  filter: none; /* reset individual filter; container handles it */
+}
+
+body.light-theme .time-block {
+  filter:
+    drop-shadow(0 0 16px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 2px 6px rgba(255, 255, 255, 0.7));
 }
 
 body.light-theme .time-sub {
   color: #4A5568;
+}
+
+body.light-theme .time-ampm {
+  /* inherit from .time-block filter */
 }
 
 body.light-theme .date {
@@ -233,8 +258,7 @@ body.light-theme .theme-toggle:hover {
     align-items: center;
   }
   .time-main {
-    /* Huge font size now possible because seconds are hidden */
-    font-size: min(6.5rem, 24vw);
+    font-size: min(8rem, 30vw);
   }
   .time-sub {
     margin-left: 0;
@@ -248,10 +272,10 @@ body.light-theme .theme-toggle:hover {
     display: none; /* Hide AM/PM in small layouts */
   }
   .date {
-    order: -1; /* Move date to the very top */
+    order: -1;
     margin-top: 0;
     margin-bottom: 0.8rem;
-    font-size: min(3rem, 11vw); /* Massively increased */
+    font-size: min(3.8rem, 14vw);
     opacity: 0.85;
   }
   .date-full {
@@ -291,7 +315,7 @@ body.light-theme .theme-toggle:hover {
     align-items: center;
   }
   .time-main {
-    font-size: min(7rem, 26vw, 35vh); /* Maximize time visibility */
+    font-size: min(8.5rem, 32vw, 42vh);
   }
   .time-sub {
     margin-left: 0;
@@ -307,7 +331,7 @@ body.light-theme .theme-toggle:hover {
     order: -1;
     margin-top: 0;
     margin-bottom: 0.6rem;
-    font-size: min(2.8rem, 11vw, 16vh); /* Massively increased */
+    font-size: min(3.5rem, 14vw, 20vh);
   }
   .date-full {
     display: none;
@@ -333,26 +357,30 @@ body.light-theme .theme-toggle:hover {
   z-index: 100;
   -webkit-app-region: no-drag;
   pointer-events: auto;
+  mix-blend-mode: difference;
+  /* Hide by default, reveal on hover */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.glass-panel:hover .style-switcher {
+  opacity: 1;
 }
 .style-dot {
   box-sizing: content-box;
   width: 8px;
   height: 8px;
   border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.4);
   border: 8px solid transparent;
   background-clip: padding-box;
   cursor: pointer;
   padding: 0;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.style-dot:hover { background-color: rgba(255, 255, 255, 0.7); transform: scale(1.1); }
+.style-dot:hover { background-color: rgba(255, 255, 255, 0.75); transform: scale(1.1); }
 .style-dot.active { background-color: rgba(255, 255, 255, 1); height: 24px; }
-body.light-theme .style-dot { background-color: rgba(0, 0, 0, 0.15); }
-body.light-theme .style-dot:hover { background-color: rgba(0, 0, 0, 0.5); }
-body.light-theme .style-dot.active { background-color: rgba(0, 0, 0, 0.7); }
 
-/* Analog Mode Transparency */
+/* Analog Mode: transparent panel, solid clock-face circle only */
 body.style-analog .glass-panel {
   background: transparent !important;
   backdrop-filter: none !important;
@@ -365,43 +393,100 @@ body.style-analog .glass-panel::after {
   display: none !important;
 }
 
-/* Hide digital, show analog */
-.analog-clock {
-  display: none;
-  flex: 1;
+/* Panel fade-switch: all panels stack via absolute fill, opacity controls visibility */
+.main-clock,
+.analog-clock,
+.focus-clock {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
   justify-content: center;
   align-items: center;
   width: 100%;
   height: 100%;
+  transition: opacity 0.45s ease;
 }
-body.style-analog .main-clock { display: none; }
-body.style-analog .analog-clock { display: flex; }
-
-/* Hide UI elements on idle in Analog mode so background is truly clean */
-body.style-analog .glass-panel > *:not(.analog-clock) {
+.main-clock {
+  z-index: 2;
+  opacity: 1;
+  pointer-events: auto;
+  flex: unset;
+}
+.analog-clock,
+.focus-clock {
+  z-index: 1;
   opacity: 0;
+  pointer-events: none;
+  flex: unset;
+}
+body.style-analog .main-clock,
+body.style-analog .focus-clock {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+body.style-analog .analog-clock {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 2;
+}
+body.style-focus .main-clock,
+body.style-focus .analog-clock {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+body.style-focus .focus-clock {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+/* Analog / Focus mode: all chrome except active panel stays hidden */
+body.style-analog .glass-panel > *:not(.analog-clock):not(.style-switcher),
+body.style-focus  .glass-panel > *:not(.focus-clock):not(.style-switcher) {
+  opacity: 0 !important;
+  pointer-events: none !important;
   transition: opacity 0.3s;
 }
-body.style-analog .glass-panel:hover > *:not(.analog-clock) {
-  opacity: 1;
+
+/* Focus mode: transparent glass same as analog */
+body.style-focus .glass-panel {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+body.style-focus .glass-panel::before,
+body.style-focus .glass-panel::after {
+  display: none !important;
 }
 
-/* Always keep controls white with dark shadow in analog mode, regardless of theme */
-body.style-analog .style-dot,
-body.light-theme.style-analog .style-dot {
-  background-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+/* Focus Time — huge minimal display */
+.focus-time {
+  font-size: min(11rem, 27vw, 52vh);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.15rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, rgba(226, 232, 240, 0.85) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+  filter:
+    drop-shadow(0 0 20px rgba(0, 0, 0, 0.8))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
 }
-body.style-analog .style-dot:hover,
-body.light-theme.style-analog .style-dot:hover {
-  background-color: rgba(255, 255, 255, 0.9);
-}
-body.style-analog .style-dot.active,
-body.light-theme.style-analog .style-dot.active {
-  background-color: #ffffff;
-  box-shadow: 0 1px 6px rgba(0,0,0,0.8);
+body.light-theme .focus-time {
+  background: linear-gradient(180deg, #1A202C 0%, #4A5568 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter:
+    drop-shadow(0 0 20px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 2px 8px rgba(255, 255, 255, 0.7));
 }
 
+/* Analog mode: mix-blend-mode:difference handles contrast automatically */
 body.style-analog .theme-toggle,
 body.light-theme.style-analog .theme-toggle {
   background: transparent;
@@ -416,16 +501,16 @@ body.light-theme.style-analog .theme-toggle {
   width: min(85vw, 85vh, 400px);
   aspect-ratio: 1;
   border-radius: 50%;
-  background: rgba(20, 28, 42, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: rgb(14, 20, 34); /* solid opaque dark */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 body.light-theme .clock-face {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: rgb(248, 250, 255); /* solid opaque light */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* Hands */

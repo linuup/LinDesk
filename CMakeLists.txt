@@ -113,7 +113,6 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
-list(FILTER SOURCES EXCLUDE REGEX ".*/src/widgethost/.*")
 
 file(GLOB_RECURSE LINWIDGET_SHARED_SOURCES CONFIGURE_DEPENDS
     "src/desktop/widgets/linwidget/*.cpp"
@@ -129,16 +128,7 @@ endif()
 
 add_executable(LinDesk ${SOURCES} ${WIN32_RESOURCES})
 
-add_executable(WidgetHost
-    src/widgethost/main.cpp
-    src/widgethost/WidgetHostRuntime.cpp
-    src/widgethost/WidgetHostRuntime.h
-    src/services/SystemInfo/SystemInfoService.cpp
-    src/services/SystemInfo/SystemInfoService.h
-    ${LINWIDGET_SHARED_SOURCES}
-)
 add_dependencies(LinDesk LinDeskUpdate)
-add_dependencies(LinDesk WidgetHost)
 if(TARGET Win11MenuIsland)
     add_dependencies(LinDesk Win11MenuIsland)
 endif()
@@ -148,28 +138,10 @@ set_target_properties(LinDesk PROPERTIES
     WIN32_EXECUTABLE "$<$<NOT:$<CONFIG:Debug>>:TRUE>"
 )
 
-target_link_libraries(WidgetHost
-    PRIVATE
-        Iphlpapi
-        Dxgi
-        Pdh
-        Qt5::Widgets
-        Qt5::Core
-        Qt5::Network
-)
 
-target_include_directories(WidgetHost
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/app
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
-)
 
 set(LINDESK_WEBVIEW2_ROOT "$ENV{USERPROFILE}/.nuget/packages/microsoft.web.webview2/1.0.3179.45/build/native")
 if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/include/WebView2.h")
-    target_compile_definitions(WidgetHost PRIVATE LINDESK_HAS_WEBVIEW2)
-    target_include_directories(WidgetHost PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
-    target_link_libraries(WidgetHost PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
     target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_WEBVIEW2)
     target_include_directories(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
     target_link_libraries(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
@@ -295,20 +267,6 @@ add_custom_command(TARGET LinDesk POST_BUILD
     COMMENT "Copying resource files to output directory..."
 )
 
-add_custom_command(TARGET WidgetHost POST_BUILD
-    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy_resources.ps1"
-        -Source "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
-        -Target "$<TARGET_FILE_DIR:WidgetHost>/resources"
-    COMMENT "Copying resource files to WidgetHost output directory..."
-)
-
-add_custom_command(TARGET LinDesk POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:WidgetHost>
-        $<TARGET_FILE_DIR:LinDesk>
-    COMMENT "Copying WidgetHost to output directory..."
-)
 
 if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2Loader.dll")
     add_custom_command(TARGET LinDesk POST_BUILD

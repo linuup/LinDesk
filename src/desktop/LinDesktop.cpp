@@ -823,22 +823,17 @@ bool LinDesktop::isOwnProcessWindow(HWND hwnd) const
     return processId == GetCurrentProcessId();
 }
 
-bool LinDesktop::isOwnWidgetHostWindow(HWND hwnd) const
+bool LinDesktop::isOwnLinWidgetRuntimeWindow(HWND hwnd) const
 {
-    const QString imageName = windowProcessImageName(hwnd);
-    if (imageName.compare(QStringLiteral("WidgetHost.exe"), Qt::CaseInsensitive) == 0) {
-        return true;
-    }
-
     const QString className = windowClassName(hwnd);
     return className.startsWith(QStringLiteral("Qt5152"), Qt::CaseInsensitive) &&
         className.contains(QStringLiteral("QWindow"), Qt::CaseInsensitive);
 }
 
-bool LinDesktop::isOwnWidgetHostWindowOrDescendant(HWND hwnd) const
+bool LinDesktop::isOwnLinWidgetRuntimeWindowOrDescendant(HWND hwnd) const
 {
     for (HWND current = hwnd; current && IsWindow(current); current = GetParent(current)) {
-        if (isOwnProcessWindow(current) || isOwnWidgetHostWindow(current)) {
+        if (isOwnProcessWindow(current) || isOwnLinWidgetRuntimeWindow(current)) {
             return true;
         }
 
@@ -851,7 +846,7 @@ bool LinDesktop::isOwnWidgetHostWindowOrDescendant(HWND hwnd) const
 
 bool LinDesktop::isCandidateThirdPartyWindow(HWND hwnd) const
 {
-    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || isOwnWidgetHostWindowOrDescendant(hwnd)) {
+    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || isOwnLinWidgetRuntimeWindowOrDescendant(hwnd)) {
         return false;
     }
 
@@ -1118,3 +1113,4 @@ bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* r
     }
     return QWidget::nativeEvent(eventType, message, result);
 }
+

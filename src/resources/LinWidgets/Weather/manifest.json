@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "author": "LinDesk",
   "description": "A bundled weather widget template for testing network and storage permissions.",
+  "icon": "icon.png",
   "width": 320,
   "height": 160,
   "minWidth": 160,

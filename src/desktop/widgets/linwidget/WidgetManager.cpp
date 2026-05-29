@@ -2,9 +2,10 @@
 
 #include "desktop/widgets/linwidget/ConfigManager.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
-#include "desktop/widgets/linwidget/WidgetIpcProtocol.h"
+#include "desktop/widgets/linwidget/WidgetMessageTypes.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
+#include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
 #include "services/AppPaths.h"
 #include "services/DpiCoordinateHelper.h"
 
@@ -29,8 +30,7 @@
 
 namespace LinWidget {
 namespace {
-constexpr qint64 kHeartbeatTimeoutMs = 10 * 1000;
-constexpr int kHeartbeatCheckIntervalMs = 2500;
+constexpr int kRuntimeHealthCheckIntervalMs = 2500;
 constexpr const char* kSharedHostId = "__shared__";
 
 QString canonicalPackagePath(const QString& packagePath)
@@ -138,16 +138,6 @@ QVector<WidgetLayoutState> deduplicatedLayoutStates(const QVector<WidgetLayoutSt
 }
 
 #ifdef Q_OS_WIN
-QString windowClassName(HWND window)
-{
-    if (!window) {
-        return QString();
-    }
-    wchar_t className[256] = {};
-    GetClassNameW(window, className, 256);
-    return QString::fromWCharArray(className);
-}
-
 QRect windowRect(HWND window)
 {
     RECT rect = {};
@@ -158,11 +148,6 @@ QRect windowRect(HWND window)
                  rect.top,
                  qMax(0L, rect.right - rect.left),
                  qMax(0L, rect.bottom - rect.top));
-}
-
-QString hwndString(HWND window)
-{
-    return QString::number(reinterpret_cast<quintptr>(window), 16);
 }
 
 QRect bestLogicalLayerRect(HWND layerWindow, const RECT& layerNativeRect)
@@ -208,15 +193,8 @@ void appendSharedLog(const QString& level, const QString& message)
 WidgetManager::WidgetManager(QObject* parent)
     : QObject(parent)
 {
-    connect(&m_ipc, &WidgetIpcManager::messageReceived,
-            this, &WidgetManager::handleIpcMessage);
-    connect(&m_ipc, &WidgetIpcManager::errorOccurred,
-            this, [this](const QString& message) {
-        emit widgetError(QString(), message);
-    });
-
-    m_heartbeatTimer.setInterval(kHeartbeatCheckIntervalMs);
-    connect(&m_heartbeatTimer, &QTimer::timeout, this, &WidgetManager::checkHeartbeats);
+    m_runtimeHealthTimer.setInterval(kRuntimeHealthCheckIntervalMs);
+    connect(&m_runtimeHealthTimer, &QTimer::timeout, this, &WidgetManager::checkRuntimeHealth);
 
     m_saveTimer.setSingleShot(true);
     m_saveTimer.setInterval(350);
@@ -236,14 +214,10 @@ WidgetManager::~WidgetManager()
 
 bool WidgetManager::start()
 {
-    if (!m_enabled) {
-        return true;
+    if (m_enabled && !m_runtimeHealthTimer.isActive()) {
+        m_runtimeHealthTimer.start();
     }
-    const bool ok = m_ipc.start(ipcServerName());
-    if (ok && !m_heartbeatTimer.isActive()) {
-        m_heartbeatTimer.start();
-    }
-    return ok;
+    return m_enabled;
 }
 
 bool WidgetManager::launchWidgetPackage(const QString& packagePath,
@@ -270,7 +244,7 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
 
     if (!start()) {
         if (errorMessage) {
-            *errorMessage = QStringLiteral("Failed to start LinWidget IPC server.");
+            *errorMessage = QStringLiteral("Failed to start LinWidget runtime.");
         }
         return false;
     }
@@ -300,7 +274,7 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
             }
             WidgetLayoutState nextState = state;
             nextState.visible = true;
-            if (!m_hosts.contains(state.instanceId)) {
+            if (!m_runningWidgets.contains(state.instanceId)) {
                 WidgetInstance instance;
                 instance.instanceId = state.instanceId;
                 instance.packagePath = packagePath;
@@ -363,7 +337,7 @@ bool WidgetManager::launchWidgetInstance(const WidgetInstance& instance,
 
     m_layout.addOrUpdate(layoutState);
     m_instances.insert(instance.instanceId, instance);
-    m_hosts.insert(instance.instanceId, m_sharedHost);
+    m_runningWidgets.insert(instance.instanceId);
     configureDevelopmentWatcher(instance);
     sendAddWidgetToSharedHost(instance, layoutState);
     syncAllWidgetWindowLayers();
@@ -396,15 +370,15 @@ bool WidgetManager::restartWidget(const QString& instanceId)
     stopSystemInfoWatchesForInstance(instanceId);
     clearDevelopmentWatcher(instanceId);
     configureDevelopmentWatcher(instance);
-    QJsonObject removeMessage = makeIpcMessage(QString::fromLatin1(IpcType::RemoveWidget), QString::fromLatin1(kSharedHostId));
+    QJsonObject removeMessage = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::RemoveWidget), QString::fromLatin1(kSharedHostId));
     removeMessage.insert(QStringLiteral("instanceId"), instanceId);
     removeMessage.insert(QStringLiteral("widgetId"), instanceId);
-    m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), removeMessage);
+    sendMessageToSharedRuntime(removeMessage);
     sendAddWidgetToSharedHost(instance, state);
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::ReloadWidget), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::ReloadWidget), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("instanceId"), instanceId);
     message.insert(QStringLiteral("widgetId"), instanceId);
-    m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    sendMessageToSharedRuntime(message);
     return true;
 }
 
@@ -419,7 +393,7 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
 
     if (!start()) {
         if (errorMessage) {
-            *errorMessage = QStringLiteral("Failed to start LinWidget IPC server.");
+            *errorMessage = QStringLiteral("Failed to start LinWidget runtime.");
         }
         return false;
     }
@@ -591,7 +565,7 @@ bool WidgetManager::removeWidgetState(const QString& instanceId)
     if (instanceId.isEmpty()) {
         return false;
     }
-    if (m_hosts.contains(instanceId)) {
+    if (m_runningWidgets.contains(instanceId)) {
         stopWidget(instanceId);
     }
     const bool hadState = m_layout.contains(instanceId);
@@ -615,12 +589,11 @@ void WidgetManager::setEnabled(bool enabled)
 
     m_enabled = enabled;
     if (!m_enabled) {
-        if (m_heartbeatTimer.isActive()) {
-            m_heartbeatTimer.stop();
+        if (m_runtimeHealthTimer.isActive()) {
+            m_runtimeHealthTimer.stop();
         }
         stopAll();
         m_widgetWindows.clear();
-        m_ipc.stop();
     }
 }
 
@@ -648,28 +621,6 @@ void WidgetManager::setDesktopLayerWindow(WId layerWindow)
 WId WidgetManager::desktopLayerWindow() const
 {
     return m_desktopLayerWindow;
-}
-
-void WidgetManager::setEmbedInDesktopLayer(bool enabled)
-{
-    if (m_embedInDesktopLayer == enabled) {
-        return;
-    }
-    m_embedInDesktopLayer = enabled;
-    appendSharedLog(QStringLiteral("layer"),
-                    enabled
-                        ? QStringLiteral("embed host enabled, restarting shared host")
-                        : QStringLiteral("embed host disabled, restarting shared host as top level window"));
-    if (m_sharedHost) {
-        restartSharedHost();
-    } else {
-        syncAllWidgetWindowLayers();
-    }
-}
-
-bool WidgetManager::embedInDesktopLayer() const
-{
-    return m_embedInDesktopLayer;
 }
 
 void WidgetManager::setShowWebViewBounds(bool enabled)
@@ -700,97 +651,60 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         return;
     }
 
+    if (IsIconic(widgetWindow)) {
+        ShowWindow(widgetWindow, SW_RESTORE);
+    }
+    if (!IsWindowVisible(widgetWindow)) {
+        ShowWindow(widgetWindow, SW_SHOWNOACTIVATE);
+    }
+
     RECT layerNativeRect = {};
     if (!GetWindowRect(layerWindow, &layerNativeRect)) {
         return;
     }
-    const QRect nativeLayerGeometry = windowRect(layerWindow);
-    const QRect logicalLayerGeometry = bestLogicalLayerRect(layerWindow, layerNativeRect);
-    RECT clientRect = {};
-    GetClientRect(layerWindow, &clientRect);
-    const int clientWidth = clientRect.right - clientRect.left;
-    const int clientHeight = clientRect.bottom - clientRect.top;
-    const QSize logicalClientSize = logicalLayerGeometry.size();
-
-    const bool childLayer = GetParent(widgetWindow) == layerWindow;
-    HWND insertAfter = childLayer
-        ? HWND_TOP
-        : layerWindow;
-
-    if (IsIconic(widgetWindow)) {
-        ShowWindow(widgetWindow, SW_RESTORE);
+    RECT layerClientRect = {};
+    GetClientRect(layerWindow, &layerClientRect);
+    const bool inProcessSharedRuntime = m_webViewRuntime != nullptr;
+    const QRect nativeLayerGeometry = inProcessSharedRuntime
+        ? QRect(0,
+                0,
+                qMax(0L, layerClientRect.right - layerClientRect.left),
+                qMax(0L, layerClientRect.bottom - layerClientRect.top))
+        : windowRect(layerWindow);
+    QRect logicalLayerGeometry = bestLogicalLayerRect(layerWindow, layerNativeRect);
+    if (inProcessSharedRuntime) {
+        logicalLayerGeometry.moveTopLeft(QPoint(0, 0));
     }
+
     ShowWindow(widgetWindow, SW_SHOWNOACTIVATE);
 
-    UINT setWindowFlags = SWP_SHOWWINDOW | SWP_FRAMECHANGED;
-    setWindowFlags |= SWP_NOACTIVATE;
+    UINT setWindowFlags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE;
 
     const BOOL ok = SetWindowPos(widgetWindow,
-                                 insertAfter,
-                                 childLayer ? 0 : nativeLayerGeometry.x(),
-                                 childLayer ? 0 : nativeLayerGeometry.y(),
-                                 childLayer ? clientWidth : nativeLayerGeometry.width(),
-                                 childLayer ? clientHeight : nativeLayerGeometry.height(),
+                                 inProcessSharedRuntime ? HWND_TOP : layerWindow,
+                                 nativeLayerGeometry.x(),
+                                 nativeLayerGeometry.y(),
+                                 nativeLayerGeometry.width(),
+                                 nativeLayerGeometry.height(),
                                  setWindowFlags);
     if (ok) {
-        QJsonObject hostGeometryMessage = makeIpcMessage(QString::fromLatin1(IpcType::UpdateHostGeometry), QString::fromLatin1(kSharedHostId));
-        hostGeometryMessage.insert(QStringLiteral("x"), childLayer ? 0 : logicalLayerGeometry.x());
-        hostGeometryMessage.insert(QStringLiteral("y"), childLayer ? 0 : logicalLayerGeometry.y());
-        hostGeometryMessage.insert(QStringLiteral("width"), childLayer ? logicalClientSize.width() : logicalLayerGeometry.width());
-        hostGeometryMessage.insert(QStringLiteral("height"), childLayer ? logicalClientSize.height() : logicalLayerGeometry.height());
-        m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), hostGeometryMessage);
+        QJsonObject hostGeometryMessage = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::UpdateHostGeometry), QString::fromLatin1(kSharedHostId));
+        hostGeometryMessage.insert(QStringLiteral("x"), logicalLayerGeometry.x());
+        hostGeometryMessage.insert(QStringLiteral("y"), logicalLayerGeometry.y());
+        hostGeometryMessage.insert(QStringLiteral("width"), logicalLayerGeometry.width());
+        hostGeometryMessage.insert(QStringLiteral("height"), logicalLayerGeometry.height());
+        sendMessageToSharedRuntime(hostGeometryMessage);
     }
-    const QRect hostRect = windowRect(widgetWindow);
-    const bool hostRectMatchesListView = hostRect == nativeLayerGeometry;
-    const bool hostAboveListView = !m_embedInDesktopLayer || (childLayer
-        ? GetWindow(layerWindow, GW_CHILD) == widgetWindow
-        : GetWindow(layerWindow, GW_HWNDPREV) == widgetWindow);
-    const POINT center {
-        hostRect.center().x(),
-        hostRect.center().y()
-    };
-    HWND pointWindow = WindowFromPoint(center);
-    if (!ok || !hostAboveListView || !hostRectMatchesListView) {
+    if (!ok) {
         appendSharedLog(QStringLiteral("layer"),
-                        QStringLiteral("sync mismatch id=%1 ok=%2 widget=%3 widgetClass=%4 layer=%5 layerClass=%6 insertAfter=%7 rect=%8,%9 %10x%11 logicalRect=%12,%13 %14x%15 client=%16x%17 aboveListView=%18 pointWindow=%19 pointClass=%20")
+                        QStringLiteral("sync failed id=%1 ok=%2")
                             .arg(instanceId,
-                                 ok ? QStringLiteral("true") : QStringLiteral("false"),
-                                 hwndString(widgetWindow),
-                                 windowClassName(widgetWindow),
-                                 hwndString(layerWindow),
-                                 windowClassName(layerWindow),
-                                 hwndString(insertAfter),
-                                 QString::number(hostRect.x()),
-                                 QString::number(hostRect.y()),
-                                 QString::number(hostRect.width()),
-                                 QString::number(hostRect.height()),
-                                 QString::number(logicalLayerGeometry.x()),
-                                 QString::number(logicalLayerGeometry.y()),
-                                 QString::number(logicalLayerGeometry.width()),
-                                 QString::number(logicalLayerGeometry.height()),
-                                 QString::number(clientWidth),
-                                 QString::number(clientHeight),
-                                 hostAboveListView ? QStringLiteral("true") : QStringLiteral("false"),
-                                 hwndString(pointWindow),
-                                 windowClassName(pointWindow)));
+                                 ok ? QStringLiteral("true") : QStringLiteral("false")));
         qDebug() << "[LinWidgetLayer] sync"
                  << "id=" << instanceId
-                 << "ok=" << ok
-                 << "widget=" << hwndString(widgetWindow)
-                 << "widgetClass=" << windowClassName(widgetWindow)
-                 << "layer=" << hwndString(layerWindow)
-                 << "layerClass=" << windowClassName(layerWindow)
-                 << "insertAfter=" << hwndString(insertAfter)
-                 << "insertAfterClass=" << windowClassName(insertAfter)
-                 << "rect=" << hostRect
-                 << "logicalRect=" << logicalLayerGeometry
-                 << "client=" << QSize(clientWidth, clientHeight)
-                 << "aboveListView=" << hostAboveListView
-                 << "pointWindow=" << hwndString(pointWindow)
-                 << "pointClass=" << windowClassName(pointWindow);
+                 << "ok=" << ok;
     }
 #else
-    Q_UNUSED(instanceId);
 #endif
 }
 
@@ -810,51 +724,52 @@ bool WidgetManager::ensureSharedHost(QString* errorMessage)
 
     if (!start()) {
         if (errorMessage) {
-            *errorMessage = QStringLiteral("Failed to start LinWidget IPC server.");
+            *errorMessage = QStringLiteral("Failed to start LinWidget runtime.");
         }
         return false;
     }
-    if (m_sharedHost) {
+    if (m_webViewRuntime) {
         return true;
     }
 
     WidgetManifest manifest;
     manifest.id = QString::fromLatin1(kSharedHostId);
     manifest.name = QStringLiteral("LinWidget Shared Runtime");
-    manifest.width = 1920;
-    manifest.height = 1080;
+    manifest.width = 1200;
+    manifest.height = 760;
 
     WidgetInstance instance;
     instance.instanceId = QString::fromLatin1(kSharedHostId);
     instance.manifest = manifest;
     instance.geometry = QRect(0, 0, manifest.width, manifest.height);
 
-    const quintptr parentWindow = m_embedInDesktopLayer ? static_cast<quintptr>(m_desktopLayerWindow) : 0;
-    auto* host = new WidgetHostController(instance, ipcServerName(), parentWindow, this);
-    connect(host, &WidgetHostController::exited, this, [this](const QString&, int, QProcess::ExitStatus status) {
-        WidgetHostController* controller = m_sharedHost;
-        m_sharedHost = nullptr;
-        if (controller) {
-            controller->deleteLater();
-        }
-        if (m_stoppingAll || status == QProcess::NormalExit) {
-            return;
-        }
-        emit widgetError(QString(), QStringLiteral("Shared WidgetHost crashed. Restarting widgets."));
-        restartSharedHost();
-    });
-    connect(host, &WidgetHostController::failed, this, [this](const QString&, const QString& message) {
-        emit widgetError(QString(), message);
-    });
+    WidgetInstance sharedInstance = instance;
+    sharedInstance.geometry = QRect(80, 80, manifest.width, manifest.height);
+    const WId parentWindow = m_desktopLayerWindow != 0 ? m_desktopLayerWindow : m_hostParentWindow;
+    auto* runtime = new LinWidgetWebViewRuntime(QString::fromLatin1(kSharedHostId),
+                                                QString(),
+                                                sharedInstance.geometry,
+                                                static_cast<quint64>(parentWindow),
+                                                QStringList(),
+                                                false,
+                                                false,
+                                                true,
+                                                nullptr);
+    m_webViewRuntime = runtime;
+    connect(runtime, &LinWidgetWebViewRuntime::messageToManager,
+            this, &WidgetManager::handleRuntimeMessage);
 
-    if (!host->start()) {
-        host->deleteLater();
+    QString runtimeError;
+    if (!runtime->initialize(&runtimeError)) {
+        m_webViewRuntime = nullptr;
+        runtime->deleteLater();
         if (errorMessage) {
-            *errorMessage = QStringLiteral("Failed to start shared WidgetHost.exe.");
+            *errorMessage = runtimeError.isEmpty()
+                ? QStringLiteral("Failed to start LinWidget WebView runtime.")
+                : runtimeError;
         }
         return false;
     }
-    m_sharedHost = host;
     sendHostOptionsToSharedHost();
     return true;
 }
@@ -865,14 +780,14 @@ void WidgetManager::restartSharedHost()
         return;
     }
 
-    if (m_sharedHost) {
-        WidgetHostController* host = m_sharedHost;
-        m_sharedHost = nullptr;
+    if (m_webViewRuntime) {
+        LinWidgetWebViewRuntime* runtime = m_webViewRuntime;
+        m_webViewRuntime = nullptr;
         m_widgetWindows.remove(QString::fromLatin1(kSharedHostId));
         m_sharedWebViewWindow = 0;
         m_sharedWebViewWindowClass.clear();
-        host->stop();
-        host->deleteLater();
+        runtime->close();
+        runtime->deleteLater();
     }
     QString errorMessage;
     if (!ensureSharedHost(&errorMessage)) {
@@ -891,20 +806,20 @@ void WidgetManager::restartSharedHost()
             continue;
         }
         m_instances.insert(instance.instanceId, instance);
-        m_hosts.insert(state.instanceId, m_sharedHost);
+        m_runningWidgets.insert(state.instanceId);
         sendAddWidgetToSharedHost(instance, state);
     }
 }
 
 void WidgetManager::sendHostOptionsToSharedHost()
 {
-    if (!m_sharedHost) {
+    if (!m_webViewRuntime) {
         return;
     }
 
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::UpdateHostOptions), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::UpdateHostOptions), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("showWebViewBounds"), m_showWebViewBounds);
-    m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    sendMessageToSharedRuntime(message);
 }
 
 bool WidgetManager::sendAddWidgetToSharedHost(const WidgetInstance& instance, const WidgetLayoutState& layoutState)
@@ -920,7 +835,7 @@ bool WidgetManager::sendAddWidgetToSharedHost(const WidgetInstance& instance, co
         permissions.append(permission);
     }
 
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::AddWidget), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::AddWidget), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("instanceId"), instance.instanceId);
     message.insert(QStringLiteral("packagePath"), instance.packagePath);
     message.insert(QStringLiteral("geometry"), geometry);
@@ -928,22 +843,22 @@ bool WidgetManager::sendAddWidgetToSharedHost(const WidgetInstance& instance, co
     message.insert(QStringLiteral("development"), instance.isDevelopment);
     message.insert(QStringLiteral("autoReload"), instance.autoReload);
     message.insert(QStringLiteral("zOrder"), layoutState.zOrder);
-    return m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    return sendMessageToSharedRuntime(message);
 }
 
 void WidgetManager::stopWidget(const QString& instanceId)
 {
-    if (!m_hosts.contains(instanceId)) {
+    if (!m_runningWidgets.contains(instanceId)) {
         return;
     }
-    m_hosts.remove(instanceId);
+    m_runningWidgets.remove(instanceId);
     stopSystemInfoWatchesForInstance(instanceId);
     clearDevelopmentWatcher(instanceId);
     m_instances.remove(instanceId);
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::RemoveWidget), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::RemoveWidget), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("instanceId"), instanceId);
     message.insert(QStringLiteral("widgetId"), instanceId);
-    m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    sendMessageToSharedRuntime(message);
     syncAllWidgetWindowLayers();
     if (!m_stoppingAll) {
         m_layout.setVisible(instanceId, false);
@@ -1075,20 +990,23 @@ void WidgetManager::stopAll()
 {
     const bool wasStoppingAll = m_stoppingAll;
     m_stoppingAll = true;
-    const QStringList ids = m_hosts.keys();
+    const QStringList ids = m_runningWidgets.values();
     for (const QString& id : ids) {
         stopWidget(id);
     }
-    m_hosts.clear();
+    m_runningWidgets.clear();
     m_instances.clear();
     qDeleteAll(m_systemInfoWatchTimers);
     m_systemInfoWatchTimers.clear();
-    if (m_sharedHost) {
-        WidgetHostController* host = m_sharedHost;
-        m_sharedHost = nullptr;
-        host->stop();
-        host->deleteLater();
+    if (m_webViewRuntime) {
+        LinWidgetWebViewRuntime* runtime = m_webViewRuntime;
+        m_webViewRuntime = nullptr;
+        runtime->close();
+        runtime->deleteLater();
     }
+    m_widgetWindows.remove(QString::fromLatin1(kSharedHostId));
+    m_sharedWebViewWindow = 0;
+    m_sharedWebViewWindowClass.clear();
     m_stoppingAll = wasStoppingAll;
 }
 
@@ -1177,7 +1095,7 @@ void WidgetManager::sendSystemInfoResponse(const QString& instanceId,
                                            const QJsonObject& data,
                                            const QString& errorMessage)
 {
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::SystemInfoResponse), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::SystemInfoResponse), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("instanceId"), instanceId);
     message.insert(QStringLiteral("widgetId"), instanceId);
     message.insert(QStringLiteral("requestId"), requestId);
@@ -1189,19 +1107,19 @@ void WidgetManager::sendSystemInfoResponse(const QString& instanceId,
     if (!errorMessage.isEmpty()) {
         message.insert(QStringLiteral("error"), errorMessage);
     }
-    m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    sendMessageToSharedRuntime(message);
 }
 
 void WidgetManager::sendSystemInfoUpdate(const QString& instanceId,
                                          const QString& watchId,
                                          const QJsonObject& data)
 {
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::SystemInfoUpdate), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::SystemInfoUpdate), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("instanceId"), instanceId);
     message.insert(QStringLiteral("widgetId"), instanceId);
     message.insert(QStringLiteral("watchId"), watchId);
     message.insert(QStringLiteral("data"), data);
-    m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    sendMessageToSharedRuntime(message);
 }
 
 void WidgetManager::stopSystemInfoWatchesForInstance(const QString& instanceId)
@@ -1223,30 +1141,21 @@ QString WidgetManager::makeInstanceId(const WidgetManifest& manifest) const
     return QStringLiteral("%1.%2").arg(manifest.id, QString::number(QDateTime::currentMSecsSinceEpoch()));
 }
 
-QString WidgetManager::ipcServerName() const
-{
-    return QStringLiteral("LinDesk.LinWidget.%1").arg(QCoreApplication::applicationPid());
-}
-
-void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject& message)
+void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObject& message)
 {
     const QString type = message.value(QStringLiteral("type")).toString();
     if (widgetId == QString::fromLatin1(kSharedHostId)) {
-        if (m_sharedHost && (type == QString::fromLatin1(IpcType::Heartbeat) ||
-            type == QString::fromLatin1(IpcType::Ready))) {
-            m_sharedHost->markHeartbeat();
-            if (type == QString::fromLatin1(IpcType::Ready)) {
-                sendHostOptionsToSharedHost();
-                const QVector<WidgetLayoutState> states = m_layout.states();
-                for (const WidgetLayoutState& state : states) {
-                    if (state.visible && m_instances.contains(state.instanceId)) {
-                        sendAddWidgetToSharedHost(m_instances.value(state.instanceId), state);
-                    }
+        if (m_webViewRuntime && type == QString::fromLatin1(WidgetMessageType::Ready)) {
+            sendHostOptionsToSharedHost();
+            const QVector<WidgetLayoutState> states = m_layout.states();
+            for (const WidgetLayoutState& state : states) {
+                if (state.visible && m_instances.contains(state.instanceId)) {
+                    sendAddWidgetToSharedHost(m_instances.value(state.instanceId), state);
                 }
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::HostWindowReady)) {
+        if (type == QString::fromLatin1(WidgetMessageType::HostWindowReady)) {
             const WId windowId = static_cast<WId>(message.value(QStringLiteral("hwnd")).toString().toULongLong());
             if (windowId != 0) {
                 m_widgetWindows.insert(QString::fromLatin1(kSharedHostId), windowId);
@@ -1254,7 +1163,7 @@ void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject&
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::WebViewWindowReady)) {
+        if (type == QString::fromLatin1(WidgetMessageType::WebViewWindowReady)) {
             const WId windowId = static_cast<WId>(message.value(QStringLiteral("hwnd")).toString().toULongLong());
             if (windowId != 0) {
                 m_sharedWebViewWindow = windowId;
@@ -1263,7 +1172,7 @@ void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject&
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::WebViewWindowLost)) {
+        if (type == QString::fromLatin1(WidgetMessageType::WebViewWindowLost)) {
             m_sharedWebViewWindow = 0;
             m_sharedWebViewWindowClass.clear();
             qDebug() << "[LinWidgetLayer] WebView child window lost"
@@ -1274,7 +1183,7 @@ void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject&
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::WidgetGeometryChanged)) {
+        if (type == QString::fromLatin1(WidgetMessageType::WidgetGeometryChanged)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString());
             WidgetLayoutState state = m_layout.state(instanceId);
             if (state.instanceId.isEmpty()) {
@@ -1299,42 +1208,40 @@ void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject&
             scheduleSaveToConfig();
             return;
         }
-        if (type == QString::fromLatin1(IpcType::WidgetError)) {
+        if (type == QString::fromLatin1(WidgetMessageType::WidgetError)) {
             emit widgetError(message.value(QStringLiteral("instanceId")).toString(), message.value(QStringLiteral("message")).toString());
             return;
         }
-        if (type == QString::fromLatin1(IpcType::OpenWidgetSettings)) {
+        if (type == QString::fromLatin1(WidgetMessageType::OpenWidgetSettings)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString()).trimmed();
             if (!instanceId.isEmpty() && m_instances.contains(instanceId)) {
                 emit widgetSettingsRequested(instanceId);
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::SystemInfoRequest)) {
+        if (type == QString::fromLatin1(WidgetMessageType::SystemInfoRequest)) {
             handleSystemInfoRequest(message);
             return;
         }
     }
 
-    WidgetHostController* host = m_hosts.value(widgetId, nullptr);
-    if (!host) {
+    if (!m_runningWidgets.contains(widgetId)) {
         return;
     }
 
-    if (type == QString::fromLatin1(IpcType::Heartbeat) ||
-        type == QString::fromLatin1(IpcType::Ready)) {
-        host->markHeartbeat();
-    } else if (type == QString::fromLatin1(IpcType::MoveWidget)) {
+    if (type == QString::fromLatin1(WidgetMessageType::MoveWidget)) {
+        const WidgetInstance instance = m_instances.value(widgetId);
         const QPoint pos(
-            message.value(QStringLiteral("x")).toInt(host->instance().geometry.x()),
-            message.value(QStringLiteral("y")).toInt(host->instance().geometry.y()));
+            message.value(QStringLiteral("x")).toInt(instance.geometry.x()),
+            message.value(QStringLiteral("y")).toInt(instance.geometry.y()));
         moveWidget(widgetId, pos);
-    } else if (type == QString::fromLatin1(IpcType::ResizeWidget)) {
+    } else if (type == QString::fromLatin1(WidgetMessageType::ResizeWidget)) {
+        const WidgetInstance instance = m_instances.value(widgetId);
         const QSize size(
-            message.value(QStringLiteral("width")).toInt(host->instance().geometry.width()),
-            message.value(QStringLiteral("height")).toInt(host->instance().geometry.height()));
+            message.value(QStringLiteral("width")).toInt(instance.geometry.width()),
+            message.value(QStringLiteral("height")).toInt(instance.geometry.height()));
         resizeWidget(widgetId, size);
-    } else if (type == QString::fromLatin1(IpcType::HostWindowReady)) {
+    } else if (type == QString::fromLatin1(WidgetMessageType::HostWindowReady)) {
         const WId windowId = static_cast<WId>(message.value(QStringLiteral("hwnd")).toString().toULongLong());
         if (windowId != 0) {
             qDebug() << "[LinWidgetLayer] host window ready"
@@ -1346,20 +1253,29 @@ void WidgetManager::handleIpcMessage(const QString& widgetId, const QJsonObject&
     }
 }
 
-bool WidgetManager::sendGeometryToHost(const QString& instanceId, const QRect& geometry)
+void WidgetManager::sendGeometryToHost(const QString& instanceId, const QRect& geometry)
 {
-    QJsonObject message = makeIpcMessage(QString::fromLatin1(IpcType::UpdateWidgetGeometry), QString::fromLatin1(kSharedHostId));
+    QJsonObject message = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::UpdateWidgetGeometry), QString::fromLatin1(kSharedHostId));
     message.insert(QStringLiteral("instanceId"), instanceId);
     message.insert(QStringLiteral("x"), geometry.x());
     message.insert(QStringLiteral("y"), geometry.y());
     message.insert(QStringLiteral("width"), geometry.width());
     message.insert(QStringLiteral("height"), geometry.height());
-    return m_ipc.sendToWidget(QString::fromLatin1(kSharedHostId), message);
+    sendMessageToSharedRuntime(message);
+}
+
+bool WidgetManager::sendMessageToSharedRuntime(const QJsonObject& message)
+{
+    if (!m_webViewRuntime) {
+        return false;
+    }
+    m_webViewRuntime->handleManagerMessage(message);
+    return true;
 }
 
 void WidgetManager::resendVisibleWidgetsToSharedHost()
 {
-    if (!m_sharedHost) {
+    if (!m_webViewRuntime) {
         return;
     }
     const QVector<WidgetLayoutState> states = m_layout.states();
@@ -1405,9 +1321,29 @@ bool WidgetManager::sharedHostLayerNeedsRecovery() const
     if (!hostWindow || !layerWindow || !IsWindow(hostWindow) || !IsWindow(layerWindow)) {
         return false;
     }
-    const bool childLayer = GetParent(hostWindow) == layerWindow;
-    const bool layerMismatch = m_embedInDesktopLayer &&
-        (childLayer ? GetWindow(layerWindow, GW_CHILD) != hostWindow : GetWindow(layerWindow, GW_HWNDPREV) != hostWindow);
+    if (IsIconic(hostWindow) || !IsWindowVisible(hostWindow)) {
+        return true;
+    }
+    const bool inProcessSharedRuntime = m_webViewRuntime != nullptr;
+    if (inProcessSharedRuntime) {
+        RECT layerClientRect = {};
+        RECT hostWindowRect = {};
+        if (!GetClientRect(layerWindow, &layerClientRect) || !GetWindowRect(hostWindow, &hostWindowRect)) {
+            return true;
+        }
+        POINT hostTopLeft { hostWindowRect.left, hostWindowRect.top };
+        ScreenToClient(layerWindow, &hostTopLeft);
+        const QRect expectedRect(0,
+                                 0,
+                                 qMax(0L, layerClientRect.right - layerClientRect.left),
+                                 qMax(0L, layerClientRect.bottom - layerClientRect.top));
+        const QRect actualRect(hostTopLeft.x,
+                               hostTopLeft.y,
+                               qMax(0L, hostWindowRect.right - hostWindowRect.left),
+                               qMax(0L, hostWindowRect.bottom - hostWindowRect.top));
+        return actualRect != expectedRect || sharedWebViewMissingForVisibleWidgets();
+    }
+    const bool layerMismatch = GetWindow(layerWindow, GW_HWNDPREV) != hostWindow;
     return layerMismatch ||
         windowRect(hostWindow) != windowRect(layerWindow) ||
         sharedWebViewMissingForVisibleWidgets();
@@ -1416,17 +1352,11 @@ bool WidgetManager::sharedHostLayerNeedsRecovery() const
 #endif
 }
 
-void WidgetManager::checkHeartbeats()
+void WidgetManager::checkRuntimeHealth()
 {
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (m_sharedHost && m_sharedHost->heartbeatTimedOut(now, kHeartbeatTimeoutMs)) {
-        emit widgetError(QString(), QStringLiteral("Shared widget heartbeat timed out. Restarting widgets."));
-        restartSharedHost();
-        return;
-    }
-    if (m_sharedHost && sharedHostLayerNeedsRecovery()) {
+    if (m_webViewRuntime && sharedHostLayerNeedsRecovery()) {
         if (sharedWebViewMissingForVisibleWidgets()) {
-            qDebug() << "[LinWidgetLayer] heartbeat recovery restarting shared host because WebView child is missing";
+            qDebug() << "[LinWidgetLayer] runtime recovery restarting shared host because WebView child is missing";
             emit widgetError(QString(), QStringLiteral("Shared WebView child window is missing. Restarting widgets."));
             restartSharedHost();
             return;
@@ -1456,3 +1386,5 @@ void WidgetManager::saveToDefaultConfig()
 }
 
 }
+
+

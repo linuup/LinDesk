@@ -61,6 +61,10 @@ function updateClock() {
   const dateShortEl = document.getElementById("date-short");
   if (dateShortEl) dateShortEl.textContent = dateShortStr;
 
+  // Focus panel time sync
+  const focusTimeEl = document.getElementById("focus-time");
+  if (focusTimeEl) focusTimeEl.textContent = `${hour}${sep1}${minute}`;
+
   // Analog Clock Update
   const hourHand = document.getElementById("hourHand");
   const minuteHand = document.getElementById("minuteHand");
@@ -113,20 +117,20 @@ function bindStyleSwitcher() {
 
   function setStyle(style) {
     currentStyle = style;
-    if (style === 'analog') {
-      document.body.classList.add('style-analog');
-    } else {
-      document.body.classList.remove('style-analog');
+
+    // Generic: remove all style-* body classes, then add the new one
+    Array.from(document.body.classList)
+      .filter(c => c.startsWith('style-'))
+      .forEach(c => document.body.classList.remove(c));
+
+    if (style !== 'digital') {
+      document.body.classList.add('style-' + style);
     }
-    
+
     styleDots.forEach(dot => {
-      if (dot.getAttribute('data-style') === style) {
-        dot.classList.add('active');
-      } else {
-        dot.classList.remove('active');
-      }
+      dot.classList.toggle('active', dot.getAttribute('data-style') === style);
     });
-    
+
     localStorage.setItem('clockStyle', style);
   }
 
@@ -138,6 +142,17 @@ function bindStyleSwitcher() {
       setStyle(dot.getAttribute('data-style'));
     });
   });
+
+  // Scroll cycles through all panels defined in DOM order
+  const styles = Array.from(styleDots).map(d => d.getAttribute('data-style'));
+  document.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const idx = styles.indexOf(currentStyle);
+    const next = e.deltaY > 0
+      ? styles[(idx + 1) % styles.length]
+      : styles[(idx - 1 + styles.length) % styles.length];
+    setStyle(next);
+  }, { passive: false });
 }
 
 bindStyleSwitcher();

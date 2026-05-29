@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QImageReader>
 #include <QJsonDocument>
 
 namespace LinWidget {
@@ -53,6 +54,31 @@ bool WidgetPackage::loadManifest(const QString& packagePath, WidgetManifest* man
         if (!settingsInfo.exists() || !settingsInfo.isFile()) {
             if (errorMessage) {
                 *errorMessage = QStringLiteral("Widget settings file does not exist: %1").arg(settingsInfo.absoluteFilePath());
+            }
+            return false;
+        }
+    }
+
+    if (!parsed.icon.isEmpty()) {
+        const QFileInfo iconInfo(QDir(packagePath).filePath(parsed.icon));
+        if (!iconInfo.exists() || !iconInfo.isFile()) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Widget icon file does not exist: %1").arg(iconInfo.absoluteFilePath());
+            }
+            return false;
+        }
+        QImageReader reader(iconInfo.absoluteFilePath());
+        reader.setAutoTransform(true);
+        if (!reader.canRead()) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Widget icon file cannot be loaded as an image: %1").arg(iconInfo.absoluteFilePath());
+            }
+            return false;
+        }
+        const QSize iconSize = reader.size();
+        if (!iconSize.isValid() || iconSize.isEmpty()) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Widget icon image has an invalid size: %1").arg(iconInfo.absoluteFilePath());
             }
             return false;
         }

@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "author": "LinDesk",
   "description": "Real-time system performance monitor dashboard.",
+  "icon": "icon.png",
   "width": 340,
   "height": 440,
   "minWidth": 150,

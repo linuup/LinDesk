@@ -20,6 +20,7 @@ body {
   width: 0;
   height: 0;
 }
+
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
@@ -27,7 +28,7 @@ body {
 .widget {
   width: 100%;
   height: 100%;
-  padding: 0.4rem;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -42,7 +43,6 @@ body {
   border-top: 1px solid rgba(255, 255, 255, 0.3);
   border-left: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 2rem;
-  padding: 1.2rem 1.4rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -162,16 +162,25 @@ body {
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0) rotate(0deg) scale(1);
     filter: drop-shadow(0 0.4rem 0.6rem rgba(0, 0, 0, 0.2));
   }
-  25% { transform: translateY(-0.2rem) rotate(-3deg) scale(1.03); }
+
+  25% {
+    transform: translateY(-0.2rem) rotate(-3deg) scale(1.03);
+  }
+
   50% {
     transform: translateY(-0.6rem) rotate(4deg) scale(1.08);
     filter: drop-shadow(0 0.8rem 1.2rem rgba(0, 0, 0, 0.15));
   }
-  75% { transform: translateY(-0.2rem) rotate(-2deg) scale(1.02); }
+
+  75% {
+    transform: translateY(-0.2rem) rotate(-2deg) scale(1.02);
+  }
 }
 
 .temp-block {
@@ -286,6 +295,7 @@ body {
   transition: all 0.2s ease;
   padding: 0;
 }
+
 .theme-toggle:hover {
   background: rgba(0, 0, 0, 0.25);
   transform: scale(1.05);
@@ -387,52 +397,66 @@ body.light-theme .theme-toggle:hover {
   .glass-panel {
     padding: 1rem 1.2rem;
   }
+
   .weather-content {
     flex-direction: row;
     align-items: stretch;
     justify-content: space-between;
     gap: 0.5rem;
   }
+
   .current-weather {
     flex: 1;
     align-items: flex-start;
     justify-content: center;
   }
+
   .current-main {
-    flex-direction: row-reverse; /* Icon on right of temp */
+    flex-direction: row-reverse;
+    /* Icon on right of temp */
     gap: 0.8rem;
   }
+
   .temperature {
     font-size: 3.6rem;
   }
+
   .weather-icon-wrapper {
     width: 4.8rem;
     height: 4.8rem;
   }
+
   .weather-icon {
     font-size: 3.2rem;
   }
+
   .metrics {
-    display: none !important; /* Hide metrics for cleaner look */
+    display: none !important;
+    /* Hide metrics for cleaner look */
   }
+
   .forecast {
     flex-direction: column;
     justify-content: space-around;
     width: 42%;
     padding: 0.4rem 0.6rem;
   }
+
   .forecast-item {
     flex-direction: row;
     justify-content: space-between;
     width: 100%;
     padding: 0;
   }
+
   .forecast-day {
     font-size: 1.1rem;
   }
+
   .forecast-icon {
     font-size: 1.4rem;
   }
+
   .forecast-temp {
     font-size: 1.15rem;
   }
@@ -441,26 +465,35 @@ body.light-theme .theme-toggle:hover {
 /* 2. Narrow & Tall (e.g., 200x300) */
 @media (max-width: 259px) and (min-height: 231px) {
   .metrics {
-    display: none !important; /* Too narrow for 3 metrics */
+    display: none !important;
+    /* Too narrow for 3 metrics */
   }
+
   .current-main {
     flex-direction: column;
     gap: 0.5rem;
   }
+
   .temperature {
     font-size: 4rem;
   }
+
   .weather-icon-wrapper {
-    width: 5rem; height: 5rem;
+    width: 5rem;
+    height: 5rem;
   }
+
   .weather-icon {
     font-size: 3.2rem;
   }
+
   .forecast {
-    flex-direction: column; /* Vertical list */
+    flex-direction: column;
+    /* Vertical list */
     gap: 0.4rem;
     padding: 0.6rem;
   }
+
   .forecast-item {
     flex-direction: row;
     justify-content: space-between;
@@ -475,16 +508,20 @@ body.light-theme .theme-toggle:hover {
     padding: 0.8rem;
     gap: 0.8rem;
   }
+
   .header {
     justify-content: center;
   }
+
   .theme-toggle {
     display: none !important;
   }
+
   .location-icon {
     font-size: 1rem !important;
     margin-right: 0.2rem !important;
   }
+
   #locationInput {
     text-align: left;
     width: auto;
@@ -492,30 +529,38 @@ body.light-theme .theme-toggle:hover {
     font-size: 1.25rem;
     padding: 0;
   }
+
   .weather-content {
     justify-content: center;
   }
+
   .current-weather {
     justify-content: center;
     gap: 0;
   }
+
   .current-main {
     flex-direction: column;
     gap: 0.5rem;
   }
+
   .temperature {
     font-size: 3.4rem;
   }
+
   .weather-icon-wrapper {
-    width: 4.8rem; height: 4.8rem;
+    width: 4.8rem;
+    height: 4.8rem;
     border-radius: 1.4rem;
   }
+
   .weather-icon {
     font-size: 3.2rem;
   }
-  .condition, .metrics, .forecast {
+
+  .condition,
+  .metrics,
+  .forecast {
     display: none !important;
   }
 }
-
-

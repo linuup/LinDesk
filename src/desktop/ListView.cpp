@@ -215,51 +215,6 @@ UINT nativeWindowDpi(QWidget* widget)
     return GetDpiForWindow(reinterpret_cast<HWND>(widget->winId()));
 }
 
-QString nativeWindowClassName(HWND window)
-{
-    if (!window) {
-        return QString();
-    }
-
-    wchar_t className[256] = {};
-    GetClassNameW(window, className, 256);
-    return QString::fromWCharArray(className);
-}
-
-QString nativeHwndText(HWND window)
-{
-    return QString::number(reinterpret_cast<quintptr>(window), 16);
-}
-
-void logListViewNativeFocusTrace(const char* source)
-{
-    const HWND foregroundWindow = GetForegroundWindow();
-    DWORD foregroundProcessId = 0;
-    const DWORD foregroundThreadId = foregroundWindow
-        ? GetWindowThreadProcessId(foregroundWindow, &foregroundProcessId)
-        : 0;
-
-    GUITHREADINFO guiInfo = {};
-    guiInfo.cbSize = sizeof(guiInfo);
-    if (foregroundThreadId != 0) {
-        GetGUIThreadInfo(foregroundThreadId, &guiInfo);
-    }
-
-    const HWND currentThreadFocus = GetFocus();
-    qDebug() << "[LinWidgetFocus][ListViewKey]"
-             << "source=" << source
-             << "foreground=" << nativeHwndText(foregroundWindow)
-             << "foregroundClass=" << nativeWindowClassName(foregroundWindow)
-             << "foregroundThread=" << foregroundThreadId
-             << "foregroundProcess=" << foregroundProcessId
-             << "guiFocus=" << nativeHwndText(guiInfo.hwndFocus)
-             << "guiFocusClass=" << nativeWindowClassName(guiInfo.hwndFocus)
-             << "guiActive=" << nativeHwndText(guiInfo.hwndActive)
-             << "guiActiveClass=" << nativeWindowClassName(guiInfo.hwndActive)
-             << "threadFocus=" << nativeHwndText(currentThreadFocus)
-             << "threadFocusClass=" << nativeWindowClassName(currentThreadFocus);
-}
-
 void logListViewDpiTrace(const char* source, QWidget* widget, const QPoint& localPos, const QPoint& globalPos)
 {
     QScreen* widgetScreen = widget ? widget->screen() : nullptr;
@@ -1379,7 +1334,6 @@ void ListView::initializeLinWidgets()
     LinWidget::WidgetManager* manager = linWidgetManager();
     const bool linWidgetsEnabled = settings.value("LinWidgets/Enabled", true).toBool();
     manager->setEnabled(linWidgetsEnabled);
-    manager->setEmbedInDesktopLayer(settings.value("LinWidgets/EmbedInDesktopLayer", true).toBool());
     manager->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
     setShowLinWidgetBlockedCells(settings.value("LinWidgets/ShowBlockedCells", false).toBool());
 
@@ -3870,9 +3824,6 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
-#ifdef Q_OS_WIN
-    logListViewNativeFocusTrace("keyPress");
-#endif
     // 闁兼儳鍢茶ぐ鍥┾偓鍦仦濡炲倿鎯冮崟顖涙殯闁烩晜顭囨慨鎼佸箑?
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;

@@ -51,7 +51,7 @@ public:
 
     void onWallpaperChanged();
 
-	//QRect drawingMaskRect;    //拖拽选择框矩形
+	//QRect drawingMaskRect;    //拖拽选择框矩�?
     void loadBackImage();
     void applyLoadedWallpaper(const QString& path, const QImage& image);
     void applyFallbackWallpaper(const QString& path, const QString& reason);
@@ -86,8 +86,8 @@ private:
     bool isDesktopHostWindow(HWND hwnd) const;
     bool isWindowUnderDesktopHost(HWND hwnd) const;
     bool isOwnProcessWindow(HWND hwnd) const;
-    bool isOwnWidgetHostWindow(HWND hwnd) const;
-    bool isOwnWidgetHostWindowOrDescendant(HWND hwnd) const;
+    bool isOwnLinWidgetRuntimeWindow(HWND hwnd) const;
+    bool isOwnLinWidgetRuntimeWindowOrDescendant(HWND hwnd) const;
     bool isCandidateThirdPartyWindow(HWND hwnd) const;
     QString windowClassName(HWND hwnd) const;
     QString windowProcessImageName(HWND hwnd) const;
@@ -148,4 +148,5 @@ protected:
     bool nativeEvent(const QByteArray & eventType, void* message, long* result) override;
     
 };
+
 

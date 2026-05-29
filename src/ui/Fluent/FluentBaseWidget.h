@@ -5,12 +5,256 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
+#include <QLabel>
 #include <QHBoxLayout>
 #include <QPropertyAnimation>
 #include <QEasingCurve>
 #include <QScreen>
 #include <QApplication>
 #include <QParallelAnimationGroup>
+#include <QEvent>
+#include <QResizeEvent>
+#include <QStackedLayout>
+#include <QScrollArea>
+#include <QFrame>
+
+class FluentDrawer : public QWidget {
+public:
+    explicit FluentDrawer(QWidget* host, QWidget* parent = nullptr)
+        : QWidget(parent ? parent : host), m_host(host) {
+        setObjectName(QStringLiteral("fluentDrawerOverlay"));
+        setAttribute(Qt::WA_StyledBackground, false);
+        hide();
+
+        m_panel = new QWidget(this);
+        m_panel->setObjectName(QStringLiteral("fluentDrawerPanel"));
+        m_panel->setAttribute(Qt::WA_StyledBackground, true);
+        m_panel->setStyleSheet(
+            "QWidget#fluentDrawerPanel { "
+            "   background: #ffffff; "
+            "   border-left: 1px solid rgba(0, 0, 0, 0.08); "
+            "} "
+        );
+
+        auto* panelLayout = new QVBoxLayout(m_panel);
+        panelLayout->setContentsMargins(0, 0, 0, 0);
+        panelLayout->setSpacing(0);
+
+        m_header = new QWidget(m_panel);
+        m_header->setObjectName(QStringLiteral("fluentDrawerHeader"));
+        auto* headerLayout = new QHBoxLayout(m_header);
+        headerLayout->setContentsMargins(20, 12, 10, 12);
+        headerLayout->setSpacing(8);
+
+        m_titleLabel = new QLabel(m_header);
+        m_titleLabel->setObjectName(QStringLiteral("fluentDrawerTitle"));
+        m_titleLabel->setStyleSheet(
+            "QLabel#fluentDrawerTitle { "
+            "   color: #111827; "
+            "   font-size: 16px; "
+            "   font-weight: 600; "
+            "} "
+        );
+        headerLayout->addWidget(m_titleLabel, 0, Qt::AlignVCenter);
+        headerLayout->addStretch(1);
+
+        m_closeButton = new QPushButton(QString::fromUtf8("\xEE\xA2\xBB"), m_header);
+        m_closeButton->setObjectName(QStringLiteral("fluentDrawerCloseButton"));
+        m_closeButton->setFixedSize(36, 32);
+        m_closeButton->setCursor(Qt::ArrowCursor);
+        m_closeButton->setStyleSheet(
+            "QPushButton#fluentDrawerCloseButton { "
+            "   font-family: 'Segoe MDL2 Assets'; "
+            "   font-size: 10px; "
+            "   color: #374151; "
+            "   border: none; "
+            "   background: transparent; "
+            "} "
+            "QPushButton#fluentDrawerCloseButton:hover { "
+            "   background: rgba(0, 0, 0, 0.06); "
+            "} "
+        );
+        headerLayout->addWidget(m_closeButton, 0, Qt::AlignTop);
+        panelLayout->addWidget(m_header);
+
+        m_scrollArea = new QScrollArea(m_panel);
+        m_scrollArea->setObjectName(QStringLiteral("fluentDrawerScrollArea"));
+        m_scrollArea->setWidgetResizable(true);
+        m_scrollArea->setFrameShape(QFrame::NoFrame);
+        m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        m_scrollArea->setStyleSheet(QStringLiteral(
+            "QScrollArea#fluentDrawerScrollArea {"
+            " background: transparent;"
+            " border: none;"
+            "}"
+            "QScrollArea#fluentDrawerScrollArea > QWidget > QWidget {"
+            " background: transparent;"
+            "}"
+            "QScrollBar:vertical {"
+            " background: transparent;"
+            " width: 10px;"
+            " margin: 12px 2px 12px 0;"
+            "}"
+            "QScrollBar::handle:vertical {"
+            " background: rgba(100, 116, 139, 0.32);"
+            " border-radius: 4px;"
+            " min-height: 34px;"
+            "}"
+            "QScrollBar::handle:vertical:hover {"
+            " background: rgba(59, 130, 246, 0.48);"
+            "}"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+            " height: 0;"
+            "}"
+            "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+            " background: transparent;"
+            "}"));
+        m_body = new QWidget(m_scrollArea);
+        m_body->setObjectName(QStringLiteral("fluentDrawerBody"));
+        m_body->setMinimumWidth(0);
+        m_body->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        m_bodyLayout = new QVBoxLayout(m_body);
+        m_bodyLayout->setContentsMargins(20, 16, 26, 20);
+        m_bodyLayout->setSpacing(12);
+        m_scrollArea->setWidget(m_body);
+        panelLayout->addWidget(m_scrollArea, 1);
+
+        m_animation = new QPropertyAnimation(m_panel, "pos", this);
+        m_animation->setDuration(160);
+        m_animation->setEasingCurve(QEasingCurve::OutCubic);
+
+        connect(m_closeButton, &QPushButton::clicked, this, [this]() {
+            closeDrawer();
+        });
+    }
+
+    void setContent(QWidget* content, const QString& title, int width = 420) {
+        clearBody();
+        m_content = content;
+        m_titleLabel->setText(title);
+        m_titleLabel->setVisible(!title.trimmed().isEmpty());
+        m_panelWidth = qBound(280, width, 760);
+        if (m_content) {
+            m_content->setParent(m_body);
+            m_content->setMinimumWidth(0);
+            m_content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+            m_bodyLayout->addWidget(m_content);
+        }
+        updateGeometryForState(false);
+    }
+
+    void openDrawer() {
+        if (!m_host) {
+            return;
+        }
+        setGeometry(m_host->rect());
+        setUpdatesEnabled(true);
+        raise();
+        show();
+        m_open = true;
+        animateToOpen();
+    }
+
+    void closeDrawer() {
+        if (!isVisible() || !m_host) {
+            return;
+        }
+        m_open = false;
+        animateToClosed();
+    }
+
+    bool isOpen() const { return m_open; }
+    QWidget* contentWidget() const { return m_content; }
+
+protected:
+    void paintEvent(QPaintEvent* event) override {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        painter.fillRect(rect(), QColor(15, 23, 42, 82));
+    }
+
+    void mousePressEvent(QMouseEvent* event) override {
+        if (m_maskClosable && m_panel && !m_panel->geometry().contains(event->pos())) {
+            closeDrawer();
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+    void resizeEvent(QResizeEvent* event) override {
+        QWidget::resizeEvent(event);
+        updateGeometryForState(m_open);
+    }
+
+private:
+    void clearBody() {
+        while (QLayoutItem* item = m_bodyLayout->takeAt(0)) {
+            if (QWidget* widget = item->widget()) {
+                widget->deleteLater();
+            }
+            delete item;
+        }
+        m_content = nullptr;
+    }
+
+    QRect openedGeometry() const {
+        return QRect(qMax(0, width() - m_panelWidth), 0, m_panelWidth, height());
+    }
+
+    QRect closedGeometry() const {
+        return QRect(width(), 0, m_panelWidth, height());
+    }
+
+    void updateGeometryForState(bool open) {
+        if (!m_panel) {
+            return;
+        }
+        const QRect target = open ? openedGeometry() : closedGeometry();
+        m_panel->setGeometry(target);
+    }
+
+    void animateToOpen() {
+        m_animation->stop();
+        m_panel->setGeometry(closedGeometry());
+        m_animation->setStartValue(closedGeometry().topLeft());
+        m_animation->setEndValue(openedGeometry().topLeft());
+        m_animation->start();
+    }
+
+    void animateToClosed() {
+        m_animation->stop();
+        m_animation->setStartValue(m_panel->pos());
+        m_animation->setEndValue(closedGeometry().topLeft());
+        if (m_closeConnection) {
+            disconnect(m_closeConnection);
+        }
+        m_closeConnection = connect(m_animation, &QPropertyAnimation::finished, this, [this]() {
+            disconnect(m_closeConnection);
+            m_closeConnection = QMetaObject::Connection();
+            if (!m_open) {
+                hide();
+            }
+        });
+        m_animation->start();
+    }
+
+    QWidget* m_host = nullptr;
+    QWidget* m_panel = nullptr;
+    QWidget* m_header = nullptr;
+    QWidget* m_body = nullptr;
+    QScrollArea* m_scrollArea = nullptr;
+    QLabel* m_titleLabel = nullptr;
+    QPushButton* m_closeButton = nullptr;
+    QVBoxLayout* m_bodyLayout = nullptr;
+    QPropertyAnimation* m_animation = nullptr;
+    QMetaObject::Connection m_closeConnection;
+    QWidget* m_content = nullptr;
+    int m_panelWidth = 420;
+    bool m_open = false;
+    bool m_maskClosable = true;
+};
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -111,6 +355,20 @@ public:
 
     QWidget* container() const { return m_container; }
     QVBoxLayout* centralLayout() const { return m_centralLayout; }
+    FluentDrawer* drawer() const { return m_drawer; }
+
+    FluentDrawer* openDrawer(QWidget* content, const QString& title = QString(), int width = 420) {
+        ensureDrawer();
+        m_drawer->setContent(content, title, width);
+        m_drawer->openDrawer();
+        return m_drawer;
+    }
+
+    void closeDrawer() {
+        if (m_drawer) {
+            m_drawer->closeDrawer();
+        }
+    }
     
     void setResizable(bool resizable) { m_resizable = resizable; }
 
@@ -262,6 +520,13 @@ protected:
         QWidget::changeEvent(event);
     }
 
+    void resizeEvent(QResizeEvent* event) override {
+        QWidget::resizeEvent(event);
+        if (m_drawer) {
+            m_drawer->setGeometry(rect());
+        }
+    }
+
 protected:
     QHBoxLayout* m_btnLayout;
     QWidget* m_btnContainer;
@@ -270,10 +535,19 @@ protected:
     QPushButton* m_closeBtn;
 
 private:
+    void ensureDrawer() {
+        if (m_drawer) {
+            return;
+        }
+        m_drawer = new FluentDrawer(this, this);
+        m_drawer->setGeometry(rect());
+    }
+
     QVBoxLayout* m_rootLayout;
     QWidget* m_container;
     QVBoxLayout* m_mainVLayout;
     QVBoxLayout* m_centralLayout;
+    FluentDrawer* m_drawer = nullptr;
 
     bool m_isMaximized = false;
     bool m_dragging = false;

@@ -7,14 +7,12 @@
   const loadTimeoutMs = 8000;
   const maxAutoReloadAttempts = 2;
   const resizeHitSize = 8;
+  const snapThreshold = 8;
   const resizeCursorByMode = {
-    n: 'ns-resize',
     s: 'ns-resize',
     e: 'ew-resize',
-    w: 'ew-resize',
     ne: 'nesw-resize',
     sw: 'nesw-resize',
-    nw: 'nwse-resize',
     se: 'nwse-resize'
   };
 
@@ -41,6 +39,43 @@
     width: Math.max(1, surface ? surface.clientWidth : window.innerWidth),
     height: Math.max(1, surface ? surface.clientHeight : window.innerHeight)
   });
+
+  let guideLayer = null;
+  let verticalGuide = null;
+  let horizontalGuide = null;
+
+  const ensureGuideLayer = () => {
+    if (guideLayer) {
+      return guideLayer;
+    }
+    guideLayer = document.createElement('div');
+    guideLayer.className = 'linwidget-alignment-guides';
+    verticalGuide = document.createElement('div');
+    verticalGuide.className = 'linwidget-alignment-guide linwidget-alignment-guide-vertical';
+    horizontalGuide = document.createElement('div');
+    horizontalGuide.className = 'linwidget-alignment-guide linwidget-alignment-guide-horizontal';
+    guideLayer.appendChild(verticalGuide);
+    guideLayer.appendChild(horizontalGuide);
+    surface.appendChild(guideLayer);
+    return guideLayer;
+  };
+
+  const setAlignmentGuides = guides => {
+    ensureGuideLayer();
+    const vertical = guides && guides.vertical && guides.vertical.visible;
+    const horizontal = guides && guides.horizontal && guides.horizontal.visible;
+    guideLayer.classList.toggle('visible', Boolean(vertical || horizontal));
+    verticalGuide.classList.toggle('visible', Boolean(vertical));
+    horizontalGuide.classList.toggle('visible', Boolean(horizontal));
+    if (vertical) {
+      verticalGuide.style.left = `${Math.round(clampNumber(guides.vertical.x, 0))}px`;
+    }
+    if (horizontal) {
+      horizontalGuide.style.top = `${Math.round(clampNumber(guides.horizontal.y, 0))}px`;
+    }
+  };
+
+  const clearAlignmentGuides = () => setAlignmentGuides({});
 
   const widgetContextMessage = (id, record) => ({
     type: 'linwidget_context',
@@ -70,6 +105,13 @@
       record.iframe.contentWindow.postMessage(message, '*');
     } catch (_) {
     }
+  };
+
+  const setSharedDragBackground = enabled => {
+    post({
+      type: 'linwidget_drag_background',
+      active: Boolean(enabled)
+    });
   };
 
   const injectWidgetSelectionStyle = iframe => {
@@ -136,6 +178,77 @@ select,
     });
   };
 
+  const edgePoints = geometry => ({
+    left: geometry.x,
+    centerX: geometry.x + geometry.width / 2,
+    right: geometry.x + geometry.width,
+    top: geometry.y,
+    centerY: geometry.y + geometry.height / 2,
+    bottom: geometry.y + geometry.height
+  });
+
+  const snapMoveGeometry = (id, geometry, disabled = false) => {
+    if (disabled) {
+      clearAlignmentGuides();
+      return { geometry, guides: {} };
+    }
+    const moving = edgePoints(geometry);
+    let bestX = null;
+    let bestY = null;
+    for (const [otherId, record] of widgets) {
+      if (otherId === id || !record || !record.panel) {
+        continue;
+      }
+      const targetGeometry = geometryOf(record.panel);
+      const target = edgePoints(targetGeometry);
+      const xPairs = [
+        { source: moving.left, target: target.left, offset: 0 },
+        { source: moving.left, target: target.centerX, offset: 0 },
+        { source: moving.left, target: target.right, offset: 0 },
+        { source: moving.centerX, target: target.left, offset: geometry.width / 2 },
+        { source: moving.centerX, target: target.centerX, offset: geometry.width / 2 },
+        { source: moving.centerX, target: target.right, offset: geometry.width / 2 },
+        { source: moving.right, target: target.left, offset: geometry.width },
+        { source: moving.right, target: target.centerX, offset: geometry.width },
+        { source: moving.right, target: target.right, offset: geometry.width }
+      ];
+      const yPairs = [
+        { source: moving.top, target: target.top, offset: 0 },
+        { source: moving.top, target: target.centerY, offset: 0 },
+        { source: moving.top, target: target.bottom, offset: 0 },
+        { source: moving.centerY, target: target.top, offset: geometry.height / 2 },
+        { source: moving.centerY, target: target.centerY, offset: geometry.height / 2 },
+        { source: moving.centerY, target: target.bottom, offset: geometry.height / 2 },
+        { source: moving.bottom, target: target.top, offset: geometry.height },
+        { source: moving.bottom, target: target.centerY, offset: geometry.height },
+        { source: moving.bottom, target: target.bottom, offset: geometry.height }
+      ];
+      for (const pair of xPairs) {
+        const distance = Math.abs(pair.source - pair.target);
+        if (distance <= snapThreshold && (!bestX || distance < bestX.distance)) {
+          bestX = { distance, x: pair.target - pair.offset, guideX: pair.target };
+        }
+      }
+      for (const pair of yPairs) {
+        const distance = Math.abs(pair.source - pair.target);
+        if (distance <= snapThreshold && (!bestY || distance < bestY.distance)) {
+          bestY = { distance, y: pair.target - pair.offset, guideY: pair.target };
+        }
+      }
+    }
+    const snapped = Object.assign({}, geometry);
+    const guides = {};
+    if (bestX) {
+      snapped.x = bestX.x;
+      guides.vertical = { visible: true, x: bestX.guideX };
+    }
+    if (bestY) {
+      snapped.y = bestY.y;
+      guides.horizontal = { visible: true, y: bestY.guideY };
+    }
+    return { geometry: snapped, guides };
+  };
+
   const applyGeometry = (panel, geometry, constraints) => {
     const next = clampGeometry(geometry, constraints);
     panel.style.left = `${next.x}px`;
@@ -166,6 +279,9 @@ select,
   });
 
   const resizeModeAt = (panel, event) => {
+    if (!event.ctrlKey) {
+      return '';
+    }
     const rect = panel.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -178,8 +294,22 @@ select,
     return vertical + horizontal;
   };
 
+  const resizeModeAtClientPoint = (record, x, y) => {
+    if (!record || record.resizable === false || record.resizeUiVisible === false) {
+      return '';
+    }
+    const geometry = geometryOf(record.panel);
+    const nearLeft = x >= 0 && x <= resizeHitSize;
+    const nearRight = x >= geometry.width - resizeHitSize && x <= geometry.width;
+    const nearTop = y >= 0 && y <= resizeHitSize;
+    const nearBottom = y >= geometry.height - resizeHitSize && y <= geometry.height;
+    const vertical = nearTop ? 'n' : nearBottom ? 's' : '';
+    const horizontal = nearLeft ? 'w' : nearRight ? 'e' : '';
+    return vertical + horizontal;
+  };
+
   const updateResizeHover = (record, event) => {
-    if (!record || record.resizable === false || record.resizeUiVisible === false || active) {
+    if (!record || !event.ctrlKey || record.resizable === false || record.resizeUiVisible === false || active) {
       if (record) {
         record.panel.dataset.resizeMode = '';
         record.panel.style.cursor = '';
@@ -196,6 +326,9 @@ select,
     if (event.button !== 0) {
       return;
     }
+    if (!event.ctrlKey) {
+      return;
+    }
     const record = widgets.get(id);
     if (!record) {
       return;
@@ -205,16 +338,46 @@ select,
       mode,
       startX: event.screenX,
       startY: event.screenY,
+      dragX: 0,
+      dragY: 0,
       startGeometry: geometryOf(record.panel)
     };
     document.body.classList.toggle('dragging', mode === 'move');
     document.body.classList.toggle('resizing', mode !== 'move');
+    if (mode === 'move') {
+      setSharedDragBackground(true);
+    }
     record.panel.classList.toggle('active-resize', mode !== 'move');
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch (_) {
     }
     event.preventDefault();
+  };
+
+  const startWidgetAction = (id, mode = 'move') => {
+    const record = widgets.get(id);
+    if (!record) {
+      return false;
+    }
+    active = {
+      id,
+      mode,
+      startX: 0,
+      startY: 0,
+      dragX: 0,
+      dragY: 0,
+      startGeometry: geometryOf(record.panel)
+    };
+    document.body.classList.toggle('dragging', mode === 'move');
+    document.body.classList.toggle('resizing', mode !== 'move');
+    if (mode === 'move') {
+      setSharedDragBackground(true);
+    }
+    record.panel.classList.toggle('active-resize', mode !== 'move');
+    record.panel.dataset.resizeMode = mode === 'move' ? '' : mode;
+    record.panel.style.cursor = resizeCursorByMode[mode] || '';
+    return true;
   };
 
   const notifyGeometry = (id, live = false) => {
@@ -339,19 +502,15 @@ select,
       post({ type: 'widget_error', widgetId: id, instanceId: id, message: `iframe failed to load: ${iframe.src}` });
     });
 
-    const dragHandle = document.createElement('div');
-    dragHandle.className = 'linwidget-drag-handle';
-
     const shield = document.createElement('div');
     shield.className = 'linwidget-drag-shield';
 
     const resizeFrame = document.createElement('div');
     resizeFrame.className = 'linwidget-resize-frame';
-    const resizeModes = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+    const resizeModes = ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'];
 
     const resizable = message.resizable !== false;
 
-    dragHandle.addEventListener('pointerdown', event => startAction(event, id, 'move'));
     panel.addEventListener('pointermove', event => updateResizeHover(widgets.get(id), event));
     panel.addEventListener('pointerleave', () => {
       const record = widgets.get(id);
@@ -362,20 +521,28 @@ select,
       record.panel.style.cursor = '';
     });
     panel.addEventListener('pointerdown', event => {
+      if (event.target !== panel) {
+        return;
+      }
       const record = widgets.get(id);
       const mode = updateResizeHover(record, event);
       if (mode && record && record.resizable !== false && record.resizeUiVisible !== false) {
         startAction(event, id, mode);
+      } else if (record && event.ctrlKey) {
+        startAction(event, id, 'move');
       }
     }, true);
     const resizeHandles = resizeModes.map(mode => {
       const handle = document.createElement('div');
       handle.className = `linwidget-resize-hit linwidget-resize-${mode}`;
       handle.dataset.mode = mode;
-      handle.style.cursor = resizeCursorByMode[mode] || '';
-      handle.addEventListener('pointerenter', () => {
+      handle.style.cursor = '';
+      handle.addEventListener('pointerenter', event => {
         const record = widgets.get(id);
         if (!record || record.resizable === false || record.resizeUiVisible === false || active) {
+          return;
+        }
+        if (!event.ctrlKey) {
           return;
         }
         record.panel.dataset.resizeMode = mode;
@@ -391,7 +558,7 @@ select,
       });
       handle.addEventListener('pointerdown', event => {
         const record = widgets.get(id);
-        if (!record || record.resizable === false || record.resizeUiVisible === false) {
+        if (!record || !event.ctrlKey || record.resizable === false || record.resizeUiVisible === false) {
           return;
         }
         record.panel.dataset.resizeMode = mode;
@@ -402,7 +569,6 @@ select,
     });
 
     panel.appendChild(iframe);
-    panel.appendChild(dragHandle);
     panel.appendChild(shield);
     panel.appendChild(resizeFrame);
     resizeHandles.forEach(handle => panel.appendChild(handle));
@@ -427,6 +593,8 @@ select,
     if (record) {
       record.loadTimer = setTimeout(() => recoverWidgetLoad(id, 'timeout'), loadTimeoutMs);
     }
+    requestAnimationFrame(() => notifyGeometry(id, true));
+    setTimeout(() => notifyGeometry(id, true), 50);
     post({ type: 'console_log', level: 'info', message: `added widget ${id}: ${iframe.src}` });
   };
 
@@ -441,6 +609,7 @@ select,
     }
     record.panel.remove();
     widgets.delete(id);
+    clearAlignmentGuides();
   };
 
   const updateWidgetGeometry = message => {
@@ -518,7 +687,60 @@ select,
     record.panel.style.cursor = '';
   };
 
-  window.addEventListener('pointermove', event => {
+  const applyWidgetDragMove = (id, message) => {
+    const record = widgets.get(id);
+    if (!record) {
+      return;
+    }
+    if (!active || active.id !== id) {
+      startWidgetAction(id, 'move');
+    }
+    if (!active || active.id !== id) {
+      return;
+    }
+    active.snapDisabled = Boolean(message.altKey);
+    active.dragX += clampNumber(message.dx, 0);
+    active.dragY += clampNumber(message.dy, 0);
+    applyActiveGeometry(active.dragX, active.dragY);
+    scheduleLiveGeometry(id);
+  };
+
+  const startWidgetDragFromIframe = (id, message) => {
+    const record = widgets.get(id);
+    if (!record) {
+      return;
+    }
+    const mode = resizeModeAtClientPoint(record, clampNumber(message.clientX, -1), clampNumber(message.clientY, -1)) || 'move';
+    startWidgetAction(id, mode);
+  };
+
+  const finishWidgetDrag = id => {
+    if (active && active.id === id) {
+      const record = widgets.get(id);
+      if (record) {
+        record.panel.classList.remove('active-resize');
+        record.panel.dataset.resizeMode = '';
+        record.panel.style.cursor = '';
+      }
+      active = null;
+      document.body.classList.remove('dragging');
+      document.body.classList.remove('resizing');
+      setSharedDragBackground(false);
+      clearAlignmentGuides();
+    }
+    if (widgets.has(id)) {
+      notifyGeometry(id, false);
+    }
+  };
+
+  const applyAlignmentGuideMessage = message => {
+    setAlignmentGuides({
+      vertical: message.vertical,
+      horizontal: message.horizontal
+    });
+  };
+
+  const applyActiveGeometry = (dx, dy) => {
     if (!active) {
       return;
     }
@@ -526,13 +748,16 @@ select,
     if (!record) {
       return;
     }
-    const dx = event.screenX - active.startX;
-    const dy = event.screenY - active.startY;
     const next = Object.assign({}, active.startGeometry);
     if (active.mode === 'move') {
       next.x += dx;
       next.y += dy;
+      const snapped = snapMoveGeometry(active.id, next, Boolean(active.snapDisabled));
+      next.x = snapped.geometry.x;
+      next.y = snapped.geometry.y;
+      setAlignmentGuides(snapped.guides);
     } else {
+      clearAlignmentGuides();
       if (active.mode.includes('e')) {
         next.width += dx;
       }
@@ -559,6 +784,20 @@ select,
       applyGeometry(record.panel, applied, record.constraints);
     }
     scheduleLiveGeometry(active.id);
+  };
+
+  window.addEventListener('pointermove', event => {
+    if (!active) {
+      return;
+    }
+    const record = widgets.get(active.id);
+    if (!record) {
+      return;
+    }
+    const dx = event.screenX - active.startX;
+    const dy = event.screenY - active.startY;
+    active.snapDisabled = Boolean(event.altKey);
+    applyActiveGeometry(dx, dy);
     event.preventDefault();
   });
 
@@ -571,6 +810,8 @@ select,
     active = null;
     document.body.classList.remove('dragging');
     document.body.classList.remove('resizing');
+    setSharedDragBackground(false);
+    clearAlignmentGuides();
     if (record) {
       record.panel.classList.remove('active-resize');
       record.panel.dataset.resizeMode = '';
@@ -591,11 +832,18 @@ select,
     active = null;
     document.body.classList.remove('dragging');
     document.body.classList.remove('resizing');
+    setSharedDragBackground(false);
+    clearAlignmentGuides();
   });
 
   window.addEventListener('resize', () => reclampAllWidgets(true));
 
+  const updateCtrlActive = event => {
+    document.body.classList.toggle('ctrl-active', Boolean(event.ctrlKey));
+  };
+
   window.addEventListener('keydown', event => {
+    updateCtrlActive(event);
     post({
       type: 'host_keydown',
       key: event.key || '',
@@ -604,6 +852,9 @@ select,
       defaultPrevented: Boolean(event.defaultPrevented)
     });
   }, true);
+
+  window.addEventListener('keyup', event => updateCtrlActive(event), true);
+  window.addEventListener('blur', () => document.body.classList.remove('ctrl-active'), true);
 
   window.addEventListener('message', event => {
     const message = event.data || {};
@@ -624,12 +875,23 @@ select,
       post({ type: 'linwidget_open_settings', instanceId: id, widgetId: id });
     } else if (message.type === 'linwidget_focus_request') {
       post({ type: 'focus_request', instanceId: id, widgetId: id, focusSource: message.focusSource || '' });
+    } else if (message.type === 'linwidget_drag_start') {
+      startWidgetDragFromIframe(id, message);
+    } else if (message.type === 'linwidget_drag_move') {
+      applyWidgetDragMove(id, message);
+    } else if (message.type === 'linwidget_drag_end') {
+      finishWidgetDrag(id);
     } else if (message.type === 'linwidget_keydown') {
+      document.body.classList.toggle('ctrl-active', Boolean(message.ctrlKey));
       post(Object.assign({}, message, {
         type: 'host_keydown',
         instanceId: id,
         widgetId: id
       }));
+    } else if (message.type === 'linwidget_keyup') {
+      if (!message.ctrlKey || message.key === 'Control' || message.code === 'ControlLeft' || message.code === 'ControlRight') {
+        document.body.classList.remove('ctrl-active');
+      }
     } else if (message.type === 'linwidget_system_info_request') {
       const record = widgets.get(id);
       if (!hasPermission(record, 'desktop')) {
@@ -686,6 +948,9 @@ select,
       break;
     case 'update_host_options':
       updateHostOptions(message);
+      break;
+    case 'update_alignment_guides':
+      applyAlignmentGuideMessage(message);
       break;
     case 'reload_widget':
       reloadWidget(message);

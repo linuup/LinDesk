@@ -1,38 +1,137 @@
 # LinWidget Developer Guide
 
-LinWidget is the LinDesk desktop widget runtime. It supports HTML widgets rendered by WebView2 and managed by LinDesk through an isolated WidgetHost process.
+LinWidget is the LinDesk desktop widget runtime. Widgets are HTML pages rendered by WebView2 and managed by LinDesk through an isolated WidgetHost process.
 
-## Widget Folders
+---
 
-Bundled widgets live in:
+## Table of Contents
 
-```text
-src/resources/LinWidgets
+1. [Quick Start](#quick-start)
+2. [Package Structure](#package-structure)
+3. [Manifest Reference](#manifest-reference)
+4. [Permissions](#permissions)
+5. [JavaScript API](#javascript-api)
+   - [Identity](#identity)
+   - [Host Controls](#host-controls)
+   - [System Information](#system-information)
+6. [Settings Page](#settings-page)
+7. [Layout & Resize](#layout--resize)
+8. [Text Selection](#text-selection)
+9. [Widget Folders](#widget-folders)
+10. [Debug Flow](#debug-flow)
+11. [Current Limitations](#current-limitations)
+
+---
+
+## Quick Start
+
+A minimal clock widget in three files.
+
+**`manifest.json`**
+
+```json
+{
+  "id": "example.hello.widget",
+  "name": "Hello Widget",
+  "version": "1.0.0",
+  "width": 320,
+  "height": 140,
+  "transparent": true,
+  "resizable": true,
+  "permissions": ["storage"]
+}
 ```
 
-Runtime and user installed widgets live in:
+**`index.html`**
 
-```text
-%APPDATA%/LinDesk/LinWidgets
+```html
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="widget">
+    <div class="title">Hello LinWidget</div>
+    <div id="time" class="time">00:00:00</div>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
 ```
 
-Development projects can be added from any local folder through the Debug LinWidgets page.
+**`style.css`**
+
+```css
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.widget {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  color: white;
+  background: rgba(20, 28, 42, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+}
+```
+
+**`script.js`**
+
+```js
+function updateTime() {
+  document.getElementById("time").textContent =
+    new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit"
+    }).format(new Date());
+}
+
+updateTime();
+setInterval(updateTime, 1000);
+```
+
+---
 
 ## Package Structure
 
 ```text
 MyWidget/
-  manifest.json
-  index.html
-  settings.html
+  manifest.json     ← required
+  index.html        ← default entry
+  settings.html     ← optional settings page
   style.css
   script.js
   assets/
 ```
 
-`manifest.json` is required. `index.html` is the default entry file. `settings.html` is optional and is only loaded when the manifest declares it.
+`manifest.json` is required. `index.html` is the default entry file. `settings.html` is optional and only loaded when declared in the manifest.
 
-## Manifest Example
+Use responsive CSS so the widget adapts to any host size:
+
+```css
+html, body, .widget {
+  width: 100%;
+  height: 100%;
+}
+```
+
+---
+
+## Manifest Reference
+
+### Full Example
 
 ```json
 {
@@ -41,6 +140,7 @@ MyWidget/
   "version": "1.0.0",
   "author": "Your Name",
   "description": "A short sentence describing what this widget does.",
+  "icon": "assets/icon.png",
   "width": 320,
   "height": 140,
   "minWidth": 240,
@@ -57,112 +157,31 @@ MyWidget/
 }
 ```
 
-## Manifest Fields
+### Fields
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `id` | string | yes | none | Unique widget id. Use a stable id such as `lindesk.clock.lin`. |
-| `name` | string | no | `id` | Display name in the LinWidgets manager. |
-| `version` | string | no | `1.0.0` | Widget version. |
-| `author` | string | no | empty | Widget author name shown in the LinWidgets manager. |
-| `description` | string | no | empty | Short widget description shown in the LinWidgets manager. |
-| `width` | number | yes | `300` | Default width in pixels. |
-| `height` | number | yes | `120` | Default height in pixels. |
+| `id` | string | **yes** | — | Unique widget ID. Use a stable reverse-domain style ID such as `lindesk.clock.lin`. |
+| `name` | string | no | `id` | Display name shown in the LinWidgets manager. |
+| `version` | string | no | `1.0.0` | Widget version string. |
+| `author` | string | no | empty | Author name shown in the manager. |
+| `description` | string | no | empty | Short description shown in the manager. |
+| `icon` | string | no | default icon | Icon path relative to the widget folder (e.g. `assets/icon.png`). Absolute paths and parent-directory paths are rejected. Falls back to `src/resources/defaultIcon.png` when omitted or missing. |
+| `width` | number | **yes** | `300` | Default width in pixels. |
+| `height` | number | **yes** | `120` | Default height in pixels. |
 | `minWidth` | number | no | `120` | Minimum resize width. |
 | `minHeight` | number | no | `80` | Minimum resize height. |
-| `maxWidth` | number | no | `0` | Maximum resize width. `0` means unlimited. |
-| `maxHeight` | number | no | `0` | Maximum resize height. `0` means unlimited. |
-| `type` | string | no | `html` | Runtime type. `html` is supported. `native` shows a placeholder for now. |
-| `transparent` | bool | no | `true` | Enables transparent host background. HTML should also use a transparent background when needed. |
-| `resizable` | bool | no | `true` | Enables LinDesk host resize UI and allows size changes through `desktop.resizeWidget()` and `desktop.setWidgetGeometry()`. |
-| `autoLoad` | bool | no | `false` | Automatically loads the widget when LinDesk restores LinWidgets from the default registry and layout config. |
+| `maxWidth` | number | no | `0` | Maximum resize width. `0` = unlimited. |
+| `maxHeight` | number | no | `0` | Maximum resize height. `0` = unlimited. |
+| `type` | string | no | `html` | Runtime type. `html` is supported. `native` shows a placeholder. |
+| `transparent` | bool | no | `true` | Enables a transparent host background. Set the HTML background to `transparent` as well when needed. |
+| `resizable` | bool | no | `true` | Enables host resize affordances and allows `desktop.resizeWidget()` / `desktop.setWidgetGeometry()`. |
+| `autoLoad` | bool | no | `false` | Loads the widget automatically during the LinDesk restore flow. |
 | `entry` | string | no | `index.html` | HTML entry file relative to the widget folder. |
-| `settings` | string | no | empty | Optional HTML settings page relative to the widget folder. When present, LinDesk shows a Settings action for the widget. |
-| `permissions` | array | no | `[]` | Requested permissions. Supported values are `network`, `storage`, and `desktop`. |
+| `settings` | string | no | empty | Optional settings page relative to the widget folder. When present, LinDesk shows a Settings action for the widget. |
+| `permissions` | array | no | `[]` | Requested permissions. See [Permissions](#permissions). |
 
-## Resize Support
-
-If `resizable` is true, LinDesk shows host resize affordances when the pointer hovers near the widget edge or corner. The widget can also request size changes through the JavaScript API.
-
-```json
-{
-  "resizable": true
-}
-```
-
-The widget can request size changes:
-
-```js
-desktop.resizeWidget({
-  width: 420,
-  height: 260
-});
-
-desktop.setWidgetGeometry({
-  x: 100,
-  y: 120,
-  width: 420,
-  height: 260
-});
-```
-
-LinDesk still clamps the final size with `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, and the current WebView bounds. If `resizable` is false, resize API requests are ignored.
-
-Widget authors can hide or show the host resize UI at runtime:
-
-```js
-desktop.setResizeUiVisible(false);
-desktop.setResizeUiVisible(true);
-```
-
-This only controls the visible host resize affordance. It does not bypass `resizable`.
-
-Example resize button:
-
-```html
-<button id="growButton" type="button">Grow</button>
-<script>
-document.getElementById("growButton").addEventListener("click", () => {
-  desktop.resizeWidget({ width: 420, height: 260 });
-});
-</script>
-```
-
-Size is saved to:
-
-```text
-%APPDATA%/LinDesk/LinWidgets/linwidget-layout.json
-```
-
-Development and installed widgets have separate layout keys:
-
-```text
-dev:<manifest-id>
-installed:<manifest-id>
-```
-
-## Auto Load
-
-Set `autoLoad` to true to let LinDesk load the widget automatically during the normal LinWidget restore flow:
-
-```json
-{
-  "autoLoad": true
-}
-```
-
-Auto loaded widgets still use the same layout rules. If saved layout exists, LinDesk restores that position and size. If no saved layout exists, LinDesk starts the widget from its manifest `width` and `height`.
-
-Use responsive CSS so the widget adapts to the host size:
-
-```css
-html,
-body,
-.widget {
-  width: 100%;
-  height: 100%;
-}
-```
+---
 
 ## Permissions
 
@@ -172,13 +191,15 @@ body,
 | `storage` | Allows `localStorage`, `sessionStorage`, and `indexedDB`. |
 | `desktop` | Allows LinDesk desktop APIs such as system information. |
 
-Development mode grants `network`, `storage`, and `desktop` by default to make debugging easier.
+> **Development mode** grants `network`, `storage`, and `desktop` automatically to make debugging easier.
 
-## Supported Desktop APIs
+---
+
+## JavaScript API
 
 LinDesk injects `window.desktop` into widget pages and settings pages.
 
-Identity fields:
+### Identity
 
 ```js
 console.log(desktop.context);    // "widget" or "settings"
@@ -187,35 +208,34 @@ console.log(desktop.instanceId); // running LinDesk instance id
 console.log(desktop.widgetName); // manifest display name
 ```
 
-Widget host controls:
+### Host Controls
 
 ```js
-desktop.resizeWidget({
-  width: 420,
-  height: 260
-});
+// Resize the widget host
+desktop.resizeWidget({ width: 420, height: 260 });
 
-desktop.setWidgetGeometry({
-  x: 100,
-  y: 120,
-  width: 420,
-  height: 260
-});
+// Move and resize in one call
+desktop.setWidgetGeometry({ x: 100, y: 120, width: 420, height: 260 });
 
+// Show or hide the resize affordance (does not bypass resizable: false)
 desktop.setResizeUiVisible(false);
 desktop.setResizeUiVisible(true);
+
+// Open the settings dialog
 desktop.openSettings();
 ```
 
-System information APIs require the `desktop` permission:
+LinDesk clamps the final size with `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, and the current WebView bounds. Resize calls are ignored when `resizable` is `false`.
+
+### System Information
+
+Requires the `desktop` permission:
 
 ```json
-{
-  "permissions": ["desktop"]
-}
+{ "permissions": ["desktop"] }
 ```
 
-Read one snapshot:
+**One snapshot:**
 
 ```js
 const info = await desktop.systemInfo.getSnapshot();
@@ -223,34 +243,30 @@ console.log(info.cpu.usagePercent);
 console.log(info.memory.usagePercent);
 ```
 
-Read one category:
+**Single category** (only collects the requested data):
 
 ```js
-const cpu = await desktop.systemInfo.cpu();
-const gpu = await desktop.systemInfo.gpu();
-const memory = await desktop.systemInfo.memory();
-const disk = await desktop.systemInfo.disk();
+const cpu     = await desktop.systemInfo.cpu();
+const gpu     = await desktop.systemInfo.gpu();
+const memory  = await desktop.systemInfo.memory();
+const disk    = await desktop.systemInfo.disk();
 const network = await desktop.systemInfo.network();
 const battery = await desktop.systemInfo.battery();
-const os = await desktop.systemInfo.os();
-const uptime = await desktop.systemInfo.uptime();
+const os      = await desktop.systemInfo.os();
+const uptime  = await desktop.systemInfo.uptime();
 ```
 
-Category calls only collect the requested data. For example, `desktop.systemInfo.cpu()` does not collect GPU, disk, network, or battery data.
-
-Watch refreshed snapshots:
+**Watch refreshed snapshots:**
 
 ```js
 const watchId = desktop.systemInfo.watch(info => {
   console.log(info.network.downloadBytesPerSecond);
-}, 1000);
+}, 1000); // intervalMs, default 1000, minimum 500
 
 await desktop.systemInfo.unwatch(watchId);
 ```
 
-`watch(callback, intervalMs)` defaults to `1000` ms. Values below `500` ms are clamped to `500` ms.
-
-Snapshot shape:
+**Snapshot shape:**
 
 ```js
 {
@@ -333,11 +349,15 @@ Snapshot shape:
 }
 ```
 
-The first CPU or network sample can return `0` until LinDesk has enough data to calculate a delta. Calls are rejected when the widget does not have the `desktop` permission.
+> The first CPU and network sample may return `0` until LinDesk has enough data to calculate a delta. Calls are rejected when the widget lacks the `desktop` permission.
+
+---
 
 ## Settings Page
 
-Widgets can provide a full size settings page for controls that do not fit inside the small desktop widget area.
+Widgets can provide a full-size settings page for controls that do not fit inside the desktop widget area.
+
+### Declaring a Settings Page
 
 ```json
 {
@@ -347,17 +367,19 @@ Widgets can provide a full size settings page for controls that do not fit insid
 }
 ```
 
-When `settings` is declared and the file exists, LinDesk shows a Settings button for the widget in the Debug LinWidgets list. The settings page opens in a separate resizable LinDesk dialog.
+When `settings` is declared and the file exists, LinDesk shows a **Settings** button for the widget. The page opens in a separate resizable LinDesk dialog.
 
-Settings pages are loaded from the same widget package and use the same widget origin as the main page:
+### Shared Origin & Storage
+
+Settings pages share the same widget origin as the main page:
 
 ```text
 https://<widget-id>.<permissions>.linwidget.local/settings.html
 ```
 
-This means browser storage such as `localStorage`, `sessionStorage`, and `indexedDB` is shared between the widget page and its settings page when the widget has the `storage` permission. Without `storage`, those storage APIs are blocked in both pages.
+`localStorage`, `sessionStorage`, and `indexedDB` are shared between the widget page and settings page when the widget has the `storage` permission.
 
-LinDesk injects a small context marker:
+### Detecting the Settings Context
 
 ```js
 if (window.desktop && desktop.context === "settings") {
@@ -365,7 +387,7 @@ if (window.desktop && desktop.context === "settings") {
 }
 ```
 
-The main widget page can open its own settings page through the host API:
+### Opening Settings from the Widget
 
 ```html
 <button id="settingsButton" type="button">Settings</button>
@@ -376,16 +398,9 @@ The main widget page can open its own settings page through the host API:
 </script>
 ```
 
-Widget pages and settings pages can also read identity fields:
+When the settings dialog closes, LinDesk reloads the running widget instance so it picks up any updated settings.
 
-```js
-console.log(desktop.context);    // "widget" or "settings"
-console.log(desktop.widgetId);   // manifest id
-console.log(desktop.instanceId); // running LinDesk instance id
-console.log(desktop.widgetName); // manifest display name
-```
-
-Minimal `settings.html` example:
+### Minimal `settings.html`
 
 ```html
 <!doctype html>
@@ -411,13 +426,57 @@ Minimal `settings.html` example:
 </html>
 ```
 
-When the settings dialog closes, LinDesk reloads the running widget instance so it can read the updated settings.
+---
+
+## Layout & Resize
+
+### Resize Affordances
+
+When `resizable` is `true`, LinDesk shows drag handles when the pointer hovers near the widget edge or corner. The widget can also request size changes at runtime:
+
+```js
+desktop.resizeWidget({ width: 420, height: 260 });
+
+desktop.setWidgetGeometry({ x: 100, y: 120, width: 420, height: 260 });
+```
+
+To show or hide the visible resize handle without disabling resize:
+
+```js
+desktop.setResizeUiVisible(false);
+desktop.setResizeUiVisible(true);
+```
+
+### Saved Layout
+
+Widget sizes and positions are saved to:
+
+```text
+%APPDATA%/LinDesk/LinWidgets/linwidget-layout.json
+```
+
+Development and installed widgets use separate layout keys:
+
+```text
+dev:<manifest-id>
+installed:<manifest-id>
+```
+
+### Auto Load
+
+Set `autoLoad: true` to have LinDesk load the widget automatically on startup:
+
+```json
+{ "autoLoad": true }
+```
+
+If a saved layout exists, LinDesk restores that position and size. Otherwise it uses the manifest `width` and `height`.
+
+---
 
 ## Text Selection
 
-LinDesk disables normal text selection inside widgets by default so widgets feel like desktop controls instead of regular web pages.
-
-Inputs and editable areas still allow text selection:
+LinDesk disables text selection inside widgets by default so they feel like desktop controls rather than web pages. Selection remains enabled for:
 
 ```text
 input
@@ -428,83 +487,36 @@ select
 .linwidget-selectable-text
 ```
 
-Use `selectable-text` or `linwidget-selectable-text` when a non input text area should remain copyable.
+Add `selectable-text` or `linwidget-selectable-text` to any element that should remain copyable.
 
-## Minimal HTML Example
+---
 
-`index.html`:
+## Widget Folders
 
-```html
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <main class="widget">
-    <div class="title">Hello LinWidget</div>
-    <div id="time" class="time">00:00:00</div>
-  </main>
-  <script src="script.js"></script>
-</body>
-</html>
-```
+| Location | Purpose |
+| --- | --- |
+| `src/resources/LinWidgets/` | Bundled widgets shipped with LinDesk |
+| `%APPDATA%/LinDesk/LinWidgets/` | Runtime and user-installed widgets |
 
-`style.css`:
+Development projects can be added from any local folder through the **Debug LinWidgets** page.
 
-```css
-html,
-body {
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: transparent;
-  font-family: "Segoe UI", sans-serif;
-}
-
-.widget {
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  padding: 16px;
-  color: white;
-  background: rgba(20, 28, 42, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 16px;
-}
-```
-
-`script.js`:
-
-```js
-function updateTime() {
-  document.getElementById("time").textContent =
-    new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit"
-    }).format(new Date());
-}
-
-updateTime();
-setInterval(updateTime, 1000);
-```
+---
 
 ## Debug Flow
 
-1. Open the LinDesk Debug page.
-2. Open the LinWidgets page.
-3. Use Add Dev Project for a source folder, or Refresh for installed widgets.
-4. Select a widget.
-5. Click Load in the widget row.
-6. If the widget declares `settings`, click Settings to open its full size settings page.
-7. For development projects, edit `index.html`, `settings.html`, `style.css`, `script.js`, or `manifest.json` to trigger hot reload.
+1. Open the LinDesk **Debug** page.
+2. Navigate to the **LinWidgets** tab.
+3. Click **Add Dev Project** for a source folder, or **Refresh** for installed widgets.
+4. Select a widget and click **Load**.
+5. If the widget declares `settings`, click **Settings** to open its full-size settings page.
+6. Edit `index.html`, `settings.html`, `style.css`, `script.js`, or `manifest.json` — changes trigger hot reload automatically.
+
+---
 
 ## Current Limitations
 
-1. HTML entries are loaded through the LinWidget virtual host.
-2. Version 1 settings pages are widget provided HTML pages. LinDesk does not generate forms from schema yet.
-3. Settings integration starts from the Debug LinWidgets list. Widget right click menu integration can reuse the same dialog later.
+| # | Limitation |
+| --- | --- |
+| 1 | HTML entries are loaded through the LinWidget virtual host origin. |
+| 2 | Settings pages are widget-provided HTML. LinDesk does not generate forms from a JSON schema yet. |
+| 3 | The Settings button is currently only available in the Debug LinWidgets list. Widget right-click menu integration is planned. |

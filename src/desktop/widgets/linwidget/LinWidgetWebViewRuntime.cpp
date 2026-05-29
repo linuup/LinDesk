@@ -1,7 +1,7 @@
-#include "widgethost/WidgetHostRuntime.h"
+#include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
 
 #include "desktop/widgets/linwidget/PermissionManager.h"
-#include "desktop/widgets/linwidget/WidgetIpcProtocol.h"
+#include "desktop/widgets/linwidget/WidgetMessageTypes.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "services/AppPaths.h"
 #include "services/DpiCoordinateHelper.h"
@@ -15,7 +15,6 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QLabel>
-#include <QLocalSocket>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
@@ -275,6 +274,62 @@ void activateNativeWindow(HWND window)
     }
 }
 
+void activateTopLevelAndFocusChild(HWND topLevelWindow, HWND childWindow)
+{
+    if (!topLevelWindow) {
+        return;
+    }
+
+    const DWORD currentThreadId = GetCurrentThreadId();
+    DWORD topLevelProcessId = 0;
+    const DWORD topLevelThreadId = GetWindowThreadProcessId(topLevelWindow, &topLevelProcessId);
+    DWORD childProcessId = 0;
+    const DWORD childThreadId = childWindow ? GetWindowThreadProcessId(childWindow, &childProcessId) : 0;
+    const HWND foregroundWindow = GetForegroundWindow();
+    DWORD foregroundProcessId = 0;
+    const DWORD foregroundThreadId = foregroundWindow
+        ? GetWindowThreadProcessId(foregroundWindow, &foregroundProcessId)
+        : 0;
+
+    const bool attachTopLevel = topLevelThreadId != 0 && topLevelThreadId != currentThreadId;
+    const bool attachChild = childThreadId != 0 &&
+        childThreadId != currentThreadId &&
+        childThreadId != topLevelThreadId;
+    const bool attachForeground = foregroundThreadId != 0 &&
+        foregroundThreadId != currentThreadId &&
+        foregroundThreadId != topLevelThreadId &&
+        foregroundThreadId != childThreadId;
+
+    if (attachTopLevel) {
+        AttachThreadInput(currentThreadId, topLevelThreadId, TRUE);
+    }
+    if (attachChild) {
+        AttachThreadInput(currentThreadId, childThreadId, TRUE);
+    }
+    if (attachForeground) {
+        AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
+    }
+
+    ShowWindow(topLevelWindow, SW_SHOW);
+    SetForegroundWindow(topLevelWindow);
+    BringWindowToTop(topLevelWindow);
+    SetActiveWindow(topLevelWindow);
+    SetFocus(topLevelWindow);
+    if (childWindow && IsWindow(childWindow)) {
+        SetFocus(childWindow);
+    }
+
+    if (attachForeground) {
+        AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+    }
+    if (attachChild) {
+        AttachThreadInput(currentThreadId, childThreadId, FALSE);
+    }
+    if (attachTopLevel) {
+        AttachThreadInput(currentThreadId, topLevelThreadId, FALSE);
+    }
+}
+
 HWND rootOwnerWindow(HWND window)
 {
     HWND current = window;
@@ -288,103 +343,6 @@ HWND rootOwnerWindow(HWND window)
     return current;
 }
 
-HWINEVENTHOOK g_focusEventHook = nullptr;
-HWND g_trackedWebViewWindow = nullptr;
-QString g_focusEventLogPath;
-QString g_lastFocusEventKey;
-
-void appendFocusEventLog(const QString& message)
-{
-    if (g_focusEventLogPath.isEmpty()) {
-        return;
-    }
-    QFile file(g_focusEventLogPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
-        return;
-    }
-    const QString line = QStringLiteral("[%1] [focus.event] %2\n")
-        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss.zzz")),
-             message);
-    file.write(line.toUtf8());
-}
-
-void CALLBACK linWidgetFocusEventProc(HWINEVENTHOOK,
-                                      DWORD event,
-                                      HWND hwnd,
-                                      LONG idObject,
-                                      LONG idChild,
-                                      DWORD eventThread,
-                                      DWORD eventTime)
-{
-    if (event != EVENT_OBJECT_FOCUS || !hwnd) {
-        return;
-    }
-
-    DWORD processId = 0;
-    const DWORD windowThread = GetWindowThreadProcessId(hwnd, &processId);
-    const HWND foreground = GetForegroundWindow();
-    const HWND parent = GetParent(hwnd);
-    const HWND root = GetAncestor(hwnd, GA_ROOT);
-    const bool tracked = hwnd == g_trackedWebViewWindow;
-    const QString className = nativeWindowClassName(hwnd);
-    const QString key = QStringLiteral("%1:%2:%3:%4")
-        .arg(QString::number(reinterpret_cast<quintptr>(hwnd), 16),
-             QString::number(idObject),
-             QString::number(idChild),
-             className);
-    if (key == g_lastFocusEventKey) {
-        return;
-    }
-    g_lastFocusEventKey = key;
-
-    appendFocusEventLog(QStringLiteral("hwnd=%1 class=%2 trackedWebView=%3 parent=%4 root=%5 foreground=%6 process=%7 thread=%8 eventThread=%9 object=%10 child=%11 time=%12")
-        .arg(QString::number(reinterpret_cast<quintptr>(hwnd), 16),
-             className,
-             tracked ? QStringLiteral("true") : QStringLiteral("false"),
-             QString::number(reinterpret_cast<quintptr>(parent), 16),
-             QString::number(reinterpret_cast<quintptr>(root), 16),
-             QString::number(reinterpret_cast<quintptr>(foreground), 16),
-             QString::number(processId),
-             QString::number(windowThread),
-             QString::number(eventThread),
-             QString::number(idObject),
-             QString::number(idChild),
-             QString::number(eventTime)));
-}
-
-void installFocusEventDiagnostics(HWND webViewWindow, const QString& logPath)
-{
-    if (!webViewWindow || !IsWindow(webViewWindow)) {
-        return;
-    }
-    g_trackedWebViewWindow = webViewWindow;
-    g_focusEventLogPath = logPath;
-    if (g_focusEventHook) {
-        return;
-    }
-    g_focusEventHook = SetWinEventHook(EVENT_OBJECT_FOCUS,
-                                       EVENT_OBJECT_FOCUS,
-                                       nullptr,
-                                       linWidgetFocusEventProc,
-                                       0,
-                                       0,
-                                       WINEVENT_OUTOFCONTEXT);
-    appendFocusEventLog(QStringLiteral("hook installed tracked=%1 class=%2 hook=%3")
-        .arg(QString::number(reinterpret_cast<quintptr>(webViewWindow), 16),
-             nativeWindowClassName(webViewWindow),
-             QString::number(reinterpret_cast<quintptr>(g_focusEventHook), 16)));
-}
-
-void uninstallFocusEventDiagnostics()
-{
-    if (g_focusEventHook) {
-        UnhookWinEvent(g_focusEventHook);
-        appendFocusEventLog(QStringLiteral("hook uninstalled"));
-        g_focusEventHook = nullptr;
-    }
-    g_trackedWebViewWindow = nullptr;
-    g_lastFocusEventKey.clear();
-}
 #endif
 
 #ifdef LINDESK_HAS_WEBVIEW2
@@ -392,11 +350,9 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 #endif
 
-WidgetHostRuntime::WidgetHostRuntime(QString widgetId,
+LinWidgetWebViewRuntime::LinWidgetWebViewRuntime(QString widgetId,
                                      QString packagePath,
-                                     QString ipcServerName,
                                      QRect initialGeometry,
-                                     quint32 parentProcessId,
                                      quint64 parentWindowId,
                                      QStringList grantedPermissions,
                                      bool isDevelopment,
@@ -406,9 +362,7 @@ WidgetHostRuntime::WidgetHostRuntime(QString widgetId,
     : QWidget(parent)
     , m_widgetId(std::move(widgetId))
     , m_packagePath(std::move(packagePath))
-    , m_ipcServerName(std::move(ipcServerName))
     , m_initialGeometry(initialGeometry)
-    , m_parentProcessId(parentProcessId)
     , m_parentWindowId(parentWindowId)
     , m_grantedPermissions(isDevelopment
           ? PermissionManager().normalizePermissions({ QStringLiteral("network"), QStringLiteral("storage"), QStringLiteral("desktop") })
@@ -419,13 +373,8 @@ WidgetHostRuntime::WidgetHostRuntime(QString widgetId,
 {
 }
 
-WidgetHostRuntime::~WidgetHostRuntime()
+LinWidgetWebViewRuntime::~LinWidgetWebViewRuntime()
 {
-#ifdef Q_OS_WIN
-    if (m_sharedRuntime) {
-        uninstallFocusEventDiagnostics();
-    }
-#endif
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* controller = static_cast<ICoreWebView2Controller*>(m_webViewController);
     if (controller) {
@@ -445,7 +394,7 @@ WidgetHostRuntime::~WidgetHostRuntime()
 #endif
 }
 
-bool WidgetHostRuntime::initialize(QString* errorMessage)
+bool LinWidgetWebViewRuntime::initialize(QString* errorMessage)
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     const HRESULT coResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -465,7 +414,7 @@ bool WidgetHostRuntime::initialize(QString* errorMessage)
         m_manifest.minHeight = 1;
         setWindowTitle(QStringLiteral("LinWidget Shared Runtime"));
     }
-    appendLog(QStringLiteral("info"), QStringLiteral("WidgetHost started"));
+    appendLog(QStringLiteral("info"), QStringLiteral("LinWidget WebView runtime started"));
     appendLog(QStringLiteral("info"), QStringLiteral("package=%1").arg(m_packagePath));
     appendLog(QStringLiteral("info"), QStringLiteral("permissions=%1").arg(m_grantedPermissions.join(QStringLiteral(","))));
     if (m_isDevelopment) {
@@ -482,18 +431,24 @@ bool WidgetHostRuntime::initialize(QString* errorMessage)
     } else {
         renderHtmlWidget();
     }
-    connectIpc();
-    startParentMonitor();
-    appendLog(QStringLiteral("info"), QStringLiteral("WidgetHost initialized"));
+    sendManagerMessage(QString::fromLatin1(WidgetMessageType::Ready));
+    QJsonObject hostWindowMessage;
+    hostWindowMessage.insert(QStringLiteral("hwnd"), QString::number(static_cast<qulonglong>(winId())));
+    sendManagerMessage(QString::fromLatin1(WidgetMessageType::HostWindowReady), hostWindowMessage);
+    appendLog(QStringLiteral("info"), QStringLiteral("LinWidget WebView runtime initialized"));
     return true;
 }
 
-void WidgetHostRuntime::setupWindow()
+void LinWidgetWebViewRuntime::setupWindow()
 {
     const bool sharedChildRuntime = m_sharedRuntime && m_parentWindowId != 0;
-    if (m_parentWindowId != 0) {
+    if ((!m_sharedRuntime && m_parentWindowId != 0) || sharedChildRuntime) {
         setWindowFlags(Qt::FramelessWindowHint);
-        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_TranslucentBackground, !m_sharedRuntime);
+    } else if (m_sharedRuntime) {
+        setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+        setWindowTitle(QStringLiteral("LinWidget Host"));
+        setAttribute(Qt::WA_TranslucentBackground, false);
     } else {
         setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
         setAttribute(Qt::WA_TranslucentBackground, true);
@@ -501,33 +456,30 @@ void WidgetHostRuntime::setupWindow()
     setAttribute(Qt::WA_ShowWithoutActivating, false);
     setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
-    setFocusPolicy((m_parentWindowId == 0 || sharedChildRuntime) ? Qt::StrongFocus : Qt::NoFocus);
+    setFocusPolicy(m_sharedRuntime || m_parentWindowId == 0 ? Qt::StrongFocus : Qt::NoFocus);
 
     const QRect fallbackRect(QPoint(0, 0), QSize(m_manifest.width, m_manifest.height));
     QRect initialGeometry = m_initialGeometry.isEmpty() ? fallbackRect : m_initialGeometry;
     initialGeometry.setSize(clampWidgetSize(initialGeometry.size()));
     setGeometry(initialGeometry);
-    if (m_sharedRuntime) {
-        setSharedWindowGeometry();
-    }
 #ifdef Q_OS_WIN
     HWND hostWindow = reinterpret_cast<HWND>(winId());
     if (hostWindow) {
         LONG_PTR exStyle = GetWindowLongPtr(hostWindow, GWL_EXSTYLE);
         exStyle &= ~WS_EX_TRANSPARENT;
+        exStyle &= ~WS_EX_NOACTIVATE;
         if (m_sharedRuntime) {
-            exStyle |= WS_EX_TOOLWINDOW;
-            exStyle &= ~WS_EX_NOACTIVATE;
-        } else {
-            exStyle &= ~WS_EX_NOACTIVATE;
+            exStyle &= ~WS_EX_TOOLWINDOW;
         }
         SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
     }
 #endif
-    attachToParentWindow();
+    if (!m_sharedRuntime || sharedChildRuntime) {
+        attachToParentWindow();
+    }
 }
 
-void WidgetHostRuntime::attachToParentWindow()
+void LinWidgetWebViewRuntime::attachToParentWindow()
 {
     if (m_parentWindowId == 0) {
         return;
@@ -572,7 +524,7 @@ void WidgetHostRuntime::attachToParentWindow()
 #endif
 }
 
-bool WidgetHostRuntime::nativeEvent(const QByteArray& eventType, void* message, long* result)
+bool LinWidgetWebViewRuntime::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
 #ifdef Q_OS_WIN
     Q_UNUSED(eventType);
@@ -606,27 +558,11 @@ bool WidgetHostRuntime::nativeEvent(const QByteArray& eventType, void* message, 
         return true;
     }
     if (msg && msg->message == WM_NCHITTEST) {
+        if (m_sharedRuntime) {
+            return QWidget::nativeEvent(eventType, message, result);
+        }
         const QPoint screenPoint(static_cast<short>(LOWORD(msg->lParam)),
                                  static_cast<short>(HIWORD(msg->lParam)));
-        if (m_sharedRuntime) {
-            const QPoint localPoint = mapFromGlobal(screenPoint);
-            QString matchedInstanceId;
-            for (auto it = m_sharedWidgetGeometries.constBegin(); it != m_sharedWidgetGeometries.constEnd(); ++it) {
-                if (it.value().contains(localPoint)) {
-                    matchedInstanceId = it.key();
-                    break;
-                }
-            }
-            appendLog(QStringLiteral("hit"), QStringLiteral("shared hit local=%1,%2 matched=%3 rectCount=%4")
-                .arg(QString::number(localPoint.x()),
-                     QString::number(localPoint.y()),
-                     matchedInstanceId.isEmpty() ? QStringLiteral("<none>") : matchedInstanceId,
-                     QString::number(m_sharedWidgetGeometries.size())));
-            if (result) {
-                *result = matchedInstanceId.isEmpty() ? HTTRANSPARENT : HTCLIENT;
-            }
-            return true;
-        }
         appendLog(QStringLiteral("mouse"), QStringLiteral("WM_NCHITTEST screen=%1,%2 hwnd=%3")
             .arg(QString::number(screenPoint.x()),
                  QString::number(screenPoint.y()),
@@ -644,7 +580,7 @@ bool WidgetHostRuntime::nativeEvent(const QByteArray& eventType, void* message, 
     return QWidget::nativeEvent(eventType, message, result);
 }
 
-QRect WidgetHostRuntime::parentClientRect() const
+QRect LinWidgetWebViewRuntime::parentClientRect() const
 {
 #ifdef Q_OS_WIN
     if (m_parentWindowId == 0) {
@@ -660,7 +596,7 @@ QRect WidgetHostRuntime::parentClientRect() const
 #endif
 }
 
-QPoint WidgetHostRuntime::clampToParent(const QPoint& requestedTopLeft) const
+QPoint LinWidgetWebViewRuntime::clampToParent(const QPoint& requestedTopLeft) const
 {
     if (!m_embedded && m_parentWindowId == 0) {
         return requestedTopLeft;
@@ -675,90 +611,16 @@ QPoint WidgetHostRuntime::clampToParent(const QPoint& requestedTopLeft) const
                   qBound(0, requestedTopLeft.y(), maxY));
 }
 
-void WidgetHostRuntime::connectIpc()
-{
-    m_socket = new QLocalSocket(this);
-    connect(m_socket, &QLocalSocket::connected, this, [this]() {
-        sendIpcMessage(QString::fromLatin1(IpcType::Ready));
-        QJsonObject message;
-        message.insert(QStringLiteral("hwnd"), QString::number(static_cast<qulonglong>(winId())));
-        sendIpcMessage(QString::fromLatin1(IpcType::HostWindowReady), message);
-    });
-    connect(m_socket, &QLocalSocket::readyRead, this, &WidgetHostRuntime::handleIpcReadyRead);
-    m_socket->connectToServer(m_ipcServerName);
-
-    m_heartbeatTimer = new QTimer(this);
-    m_heartbeatTimer->setInterval(3000);
-    connect(m_heartbeatTimer, &QTimer::timeout, this, [this]() {
-        sendIpcMessage(QString::fromLatin1(IpcType::Heartbeat));
-    });
-    m_heartbeatTimer->start();
-}
-
-void WidgetHostRuntime::startParentMonitor()
-{
-    if (m_parentProcessId == 0) {
-        return;
-    }
-
-    m_parentMonitorTimer = new QTimer(this);
-    m_parentMonitorTimer->setInterval(1500);
-    connect(m_parentMonitorTimer, &QTimer::timeout, this, [this]() {
-        if (!isParentProcessAlive()) {
-            close();
-        }
-    });
-    m_parentMonitorTimer->start();
-}
-
-bool WidgetHostRuntime::isParentProcessAlive() const
-{
-    if (m_parentProcessId == 0) {
-        return true;
-    }
-
-#ifdef Q_OS_WIN
-    HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(m_parentProcessId));
-    if (!process) {
-        return false;
-    }
-    const DWORD waitResult = WaitForSingleObject(process, 0);
-    CloseHandle(process);
-    return waitResult == WAIT_TIMEOUT;
-#else
-    return true;
-#endif
-}
-
-void WidgetHostRuntime::handleIpcReadyRead()
-{
-    if (!m_socket) {
-        return;
-    }
-
-    while (m_socket->canReadLine()) {
-        QJsonObject message;
-        QString errorMessage;
-        if (!decodeIpcMessage(m_socket->readLine(), &message, &errorMessage)) {
-            sendIpcMessage(QString::fromLatin1(IpcType::Error), {
-                { QStringLiteral("message"), errorMessage }
-            });
-            continue;
-        }
-        handleManagerMessage(message);
-    }
-}
-
-void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
+void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
 {
     const QString type = message.value(QStringLiteral("type")).toString();
-    if (type == QString::fromLatin1(IpcType::CloseWidget)) {
+    if (type == QString::fromLatin1(WidgetMessageType::CloseWidget)) {
         close();
         return;
     }
 
     if (m_sharedRuntime) {
-        if (type == QString::fromLatin1(IpcType::UpdateHostGeometry)) {
+        if (type == QString::fromLatin1(WidgetMessageType::UpdateHostGeometry)) {
             const QRect hostGeometry(
                 message.value(QStringLiteral("x")).toInt(x()),
                 message.value(QStringLiteral("y")).toInt(y()),
@@ -771,18 +633,18 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::UpdateHostOptions)) {
+        if (type == QString::fromLatin1(WidgetMessageType::UpdateHostOptions)) {
             m_showWebViewBounds = message.value(QStringLiteral("showWebViewBounds")).toBool(false);
             syncSharedRegion(QStringLiteral("host options"));
             queueOrSendHostPageMessage({
-                { QStringLiteral("type"), QString::fromLatin1(IpcType::UpdateHostOptions) },
+                { QStringLiteral("type"), QString::fromLatin1(WidgetMessageType::UpdateHostOptions) },
                 { QStringLiteral("showWebViewBounds"), m_showWebViewBounds }
             });
             appendLog(QStringLiteral("info"), QStringLiteral("updated shared host options showWebViewBounds=%1")
                 .arg(m_showWebViewBounds ? QStringLiteral("true") : QStringLiteral("false")));
             return;
         }
-        if (type == QString::fromLatin1(IpcType::AddWidget)) {
+        if (type == QString::fromLatin1(WidgetMessageType::AddWidget)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString()).trimmed();
             const QString packagePath = message.value(QStringLiteral("packagePath")).toString().trimmed();
             QStringList permissions;
@@ -798,7 +660,7 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             WidgetManifest manifest;
             QString manifestError;
             if (instanceId.isEmpty() || !WidgetPackage::loadManifest(packagePath, &manifest, &manifestError)) {
-                sendIpcMessage(QString::fromLatin1(IpcType::WidgetError), {
+                sendManagerMessage(QString::fromLatin1(WidgetMessageType::WidgetError), {
                     { QStringLiteral("instanceId"), instanceId },
                     { QStringLiteral("message"), manifestError.isEmpty() ? QStringLiteral("Invalid widget package.") : manifestError }
                 });
@@ -810,7 +672,7 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                 const QString error = QStringLiteral("Failed to map widget virtual host for %1.").arg(instanceId);
                 appendLog(QStringLiteral("error"), error);
                 appendInstanceLog(instanceId, QStringLiteral("error"), error);
-                sendIpcMessage(QString::fromLatin1(IpcType::WidgetError), {
+                sendManagerMessage(QString::fromLatin1(WidgetMessageType::WidgetError), {
                     { QStringLiteral("instanceId"), instanceId },
                     { QStringLiteral("message"), error }
                 });
@@ -826,7 +688,6 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                 geometry.value(QStringLiteral("height")).toInt(manifest.height));
             m_sharedWidgetGeometries.insert(instanceId, rect);
             m_sharedWidgetHosts.insert(instanceId, hostName);
-            syncSharedRegion(QStringLiteral("add widget"));
             appendLog(QStringLiteral("hit"), QStringLiteral("added shared rect id=%1 rect=%2,%3 %4x%5 rectCount=%6")
                 .arg(instanceId,
                      QString::number(rect.x()),
@@ -843,13 +704,16 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
                                                              isDevelopment,
                                                              message.value(QStringLiteral("autoReload")).toBool(false),
                                                              entryUrl));
+            QTimer::singleShot(0, this, [this]() {
+                syncSharedRegion(QStringLiteral("add widget"));
+            });
             if (isDevelopment) {
                 m_pendingOpenDevTools = true;
                 openDevToolsWhenReady();
             }
             return;
         }
-        if (type == QString::fromLatin1(IpcType::RemoveWidget)) {
+        if (type == QString::fromLatin1(WidgetMessageType::RemoveWidget)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString()).trimmed();
             m_sharedWidgetGeometries.remove(instanceId);
             m_sharedWidgetHosts.remove(instanceId);
@@ -858,13 +722,13 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             appendLog(QStringLiteral("hit"), QStringLiteral("removed shared rect id=%1 rectCount=%2")
                 .arg(instanceId, QString::number(m_sharedWidgetGeometries.size())));
             queueOrSendHostPageMessage({
-                { QStringLiteral("type"), QString::fromLatin1(IpcType::RemoveWidget) },
+                { QStringLiteral("type"), QString::fromLatin1(WidgetMessageType::RemoveWidget) },
                 { QStringLiteral("instanceId"), instanceId },
                 { QStringLiteral("widgetId"), instanceId }
             });
             return;
         }
-        if (type == QString::fromLatin1(IpcType::UpdateWidgetGeometry)) {
+        if (type == QString::fromLatin1(WidgetMessageType::UpdateWidgetGeometry)) {
             const QString instanceId = message.value(QStringLiteral("instanceId")).toString(message.value(QStringLiteral("widgetId")).toString()).trimmed();
             QRect rect(
                 message.value(QStringLiteral("x")).toInt(),
@@ -892,19 +756,23 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
             queueOrSendHostPageMessage(message);
             return;
         }
-        if (type == QString::fromLatin1(IpcType::ReloadWidget)) {
+        if (type == QString::fromLatin1(WidgetMessageType::ReloadWidget)) {
             queueOrSendHostPageMessage(message);
             return;
         }
-        if (type == QString::fromLatin1(IpcType::SystemInfoResponse) ||
-            type == QString::fromLatin1(IpcType::SystemInfoUpdate)) {
+        if (type == QString::fromLatin1(WidgetMessageType::SystemInfoResponse) ||
+            type == QString::fromLatin1(WidgetMessageType::SystemInfoUpdate)) {
+            queueOrSendHostPageMessage(message);
+            return;
+        }
+        if (type == QString::fromLatin1(WidgetMessageType::UpdateAlignmentGuides)) {
             queueOrSendHostPageMessage(message);
             return;
         }
     }
 
-    if (type == QString::fromLatin1(IpcType::MoveWidget) ||
-        type == QString::fromLatin1(IpcType::ResizeWidget)) {
+    if (type == QString::fromLatin1(WidgetMessageType::MoveWidget) ||
+        type == QString::fromLatin1(WidgetMessageType::ResizeWidget)) {
         const int x = message.value(QStringLiteral("x")).toInt(geometry().x());
         const int y = message.value(QStringLiteral("y")).toInt(geometry().y());
         const int width = message.value(QStringLiteral("width")).toInt(geometry().width());
@@ -914,24 +782,19 @@ void WidgetHostRuntime::handleManagerMessage(const QJsonObject& message)
     }
 }
 
-void WidgetHostRuntime::sendIpcMessage(const QString& type, const QJsonObject& extra)
+void LinWidgetWebViewRuntime::sendManagerMessage(const QString& type, const QJsonObject& extra)
 {
-    if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
-        return;
-    }
-
-    QJsonObject message = makeIpcMessage(type, m_widgetId);
+    QJsonObject message = makeWidgetMessage(type, m_widgetId);
     for (auto it = extra.constBegin(); it != extra.constEnd(); ++it) {
         if (it.key() == QStringLiteral("widgetId")) {
             continue;
         }
         message.insert(it.key(), it.value());
     }
-    m_socket->write(encodeIpcMessage(message));
-    m_socket->flush();
+    emit messageToManager(m_widgetId, message);
 }
 
-bool WidgetHostRuntime::event(QEvent* event)
+bool LinWidgetWebViewRuntime::event(QEvent* event)
 {
     if (event->type() == QEvent::Resize) {
         updateWebViewBounds();
@@ -942,16 +805,20 @@ bool WidgetHostRuntime::event(QEvent* event)
     return QWidget::event(event);
 }
 
-void WidgetHostRuntime::paintEvent(QPaintEvent* event)
+void LinWidgetWebViewRuntime::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
+
+    if (m_sharedRuntime) {
+        return;
+    }
 
     QPainter painter(this);
     painter.fillRect(rect(), QColor(0, 0, 0, 1));
 
 }
 
-void WidgetHostRuntime::mousePressEvent(QMouseEvent* event)
+void LinWidgetWebViewRuntime::mousePressEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton) {
         m_dragging = true;
@@ -966,7 +833,7 @@ void WidgetHostRuntime::mousePressEvent(QMouseEvent* event)
     QWidget::mousePressEvent(event);
 }
 
-void WidgetHostRuntime::mouseMoveEvent(QMouseEvent* event)
+void LinWidgetWebViewRuntime::mouseMoveEvent(QMouseEvent* event)
 {
     if (m_dragging && (event->buttons() & Qt::LeftButton)) {
         if (!m_dragMoveStarted) {
@@ -985,7 +852,7 @@ void WidgetHostRuntime::mouseMoveEvent(QMouseEvent* event)
         QJsonObject extra;
         extra.insert(QStringLiteral("x"), topLeft.x());
         extra.insert(QStringLiteral("y"), topLeft.y());
-        sendIpcMessage(QString::fromLatin1(IpcType::MoveWidget), extra);
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::MoveWidget), extra);
         event->accept();
         return;
     }
@@ -993,7 +860,7 @@ void WidgetHostRuntime::mouseMoveEvent(QMouseEvent* event)
     QWidget::mouseMoveEvent(event);
 }
 
-void WidgetHostRuntime::mouseReleaseEvent(QMouseEvent* event)
+void LinWidgetWebViewRuntime::mouseReleaseEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton && m_dragging) {
         m_dragging = false;
@@ -1004,7 +871,7 @@ void WidgetHostRuntime::mouseReleaseEvent(QMouseEvent* event)
     QWidget::mouseReleaseEvent(event);
 }
 
-void WidgetHostRuntime::renderNativePlaceholder()
+void LinWidgetWebViewRuntime::renderNativePlaceholder()
 {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 12, 12, 12);
@@ -1021,7 +888,7 @@ void WidgetHostRuntime::renderNativePlaceholder()
     layout->addWidget(m_placeholderLabel);
 }
 
-void WidgetHostRuntime::renderHtmlWidget()
+void LinWidgetWebViewRuntime::renderHtmlWidget()
 {
 #ifndef LINDESK_HAS_WEBVIEW2
     renderHtmlPlaceholder(tr("WebView2 SDK is not enabled in this build."));
@@ -1129,7 +996,7 @@ void WidgetHostRuntime::renderHtmlWidget()
 #endif
 }
 
-void WidgetHostRuntime::renderSharedHtmlRuntime()
+void LinWidgetWebViewRuntime::renderSharedHtmlRuntime()
 {
 #ifndef LINDESK_HAS_WEBVIEW2
     renderHtmlPlaceholder(tr("WebView2 SDK is not enabled in this build."));
@@ -1252,7 +1119,7 @@ void WidgetHostRuntime::renderSharedHtmlRuntime()
 #endif
 }
 
-void WidgetHostRuntime::openDevToolsWhenReady()
+void LinWidgetWebViewRuntime::openDevToolsWhenReady()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     if (!m_pendingOpenDevTools) {
@@ -1268,7 +1135,7 @@ void WidgetHostRuntime::openDevToolsWhenReady()
 #endif
 }
 
-QString WidgetHostRuntime::sharedRuntimeEntryPath() const
+QString LinWidgetWebViewRuntime::sharedRuntimeEntryPath() const
 {
     const QString relativePath = QStringLiteral("resources/LinWidgetRuntime/host.html");
     const QString appDir = QCoreApplication::applicationDirPath();
@@ -1283,7 +1150,7 @@ QString WidgetHostRuntime::sharedRuntimeEntryPath() const
     return entryPath;
 }
 
-void WidgetHostRuntime::installSharedWidgetApiBridge()
+void LinWidgetWebViewRuntime::installSharedWidgetApiBridge()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1372,9 +1239,34 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
         " lastLinWidgetFocusRequest = now;"
         " postToHost('linwidget_focus_request', {focusSource:focusSource||''});"
         "};"
-        "window.addEventListener('pointerdown', event => { requestLinWidgetFocus(isLinWidgetInteractiveTarget(event.target) ? 'iframe_interactive_pointerdown' : 'iframe_pointerdown', true); }, true);"
+        "window.addEventListener('pointerdown', event => { if (!isLinWidgetInteractiveTarget(event.target)) requestLinWidgetFocus('iframe_pointerdown', true); }, true);"
+        "let linWidgetDragCandidate=false,linWidgetDragging=false,linWidgetStartX=0,linWidgetStartY=0,linWidgetLastX=0,linWidgetLastY=0,linWidgetStartClientX=0,linWidgetStartClientY=0;"
+        "window.addEventListener('pointerdown', event => {"
+        " if (event.button !== 0 || !event.ctrlKey || isLinWidgetInteractiveTarget(event.target)) return;"
+        " linWidgetDragCandidate=true; linWidgetDragging=false; linWidgetStartX=event.screenX; linWidgetStartY=event.screenY; linWidgetLastX=event.screenX; linWidgetLastY=event.screenY;"
+        " linWidgetStartClientX=event.clientX; linWidgetStartClientY=event.clientY;"
+        " try { event.target.setPointerCapture && event.target.setPointerCapture(event.pointerId); } catch (_) {}"
+        "}, true);"
+        "window.addEventListener('pointermove', event => {"
+        " if (!linWidgetDragCandidate && !linWidgetDragging) return;"
+        " if (!event.ctrlKey) { linWidgetDragCandidate=false; if (linWidgetDragging) postToHost('linwidget_drag_end'); linWidgetDragging=false; return; }"
+        " if (linWidgetDragCandidate && !linWidgetDragging) {"
+        "  const totalDx=event.screenX-linWidgetStartX,totalDy=event.screenY-linWidgetStartY;"
+        "  if (Math.abs(totalDx)+Math.abs(totalDy)<4) return;"
+        "  linWidgetDragging=true; linWidgetDragCandidate=false; postToHost('linwidget_drag_start', {clientX:linWidgetStartClientX,clientY:linWidgetStartClientY});"
+        " }"
+        " const dx=event.screenX-linWidgetLastX,dy=event.screenY-linWidgetLastY; linWidgetLastX=event.screenX; linWidgetLastY=event.screenY;"
+        " postToHost('linwidget_drag_move', {dx:dx,dy:dy,altKey:event.altKey});"
+        " event.preventDefault();"
+        "}, true);"
+        "const endLinWidgetDrag = () => { if (linWidgetDragCandidate || linWidgetDragging) postToHost('linwidget_drag_end'); linWidgetDragCandidate=false; linWidgetDragging=false; };"
+        "window.addEventListener('pointerup', endLinWidgetDrag, true);"
+        "window.addEventListener('pointercancel', endLinWidgetDrag, true);"
         "window.addEventListener('keydown', event => {"
-        " postToHost('linwidget_keydown', {key:event.key||'', code:event.code||'', target:describeLinWidgetTarget(event.target), defaultPrevented:!!event.defaultPrevented});"
+        " postToHost('linwidget_keydown', {key:event.key||'', code:event.code||'', ctrlKey:!!event.ctrlKey, target:describeLinWidgetTarget(event.target), defaultPrevented:!!event.defaultPrevented});"
+        "}, true);"
+        "window.addEventListener('keyup', event => {"
+        " postToHost('linwidget_keyup', {key:event.key||'', code:event.code||'', ctrlKey:!!event.ctrlKey, target:describeLinWidgetTarget(event.target), defaultPrevented:!!event.defaultPrevented});"
         "}, true);"
         "let systemInfoSeq = 0;"
         "const systemInfoPending = new Map();"
@@ -1455,7 +1347,7 @@ void WidgetHostRuntime::installSharedWidgetApiBridge()
 #endif
 }
 
-void WidgetHostRuntime::sendHostPageMessage(const QJsonObject& payload)
+void LinWidgetWebViewRuntime::sendHostPageMessage(const QJsonObject& payload)
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1469,7 +1361,7 @@ void WidgetHostRuntime::sendHostPageMessage(const QJsonObject& payload)
 #endif
 }
 
-void WidgetHostRuntime::queueOrSendHostPageMessage(const QJsonObject& payload)
+void LinWidgetWebViewRuntime::queueOrSendHostPageMessage(const QJsonObject& payload)
 {
     if (!m_hostPageReady) {
         m_pendingHostPageMessages.append(payload);
@@ -1481,7 +1373,7 @@ void WidgetHostRuntime::queueOrSendHostPageMessage(const QJsonObject& payload)
     sendHostPageMessage(payload);
 }
 
-void WidgetHostRuntime::flushPendingHostPageMessages()
+void LinWidgetWebViewRuntime::flushPendingHostPageMessages()
 {
     if (!m_hostPageReady || m_pendingHostPageMessages.isEmpty()) {
         return;
@@ -1494,7 +1386,7 @@ void WidgetHostRuntime::flushPendingHostPageMessages()
     }
 }
 
-QJsonObject WidgetHostRuntime::widgetInstancePayload(const QString& instanceId,
+QJsonObject LinWidgetWebViewRuntime::widgetInstancePayload(const QString& instanceId,
                                                      const QString& packagePath,
                                                      const WidgetManifest& manifest,
                                                      const QRect& geometry,
@@ -1514,7 +1406,7 @@ QJsonObject WidgetHostRuntime::widgetInstancePayload(const QString& instanceId,
     geometryObject.insert(QStringLiteral("height"), geometry.height());
 
     QJsonObject payload;
-    payload.insert(QStringLiteral("type"), QString::fromLatin1(IpcType::AddWidget));
+    payload.insert(QStringLiteral("type"), QString::fromLatin1(WidgetMessageType::AddWidget));
     payload.insert(QStringLiteral("instanceId"), instanceId);
     payload.insert(QStringLiteral("widgetId"), instanceId);
     payload.insert(QStringLiteral("manifestId"), manifest.id);
@@ -1533,7 +1425,7 @@ QJsonObject WidgetHostRuntime::widgetInstancePayload(const QString& instanceId,
     return payload;
 }
 
-QString WidgetHostRuntime::virtualHostNameForInstance(const QString& instanceId,
+QString LinWidgetWebViewRuntime::virtualHostNameForInstance(const QString& instanceId,
                                                       const QStringList& permissions,
                                                       bool isDevelopment) const
 {
@@ -1559,7 +1451,7 @@ QString WidgetHostRuntime::virtualHostNameForInstance(const QString& instanceId,
     return safe + QLatin1Char('.') + permissionHostSegment(permissions, isDevelopment) + QStringLiteral(".linwidget.local");
 }
 
-bool WidgetHostRuntime::mapWidgetVirtualHost(const QString& hostName, const QString& packagePath)
+bool LinWidgetWebViewRuntime::mapWidgetVirtualHost(const QString& hostName, const QString& packagePath)
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1583,7 +1475,7 @@ bool WidgetHostRuntime::mapWidgetVirtualHost(const QString& hostName, const QStr
 #endif
 }
 
-void WidgetHostRuntime::installSharedWebResourceGuards(void* environment)
+void LinWidgetWebViewRuntime::installSharedWebResourceGuards(void* environment)
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1671,7 +1563,7 @@ void WidgetHostRuntime::installSharedWebResourceGuards(void* environment)
 #endif
 }
 
-void WidgetHostRuntime::setSharedWindowGeometry()
+void LinWidgetWebViewRuntime::setSharedWindowGeometry()
 {
     const QRect virtualRect = QGuiApplication::primaryScreen()
         ? QGuiApplication::primaryScreen()->virtualGeometry()
@@ -1685,12 +1577,12 @@ void WidgetHostRuntime::setSharedWindowGeometry()
     updateWebViewBounds();
 }
 
-void WidgetHostRuntime::updateSharedWindowRegion()
+void LinWidgetWebViewRuntime::updateSharedWindowRegion()
 {
     syncSharedRegion(QStringLiteral("legacy update"));
 }
 
-void WidgetHostRuntime::syncSharedRegion(const QString& reason)
+void LinWidgetWebViewRuntime::syncSharedRegion(const QString& reason)
 {
     if (!m_sharedRuntime) {
         return;
@@ -1704,12 +1596,11 @@ void WidgetHostRuntime::syncSharedRegion(const QString& reason)
         EnumChildWindows(hostWindow, findWebViewChildWindow, reinterpret_cast<LPARAM>(&webViewSearch));
     }
     if (webViewSearch.window) {
-        updateNativeWindowRegion(webViewSearch.window);
+        SetWindowRgn(webViewSearch.window, nullptr, TRUE);
         const quint64 webViewWindowId = static_cast<quint64>(reinterpret_cast<quintptr>(webViewSearch.window));
         if (webViewWindowId != m_lastReportedWebViewWindow) {
             m_lastReportedWebViewWindow = webViewWindowId;
-            installFocusEventDiagnostics(webViewSearch.window, logFilePath());
-            sendIpcMessage(QString::fromLatin1(IpcType::WebViewWindowReady), {
+            sendManagerMessage(QString::fromLatin1(WidgetMessageType::WebViewWindowReady), {
                 { QStringLiteral("hwnd"), QString::number(webViewWindowId) },
                 { QStringLiteral("className"), webViewSearch.className },
                 { QStringLiteral("reason"), reason }
@@ -1717,15 +1608,14 @@ void WidgetHostRuntime::syncSharedRegion(const QString& reason)
         }
     } else if (m_lastReportedWebViewWindow != 0) {
         m_lastReportedWebViewWindow = 0;
-        uninstallFocusEventDiagnostics();
-        sendIpcMessage(QString::fromLatin1(IpcType::WebViewWindowLost), {
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::WebViewWindowLost), {
             { QStringLiteral("reason"), reason }
         });
     }
 #endif
 }
 
-void WidgetHostRuntime::updateNativeWindowRegion(void* windowHandle)
+void LinWidgetWebViewRuntime::updateNativeWindowRegion(void* windowHandle)
 {
     if (!m_sharedRuntime) {
         return;
@@ -1736,7 +1626,7 @@ void WidgetHostRuntime::updateNativeWindowRegion(void* windowHandle)
         return;
     }
 
-    if (m_showWebViewBounds) {
+    if (m_showWebViewBounds || m_forceShowSharedBackground) {
         SetWindowRgn(window, nullptr, TRUE);
         return;
     }
@@ -1748,22 +1638,23 @@ void WidgetHostRuntime::updateNativeWindowRegion(void* windowHandle)
     const int nativeClientHeight = hasClientRect ? qMax(0L, clientRect.bottom - clientRect.top) : height();
     const qreal scaleX = static_cast<qreal>(nativeClientWidth) / qMax(1, width());
     const qreal scaleY = static_cast<qreal>(nativeClientHeight) / qMax(1, height());
-    appendLog(QStringLiteral("region"), QStringLiteral("region scale window=%1 class=%2 logical=%3x%4 native=%5x%6 scale=%7,%8 rectCount=%9")
-        .arg(QString::number(reinterpret_cast<quintptr>(window), 16),
-             nativeWindowClassName(window),
-             QString::number(width()),
-             QString::number(height()),
-             QString::number(nativeClientWidth),
-             QString::number(nativeClientHeight),
-             QString::number(scaleX, 'f', 3),
-             QString::number(scaleY, 'f', 3),
-             QString::number(m_sharedWidgetGeometries.size())));
+    POINT clientOrigin { 0, 0 };
+    if (hasClientRect) {
+        ClientToScreen(window, &clientOrigin);
+        RECT windowRect = {};
+        if (GetWindowRect(window, &windowRect)) {
+            clientOrigin.x -= windowRect.left;
+            clientOrigin.y -= windowRect.top;
+        } else {
+            clientOrigin = { 0, 0 };
+        }
+    }
     for (const QRect& rect : m_sharedWidgetGeometries) {
         if (!rect.isValid()) {
             continue;
         }
-        const QRect nativeRect(qRound(rect.x() * scaleX),
-                               qRound(rect.y() * scaleY),
+        const QRect nativeRect(clientOrigin.x + qRound(rect.x() * scaleX),
+                               clientOrigin.y + qRound(rect.y() * scaleY),
                                qRound(rect.width() * scaleX),
                                qRound(rect.height() * scaleY));
         HRGN widgetRegion = CreateRectRgn(nativeRect.left(),
@@ -1779,7 +1670,7 @@ void WidgetHostRuntime::updateNativeWindowRegion(void* windowHandle)
 #endif
 }
 
-void WidgetHostRuntime::renderHtmlPlaceholder(const QString& reason)
+void LinWidgetWebViewRuntime::renderHtmlPlaceholder(const QString& reason)
 {
     PermissionManager permissions;
     const QString permissionText = tr("network: %1\nstorage: %2\ndesktop: %3")
@@ -1803,7 +1694,7 @@ void WidgetHostRuntime::renderHtmlPlaceholder(const QString& reason)
     layout->addWidget(m_placeholderLabel);
 }
 
-void WidgetHostRuntime::installWebConsoleLogging()
+void LinWidgetWebViewRuntime::installWebConsoleLogging()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1844,7 +1735,7 @@ void WidgetHostRuntime::installWebConsoleLogging()
 #endif
 }
 
-void WidgetHostRuntime::installWebPermissionGuards()
+void LinWidgetWebViewRuntime::installWebPermissionGuards()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1876,7 +1767,7 @@ void WidgetHostRuntime::installWebPermissionGuards()
 #endif
 }
 
-void WidgetHostRuntime::installWebZoomGuards()
+void LinWidgetWebViewRuntime::installWebZoomGuards()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1902,7 +1793,7 @@ void WidgetHostRuntime::installWebZoomGuards()
 #endif
 }
 
-void WidgetHostRuntime::installWebViewDragBridge()
+void LinWidgetWebViewRuntime::installWebViewDragBridge()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
@@ -1913,33 +1804,35 @@ void WidgetHostRuntime::installWebViewDragBridge()
     const QString script = QStringLiteral(
         "(() => {"
         "try {"
-        "let dragCandidate=false,dragging=false,lastX=0,lastY=0,startX=0,startY=0;"
+        "let dragCandidate=false,dragging=false,lastX=0,lastY=0,startX=0,startY=0,startClientX=0,startClientY=0;"
         "const post = message => { try { chrome.webview.postMessage(message); } catch (_) {} };"
         "const isInteractiveTarget = target => !!(target && target.closest && target.closest("
         "\"input,textarea,select,button,a,[contenteditable='true'],[contenteditable=''],[data-no-drag]\"));"
         "const describeTarget = target => target ? ((target.tagName||'').toLowerCase() + (target.id ? '#'+target.id : '') + (target.className ? '.'+String(target.className).replace(/\\s+/g,'.') : '')) : '';"
         "document.addEventListener('focusin', e => { post({type:'dom_focusin', target:describeTarget(e.target)}); }, true);"
         "document.addEventListener('keydown', e => { post({type:'dom_keydown', key:e.key||'', code:e.code||'', target:describeTarget(e.target), defaultPrevented:!!e.defaultPrevented}); }, true);"
+        "document.addEventListener('keyup', e => { post({type:'dom_keyup', key:e.key||'', code:e.code||'', target:describeTarget(e.target), defaultPrevented:!!e.defaultPrevented}); }, true);"
         "document.addEventListener('input', e => { post({type:'dom_input', target:describeTarget(e.target), value:e.target && typeof e.target.value === 'string' ? e.target.value : ''}); }, true);"
         "window.addEventListener('pointerdown', e => {"
         " if (e.button !== 0) return;"
         " if (isInteractiveTarget(e.target)) {"
-        "  post({type:'focus_request', focusSource:'interactive_pointerdown'});"
         "  return;"
         " }"
         " post({type:'focus_request'});"
-        " dragCandidate=true; dragging=false; startX=e.screenX; startY=e.screenY; lastX=e.screenX; lastY=e.screenY;"
+        " if (!e.ctrlKey) return;"
+        " dragCandidate=true; dragging=false; startX=e.screenX; startY=e.screenY; lastX=e.screenX; lastY=e.screenY; startClientX=e.clientX; startClientY=e.clientY;"
         " try { e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId); } catch (_) {}"
         "});"
         "window.addEventListener('pointermove', e => {"
         " if (!dragCandidate && !dragging) return;"
+        " if (!e.ctrlKey) { dragCandidate=false; if (dragging) post({type:'drag_end'}); dragging=false; return; }"
         " if (dragCandidate && !dragging) {"
         "  const totalDx=e.screenX-startX, totalDy=e.screenY-startY;"
         "  if (Math.abs(totalDx) + Math.abs(totalDy) < 4) return;"
-        "  dragging=true; dragCandidate=false; post({type:'drag_start'});"
+        "  dragging=true; dragCandidate=false; post({type:'drag_start', clientX:startClientX, clientY:startClientY});"
         " }"
         " const dx=e.screenX-lastX, dy=e.screenY-lastY; lastX=e.screenX; lastY=e.screenY;"
-        " post({type:'drag_move', dx:dx, dy:dy});"
+        " post({type:'drag_move', dx:dx, dy:dy, altKey:e.altKey});"
         "});"
         "window.addEventListener('pointerup', () => { dragCandidate=false; dragging=false; post({type:'drag_end'}); });"
         "window.addEventListener('pointercancel', () => { dragCandidate=false; dragging=false; post({type:'drag_end'}); });"
@@ -1962,7 +1855,7 @@ void WidgetHostRuntime::installWebViewDragBridge()
 #endif
 }
 
-void WidgetHostRuntime::handleWebMessageJson(const QString& json)
+void LinWidgetWebViewRuntime::handleWebMessageJson(const QString& json)
 {
     const QJsonDocument document = QJsonDocument::fromJson(json.toUtf8());
     if (!document.isObject()) {
@@ -1970,14 +1863,14 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
     }
     const QJsonObject object = document.object();
     const QString type = object.value(QStringLiteral("type")).toString();
-    if (m_sharedRuntime && type == QString::fromLatin1(IpcType::Ready)) {
+    if (m_sharedRuntime && type == QString::fromLatin1(WidgetMessageType::Ready)) {
         m_hostPageReady = true;
         appendLog(QStringLiteral("info"), QStringLiteral("shared host page ready"));
         flushPendingHostPageMessages();
-        sendIpcMessage(QString::fromLatin1(IpcType::Ready));
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::Ready));
         return;
     }
-    if (m_sharedRuntime && type == QString::fromLatin1(IpcType::WidgetGeometryChanged)) {
+    if (m_sharedRuntime && type == QString::fromLatin1(WidgetMessageType::WidgetGeometryChanged)) {
         const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
         if (instanceId.isEmpty()) {
             return;
@@ -1991,7 +1884,17 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
             syncSharedRegion(QStringLiteral("live widget geometry"));
         }
         if (!object.value(QStringLiteral("live")).toBool(false)) {
-            sendIpcMessage(QString::fromLatin1(IpcType::WidgetGeometryChanged), object);
+            sendManagerMessage(QString::fromLatin1(WidgetMessageType::WidgetGeometryChanged), object);
+        }
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_drag_background")) {
+        const bool active = object.value(QStringLiteral("active")).toBool(false);
+        if (m_forceShowSharedBackground != active) {
+            m_forceShowSharedBackground = active;
+            syncSharedRegion(active
+                ? QStringLiteral("shared drag background on")
+                : QStringLiteral("shared drag background off"));
         }
         return;
     }
@@ -2000,7 +1903,7 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
         if (instanceId.isEmpty()) {
             return;
         }
-        sendIpcMessage(QString::fromLatin1(IpcType::OpenWidgetSettings), {
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::OpenWidgetSettings), {
             { QStringLiteral("instanceId"), instanceId }
         });
         return;
@@ -2014,7 +1917,7 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
         message.insert(QStringLiteral("instanceId"), instanceId);
         message.insert(QStringLiteral("widgetId"), instanceId);
         message.remove(QStringLiteral("type"));
-        sendIpcMessage(QString::fromLatin1(IpcType::SystemInfoRequest), message);
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::SystemInfoRequest), message);
         return;
     }
     if (type == QStringLiteral("console_log")) {
@@ -2065,12 +1968,6 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
     if (type == QStringLiteral("dom_focusin")) {
         const QString target = object.value(QStringLiteral("target")).toString();
         appendLog(QStringLiteral("dom"), QStringLiteral("focusin target=%1").arg(target));
-        if (target.startsWith(QStringLiteral("input"), Qt::CaseInsensitive) ||
-            target.startsWith(QStringLiteral("textarea"), Qt::CaseInsensitive) ||
-            target.startsWith(QStringLiteral("select"), Qt::CaseInsensitive) ||
-            target.contains(QStringLiteral("contenteditable"), Qt::CaseInsensitive)) {
-            focusWebView(QStringLiteral("dom_focusin"));
-        }
         return;
     }
     if (type == QStringLiteral("dom_keydown")) {
@@ -2120,16 +2017,38 @@ void WidgetHostRuntime::handleWebMessageJson(const QString& json)
         extra.insert(QStringLiteral("y"), this->y());
         extra.insert(QStringLiteral("width"), width());
         extra.insert(QStringLiteral("height"), height());
-        sendIpcMessage(QString::fromLatin1(IpcType::WidgetGeometryChanged), extra);
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::WidgetGeometryChanged), extra);
         return;
     }
     if (type == QStringLiteral("drag_move")) {
+        if (!m_forceShowSharedBackground) {
+            m_forceShowSharedBackground = true;
+            syncSharedRegion(QStringLiteral("drag background on"));
+        }
+        if (object.value(QStringLiteral("altKey")).toBool(false)) {
+            sendManagerMessage(QString::fromLatin1(WidgetMessageType::UpdateAlignmentGuides), {
+                { QStringLiteral("vertical"), QJsonObject({ { QStringLiteral("visible"), false } }) },
+                { QStringLiteral("horizontal"), QJsonObject({ { QStringLiteral("visible"), false } }) }
+            });
+        }
         moveByDelta(QPoint(object.value(QStringLiteral("dx")).toInt(),
                            object.value(QStringLiteral("dy")).toInt()));
+        return;
+    }
+    if (type == QStringLiteral("drag_end")) {
+        if (m_forceShowSharedBackground) {
+            m_forceShowSharedBackground = false;
+            syncSharedRegion(QStringLiteral("drag background off"));
+        }
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::UpdateAlignmentGuides), {
+            { QStringLiteral("vertical"), QJsonObject({ { QStringLiteral("visible"), false } }) },
+            { QStringLiteral("horizontal"), QJsonObject({ { QStringLiteral("visible"), false } }) }
+        });
+        return;
     }
 }
 
-void WidgetHostRuntime::appendLog(const QString& level, const QString& message) const
+void LinWidgetWebViewRuntime::appendLog(const QString& level, const QString& message) const
 {
     const QString line = QStringLiteral("[%1] [%2] %3\n")
         .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")),
@@ -2146,12 +2065,12 @@ void WidgetHostRuntime::appendLog(const QString& level, const QString& message) 
     file.write(line.toUtf8());
 }
 
-QString WidgetHostRuntime::logFilePath() const
+QString LinWidgetWebViewRuntime::logFilePath() const
 {
     return logFilePathForId(m_widgetId);
 }
 
-void WidgetHostRuntime::appendInstanceLog(const QString& instanceId, const QString& level, const QString& message) const
+void LinWidgetWebViewRuntime::appendInstanceLog(const QString& instanceId, const QString& level, const QString& message) const
 {
     const QString line = QStringLiteral("[%1] [%2] %3\n")
         .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")),
@@ -2163,7 +2082,7 @@ void WidgetHostRuntime::appendInstanceLog(const QString& instanceId, const QStri
     }
 }
 
-QString WidgetHostRuntime::logFilePathForId(const QString& id) const
+QString LinWidgetWebViewRuntime::logFilePathForId(const QString& id) const
 {
     QString safeId = id.trimmed();
     for (QChar& ch : safeId) {
@@ -2177,17 +2096,11 @@ QString WidgetHostRuntime::logFilePathForId(const QString& id) const
     return QDir(AppPaths::linWidgetLogsDir()).filePath(safeId + QStringLiteral(".log"));
 }
 
-void WidgetHostRuntime::focusWebView(const QString& source)
+void LinWidgetWebViewRuntime::focusWebView(const QString& source)
 {
 #ifdef Q_OS_WIN
     HWND hostWindow = reinterpret_cast<HWND>(winId());
     HWND rootWindow = rootOwnerWindow(hostWindow);
-    if (rootWindow && !m_embedded) {
-        SetForegroundWindow(rootWindow);
-    }
-    if (m_embedded && hostWindow) {
-        focusNativeWindow(hostWindow);
-    }
     WebViewWindowSearch webViewSearch;
     if (hostWindow) {
         EnumChildWindows(hostWindow, findWebViewChildWindow, reinterpret_cast<LPARAM>(&webViewSearch));
@@ -2209,10 +2122,15 @@ void WidgetHostRuntime::focusWebView(const QString& source)
 #ifdef Q_OS_WIN
     if (webViewSearch.window) {
         if (m_embedded || m_parentWindowId != 0) {
+            if (hostWindow) {
+                focusNativeWindow(hostWindow);
+            }
             focusNativeWindow(webViewSearch.window);
         } else {
-            activateNativeWindow(webViewSearch.window);
+            activateTopLevelAndFocusChild(rootWindow ? rootWindow : hostWindow, webViewSearch.window);
         }
+    } else if (!m_embedded && rootWindow) {
+        activateNativeWindow(rootWindow);
     }
     const HWND focusedWindow = GetFocus();
     appendLog(QStringLiteral("focus"), QStringLiteral("source=%1 root=%2 host=%3 webview=%4 webviewClass=%5 focused=%6 focusedClass=%7 foreground=%8")
@@ -2227,7 +2145,7 @@ void WidgetHostRuntime::focusWebView(const QString& source)
 #endif
 }
 
-void WidgetHostRuntime::moveByDelta(const QPoint& delta)
+void LinWidgetWebViewRuntime::moveByDelta(const QPoint& delta)
 {
     if (delta.isNull()) {
         return;
@@ -2238,10 +2156,10 @@ void WidgetHostRuntime::moveByDelta(const QPoint& delta)
     QJsonObject extra;
     extra.insert(QStringLiteral("x"), topLeft.x());
     extra.insert(QStringLiteral("y"), topLeft.y());
-    sendIpcMessage(QString::fromLatin1(IpcType::MoveWidget), extra);
+    sendManagerMessage(QString::fromLatin1(WidgetMessageType::MoveWidget), extra);
 }
 
-QSize WidgetHostRuntime::clampWidgetSize(const QSize& requestedSize) const
+QSize LinWidgetWebViewRuntime::clampWidgetSize(const QSize& requestedSize) const
 {
     QSize finalSize = requestedSize.isValid()
         ? requestedSize
@@ -2268,7 +2186,7 @@ QSize WidgetHostRuntime::clampWidgetSize(const QSize& requestedSize) const
     return finalSize;
 }
 
-void WidgetHostRuntime::applyHostPosition(const QPoint& topLeft)
+void LinWidgetWebViewRuntime::applyHostPosition(const QPoint& topLeft)
 {
     const QPoint finalTopLeft = m_embedded ? clampToParent(topLeft) : topLeft;
 #ifdef Q_OS_WIN
@@ -2287,7 +2205,7 @@ void WidgetHostRuntime::applyHostPosition(const QPoint& topLeft)
     move(finalTopLeft);
 }
 
-void WidgetHostRuntime::applyHostGeometry(const QRect& geometry)
+void LinWidgetWebViewRuntime::applyHostGeometry(const QRect& geometry)
 {
     const QSize finalSize = clampWidgetSize(geometry.size());
     const QPoint finalTopLeft = m_embedded ? clampToParent(geometry.topLeft()) : geometry.topLeft();
@@ -2310,7 +2228,7 @@ void WidgetHostRuntime::applyHostGeometry(const QRect& geometry)
     updateWebViewBounds();
 }
 
-void WidgetHostRuntime::updateWebViewBounds()
+void LinWidgetWebViewRuntime::updateWebViewBounds()
 {
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* controller = static_cast<ICoreWebView2Controller*>(m_webViewController);
@@ -2334,3 +2252,4 @@ void WidgetHostRuntime::updateWebViewBounds()
 }
 
 }
+

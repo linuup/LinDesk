@@ -130,6 +130,7 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("autoLoad"), manifest.autoLoad);
     object.insert(QStringLiteral("entry"), manifest.entry);
     object.insert(QStringLiteral("settings"), manifest.settings);
+    object.insert(QStringLiteral("icon"), manifest.icon);
     object.insert(QStringLiteral("permissions"), permissions);
     return object;
 }
@@ -147,7 +148,8 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         !requireString(object, QStringLiteral("author"), false, &parsed.author, errorMessage) ||
         !requireString(object, QStringLiteral("description"), false, &parsed.description, errorMessage) ||
         !requireString(object, QStringLiteral("entry"), false, &parsed.entry, errorMessage) ||
-        !requireString(object, QStringLiteral("settings"), false, &parsed.settings, errorMessage)) {
+        !requireString(object, QStringLiteral("settings"), false, &parsed.settings, errorMessage) ||
+        !requireString(object, QStringLiteral("icon"), false, &parsed.icon, errorMessage)) {
         return false;
     }
 
@@ -278,6 +280,12 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         }
         return false;
     }
+    if (!parsed.icon.isEmpty() && !isSafeRelativePath(parsed.icon)) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget manifest icon must be a safe relative path.");
+        }
+        return false;
+    }
 
     *manifest = parsed;
     if (errorMessage) {
@@ -341,6 +349,7 @@ QJsonObject registryEntryToJson(const WidgetRegistryEntry& entry)
     object.insert(QStringLiteral("version"), entry.version);
     object.insert(QStringLiteral("author"), entry.author);
     object.insert(QStringLiteral("description"), entry.description);
+    object.insert(QStringLiteral("icon"), entry.icon);
     object.insert(QStringLiteral("packagePath"), entry.packagePath);
     object.insert(QStringLiteral("runtimeType"), entry.runtimeType);
     object.insert(QStringLiteral("defaultWidth"), entry.defaultSize.width());
@@ -370,6 +379,7 @@ bool registryEntryFromJson(const QJsonObject& object, WidgetRegistryEntry* entry
     parsed.version = object.value(QStringLiteral("version")).toString().trimmed();
     parsed.author = object.value(QStringLiteral("author")).toString().trimmed();
     parsed.description = object.value(QStringLiteral("description")).toString().trimmed();
+    parsed.icon = object.value(QStringLiteral("icon")).toString().trimmed();
     parsed.packagePath = object.value(QStringLiteral("packagePath")).toString().trimmed();
     parsed.runtimeType = object.value(QStringLiteral("runtimeType")).toString(QStringLiteral("html")).trimmed();
     parsed.defaultSize = QSize(

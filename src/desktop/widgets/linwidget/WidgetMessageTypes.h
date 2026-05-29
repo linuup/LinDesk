@@ -1,14 +1,12 @@
 #pragma once
 
-#include <QByteArray>
 #include <QJsonObject>
 #include <QString>
 
 namespace LinWidget {
 
-namespace IpcType {
+namespace WidgetMessageType {
     constexpr const char* Launch = "launch";
-    constexpr const char* Heartbeat = "heartbeat";
     constexpr const char* Ready = "ready";
     constexpr const char* Error = "error";
     constexpr const char* HostWindowReady = "host_window_ready";
@@ -19,6 +17,7 @@ namespace IpcType {
     constexpr const char* UpdateWidgetGeometry = "update_widget_geometry";
     constexpr const char* UpdateHostGeometry = "update_host_geometry";
     constexpr const char* UpdateHostOptions = "update_host_options";
+    constexpr const char* UpdateAlignmentGuides = "update_alignment_guides";
     constexpr const char* ReloadWidget = "reload_widget";
     constexpr const char* OpenWidgetSettings = "open_widget_settings";
     constexpr const char* SystemInfoRequest = "system_info_request";
@@ -32,8 +31,6 @@ namespace IpcType {
     constexpr const char* ThemeChanged = "theme_changed";
 }
 
-QByteArray encodeIpcMessage(const QJsonObject& object);
-bool decodeIpcMessage(const QByteArray& line, QJsonObject* object, QString* errorMessage = nullptr);
-QJsonObject makeIpcMessage(const QString& type, const QString& widgetId);
+QJsonObject makeWidgetMessage(const QString& type, const QString& widgetId);
 
 }

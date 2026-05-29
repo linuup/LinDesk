@@ -9,29 +9,30 @@
 #include <QWidget>
 
 class QLabel;
-class QLocalSocket;
 class QTimer;
 
 namespace LinWidget {
 
-class WidgetHostRuntime : public QWidget {
+class LinWidgetWebViewRuntime : public QWidget {
     Q_OBJECT
 
 public:
-    explicit WidgetHostRuntime(QString widgetId,
+    explicit LinWidgetWebViewRuntime(QString widgetId,
                                QString packagePath,
-                               QString ipcServerName,
                                QRect initialGeometry,
-                               quint32 parentProcessId = 0,
                                quint64 parentWindowId = 0,
                                QStringList grantedPermissions = QStringList(),
                                bool isDevelopment = false,
                                bool autoReload = false,
                                bool sharedRuntime = false,
                                QWidget* parent = nullptr);
-    ~WidgetHostRuntime() override;
+    ~LinWidgetWebViewRuntime() override;
 
     bool initialize(QString* errorMessage = nullptr);
+    void handleManagerMessage(const QJsonObject& message);
+
+signals:
+    void messageToManager(const QString& widgetId, const QJsonObject& message);
 
 private:
     bool nativeEvent(const QByteArray& eventType, void* message, long* result) override;
@@ -45,12 +46,7 @@ private:
     void attachToParentWindow();
     QRect parentClientRect() const;
     QPoint clampToParent(const QPoint& requestedTopLeft) const;
-    void connectIpc();
-    void startParentMonitor();
-    bool isParentProcessAlive() const;
-    void handleIpcReadyRead();
-    void handleManagerMessage(const QJsonObject& message);
-    void sendIpcMessage(const QString& type, const QJsonObject& extra = QJsonObject());
+    void sendManagerMessage(const QString& type, const QJsonObject& extra = QJsonObject());
     void renderNativePlaceholder();
     void renderHtmlWidget();
     void renderHtmlPlaceholder(const QString& reason = QString());
@@ -96,18 +92,13 @@ private:
 
     QString m_widgetId;
     QString m_packagePath;
-    QString m_ipcServerName;
     QRect m_initialGeometry;
-    quint32 m_parentProcessId = 0;
     quint64 m_parentWindowId = 0;
     QStringList m_grantedPermissions;
     bool m_isDevelopment = false;
     bool m_autoReload = false;
     bool m_sharedRuntime = false;
     WidgetManifest m_manifest;
-    QLocalSocket* m_socket = nullptr;
-    QTimer* m_heartbeatTimer = nullptr;
-    QTimer* m_parentMonitorTimer = nullptr;
     QLabel* m_placeholderLabel = nullptr;
     void* m_webViewController = nullptr;
     void* m_webView = nullptr;
@@ -126,8 +117,10 @@ private:
     QVector<QJsonObject> m_pendingHostPageMessages;
     bool m_hostPageReady = false;
     bool m_showWebViewBounds = false;
+    bool m_forceShowSharedBackground = false;
     bool m_pendingOpenDevTools = false;
     quint64 m_lastReportedWebViewWindow = 0;
 };
 
 }
+

@@ -13,30 +13,15 @@ body,
   position: relative;
   box-sizing: border-box;
   border: 0;
+  background: transparent;
 }
 
 body.show-webview-bounds #surface {
-  background: rgba(15, 111, 191, 0.08);
-  border: 1px solid rgba(15, 111, 191, 0.45);
+  background: rgba(248, 250, 252, 0.22);
 }
 
-#surface::before {
-  content: "LinWidget WebView";
-  position: absolute;
-  left: 8px;
-  top: 6px;
-  z-index: 2147483647;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(15, 111, 191, 0.18);
-  color: rgba(15, 23, 42, 0.72);
-  font: 12px/16px "Segoe UI", sans-serif;
-  pointer-events: none;
-  display: none;
-}
-
-body.show-webview-bounds #surface::before {
-  display: block;
+body.dragging #surface {
+  background: rgba(248, 250, 252, 0.22);
 }
 
 body {
@@ -64,17 +49,6 @@ body.resizing .linwidget-panel .linwidget-resize-frame {
   width: 100%;
   height: 100%;
   border: 0;
-  background: transparent;
-}
-
-.linwidget-drag-handle {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  height: 18px;
-  z-index: 2;
-  cursor: move;
   background: transparent;
 }
 
@@ -113,6 +87,11 @@ body.resizing .linwidget-drag-shield {
   position: absolute;
   z-index: 4;
   background: transparent;
+  pointer-events: none;
+}
+
+body.ctrl-active .linwidget-resize-hit {
+  pointer-events: auto;
 }
 
 .linwidget-panel.resize-ui-hidden .linwidget-resize-hit {
@@ -147,21 +126,21 @@ body.resizing .linwidget-drag-shield {
   width: 8px;
 }
 
-.linwidget-resize-ne,
 .linwidget-resize-nw,
+.linwidget-resize-ne,
 .linwidget-resize-se,
 .linwidget-resize-sw {
   width: 12px;
   height: 12px;
 }
 
-.linwidget-resize-ne {
-  right: 0;
+.linwidget-resize-nw {
+  left: 0;
   top: 0;
 }
 
-.linwidget-resize-nw {
-  left: 0;
+.linwidget-resize-ne {
+  right: 0;
   top: 0;
 }
 
@@ -173,4 +152,41 @@ body.resizing .linwidget-drag-shield {
 .linwidget-resize-sw {
   left: 0;
   bottom: 0;
+}
+
+.linwidget-alignment-guides {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  pointer-events: none;
+}
+
+.linwidget-alignment-guides.visible {
+  display: block;
+}
+
+.linwidget-alignment-guide {
+  position: absolute;
+  display: none;
+  background: rgba(0, 120, 212, 0.88);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.38);
+}
+
+.linwidget-alignment-guide.visible {
+  display: block;
+}
+
+.linwidget-alignment-guide-vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+
+.linwidget-alignment-guide-horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-0.5px);
 }

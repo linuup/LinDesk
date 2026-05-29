@@ -52,19 +52,19 @@ function switchPanel(index) {
   if (index < 0) index = 0;
   if (index >= styleDots.length) index = styleDots.length - 1;
   currentStyleIndex = index;
-  
+
   styleDots.forEach(d => d.classList.remove('active'));
   panelSections.forEach(p => p.classList.remove('active'));
-  
+
   const dot = styleDots[index];
   dot.classList.add('active');
-  
+
   const styleId = dot.getAttribute('data-style');
   const targetPanel = document.getElementById(`panelStyle${styleId}`);
   if (targetPanel) {
     targetPanel.classList.add('active');
   }
-  
+
   // Force redraw network graph if returning to panel 1 or 4
   if (styleId === '1') {
     setTimeout(() => fixCanvasResolution(netCanvas, ctx), 50);
@@ -106,7 +106,7 @@ const RING_CIRCUMFERENCE = 251.2;
 function setRing(element, percent, disableRed = false) {
   const offset = RING_CIRCUMFERENCE - (percent / 100) * RING_CIRCUMFERENCE;
   element.style.strokeDashoffset = offset;
-  
+
   if (!disableRed && percent > 85) {
     element.style.stroke = 'var(--accent-red)';
   } else {
@@ -135,22 +135,22 @@ function drawNetworkGraph() {
     const height = canvasEl.height;
     canvasCtx.clearRect(0, 0, width, height);
 
-    const maxVal = Math.max(...downHistory, ...upHistory, 1024 * 100); 
-    
+    const maxVal = Math.max(...downHistory, ...upHistory, 1024 * 100);
+
     function drawLine(data, color, fillRgba) {
       canvasCtx.beginPath();
       canvasCtx.strokeStyle = color;
       canvasCtx.lineWidth = 2 * window.devicePixelRatio;
       canvasCtx.lineJoin = 'round';
-      
-      for(let i = 0; i < data.length; i++) {
+
+      for (let i = 0; i < data.length; i++) {
         const x = (i / (historyLength - 1)) * width;
         const y = height - (data[i] / maxVal) * height * 0.9 - (2 * window.devicePixelRatio);
         if (i === 0) canvasCtx.moveTo(x, y);
         else canvasCtx.lineTo(x, y);
       }
       canvasCtx.stroke();
-      
+
       canvasCtx.lineTo(width, height);
       canvasCtx.lineTo(0, height);
       canvasCtx.fillStyle = fillRgba;
@@ -196,7 +196,7 @@ async function startMonitoring() {
   }, 100);
 
   console.log("Calling desktop.systemInfo.watch...");
-  
+
   const handleSystemInfo = (rawInfo) => {
     let info = rawInfo;
     if (typeof rawInfo === 'string') {
@@ -207,111 +207,111 @@ async function startMonitoring() {
         return;
       }
     }
-    console.log("SysMonitor tick received:", info);
+    //console.log("SysMonitor tick received:", info);
     try {
-        if (!info) {
-          console.warn("Received empty info object");
-          return;
-        }
+      if (!info) {
+        console.warn("Received empty info object");
+        return;
+      }
 
-        // CPU
-        if (info.cpu) {
-          const cpuP = Math.round(info.cpu.usagePercent || 0);
-          cpuValue.innerHTML = `${cpuP}<span class="percent">%</span>`;
-          setRing(cpuRing, cpuP);
-          cpuDetail.textContent = info.cpu.name || '?';
-          cpuDetail.title = info.cpu.name || ''; // add title for full name on hover
-        }
+      // CPU
+      if (info.cpu) {
+        const cpuP = Math.round(info.cpu.usagePercent || 0);
+        cpuValue.innerHTML = `${cpuP}<span class="percent">%</span>`;
+        setRing(cpuRing, cpuP);
+        cpuDetail.textContent = info.cpu.name || '?';
+        cpuDetail.title = info.cpu.name || ''; // add title for full name on hover
+      }
 
-        // RAM
-        if (info.memory) {
-          const ramP = Math.round(info.memory.usagePercent || 0);
-          ramValue.innerHTML = `${ramP}<span class="percent">%</span>`;
-          setRing(ramRing, ramP);
-          const totalRam = formatBytes(info.memory.totalBytes || 0, 0);
-          const usedRam = formatBytes(info.memory.usedBytes || 0, 1);
-          
-          if (info.memory.frequencyMHz && info.memory.frequencyMHz > 0) {
-            ramDetail.textContent = `${totalRam} @ ${info.memory.frequencyMHz} MHz`;
-          } else {
-            ramDetail.textContent = `${usedRam} / ${totalRam}`;
-          }
-        }
+      // RAM
+      if (info.memory) {
+        const ramP = Math.round(info.memory.usagePercent || 0);
+        ramValue.innerHTML = `${ramP}<span class="percent">%</span>`;
+        setRing(ramRing, ramP);
+        const totalRam = formatBytes(info.memory.totalBytes || 0, 0);
+        const usedRam = formatBytes(info.memory.usedBytes || 0, 1);
 
-        // GPU
-        if (info.gpu) {
-          gpuName.textContent = info.gpu.name || 'Unknown GPU';
-          gpuName.title = info.gpu.name || '';
-          
-          if (info.gpu.usagePercent !== undefined) {
-             const gpuP = Math.round(info.gpu.usagePercent);
-             gpuValue.textContent = `${gpuP}%`;
-             gpuBar.style.width = `${gpuP}%`;
-             if (gpuP > 90) gpuBar.style.background = 'var(--accent-red)';
-             else gpuBar.style.background = 'var(--accent-purple)';
-          }
-
-          gpuVramLabel.style.display = 'inline-block';
-          if (info.gpu.dedicatedVideoMemoryBytes > 0) {
-            gpuVramLabel.textContent = formatBytes(info.gpu.dedicatedVideoMemoryBytes, 0);
-          } else if (info.gpu.sharedSystemMemoryBytes > 0) {
-            gpuVramLabel.textContent = formatBytes(info.gpu.sharedSystemMemoryBytes, 0);
-          } else {
-            gpuVramLabel.style.display = 'none';
-          }
-        }
-
-        // Battery
-        if (info.battery && info.battery.available) {
-          const batP = info.battery.percent || 0;
-          batValue.textContent = `${batP}%`;
-          batBar.style.width = `${batP}%`;
-          
-          if (info.battery.charging || info.battery.acLineOnline) {
-            chargeIcon.style.display = 'inline-block';
-            batDetail.textContent = "AC Power";
-            batBar.style.background = 'var(--accent-cyan)';
-          } else {
-            chargeIcon.style.display = 'none';
-            batBar.style.background = batP < 20 ? 'var(--accent-red)' : 'var(--accent-green)';
-            const life = info.battery.lifeSeconds || 0;
-            const hrs = Math.floor(life / 3600);
-            const mins = Math.floor((life % 3600) / 60);
-            batDetail.textContent = life > 0 && life < 86400 
-                ? `${hrs}h ${mins}m left` 
-                : `On Battery`;
-          }
+        if (info.memory.frequencyMHz && info.memory.frequencyMHz > 0) {
+          ramDetail.textContent = `${totalRam} @ ${info.memory.frequencyMHz} MHz`;
         } else {
-          batValue.textContent = "AC";
-          batBar.style.width = `100%`;
+          ramDetail.textContent = `${usedRam} / ${totalRam}`;
+        }
+      }
+
+      // GPU
+      if (info.gpu) {
+        gpuName.textContent = info.gpu.name || 'Unknown GPU';
+        gpuName.title = info.gpu.name || '';
+
+        if (info.gpu.usagePercent !== undefined) {
+          const gpuP = Math.round(info.gpu.usagePercent);
+          gpuValue.textContent = `${gpuP}%`;
+          gpuBar.style.width = `${gpuP}%`;
+          if (gpuP > 90) gpuBar.style.background = 'var(--accent-red)';
+          else gpuBar.style.background = 'var(--accent-purple)';
+        }
+
+        gpuVramLabel.style.display = 'inline-block';
+        if (info.gpu.dedicatedVideoMemoryBytes > 0) {
+          gpuVramLabel.textContent = formatBytes(info.gpu.dedicatedVideoMemoryBytes, 0);
+        } else if (info.gpu.sharedSystemMemoryBytes > 0) {
+          gpuVramLabel.textContent = formatBytes(info.gpu.sharedSystemMemoryBytes, 0);
+        } else {
+          gpuVramLabel.style.display = 'none';
+        }
+      }
+
+      // Battery
+      if (info.battery && info.battery.available) {
+        const batP = info.battery.percent || 0;
+        batValue.textContent = `${batP}%`;
+        batBar.style.width = `${batP}%`;
+
+        if (info.battery.charging || info.battery.acLineOnline) {
+          chargeIcon.style.display = 'inline-block';
+          batDetail.textContent = "AC Power";
           batBar.style.background = 'var(--accent-cyan)';
-          batDetail.textContent = "Desktop PC";
+        } else {
+          chargeIcon.style.display = 'none';
+          batBar.style.background = batP < 20 ? 'var(--accent-red)' : 'var(--accent-green)';
+          const life = info.battery.lifeSeconds || 0;
+          const hrs = Math.floor(life / 3600);
+          const mins = Math.floor((life % 3600) / 60);
+          batDetail.textContent = life > 0 && life < 86400
+            ? `${hrs}h ${mins}m left`
+            : `On Battery`;
         }
+      } else {
+        batValue.textContent = "AC";
+        batBar.style.width = `100%`;
+        batBar.style.background = 'var(--accent-cyan)';
+        batDetail.textContent = "Desktop PC";
+      }
 
-        // Network
-        if (info.network) {
-          const downBps = info.network.downloadBytesPerSecond || 0;
-          const upBps = info.network.uploadBytesPerSecond || 0;
-          netDown.textContent = formatBytes(downBps) + '/s';
-          netUp.textContent = formatBytes(upBps) + '/s';
-          if (netDown2) netDown2.textContent = formatBytes(downBps) + '/s';
-          if (netUp2) netUp2.textContent = formatBytes(upBps) + '/s';
-          if (netTotalDown) netTotalDown.textContent = formatBytes(info.network.totalReceivedBytes || 0, 1);
-          if (netTotalUp) netTotalUp.textContent = formatBytes(info.network.totalSentBytes || 0, 1);
+      // Network
+      if (info.network) {
+        const downBps = info.network.downloadBytesPerSecond || 0;
+        const upBps = info.network.uploadBytesPerSecond || 0;
+        netDown.textContent = formatBytes(downBps) + '/s';
+        netUp.textContent = formatBytes(upBps) + '/s';
+        if (netDown2) netDown2.textContent = formatBytes(downBps) + '/s';
+        if (netUp2) netUp2.textContent = formatBytes(upBps) + '/s';
+        if (netTotalDown) netTotalDown.textContent = formatBytes(info.network.totalReceivedBytes || 0, 1);
+        if (netTotalUp) netTotalUp.textContent = formatBytes(info.network.totalSentBytes || 0, 1);
 
-          // Update graph data
-          downHistory.shift();
-          downHistory.push(downBps);
-          upHistory.shift();
-          upHistory.push(upBps);
-          
-          if (ctx || ctx2) drawNetworkGraph();
-        }
+        // Update graph data
+        downHistory.shift();
+        downHistory.push(downBps);
+        upHistory.shift();
+        upHistory.push(upBps);
 
-        // Update Panel 2 (CPU/Memory Details)
-        if (info.cpu && cpuDetailList) {
-          const cpuP = Math.round(info.cpu.usagePercent || 0);
-          cpuDetailList.innerHTML = `
+        if (ctx || ctx2) drawNetworkGraph();
+      }
+
+      // Update Panel 2 (CPU/Memory Details)
+      if (info.cpu && cpuDetailList) {
+        const cpuP = Math.round(info.cpu.usagePercent || 0);
+        cpuDetailList.innerHTML = `
             <div class="detail-item">
               <span class="detail-label">Model</span>
               <span class="detail-val" title="${info.cpu.name || '?'}">${info.cpu.name || '?'}</span>
@@ -330,11 +330,11 @@ async function startMonitoring() {
               </div>
             </div>
           `;
-        }
+      }
 
-        if (info.memory && memDetailList) {
-          const memP = Math.round(info.memory.usagePercent || 0);
-          let memHtml = `
+      if (info.memory && memDetailList) {
+        const memP = Math.round(info.memory.usagePercent || 0);
+        let memHtml = `
             <div class="detail-item" style="border:none; padding:0; flex-direction:column; gap:0.2rem; margin-bottom:0.4rem;">
               <div style="display:flex; justify-content:space-between;">
                 <span class="detail-label">RAM Usage</span>
@@ -357,26 +357,26 @@ async function startMonitoring() {
               <span class="detail-val">${info.memory.frequencyMHz || '?'} MHz</span>
             </div>
           `;
-          if (info.memory.modules && info.memory.modules.length > 0) {
-             memHtml += info.memory.modules.map(mod => `
+        if (info.memory.modules && info.memory.modules.length > 0) {
+          memHtml += info.memory.modules.map(mod => `
                 <div class="detail-item">
                   <span class="detail-label" title="${mod.locator}">${mod.locator || 'DIMM'}</span>
                   <span class="detail-val">${formatBytes(mod.sizeBytes, 1)} @ ${mod.speedMHz || mod.frequencyMHz}MHz</span>
                 </div>
              `).join('');
-          }
-          memDetailList.innerHTML = memHtml;
         }
+        memDetailList.innerHTML = memHtml;
+      }
 
-        // Update Panel 3 (Disk Details)
-        if (info.disk && info.disk.drives && diskDetailList) {
-          diskDetailList.innerHTML = info.disk.drives.map(drive => {
-             const total = drive.totalBytes || 1;
-             const free = drive.freeBytes || 0;
-             const used = drive.usedBytes !== undefined ? drive.usedBytes : (total - free);
-             const diskP = Math.round((used / total) * 100) || 0;
-             const barColor = diskP > 90 ? 'var(--accent-red)' : 'var(--accent-blue)';
-             return `
+      // Update Panel 3 (Disk Details)
+      if (info.disk && info.disk.drives && diskDetailList) {
+        diskDetailList.innerHTML = info.disk.drives.map(drive => {
+          const total = drive.totalBytes || 1;
+          const free = drive.freeBytes || 0;
+          const used = drive.usedBytes !== undefined ? drive.usedBytes : (total - free);
+          const diskP = Math.round((used / total) * 100) || 0;
+          const barColor = diskP > 90 ? 'var(--accent-red)' : 'var(--accent-blue)';
+          return `
               <div class="disk-drive">
                 <div class="disk-header">
                   <span class="detail-label" style="display: flex; align-items: center; gap: 4px;">
@@ -399,37 +399,37 @@ async function startMonitoring() {
                 </div>
               </div>
              `;
-          }).join('');
-        }
-
-        // Update Micro Mode
-        if (info.cpu) {
-          const p = Math.round(info.cpu.usagePercent || 0);
-          if (microCpuValue) microCpuValue.innerHTML = `${p}<span class="percent">%</span>`;
-          if (microCpuRing) setRing(microCpuRing, p);
-        }
-        if (info.memory) {
-          const p = Math.round(info.memory.usagePercent || 0);
-          if (microRamValue) microRamValue.innerHTML = `${p}<span class="percent">%</span>`;
-          if (microRamRing) setRing(microRamRing, p);
-        }
-        if (info.gpu) {
-          const p = Math.round(info.gpu.usagePercent || 0);
-          if (microGpuValue) microGpuValue.innerHTML = `${p}<span class="percent">%</span>`;
-          if (microGpuRing) setRing(microGpuRing, p);
-        }
-        if (info.battery && info.battery.available) {
-          const life = info.battery.percent || 0;
-          if (microBatValue) microBatValue.innerHTML = `${life}<span class="percent">%</span>`;
-          if (microBatRing) setRing(microBatRing, life, true);
-        } else {
-          if (microBatValue) microBatValue.innerHTML = `AC`;
-          if (microBatRing) setRing(microBatRing, 100, true);
-        }
-
-      } catch (err) {
-        console.error("Error updating SysMonitor UI:", err);
+        }).join('');
       }
+
+      // Update Micro Mode
+      if (info.cpu) {
+        const p = Math.round(info.cpu.usagePercent || 0);
+        if (microCpuValue) microCpuValue.innerHTML = `${p}<span class="percent">%</span>`;
+        if (microCpuRing) setRing(microCpuRing, p);
+      }
+      if (info.memory) {
+        const p = Math.round(info.memory.usagePercent || 0);
+        if (microRamValue) microRamValue.innerHTML = `${p}<span class="percent">%</span>`;
+        if (microRamRing) setRing(microRamRing, p);
+      }
+      if (info.gpu) {
+        const p = Math.round(info.gpu.usagePercent || 0);
+        if (microGpuValue) microGpuValue.innerHTML = `${p}<span class="percent">%</span>`;
+        if (microGpuRing) setRing(microGpuRing, p);
+      }
+      if (info.battery && info.battery.available) {
+        const life = info.battery.percent || 0;
+        if (microBatValue) microBatValue.innerHTML = `${life}<span class="percent">%</span>`;
+        if (microBatRing) setRing(microBatRing, life, true);
+      } else {
+        if (microBatValue) microBatValue.innerHTML = `AC`;
+        if (microBatRing) setRing(microBatRing, 100, true);
+      }
+
+    } catch (err) {
+      console.error("Error updating SysMonitor UI:", err);
+    }
   };
 
   try {
@@ -444,8 +444,8 @@ async function startMonitoring() {
     setTimeout(() => {
       if (!hasReceivedTick) {
         console.warn("Watch callback never fired! Falling back to setInterval + getSnapshot...");
-        if (watchId) desktop.systemInfo.unwatch(watchId).catch(() => {});
-        
+        if (watchId) desktop.systemInfo.unwatch(watchId).catch(() => { });
+
         setInterval(async () => {
           try {
             const snap = await desktop.systemInfo.getSnapshot();

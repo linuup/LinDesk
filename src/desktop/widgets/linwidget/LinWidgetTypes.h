@@ -32,6 +32,7 @@ struct WidgetManifest {
     bool autoLoad = false;
     QString entry;
     QString settings;
+    QString icon;
     QStringList permissions;
 };
 
@@ -59,6 +60,7 @@ struct WidgetRegistryEntry {
     QString version;
     QString author;
     QString description;
+    QString icon;
     QString packagePath;
     QString runtimeType;
     QSize defaultSize;

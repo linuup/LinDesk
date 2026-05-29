@@ -111,7 +111,11 @@ WidgetRegistryEntry WidgetRegistryManager::entryById(const QString& id) const
     if (m_entries.contains(installedKey)) {
         return m_entries.value(installedKey);
     }
-    return m_entries.value(registryKey(id, true));
+    const QString developmentKey = registryKey(id, true);
+    if (m_entries.contains(developmentKey)) {
+        return m_entries.value(developmentKey);
+    }
+    return m_entries.value(normalizedId(id));
 }
 
 bool WidgetRegistryManager::syncFromFolder(const QString& widgetsDir, QString* errorMessage)
@@ -159,12 +163,17 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
 
     const QString now = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     WidgetRegistryEntry entry = m_entries.value(registryKey(manifest.id, false));
+    const WidgetRegistryEntry legacyEntry = m_entries.value(normalizedId(manifest.id));
     if (entry.id.isEmpty()) {
-        entry.id = manifest.id;
-        entry.enabled = true;
-        entry.trusted = false;
-        entry.installedAt = now;
-        entry.lastRunState = QStringLiteral("stopped");
+        if (!legacyEntry.id.isEmpty() && !legacyEntry.isDevelopment) {
+            entry = legacyEntry;
+        } else {
+            entry.id = manifest.id;
+            entry.enabled = true;
+            entry.trusted = false;
+            entry.installedAt = now;
+            entry.lastRunState = QStringLiteral("stopped");
+        }
     }
 
     entry.id = manifest.id;
@@ -172,6 +181,7 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
     entry.version = manifest.version;
     entry.author = manifest.author;
     entry.description = manifest.description;
+    entry.icon = manifest.icon;
     entry.packagePath = QFileInfo(packagePath).absoluteFilePath();
     entry.runtimeType = runtimeTypeToString(manifest.type);
     entry.defaultSize = QSize(manifest.width, manifest.height);
@@ -183,6 +193,7 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
     entry.updatedAt = now;
 
     m_entries.insert(registryKey(manifest.id, false), entry);
+    m_entries.remove(normalizedId(manifest.id));
     if (errorMessage) {
         errorMessage->clear();
     }
@@ -219,6 +230,7 @@ bool WidgetRegistryManager::addDevelopmentProject(const QString& sourcePath, QSt
     entry.version = manifest.version;
     entry.author = manifest.author;
     entry.description = manifest.description;
+    entry.icon = manifest.icon;
     entry.packagePath = QFileInfo(sourcePath).absoluteFilePath();
     entry.runtimeType = runtimeTypeToString(manifest.type);
     entry.defaultSize = QSize(manifest.width, manifest.height);
@@ -335,6 +347,9 @@ bool WidgetRegistryManager::setLastRunState(const QString& id, bool isDevelopmen
 bool WidgetRegistryManager::setPermissionsGranted(const QString& id, bool isDevelopment, const QStringList& permissions)
 {
     auto it = m_entries.find(registryKey(id, isDevelopment));
+    if (it == m_entries.end()) {
+        it = m_entries.find(normalizedId(id));
+    }
     if (it == m_entries.end()) {
         return false;
     }

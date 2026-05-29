@@ -106,7 +106,6 @@ private:
     FluentToggleSwitch* m_embedToggle = nullptr;
     FluentToggleSwitch* m_persistToggle = nullptr;
     FluentToggleSwitch* m_linWidgetEnabledToggle = nullptr;
-    FluentToggleSwitch* m_linWidgetEmbedToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBoundsToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBlockedCellsToggle = nullptr;
     QCheckBox* m_linWidgetNetworkPermissionCheck = nullptr;

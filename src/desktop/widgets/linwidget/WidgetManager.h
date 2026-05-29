@@ -1,7 +1,5 @@
 #pragma once
 
-#include "desktop/widgets/linwidget/WidgetHostController.h"
-#include "desktop/widgets/linwidget/WidgetIpcManager.h"
 #include "desktop/widgets/linwidget/LayoutManager.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
 #include "services/SystemInfo/SystemInfoService.h"
@@ -14,6 +12,8 @@
 #include <qwindowdefs.h>
 
 namespace LinWidget {
+
+class LinWidgetWebViewRuntime;
 
 class WidgetManager : public QObject {
     Q_OBJECT
@@ -46,8 +46,6 @@ public:
     WId hostParentWindow() const;
     void setDesktopLayerWindow(WId layerWindow);
     WId desktopLayerWindow() const;
-    void setEmbedInDesktopLayer(bool enabled);
-    bool embedInDesktopLayer() const;
     void setShowWebViewBounds(bool enabled);
     bool showWebViewBounds() const;
     void syncWidgetWindowLayer(const QString& instanceId);
@@ -64,7 +62,6 @@ signals:
 
 private:
     QString makeInstanceId(const WidgetManifest& manifest) const;
-    QString ipcServerName() const;
     bool ensureSharedHost(QString* errorMessage = nullptr);
     void restartSharedHost();
     void sendHostOptionsToSharedHost();
@@ -72,7 +69,7 @@ private:
     bool launchWidgetInstance(const WidgetInstance& instance,
                               const WidgetLayoutState& layoutState,
                               QString* errorMessage = nullptr);
-    void handleIpcMessage(const QString& widgetId, const QJsonObject& message);
+    void handleRuntimeMessage(const QString& widgetId, const QJsonObject& message);
     void handleSystemInfoRequest(const QJsonObject& message);
     void sendSystemInfoResponse(const QString& instanceId,
                                 const QString& requestId,
@@ -86,10 +83,11 @@ private:
     void stopSystemInfoWatchesForInstance(const QString& instanceId);
     int visibleWidgetCount() const;
     bool sharedWebViewMissingForVisibleWidgets() const;
-    bool sendGeometryToHost(const QString& instanceId, const QRect& geometry);
+    void sendGeometryToHost(const QString& instanceId, const QRect& geometry);
+    bool sendMessageToSharedRuntime(const QJsonObject& message);
     void resendVisibleWidgetsToSharedHost();
     bool sharedHostLayerNeedsRecovery() const;
-    void checkHeartbeats();
+    void checkRuntimeHealth();
     void scheduleSaveToConfig();
     void saveToDefaultConfig();
     void configureDevelopmentWatcher(const WidgetInstance& instance);
@@ -97,7 +95,6 @@ private:
     QStringList watchedFilesForPackage(const QString& packagePath) const;
     QStringList watchedDirectoriesForPackage(const QString& packagePath) const;
 
-    WidgetIpcManager m_ipc;
     LayoutManager m_layout;
     PermissionManager m_permissions;
     WId m_hostParentWindow = 0;
@@ -105,19 +102,19 @@ private:
     WId m_sharedWebViewWindow = 0;
     QString m_sharedWebViewWindowClass;
     QHash<QString, WId> m_widgetWindows;
-    QHash<QString, WidgetHostController*> m_hosts;
-    QTimer m_heartbeatTimer;
+    QSet<QString> m_runningWidgets;
+    QTimer m_runtimeHealthTimer;
     QTimer m_saveTimer;
     QHash<QString, QFileSystemWatcher*> m_developmentWatchers;
     QHash<QString, QTimer*> m_developmentReloadTimers;
     QHash<QString, QTimer*> m_systemInfoWatchTimers;
     SystemInfo::SystemInfoService m_systemInfoService;
-    WidgetHostController* m_sharedHost = nullptr;
+    LinWidgetWebViewRuntime* m_webViewRuntime = nullptr;
     QHash<QString, WidgetInstance> m_instances;
     bool m_stoppingAll = false;
-    bool m_embedInDesktopLayer = true;
     bool m_showWebViewBounds = false;
     bool m_enabled = true;
 };
 
 }
+

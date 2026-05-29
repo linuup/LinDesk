@@ -37,6 +37,9 @@ class FluentToggleSwitch;
 class FluentCard;
 class FluentComboBox;
 class FluentColorWheel;
+namespace LinWidget {
+struct WidgetManifest;
+}
 
 class SettingUI : public FluentBaseWidget {
     Q_OBJECT
@@ -90,16 +93,27 @@ private:
     void refreshLinWidgetSettingsButtons();
     void refreshLinWidgetSettingsInspector();
     void refreshLinWidgetSettingsRunningMaps();
+    void openLinWidgetSettingsDrawer(QListWidgetItem* item);
+    void selectAndOpenLinWidgetSettingsItem(QListWidgetItem* item);
     void loadSelectedSettingsLinWidget();
     void unloadSelectedSettingsLinWidget();
     void reloadSelectedSettingsLinWidget();
     void installOfficialSettingsLinWidget(const QString& packagePath);
     void resetOfficialSettingsLinWidget(const QString& packagePath);
+    bool launchInstalledSettingsLinWidget(const QString& packagePath,
+                                          const LinWidget::WidgetManifest& manifest,
+                                          QString* instanceId,
+                                          QString* errorMessage);
     void addDevelopmentSettingsLinWidget();
     void createDevelopmentSettingsLinWidget();
     void exportDevelopmentSettingsLinWidget();
     void deleteSelectedSettingsLinWidget();
     void setSelectedSettingsLinWidgetPermission(const QString& permission, bool granted);
+    void setSettingsLinWidgetPermission(const QString& registryId,
+                                        const QString& packagePath,
+                                        const QString& selectedKey,
+                                        const QString& permission,
+                                        bool granted);
     QListWidget* activeSettingsLinWidgetList() const;
     QString selectedSettingsLinWidgetPackagePath() const;
     QString selectedSettingsLinWidgetRegistryId() const;
@@ -109,6 +123,7 @@ private:
     QString settingsLinWidgetRegistryKey(const QString& id, bool isDevelopment) const;
     QString settingsLinWidgetPackageKey(const QString& packagePath) const;
     QString settingsLinWidgetLogPath(const QString& instanceId) const;
+    bool m_preserveLinWidgetDrawerOnReload = false;
 
     QPointer<LinBox> m_targetBox;
     QVector<QPointer<LinBox>> m_allBoxes;

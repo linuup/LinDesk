@@ -691,7 +691,6 @@ LinWidget::WidgetManager* ListViewDebugPanel::linWidgetManager()
         }
         QSettings settings(debugConfigPath(), QSettings::IniFormat);
         m_linWidgetManager->setEnabled(settings.value("LinWidgets/Enabled", true).toBool());
-        m_linWidgetManager->setEmbedInDesktopLayer(settings.value("LinWidgets/EmbedInDesktopLayer", true).toBool());
         refreshLinWidgetRunningMaps();
         connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetLaunched, this, [this](const QString& instanceId) {
             if (m_linWidgetsPageStatusLabel) {
@@ -982,7 +981,7 @@ QString ListViewDebugPanel::selectedLinWidgetInstanceIdForLog() const
 
     const QString registryId = selectedLinWidgetRegistryId().trimmed().toLower();
     if (registryId.isEmpty()) {
-        return QString();
+        return QStringLiteral("__shared__");
     }
     return QStringLiteral("%1:%2").arg(selectedLinWidgetIsDevelopment() ? QStringLiteral("dev") : QStringLiteral("installed"),
                                        registryId);
@@ -1554,7 +1553,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
                         : QStringLiteral("LinWidgets runtime enabled, restore warning: %1").arg(errorMessage));
                 }
             } else if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText(QStringLiteral("LinWidgets runtime disabled. WidgetHost and IPC resources released."));
+                m_linWidgetsPageStatusLabel->setText(QStringLiteral("LinWidgets runtime disabled. WebView runtime and IPC resources released."));
             }
         }
 
@@ -1564,28 +1563,8 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         updateLinWidgetLogViewer();
     });
     addCompactSwitch(QStringLiteral("Runtime"),
-                     QStringLiteral("Master switch for the shared WebView runtime. Turning it off unloads widgets and stops WidgetHost."),
+                     QStringLiteral("Master switch for the shared WebView runtime. Turning it off unloads widgets and stops the WebView runtime."),
                      m_linWidgetEnabledToggle);
-
-    m_linWidgetEmbedToggle = new FluentToggleSwitch(page);
-    m_linWidgetEmbedToggle->setChecked(settings.value("LinWidgets/EmbedInDesktopLayer", true).toBool(), false);
-    connect(m_linWidgetEmbedToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
-        QSettings s(debugConfigPath(), QSettings::IniFormat);
-        s.setValue("LinWidgets/EmbedInDesktopLayer", checked);
-        s.sync();
-        if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-            manager->setEmbedInDesktopLayer(checked);
-            manager->syncAllWidgetWindowLayers();
-        }
-        if (m_linWidgetsPageStatusLabel) {
-            m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("Shared WidgetHost embedded into the desktop layer.")
-                : QStringLiteral("Shared WidgetHost launched as a separate window."));
-        }
-    });
-    addCompactSwitch(QStringLiteral("Embed Host"),
-                     QStringLiteral("Attach shared WidgetHost to the desktop layer. Turning this off uses a separate top level host window."),
-                     m_linWidgetEmbedToggle);
 
     m_linWidgetBoundsToggle = new FluentToggleSwitch(page);
     m_linWidgetBoundsToggle->setChecked(settings.value("LinWidgets/ShowWebViewBounds", false).toBool(), false);
@@ -2113,3 +2092,4 @@ void ListViewDebugPanel::applyTextPreviewOptions()
     options.alignment = Qt::AlignHCenter | Qt::AlignVCenter;
     m_textPreview->setRendererOptions(options);
 }
+
