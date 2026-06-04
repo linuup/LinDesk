@@ -73,7 +73,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 
 	ListItemData(IconItem item) {
 		setIconItem(item);
-		m_fileInfo = QFileInfo(QString(item.path.c_str()).replace("LNK", "lnk"));
+		m_fileInfo = QFileInfo(QString(item.path).replace("LNK", "lnk"));
 		setPIDL(item.pidl_p);
 		const SpecialFolders resolvedType =
 			(item.shortcutTargetSpecialFolder != SpecialFolders::Empty &&
@@ -81,16 +81,14 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 				? item.shortcutTargetSpecialFolder
 				: item.specialFolder;
 		setItemDateType(resolvedType);
-		m_fullName = QString::fromStdString(item.name.c_str());
-		if (item.shortcutTargetSpecialFolder != SpecialFolders::Empty && item.shortcutTargetSpecialFolder != SpecialFolders::UnknownFolder && !item.shortcutTargetPath.empty()) {
-			m_clsid = QString::fromStdString(item.shortcutTargetPath.c_str());
+		m_fullName = item.name;
+		if (item.shortcutTargetSpecialFolder != SpecialFolders::Empty && item.shortcutTargetSpecialFolder != SpecialFolders::UnknownFolder && !item.shortcutTargetPath.isEmpty()) {
+			m_clsid = item.shortcutTargetPath;
 		} else {
-			m_clsid = QString::fromStdString(m_iconItem.path.c_str());
+			m_clsid = m_iconItem.path;
 		}
 
 		initIcon();
-		/*qDebug() << "\nFullName:" << m_fullName;
-		qDebug() << "\nPath:" << QString::fromStdString(item.path.c_str());*/
 	};
 
 	void setIconItem(const IconItem& item) {
@@ -203,7 +201,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 		}
 	}
 	void setItemDateType(const SpecialFolders type) {
-		const QString rawPath = QString::fromStdString(m_iconItem.path);
+		const QString rawPath = m_iconItem.path;
 		m_specialFolderType = SpecialFolders::Empty;
 		m_fileForm = resolveFileForm(rawPath);
 		m_targetKind = resolveTargetKind(rawPath, type);
@@ -222,7 +220,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 
 // const IconItem& iconItem() const { return m_iconItem; }
 	const QString& fullName() const { return m_fullName; }
-	const QString filePath() const { return QString(m_iconItem.path.c_str()); }
+	const QString filePath() const { return m_iconItem.path; }
 	const QFileInfo& fileInfo() const { return m_fileInfo; }
 	const IconItem& itemData() const { return m_iconItem; }
 	const QIcon& icon() const { return m_icon; }
@@ -298,7 +296,7 @@ public:
 			// 2. 兜底方案：如果高度方案失败，尝试常规路径提取
 			if (newIcon.isNull()) {
 				SHFILEINFO sfi = { 0 };
-				std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
+				std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path).toStdWString();
 				if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
 					if (sfi.hIcon) {
 						newIcon = QtWin::fromHICON(sfi.hIcon);
@@ -333,7 +331,7 @@ public:
 		// 特殊处理 .appref-ms 文件获取图标
 		if (m_fileInfo.suffix().toLower() == "appref-ms") {
 			SHFILEINFO sfi = { 0 };
-			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
+			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path).toStdWString();
 			if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
 				if (sfi.hIcon) {
 					newIcon = QtWin::fromHICON(sfi.hIcon);
@@ -355,9 +353,9 @@ public:
 				}
 				else {
 					// --- 文件夹预览图 (Live Preview) ---
-					std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
+					QString nativePath = QDir::toNativeSeparators(m_iconItem.path);
 					// 使用固定的 256px 高素质预览图，避免缩放时产生撕裂 (Fix for bug: tearing after resize)
-					HBITMAP hBmp = CSystemApi::GetShellThumbnail(wPath.c_str(), 256, 256);
+					HBITMAP hBmp = CSystemApi::GetShellThumbnail(nativePath, 256, 256);
 					if (hBmp) {
 						newIcon = QIcon(QtWin::fromHBITMAP(hBmp, QtWin::HBitmapAlpha));
 						DeleteObject(hBmp);
@@ -376,7 +374,7 @@ public:
 		// Try the Windows Shell Jumbo Image List first for high-quality icons,
 		// then fall back to standard SHGetFileInfo.
 		if (newIcon.isNull()) {
-			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path.c_str()).toStdWString();
+			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path).toStdWString();
 			SHFILEINFOW sfi = { 0 };
 
 			// Attempt 1: Jumbo (256x256) via IImageList

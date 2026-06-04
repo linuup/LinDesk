@@ -21,6 +21,12 @@
 #include "CommonEnum.h"
 #include <codecvt>
 #include <unordered_map>
+
+#include <QString>
+#include <QStringList>
+#include <QPoint>
+#include <QVector>
+
 using namespace std;
 // //1 隐藏 0 显示
 #define MY_COMPUTER_CLS   "{20D04FE0-3AEA-1069-A2D8-08002B30309D}"//计算机/此电脑
@@ -33,8 +39,6 @@ using namespace std;
 #define LINUX_CLS         "{B2B4A4D1-2754-4140-A2EB-9A76D9D7CDC6}"//WSL
 #define ONE_DRIVE_CLS      "{018D5C66-4533-4307-9B53-224DE2ED1FE6}"//One Drive
 
-
-
 // 预定义的特殊项目的 GUID
 const GUID MyComputerGUID = { 0x20D04FE0, 0x3AEA, 0x1069, { 0xA2, 0xD8, 0x08, 0x00, 0x2B, 0x30, 0x30, 0x9D } }; // 我的电脑
 const GUID RecycleBinGUID = { 0x645FF040, 0x5081, 0x101B, { 0x9F, 0x08, 0x00, 0xAA, 0x00, 0x2F, 0x95, 0x4E } }; // 回收站
@@ -44,14 +48,15 @@ const GUID NetworkGUID = { 0xF02C1A0D, 0xBE21, 0x4350, { 0x88, 0xB0, 0x73, 0x67,
 const GUID UserFolderGUID = { 0x59031A47, 0x3F72, 0x44A7, { 0x89, 0xC5, 0x55, 0x95, 0xFE, 0x6B, 0x30, 0xEE } };// 用户文件夹
 const GUID LibrariesGUID = { 0x031E4825, 0x7B94, 0x4DC3, { 0xB1, 0x31, 0xE9, 0x46, 0xB4, 0x4C, 0x8D, 0xD5 } };// 库
 const GUID LinuxGUID = { 0xB2B4A4D1, 0x2754, 0x4140, { 0xA2, 0xEB, 0x9A, 0x76, 0xD9, 0xD7, 0xCD, 0xC6 } };// WSL
+
 //图标结构体
 struct IconItem
 {
-    std::string name;
-    std::string path;
-    std::string shortcutTargetPath;
-    std::string shortcutTargetDisplayName;
-    POINT position = { 0, 0 };
+    QString name;
+    QString path;
+    QString shortcutTargetPath;
+    QString shortcutTargetDisplayName;
+    QPoint position = { 0, 0 };
     LPITEMIDLIST pidl_p = nullptr;
     SpecialFolders specialFolder = SpecialFolders::Empty;
     SpecialFolders shortcutTargetSpecialFolder = SpecialFolders::Empty;
@@ -61,11 +66,9 @@ struct IconItem
         , specialFolder(SpecialFolders::Empty)
         , shortcutTargetSpecialFolder(SpecialFolders::Empty)
     {
-        position.x = 0;
-        position.y = 0;
     }
 };
-//  ?????????
+
 enum File_RightMenu_Operations {
     Z_OPEN,
     Z_EDIT,
@@ -84,77 +87,86 @@ enum PathType {
 
 class CSystemApi {
 public:
-	CSystemApi(void);
+    CSystemApi(void);
     ~CSystemApi();
 
-    static IconItem CreateIconItem(const wchar_t* filePath);
+    static IconItem CreateIconItem(const QString& filePath);
+    
     /*
     * 是不是快捷方式
-    *
     */
-    static bool IsLinkFile(const wchar_t* filePath);
+    static bool IsLinkFile(const QString& filePath);
+    
     /**
      * 删除文件的原生API函数
     */
-    static bool DeleteFileNative(const wchar_t* filePath);
+    static bool DeleteFileNative(const QString& filePath);
+    
     /**
      * 删除文件到回收站
-     * @param comfirm 是否弹出确认删除框
+     * @param confirm 是否弹出确认删除框
     */
-    static bool DeleteFileToRecycleBin(const wchar_t* filePath, bool comfirm = false);
+    static bool DeleteFileToRecycleBin(const QString& filePath, bool confirm = false);
+    
     /**
      * 批量删除文件
      * @param filePaths 文件路径列表
      * @param toRecycleBin 是否通过回收站
      * @param confirm 是否弹出确认对话框
      */
-    static bool DeleteFiles(const std::vector<std::wstring>& filePaths, bool toRecycleBin = true, bool confirm = true);
+    static bool DeleteFiles(const QStringList& filePaths, bool toRecycleBin = true, bool confirm = true);
+    
     /**
      * 批量拷贝文件
      */
-    static bool CopyFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir);
+    static bool CopyFiles(const QStringList& filePaths, const QString& destDir);
+    
     /**
      * 批量移动文件
      */
-    static bool MoveFiles(const std::vector<std::wstring>& filePaths, const std::wstring& destDir);
+    static bool MoveFiles(const QStringList& filePaths, const QString& destDir);
+    
     /**
      * 判断路径是文件还是目录，无效返回0，文件返回1，文件夹返回2
-     * @param 路径
+     * @param path 路径
     */
-    static PathType GetPathType(const wchar_t* path);
+    static PathType GetPathType(const QString& path);
+    
     /**
      * @brief 打开文件属性页面
      *
      * @param filePath 路径
      * @param operation 操作ID，见FileRightMenus枚举
     */
-    static void File_RightMenuOperations(const TCHAR* filePath, File_RightMenu_Operations operation);
+    static void File_RightMenuOperations(const QString& filePath, File_RightMenu_Operations operation);
 
     //获取ListView32句柄
     static HWND FindSysListView32();
+    
     /// <summary>
     /// 获取桌面的显示窗口
     /// </summary>
-    /// <returns></returns>
     static HWND FindRealDesktop();
+    
     /// <summary>
     /// 获取桌面句柄
     /// </summary>
-    /// <returns></returns>
-    HWND FindDesktop();
-    static HBITMAP GetShellThumbnail(const wchar_t* path, int width, int height);
+    static HWND FindDesktop();
+    
+    static HBITMAP GetShellThumbnail(const QString& path, int width, int height);
+    
     /**
     * @brief 获取桌面所有图标位置及名称
     *
-    * @param hwnd 桌面窗口句柄
+    * @param sysListView32 桌面窗口句柄
     * @return 图标信息数组
     */
-    vector<IconItem> GetDesktopIconsItems(HWND sysListView32);
-	/// <summary>
-	/// 获取所有桌面图标的PIDL
-	/// </summary>
-	/// <returns></returns>
-	vector<IconItem> GetDesktopPIDLItems();
+    static QVector<IconItem> GetDesktopIconsItems(HWND sysListView32);
+    
+    /// <summary>
+    /// 获取所有桌面图标的PIDL
+    /// </summary>
+    static QVector<IconItem> GetDesktopPIDLItems();
     
     /// <summary>
     /// 获取 Windows 桌面原生布局设置（自动排列、网格对齐）
@@ -164,33 +176,35 @@ public:
     /// <summary>
     /// 从dll中获取字符
     /// </summary>
-    /// <param name="filePath"></param>
-    static const char* GetTextFromDll(const char* filePath,int index);
+    static QString GetTextFromDll(const QString& filePath, int index);
+    
     /// <summary>
     /// 从dll中获取字符
     /// </summary>
-    /// <param name="filePath">@C:\Program Files (x86)\Common Files\Microsoft Shared\MSEnv\1033\VSLauncherUI.dll,-1002</param>
-    static const char* GetTextFromDll(const char* input);
+    static QString GetTextFromDll(const QString& input);
+    
 private:
-    //extern IconItem iconItem;
     static HWND global_SysListView32; //桌面图标句柄
     static HWND global_realDesktop; //桌面句柄
+    
     //获取桌面图标窗口回调
     static BOOL CALLBACK FindSysListView32Internal(HWND hwnd, LPARAM lparam);
     //获取桌面窗口回调
     static BOOL CALLBACK FindRealDesktopInternal(HWND hwnd, LPARAM lparam);
+    
     //读取桌面图标名称和坐标
-    void GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize);
-	//获取pidl类型
+    static void GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize);
+    
+    //获取pidl类型
     static SpecialFolders getFolderTypeFromName(const wchar_t* name);
 };
 
 /**
-*
 * 根据clsid打开对应程序，如程序面板，控制面板
 */
-int OpenCLSID(const wchar_t* clsidStr);
+static int OpenCLSID(const QString& clsidStr);
+
 //测试代码=========================================================
 #ifdef _DEBUG
-void WriteLocalFile(const vector<IconItem>* items);
+void WriteLocalFile(const QVector<IconItem>* items);
 #endif // DEBUG

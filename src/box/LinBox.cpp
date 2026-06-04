@@ -416,13 +416,13 @@ bool clipboardContainsCutItemsForBox()
     return isCutOperation;
 }
 
-std::vector<std::wstring> toNativeWStringPaths(const QStringList& paths)
+QStringList toNativeQStringListPaths(const QStringList& paths)
 {
-    std::vector<std::wstring> nativePaths;
+    QStringList nativePaths;
     nativePaths.reserve(paths.size());
     for (const QString& path : paths) {
         if (!path.isEmpty()) {
-            nativePaths.push_back(QDir::toNativeSeparators(path).toStdWString());
+            nativePaths.append(QDir::toNativeSeparators(path));
         }
     }
     return nativePaths;
@@ -2876,8 +2876,8 @@ bool LinBox::handleMappedBoxItemTargetDrop(const QStringList& sourcePaths,
 
     if (isFolderDropTarget(targetModel)) {
         const QString targetFolder = normalizeMappedFolderPath(targetPath);
-        const std::vector<std::wstring> srcPaths = toNativeWStringPaths(operationPaths);
-        if (targetFolder.isEmpty() || srcPaths.empty()) {
+        const QStringList srcPaths = toNativeQStringListPaths(operationPaths);
+        if (targetFolder.isEmpty() || srcPaths.isEmpty()) {
             qDebug() << "[MappedBoxDrop] ignored invalid folder operation"
                      << "targetFolder=" << targetFolder;
             return finishIgnored();
@@ -2887,9 +2887,9 @@ bool LinBox::handleMappedBoxItemTargetDrop(const QStringList& sourcePaths,
         if (preferShortcut) {
             ok = lv->createShortcutsInFolder(operationPaths, targetFolder);
         } else if (copyMode) {
-            ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
+            ok = CSystemApi::CopyFiles(srcPaths, targetFolder);
         } else {
-            ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
+            ok = CSystemApi::MoveFiles(srcPaths, targetFolder);
         }
 
         qDebug() << "[MappedBoxDrop] folder operation result"
@@ -3318,8 +3318,8 @@ void LinBox::dropEvent(QDropEvent* event) {
             event->accept();
             return;
         }
-        const std::vector<std::wstring> srcPaths = toNativeWStringPaths(operationPaths);
-        if (targetFolder.isEmpty() || srcPaths.empty()) {
+        const QStringList srcPaths = toNativeQStringListPaths(operationPaths);
+        if (targetFolder.isEmpty() || srcPaths.isEmpty()) {
             qDebug() << "[MappedBoxDrop] target background"
                      << "sources=" << operationPaths
                      << "target=" << targetFolder
@@ -3334,9 +3334,9 @@ void LinBox::dropEvent(QDropEvent* event) {
         if (preferShortcutForDrop) {
             ok = lv->createShortcutsInFolder(operationPaths, targetFolder);
         } else if (copyMode) {
-            ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
+            ok = CSystemApi::CopyFiles(srcPaths, targetFolder);
         } else {
-            ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
+            ok = CSystemApi::MoveFiles(srcPaths, targetFolder);
         }
 
         qDebug() << "[MappedBoxDrop] target background"
@@ -3524,13 +3524,13 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
 
             if (isFolderMapped()) {
                 const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
-                const std::vector<std::wstring> srcPaths = toNativeWStringPaths(filePaths);
+                const QStringList srcPaths = toNativeQStringListPaths(filePaths);
                 if (preferShortcut) {
                     ok = lv->createShortcutsInFolder(filePaths, targetFolder);
                 } else if (isCutOperation) {
-                    ok = CSystemApi::MoveFiles(srcPaths, targetFolder.toStdWString());
+                    ok = CSystemApi::MoveFiles(srcPaths, targetFolder);
                 } else {
-                    ok = CSystemApi::CopyFiles(srcPaths, targetFolder.toStdWString());
+                    ok = CSystemApi::CopyFiles(srcPaths, targetFolder);
                 }
                 if (ok) {
                     lv->reloadMappedFolderBox(this);

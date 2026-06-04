@@ -200,7 +200,7 @@ void initDesktopRootItemModel(DesktopRootItemModel& model, const ListItemData& d
     model.objectType = data.type();
     model.specialFolder = data.specialFolderType();
     model.clsid = data.getCLSID();
-    model.filePath = (model.objectType == ObjectType::SpecialFolder) ? QString::fromStdString(data.itemData().path) : data.filePath();
+    model.filePath = (model.objectType == ObjectType::SpecialFolder) ? data.itemData().path : data.filePath();
     model.normalizedPath = QDir::toNativeSeparators(model.filePath);
     while (model.normalizedPath.endsWith('\\')) model.normalizedPath.chop(1);
     model.fileInfo = QFileInfo(model.filePath);
@@ -370,6 +370,6 @@ bool openDesktopRootItem(const DesktopRootItemModel& model)
         return reinterpret_cast<INT_PTR>(result) > 32;
     }
 
-    CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(nativePath.utf16()), Z_OPEN);
+    CSystemApi::File_RightMenuOperations(nativePath, Z_OPEN);
     return true;
 }

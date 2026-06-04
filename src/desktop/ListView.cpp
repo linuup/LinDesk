@@ -3618,14 +3618,14 @@ void ListView::dropEvent(QDropEvent* event)
             if (copyMode) {
                 ok = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
             } else {
-                std::vector<std::wstring> srcPaths;
+                QStringList srcPaths;
                 for (const QString& localPath : draggedPaths) {
                     if (!localPath.isEmpty()) {
-                        srcPaths.push_back(QDir::toNativeSeparators(localPath).toStdWString());
+                        srcPaths.append(QDir::toNativeSeparators(localPath));
                     }
                 }
-                if (!srcPaths.empty()) {
-                    ok = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir).toStdWString());
+                if (!srcPaths.isEmpty()) {
+                    ok = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir));
                 }
             }
 
@@ -3767,17 +3767,16 @@ void ListView::dropEvent(QDropEvent* event)
     } else {
         // --- 濠电姰鍨奸崺鏍偋閻樿纾块柟缁㈠枛缁狀垶鏌″畵顔煎暙濮规煡姊绘笟鍥т簼婵″弶甯炲▎?---
         QString desktopDir = m_desktopDir;
-        std::vector<std::wstring> srcPaths;
+        QStringList srcPaths;
         for (const QString& local : draggedPaths) {
             if (!local.isEmpty() && QDir::toNativeSeparators(local) != QDir::toNativeSeparators(desktopDir)) {
-                srcPaths.push_back(QDir::toNativeSeparators(local).toStdWString());
+                srcPaths.append(QDir::toNativeSeparators(local));
             }
         }
         
-        if (!srcPaths.empty()) {
+        if (!srcPaths.isEmpty()) {
             qDebug() << "External drop into Desktop:" << desktopDir;
-            // 闂佽崵濮撮鍛村疮娴兼潙鏋?Shell API 闂佸搫顦弲婊呯矙閺嶎厹鈧線骞嬮敃鈧粻顖炴煟閵堝骸鐏ｆい锔诲櫍閺?濠电儑绲藉ú锔炬崲閸愵亖鍋?confirm 濠?true闂?
-            CSystemApi::CopyFiles(srcPaths, desktopDir.toStdWString());
+            CSystemApi::CopyFiles(srcPaths, desktopDir);
         }
     }
     applyAutoArrangeAfterDesktopMutation(true, false);
@@ -3905,7 +3904,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
                 ? (selectedBoxPaths().isEmpty() ? QString() : selectedBoxPaths().first())
                 : focusedItemPath());
         if (desktopTarget && !desktopTarget->model.filePath.isEmpty()) {
-            CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(QDir::toNativeSeparators(desktopTarget->model.filePath).utf16()), Z_PROPERTIES);
+            CSystemApi::File_RightMenuOperations(QDir::toNativeSeparators(desktopTarget->model.filePath), Z_PROPERTIES);
             event->accept();
             qDebug() << "Alt+Enter triggered: Opened properties for" << desktopTarget->model.displayName;
             return;
@@ -4095,8 +4094,8 @@ void ListView::initialize()
         initDesktopRootItemModel(state.model, data, context);
 
         const QPoint nativePos(
-            state.model.fileInfo.absoluteFilePath().isEmpty() ? 0 : data.itemData().position.x,
-            state.model.fileInfo.absoluteFilePath().isEmpty() ? 0 : data.itemData().position.y);
+            state.model.fileInfo.absoluteFilePath().isEmpty() ? 0 : data.itemData().position.x(),
+            state.model.fileInfo.absoluteFilePath().isEmpty() ? 0 : data.itemData().position.y());
 
         state.model.position = (nativePos.x() != 0 || nativePos.y() != 0)
             ? nativePos
@@ -4110,7 +4109,7 @@ void ListView::initialize()
     // 1. Gather all unique physical coordinates from the entire system desktop
     QVector<QPoint> nativeSlots;
     for (const auto& data : allDatas) {
-        QPoint p(data.itemData().position.x, data.itemData().position.y);
+        QPoint p(data.itemData().position.x(), data.itemData().position.y());
         if (p.x() != 0 || p.y() != 0) {
             if (!nativeSlots.contains(p)) {
                 nativeSlots.append(p);
@@ -7118,13 +7117,13 @@ void ListView::onMenuPaste() {
     bool ok = true;
 
     if (isCutOperation) {
-        std::vector<std::wstring> srcPaths;
+        QStringList srcPaths;
         srcPaths.reserve(filePaths.size());
         for (const QString& filePath : filePaths) {
-            srcPaths.push_back(QDir::toNativeSeparators(filePath).toStdWString());
+            srcPaths.append(QDir::toNativeSeparators(filePath));
         }
 
-        const std::wstring desktopDir = QDir::toNativeSeparators(m_desktopDir).toStdWString();
+        const QString desktopDir = QDir::toNativeSeparators(m_desktopDir);
         ok = CSystemApi::MoveFiles(srcPaths, desktopDir);
     } else {
         ok = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(filePaths, m_desktopDir);
@@ -7865,23 +7864,23 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
                     !targetFolder.isEmpty() &&
                     targetBox->mappedFolderState() == LinBox::MappedFolderState::Normal;
 
-                std::vector<std::wstring> srcPaths;
+                QStringList srcPaths;
                 if (canWriteMappedFolder) {
                     for (const QString& draggedPath : draggedPaths) {
                         if (!draggedPath.isEmpty()) {
-                            srcPaths.push_back(QDir::toNativeSeparators(draggedPath).toStdWString());
+                            srcPaths.append(QDir::toNativeSeparators(draggedPath));
                         }
                     }
                 }
 
                 bool ok = false;
-                if (canWriteMappedFolder && !srcPaths.empty()) {
+                if (canWriteMappedFolder && !srcPaths.isEmpty()) {
                     if (preferShortcut) {
                         ok = createShortcutsInFolder(draggedPaths, targetFolder);
                     } else if (copyMode) {
-                        ok = CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetFolder).toStdWString());
+                        ok = CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetFolder));
                     } else {
-                        ok = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetFolder).toStdWString());
+                        ok = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetFolder));
                     }
                 }
 
@@ -8128,7 +8127,7 @@ bool ListView::createNewTextDocumentInHost()
 
 void ListView::onMenuDelete(bool permanently)
 {
-    std::vector<std::wstring> paths;
+    QStringList paths;
     QStringList desktopPathsToDelete;
     QStringList boxPathsToDelete;
     QSet<QString> seenDeletePaths;
@@ -8147,7 +8146,7 @@ void ListView::onMenuDelete(bool permanently)
         }
         seenDeletePaths.insert(normalizedPath);
         desktopPathsToDelete.append(normalizedPath);
-        paths.push_back(QDir::toNativeSeparators(state->model.filePath).toStdWString());
+        paths.append(QDir::toNativeSeparators(state->model.filePath));
     }
 
     for (const QString& path : selectedBoxPaths()) {
@@ -8159,10 +8158,10 @@ void ListView::onMenuDelete(bool permanently)
         }
         seenDeletePaths.insert(normalizedPath);
         boxPathsToDelete.append(normalizedPath);
-        paths.push_back(QDir::toNativeSeparators(state->model.filePath).toStdWString());
+        paths.append(QDir::toNativeSeparators(state->model.filePath));
     }
 
-    if (paths.empty()) return;
+    if (paths.isEmpty()) return;
 
     const bool deleteOk = CSystemApi::DeleteFiles(paths, !permanently, true);
     if (!deleteOk) {
@@ -8722,13 +8721,13 @@ bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBo
             return false;
         }
 
-        std::vector<std::wstring> srcPaths;
+        QStringList srcPaths;
         for (const QString& sourcePath : sourcePaths) {
             if (!sourcePath.isEmpty()) {
-                srcPaths.push_back(QDir::toNativeSeparators(sourcePath).toStdWString());
+                srcPaths.append(QDir::toNativeSeparators(sourcePath));
             }
         }
-        if (srcPaths.empty()) {
+        if (srcPaths.isEmpty()) {
             return false;
         }
 
@@ -8736,9 +8735,9 @@ bool ListView::importPathsToBox(const QStringList& sourcePaths, LinBox* targetBo
             return createShortcutsInFolder(sourcePaths, targetFolder);
         }
         if (copyMode) {
-            return CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetFolder).toStdWString());
+            return CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetFolder));
         }
-        return CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetFolder).toStdWString());
+        return CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetFolder));
     }
 
     bool hasMappedSource = false;
@@ -8906,7 +8905,7 @@ bool ListView::showPropertiesForPath(const QString& filePath) const
     }
 
     const QString nativePath = QDir::toNativeSeparators(filePath);
-    CSystemApi::File_RightMenuOperations(reinterpret_cast<const TCHAR*>(nativePath.utf16()), Z_PROPERTIES);
+    CSystemApi::File_RightMenuOperations(nativePath, Z_PROPERTIES);
     return true;
 }
 
@@ -8923,13 +8922,13 @@ bool ListView::handleDroppedPathsOnModel(const QStringList& sourcePaths, const D
         return false;
     }
 
-    std::vector<std::wstring> srcPaths;
+    QStringList srcPaths;
     QStringList args;
     for (const QString& localPath : sourcePaths) {
         if (!localPath.isEmpty()) {
             const QString nativePath = QDir::toNativeSeparators(localPath);
             args << "\"" + nativePath + "\"";
-            srcPaths.push_back(nativePath.toStdWString());
+            srcPaths.append(nativePath);
         }
     }
 
@@ -8969,9 +8968,9 @@ bool ListView::handleDroppedPathsOnModel(const QStringList& sourcePaths, const D
             return createShortcutsInFolder(sourcePaths, targetPath);
         }
         if (copyMode) {
-            return CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetPath).toStdWString());
+            return CSystemApi::CopyFiles(srcPaths, QDir::toNativeSeparators(targetPath));
         }
-        return CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetPath).toStdWString());
+        return CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(targetPath));
     }
 
     std::wstring wApp = QDir::toNativeSeparators(targetPath).toStdWString();

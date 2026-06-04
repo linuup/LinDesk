@@ -87,8 +87,8 @@ QString shortcutBaseNameForSource(const QString& sourcePath)
 
     const QString shellParsingPath = shellParsingPathForSource(normalizedSourcePath);
     if (!shellParsingPath.isEmpty()) {
-        const IconItem item = CSystemApi::CreateIconItem(shellParsingPath.toStdWString().c_str());
-        const QString shellDisplayName = QString::fromStdString(item.name);
+        const IconItem item = CSystemApi::CreateIconItem(shellParsingPath);
+        const QString shellDisplayName = item.name;
         if (!shellDisplayName.trimmed().isEmpty()) {
             return shellDisplayName.trimmed();
         }

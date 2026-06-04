@@ -157,8 +157,7 @@ ListItemData DesktopItemLoader::toListItemData(const IconItem& item)
 std::vector<ListItemData> DesktopItemLoader::loadAllItems() const
 {
     std::vector<ListItemData> allItemsData;
-    CSystemApi systemApi;
-    const std::vector<IconItem> items = systemApi.GetDesktopPIDLItems();
+    const QVector<IconItem> items = CSystemApi::GetDesktopPIDLItems();
     allItemsData.reserve(items.size());
 
     for (const IconItem& item : items) {
@@ -170,7 +169,7 @@ std::vector<ListItemData> DesktopItemLoader::loadAllItems() const
 
 ListItemData DesktopItemLoader::loadItem(const QString& filePath) const
 {
-    const IconItem item = CSystemApi::CreateIconItem(filePath.toStdWString().c_str());
+    const IconItem item = CSystemApi::CreateIconItem(filePath);
     return toListItemData(item);
 }
 

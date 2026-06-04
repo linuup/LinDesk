@@ -2542,7 +2542,7 @@ wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const
         OutputDebugString(L"----------Get SHGetDesktopFolder error\n");
         return nullptr;
     }
-    PathType pathType = CSystemApi::GetPathType(path);
+    PathType pathType = CSystemApi::GetPathType(QString::fromWCharArray(path));
     switch (pathType) {
     case InvalidPath:// 澶勭悊鏃犳晥璺緞
         OutputDebugString(L"Input Path error");
