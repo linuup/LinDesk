@@ -1,4 +1,4 @@
-﻿#include "desktop/ListViewDebugPanel.h"
+#include "desktop/ListViewDebugPanel.h"
 #include "app/AppFonts.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
@@ -747,6 +747,14 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
         QCoreApplication::quit();
     });
     addGeneralCard(new FluentCard(u8"\uE777", "Restart", "Relaunch the application", restartBtn));
+
+    QPushButton* crashBtn = createActionButton("Trigger Crash", false, true);
+    connect(crashBtn, &QPushButton::clicked, this, []() {
+        // Dereference a null pointer to force an active crash
+        volatile int* p = nullptr;
+        *p = 42;
+    });
+    addGeneralCard(new FluentCard(u8"\uE7BA", "Trigger Crash", "Instantly trigger an active application crash (Minidump test)", crashBtn));
 
     QPushButton* settingsBtn = createActionButton("Open", true, false);
     connect(settingsBtn, &QPushButton::clicked, this, [this]() {
@@ -1767,6 +1775,9 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         updateSelectedLinWidgetItemText();
         updateLinWidgetsButtons();
         updateLinWidgetLogViewer();
+        if (m_listView) {
+            m_listView->onMenuRefresh();
+        }
     });
     addCompactSwitch(QStringLiteral("Runtime"),
                      QStringLiteral("Master switch for the shared WebView runtime. Turning it off unloads widgets and stops the WebView runtime."),

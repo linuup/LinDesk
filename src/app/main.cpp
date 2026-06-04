@@ -22,12 +22,19 @@
 #include "services/AppPaths.h"
 #include "services/LinDeskHoveredItemServer.h"
 #include "plugins/PluginManager.h"
+#include "services/CrashHandler.h"
+#include "services/LogManager.h"
 using namespace ShortcutArrowManager;
 
 int main(int argc, char *argv[])
 {
+    CrashHandler::initialize();
+    LogManager::initialize();
+
     SetConsoleOutputCP(CP_UTF8);
+    // Set Windows 1:1 Desktop Standard font
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    // Enable high-resolution icons
     QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     QSettings startupSettings(AppPaths::configFilePath(), QSettings::IniFormat);
     const bool useOpenGL = startupSettings.value("General/UseOpenGL", false).toBool();
@@ -36,11 +43,6 @@ int main(int argc, char *argv[])
     }
     QApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
-    // 启用缩放支持
-    //QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    //// 允许图标使用高分像素图
-    //QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-    // 获取桌面上所有文件的列表
 
     //qSetMessagePattern("%{time yyyy-MM-dd hh:mm:ss}--[%{type}]--%{file}--%{function}--%{line}:%{message}");
     //qSetMessagePattern("[%{type}]--%{file}--%{function}--%{line}:%{message}");
@@ -68,5 +70,7 @@ int main(int argc, char *argv[])
     });
     qDebug() << isShortcutArrowEnabled();
     qDebug() << isUACShieldEnabled();
-    return app.exec();
+    int result = app.exec();
+    LogManager::shutdown();
+    return result;
 }
