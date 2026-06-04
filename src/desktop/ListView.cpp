@@ -1117,6 +1117,12 @@ ListView* ListView::m_instance = nullptr;
 int ListItemData::s_targetIconSize = ListView::kMediumIconW;
 
 ListView::ListView(QWidget* parent) : QWidget(parent),
+    m_viewModel(new ListViewModel(this)),
+    m_itemStates(m_viewModel->itemStates()),
+    m_selectedDesktopPathSet(m_viewModel->selectedDesktopPathSet()),
+    m_selectedDesktopPaths(m_viewModel->selectedDesktopPaths()),
+    m_focusedDesktopPath(m_viewModel->focusedDesktopPath()),
+    m_anchorDesktopPath(m_viewModel->anchorDesktopPath()),
     m_lastRightClickPos(-1, -1)  // 闂備礁鎲＄敮妤冩崲閸岀儑缍栭柟鐗堟緲缁€宀勬煛瀹擃喖鍟伴ˇ锕傛⒒娴ｈ鍎ラ柛鐘冲哺瀹曟垿鏁愭径濠勵槱闁荤姳绀佺壕顓犵矓鐎靛摜纾介柛鎰劤閺嬫瑩鎮归幇顔兼灈鐎殿噮鍣ｉ幃鈺呮惞椤愶絿褰欓梻?
 {
     setAcceptDrops(true);
@@ -3524,14 +3530,7 @@ void ListView::dropEvent(QDropEvent* event)
 
             if (!srcPaths.empty()) {
                 // 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ〒姘ｅ亾闁哄被鍔戦、娆撴倷椤掑偊绱┑鐑囩到濞村倿宕抽敐澶娢ч柟娈垮枤缁犳棃鏌ㄩ弴鐐测偓鐢稿磻閹炬潙绶為悗锝庝憾娴犲瓨绻濋姀锝嗙【缂佸鎸冲畷鍝勎旈崨顓狀吅闂佸搫绋侀崐锝夊煛閸涱厾顦?
-                bool result;
-                if (preferShortcutForDrop) {
-                    result = createShortcutsInFolder(draggedPaths, m_desktopDir);
-                } else if (isCopyAction) {
-                    result = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
-                } else {
-                    result = ListViewFileOpsHelper::moveFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
-                }
+                bool result = m_viewModel->handleDropFiles(draggedPaths, m_desktopDir, preferShortcutForDrop, isCopyAction);
                 if (result) {
                     applyAutoArrangeAfterDesktopMutation(false, false);
                     event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCopyAction ? Qt::CopyAction : Qt::MoveAction));
@@ -3615,19 +3614,7 @@ void ListView::dropEvent(QDropEvent* event)
         const bool hasMappedSourceItems = draggedPathsContainMappedSource(draggedPaths);
         if (hasMappedSourceItems) {
             bool ok = false;
-            if (copyMode) {
-                ok = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(draggedPaths, m_desktopDir);
-            } else {
-                QStringList srcPaths;
-                for (const QString& localPath : draggedPaths) {
-                    if (!localPath.isEmpty()) {
-                        srcPaths.append(QDir::toNativeSeparators(localPath));
-                    }
-                }
-                if (!srcPaths.isEmpty()) {
-                    ok = CSystemApi::MoveFiles(srcPaths, QDir::toNativeSeparators(m_desktopDir));
-                }
-            }
+            ok = m_viewModel->handleDropFiles(draggedPaths, m_desktopDir, false, copyMode);
 
             if (ok) {
                 clearCheckedItem();
@@ -7116,18 +7103,7 @@ void ListView::onMenuPaste() {
     const bool isCutOperation = ListViewFileOpsHelper::clipboardContainsCutItems();
     bool ok = true;
 
-    if (isCutOperation) {
-        QStringList srcPaths;
-        srcPaths.reserve(filePaths.size());
-        for (const QString& filePath : filePaths) {
-            srcPaths.append(QDir::toNativeSeparators(filePath));
-        }
-
-        const QString desktopDir = QDir::toNativeSeparators(m_desktopDir);
-        ok = CSystemApi::MoveFiles(srcPaths, desktopDir);
-    } else {
-        ok = ListViewFileOpsHelper::copyFilesToDirectoryWithRule(filePaths, m_desktopDir);
-    }
+    ok = m_viewModel->handleDropFiles(filePaths, m_desktopDir, false, !isCutOperation);
 
     qDebug() << "ListView: Paste triggered" << (isCutOperation ? "[move]" : "[copy]") << "result:" << ok;
     if (ok) {
@@ -8127,17 +8103,13 @@ bool ListView::createNewTextDocumentInHost()
 
 void ListView::onMenuDelete(bool permanently)
 {
-    QStringList paths;
     QStringList desktopPathsToDelete;
     QStringList boxPathsToDelete;
     QSet<QString> seenDeletePaths;
 
     for (const QString& path : selectedDesktopPaths()) {
         const DesktopRootItemState* state = findDesktopStateByPath(path);
-        if (!state) {
-            continue;
-        }
-        if (state->model.itemData.isRealSpecialFolderIcon()) {
+        if (!state || state->model.itemData.isRealSpecialFolderIcon()) {
             continue;
         }
         const QString normalizedPath = normalizeDesktopItemPath(state->model.filePath);
@@ -8146,7 +8118,6 @@ void ListView::onMenuDelete(bool permanently)
         }
         seenDeletePaths.insert(normalizedPath);
         desktopPathsToDelete.append(normalizedPath);
-        paths.append(QDir::toNativeSeparators(state->model.filePath));
     }
 
     for (const QString& path : selectedBoxPaths()) {
@@ -8158,23 +8129,22 @@ void ListView::onMenuDelete(bool permanently)
         }
         seenDeletePaths.insert(normalizedPath);
         boxPathsToDelete.append(normalizedPath);
-        paths.append(QDir::toNativeSeparators(state->model.filePath));
     }
 
-    if (paths.isEmpty()) return;
-
-    const bool deleteOk = CSystemApi::DeleteFiles(paths, !permanently, true);
+    QStringList deletedDesktopPaths;
+    QStringList deletedBoxPaths;
+    const bool deleteOk = m_viewModel->deleteSelectedItems(desktopPathsToDelete, boxPathsToDelete, permanently, deletedDesktopPaths, deletedBoxPaths);
     if (!deleteOk) {
         return;
     }
 
-    trackPendingExternalRemovalPaths(desktopPathsToDelete);
-    removeItemPathsBatch(desktopPathsToDelete);
-    for (const QString& path : desktopPathsToDelete) {
+    trackPendingExternalRemovalPaths(deletedDesktopPaths);
+    removeItemPathsBatch(deletedDesktopPaths);
+    for (const QString& path : deletedDesktopPaths) {
         m_pendingExternalRemovalPaths.insert(normalizeDesktopPath(path));
         removeDesktopStateByPath(path);
     }
-    for (const QString& path : boxPathsToDelete) {
+    for (const QString& path : deletedBoxPaths) {
         if (LinBox* box = BoxManager::instance()->findBoxContainingItem(path)) {
             box->removeItemState(path, true);
         }
@@ -9321,20 +9291,7 @@ bool ListView::shouldPreferShortcutForDrop(const QStringList& sourcePaths,
 
 bool ListView::createShortcutsInFolder(const QStringList& sourcePaths, const QString& targetFolder) const
 {
-    if (sourcePaths.isEmpty() || targetFolder.isEmpty()) {
-        return false;
-    }
-
-    bool ok = true;
-    for (const QString& sourcePath : sourcePaths) {
-        if (sourcePath.isEmpty()) {
-            continue;
-        }
-        const QString shortcutPath = ListViewFileOpsHelper::uniqueShortcutPathForTarget(sourcePath, targetFolder);
-        ok = ListViewFileOpsHelper::createShellShortcut(sourcePath, shortcutPath) && ok;
-    }
-
-    return ok;
+    return m_viewModel->createShortcutsInFolder(sourcePaths, targetFolder);
 }
 
 void ListView::reloadMappedFolderBox(LinBox* box)

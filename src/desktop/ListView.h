@@ -26,6 +26,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include "desktop/DesktopRootItemState.h"
+#include "desktop/ListViewModel.h"
 #include <windows.h>
 #include <shlobj_core.h>
 #include "services/DesktopItemLoader.h"
@@ -551,10 +552,11 @@ private:
 	int m_marginLeft = kBaseMarginLeft;
 
 	// 数据存储
-	QVector<DesktopRootItemState> m_itemStates;
+	ListViewModel* m_viewModel = nullptr;
+	QVector<DesktopRootItemState>& m_itemStates;
 	QList<DesktopInfoMonitor::DesktopIcon> sysIconRegisterInfo;
-	QVector<QString> m_selectedDesktopPaths;
-	QSet<QString> m_selectedDesktopPathSet;
+	QVector<QString>& m_selectedDesktopPaths;
+	QSet<QString>& m_selectedDesktopPathSet;
 	QVector<QString> m_selectedBoxPaths;
 	QVector<GhostInfo> m_ghosts;
 	QStringList m_desktopReorderDraggedPaths;
@@ -577,8 +579,8 @@ private:
 
 	// 指针和引用
 	QString m_hoveredDesktopPath;
-	QString m_focusedDesktopPath;
-	QString m_anchorDesktopPath;
+	QString& m_focusedDesktopPath;
+	QString& m_anchorDesktopPath;
 	QString m_focusedBoxPath;
 	QString m_anchorBoxPath;
 	QPointer<LinBox> m_pendingShellNewTargetBox;
