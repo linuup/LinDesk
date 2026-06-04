@@ -72,6 +72,12 @@ async function loadAppearance() {
 
   const opacity = await storageGet('widget', 'opacity', '100');
   applyOpacity(opacity || '100');
+
+  // Control visibility of the clear-note button (global setting)
+  const showClearBtn = localStorage.getItem('lin_sticky_notes_show_clear_btn') !== 'false';
+  if (clearNoteBtn) {
+    clearNoteBtn.style.display = showClearBtn ? '' : 'none';
+  }
 }
 
 async function loadNoteContent() {

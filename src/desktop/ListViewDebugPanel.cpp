@@ -1,4 +1,4 @@
-#include "desktop/ListViewDebugPanel.h"
+﻿#include "desktop/ListViewDebugPanel.h"
 #include "app/AppFonts.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
@@ -1298,14 +1298,50 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
         return false;
     }
 
-    QString instanceId;
-    const QRect geometry(260, 220, manifest.width, manifest.height);
     LinWidget::WidgetManager* manager = linWidgetManager();
-    if (!manager || !manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &errorMessage)) {
+    if (!manager) {
         if (m_linWidgetsPageStatusLabel) {
-            m_linWidgetsPageStatusLabel->setText("Load to WebView failed: " + errorMessage);
+            m_linWidgetsPageStatusLabel->setText("Load to WebView failed: no widget manager");
         }
         return false;
+    }
+
+    // For multiInstance widgets, find all saved (hidden) instances for this package
+    // and restore each of them, rather than only launching a single new one.
+    const QString canonicalPkg = linWidgetPackageKey(packagePath);
+    const QString normalizedRegistryId = registryId.trimmed().toLower();
+
+    QStringList restoredIds;
+    for (const LinWidget::WidgetLayoutState& state : manager->layoutStates()) {
+        if (state.visible) {
+            // Already running / visible -- skip
+            continue;
+        }
+        const bool samePackage = linWidgetPackageKey(state.packagePath) == canonicalPkg;
+        const bool sameRegistry = !normalizedRegistryId.isEmpty() &&
+            state.registryId.trimmed().toLower() == normalizedRegistryId;
+        const bool sameDev = state.isDevelopment == isDevelopment;
+        if ((samePackage || sameRegistry) && sameDev) {
+            if (manager->restartWidget(state.instanceId)) {
+                restoredIds.append(state.instanceId);
+            }
+        }
+    }
+
+    // If no saved hidden instances were found, fall back to creating a fresh one
+    QString instanceId;
+    if (restoredIds.isEmpty()) {
+        QString launchError;
+        const QRect geometry(260, 220, manifest.width, manifest.height);
+        if (!manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &launchError)) {
+            if (m_linWidgetsPageStatusLabel) {
+                m_linWidgetsPageStatusLabel->setText("Load to WebView failed: " + launchError);
+            }
+            return false;
+        }
+        restoredIds.append(instanceId);
+    } else {
+        instanceId = restoredIds.first();
     }
 
     auto& registry = LinWidget::WidgetRegistryManager::instance();
@@ -1317,7 +1353,10 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
     m_linWidgetInstancesByPackage.insert(linWidgetPackageKey(packagePath), instanceId);
     m_lastLinWidgetInstanceId = instanceId;
     if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText("Loaded " + manifest.name + " into WebView. Instance: " + instanceId);
+        m_linWidgetsPageStatusLabel->setText(
+            restoredIds.size() > 1
+                ? QStringLiteral("Loaded %1 instance(s) of %2 into WebView").arg(restoredIds.size()).arg(manifest.name)
+                : QStringLiteral("Loaded %1 into WebView. Instance: %2").arg(manifest.name, instanceId));
     }
     updateSelectedLinWidgetItemText();
     updateLinWidgetsButtons();
@@ -1331,17 +1370,43 @@ bool ListViewDebugPanel::unloadSelectedLinWidget()
     const QString registryId = selectedLinWidgetRegistryId();
     const bool isDevelopment = selectedLinWidgetIsDevelopment();
     const QString registryKey = linWidgetRegistryKey(registryId, isDevelopment);
-    const QString instanceId = m_linWidgetInstancesById.value(
+
+    // Check that at least one running instance exists for this widget
+    const QString primaryInstanceId = m_linWidgetInstancesById.value(
         registryKey,
         m_linWidgetInstancesByPackage.value(linWidgetPackageKey(packagePath)));
-    if (instanceId.isEmpty()) {
+    if (primaryInstanceId.isEmpty()) {
         updateLinWidgetsButtons();
         return false;
     }
 
-    if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-        manager->stopWidget(instanceId);
+    LinWidget::WidgetManager* manager = linWidgetManager();
+
+    // Collect all running instances belonging to this widget (multiInstance support)
+    QStringList stoppedIds;
+    if (manager) {
+        const QString canonicalPkg = linWidgetPackageKey(packagePath);
+        const QString normalizedRegistryId = registryId.trimmed().toLower();
+        for (const LinWidget::WidgetLayoutState& state : manager->layoutStates()) {
+            if (!state.visible) {
+                continue;
+            }
+            const bool samePackage = linWidgetPackageKey(state.packagePath) == canonicalPkg;
+            const bool sameRegistry = !normalizedRegistryId.isEmpty() &&
+                state.registryId.trimmed().toLower() == normalizedRegistryId;
+            const bool sameDev = state.isDevelopment == isDevelopment;
+            if ((samePackage || sameRegistry) && sameDev) {
+                manager->stopWidget(state.instanceId);
+                stoppedIds.append(state.instanceId);
+            }
+        }
     }
+    // Fallback: if nothing matched via layoutStates (e.g. not yet visible), stop the primary
+    if (stoppedIds.isEmpty() && manager) {
+        manager->stopWidget(primaryInstanceId);
+        stoppedIds.append(primaryInstanceId);
+    }
+
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
@@ -1350,7 +1415,10 @@ bool ListViewDebugPanel::unloadSelectedLinWidget()
     m_linWidgetInstancesById.remove(registryKey);
     m_linWidgetInstancesByPackage.remove(linWidgetPackageKey(packagePath));
     if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText("Unloaded widget from WebView: " + instanceId);
+        m_linWidgetsPageStatusLabel->setText(
+            stoppedIds.size() > 1
+                ? QStringLiteral("Unloaded %1 instance(s) of widget: %2").arg(stoppedIds.size()).arg(registryId)
+                : QStringLiteral("Unloaded widget from WebView: %1").arg(stoppedIds.value(0, primaryInstanceId)));
     }
     updateSelectedLinWidgetItemText();
     updateLinWidgetsButtons();
