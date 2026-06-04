@@ -23,6 +23,16 @@ namespace WidgetMessageType {
     constexpr const char* SystemInfoRequest = "system_info_request";
     constexpr const char* SystemInfoResponse = "system_info_response";
     constexpr const char* SystemInfoUpdate = "system_info_update";
+    constexpr const char* StorageRequest = "storage_request";
+    constexpr const char* StorageResponse = "storage_response";
+    constexpr const char* CreateWidgetInstanceRequest = "create_widget_instance_request";
+    constexpr const char* CreateWidgetInstanceResponse = "create_widget_instance_response";
+    constexpr const char* ListWidgetInstancesRequest = "list_widget_instances_request";
+    constexpr const char* ListWidgetInstancesResponse = "list_widget_instances_response";
+    constexpr const char* CloseWidgetInstanceRequest = "close_widget_instance_request";
+    constexpr const char* CloseWidgetInstanceResponse = "close_widget_instance_response";
+    constexpr const char* RemoveWidgetInstanceRequest = "remove_widget_instance_request";
+    constexpr const char* RemoveWidgetInstanceResponse = "remove_widget_instance_response";
     constexpr const char* WidgetGeometryChanged = "widget_geometry_changed";
     constexpr const char* WidgetError = "widget_error";
     constexpr const char* MoveWidget = "move_widget";

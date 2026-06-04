@@ -65,6 +65,13 @@ inline QString linWidgetLogsDir()
     return dirPath;
 }
 
+inline QString linWidgetDataDir()
+{
+    const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("LinWidgetsData"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
 inline QString configFilePath()
 {
     return QDir(userConfigDir()).filePath(QStringLiteral("config.ini"));

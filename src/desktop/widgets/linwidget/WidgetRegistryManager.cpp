@@ -13,12 +13,26 @@
 
 namespace LinWidget {
 
+WidgetRegistryManager& WidgetRegistryManager::instance()
+{
+    static WidgetRegistryManager manager;
+    return manager;
+}
+
 bool WidgetRegistryManager::load(QString* errorMessage)
 {
+    if (m_loaded) {
+        if (errorMessage) {
+            errorMessage->clear();
+        }
+        return true;
+    }
+
     m_entries.clear();
 
     QFile file(AppPaths::linWidgetRegistryFilePath());
     if (!file.exists()) {
+        m_loaded = true;
         if (errorMessage) {
             errorMessage->clear();
         }
@@ -48,6 +62,7 @@ bool WidgetRegistryManager::load(QString* errorMessage)
         m_entries.insert(registryKey(entry.id, entry.isDevelopment), entry);
     }
 
+    m_loaded = true;
     if (errorMessage) {
         errorMessage->clear();
     }

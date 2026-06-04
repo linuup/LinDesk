@@ -1,6 +1,8 @@
 #include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 
+#include "desktop/ListView.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
 #include "services/AppPaths.h"
 
 #include <QDateTime>
@@ -13,6 +15,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
+#include <QPointer>
 #include <QResizeEvent>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -45,18 +48,53 @@ QString permissionHostSegment(const QStringList& permissions, bool isDevelopment
     }
 
     QString marker = QStringLiteral("p");
-    PermissionManager manager;
-    if (manager.canUseNetwork(permissions)) {
+    if (PermissionManager().canUseNetwork(permissions)) {
         marker.append(QLatin1Char('n'));
     }
-    if (manager.canUseStorage(permissions)) {
+    if (PermissionManager().canUseStorage(permissions)) {
         marker.append(QLatin1Char('s'));
     }
-    if (manager.canUseDesktopApi(permissions)) {
+    if (PermissionManager().canUseDesktopApi(permissions)) {
         marker.append(QLatin1Char('d'));
     }
     return marker;
 }
+
+#ifdef LINDESK_HAS_WEBVIEW2
+QString formatWebViewError(HRESULT result)
+{
+    return QStringLiteral("0x%1").arg(static_cast<qulonglong>(static_cast<quint32>(result)), 8, 16, QLatin1Char('0'));
+}
+#endif
+
+
+void activateSettingsDialog(WidgetSettingsDialog* dialog)
+{
+    if (!dialog) {
+        return;
+    }
+    if (dialog->isMinimized()) {
+        dialog->setWindowState(dialog->windowState() & ~Qt::WindowMinimized);
+    }
+    if (!dialog->isVisible()) {
+        dialog->show();
+    }
+    dialog->raise();
+    dialog->activateWindow();
+#ifdef Q_OS_WIN
+    if (const HWND hwnd = reinterpret_cast<HWND>(dialog->winId())) {
+        ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
+    }
+#endif
+}
+}
+
+QMap<QString, QPointer<WidgetSettingsDialog>>& WidgetSettingsDialog::openSettingsDialogs()
+{
+    static QMap<QString, QPointer<WidgetSettingsDialog>> dialogs;
+    return dialogs;
 }
 
 WidgetSettingsDialog::WidgetSettingsDialog(QString packagePath,
@@ -95,6 +133,58 @@ WidgetSettingsDialog::~WidgetSettingsDialog()
         CoUninitialize();
     }
 #endif
+}
+
+WidgetSettingsDialog* WidgetSettingsDialog::openOrCreate(QString packagePath,
+                                                         WidgetManifest manifest,
+                                                         QStringList grantedPermissions,
+                                                         bool isDevelopment,
+                                                         QString instanceId,
+                                                         QWidget* parent,
+                                                         QString* errorMessage)
+{
+    const QString key = dialogKey(packagePath, manifest, isDevelopment, instanceId);
+    auto& dialogs = openSettingsDialogs();
+    if (WidgetSettingsDialog* existing = dialogs.value(key).data()) {
+        activateSettingsDialog(existing);
+        if (errorMessage) {
+            errorMessage->clear();
+        }
+        return existing;
+    }
+
+    auto* dialog = new WidgetSettingsDialog(std::move(packagePath),
+                                            std::move(manifest),
+                                            std::move(grantedPermissions),
+                                            isDevelopment,
+                                            std::move(instanceId),
+                                            parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialogs.insert(key, dialog);
+    QObject::connect(dialog, &QObject::destroyed, dialog, [key]() {
+        openSettingsDialogs().remove(key);
+    });
+    dialog->initialize(errorMessage);
+    activateSettingsDialog(dialog);
+    return dialog;
+}
+
+QString WidgetSettingsDialog::dialogKey(const QString& packagePath,
+                                        const WidgetManifest& manifest,
+                                        bool isDevelopment,
+                                        const QString& instanceId)
+{
+    const QString normalizedInstanceId = instanceId.trimmed().toLower();
+    if (!normalizedInstanceId.isEmpty()) {
+        return QStringLiteral("instance:%1").arg(normalizedInstanceId);
+    }
+
+    const QString normalizedId = manifest.id.trimmed().toLower();
+    if (!normalizedId.isEmpty()) {
+        return QStringLiteral("%1:%2").arg(isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"), normalizedId);
+    }
+
+    return QStringLiteral("package:%1").arg(QFileInfo(packagePath).absoluteFilePath().toLower());
 }
 
 bool WidgetSettingsDialog::initialize(QString* errorMessage)
@@ -219,17 +309,13 @@ void WidgetSettingsDialog::renderWebView(const QString& settingsPath)
                                 installConsoleLogging();
                                 installSettingsBridge();
                                 installPermissionGuards();
+                                const QString hostEntry = settingsHostEntryPath();
                                 const QString settingsUrl = QStringLiteral("https://%1/%2").arg(hostName, m_manifest.settings);
-                                const QString hostPath = settingsHostEntryPath();
-                                if (!QFileInfo::exists(hostPath)) {
-                                    renderPlaceholder(tr("Settings host page is missing: %1").arg(hostPath));
-                                    return S_OK;
-                                }
-                                QUrl hostUrl = QUrl::fromLocalFile(hostPath);
-                                hostUrl.setQuery(QStringLiteral("src=%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(settingsUrl))));
-                                const QString url = hostUrl.toString();
-                                appendLog(QStringLiteral("info"), QStringLiteral("navigate settings host=%1 frame=%2 source=%3").arg(url, settingsUrl, settingsPath));
-                                webView->Navigate(reinterpret_cast<LPCWSTR>(url.utf16()));
+                                const QString navigateUrl = QStringLiteral("%1?src=%2")
+                                    .arg(QUrl::fromLocalFile(hostEntry).toString(),
+                                         QString::fromUtf8(QUrl::toPercentEncoding(settingsUrl)));
+                                appendLog(QStringLiteral("info"), QStringLiteral("navigate settings url=%1 source=%2").arg(navigateUrl, settingsPath));
+                                webView->Navigate(reinterpret_cast<LPCWSTR>(navigateUrl.utf16()));
                                 if (m_isDevelopment) {
                                     webView->OpenDevToolsWindow();
                                 }
@@ -254,9 +340,9 @@ QString WidgetSettingsDialog::settingsHostEntryPath() const
 
 QString WidgetSettingsDialog::virtualHostName() const
 {
-    QString safe = m_instanceId.trimmed().isEmpty()
-        ? m_manifest.id.toLower()
-        : m_instanceId.trimmed().toLower();
+    QString prefix = m_isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed");
+    QString widgetId = m_manifest.id;
+    QString safe = (prefix + QLatin1Char('-') + widgetId).toLower();
     for (QChar& ch : safe) {
         if (!ch.isLetterOrNumber()) {
             ch = QLatin1Char('-');
@@ -283,18 +369,44 @@ bool WidgetSettingsDialog::mapVirtualHost(const QString& hostName)
 #ifdef LINDESK_HAS_WEBVIEW2
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
     if (!webView) {
+        appendLog(QStringLiteral("error"), QStringLiteral("Failed to map widget virtual host for %1: webView is null").arg(hostName));
         return false;
     }
     Microsoft::WRL::ComPtr<ICoreWebView2_3> webView3;
-    if (FAILED(webView->QueryInterface(IID_PPV_ARGS(&webView3)))) {
+    const HRESULT queryResult = webView->QueryInterface(IID_PPV_ARGS(&webView3));
+    if (FAILED(queryResult)) {
+        appendLog(QStringLiteral("error"), QStringLiteral("Failed to map widget virtual host for %1: QueryInterface(ICoreWebView2_3) failed with %2")
+            .arg(hostName, formatWebViewError(queryResult)));
         return false;
     }
+    const QFileInfo folderInfo(QDir::cleanPath(m_packagePath));
+    const QString folderPath = QDir::cleanPath(folderInfo.absoluteFilePath());
+    if (!folderInfo.exists() || !folderInfo.isDir()) {
+        appendLog(QStringLiteral("error"), QStringLiteral("Failed to map widget virtual host for %1: package path is not a directory: %2")
+            .arg(hostName, folderPath));
+        return false;
+    }
+    const QString existingFolderPath = m_virtualHostMappings.value(hostName);
+    if (existingFolderPath == folderPath) {
+        return true;
+    }
     const std::wstring host = hostName.toStdWString();
-    const std::wstring folder = QDir::toNativeSeparators(m_packagePath).toStdWString();
-    return SUCCEEDED(webView3->SetVirtualHostNameToFolderMapping(
+    const std::wstring folder = QDir::toNativeSeparators(folderPath).toStdWString();
+    if (!existingFolderPath.isEmpty()) {
+        webView3->ClearVirtualHostNameToFolderMapping(host.c_str());
+    }
+    const HRESULT mapResult = webView3->SetVirtualHostNameToFolderMapping(
         host.c_str(),
         folder.c_str(),
-        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS));
+        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
+    if (FAILED(mapResult)) {
+        appendLog(QStringLiteral("error"), QStringLiteral("Failed to map widget virtual host for %1: SetVirtualHostNameToFolderMapping failed with %2 host=%3 folder=%4")
+            .arg(hostName, formatWebViewError(mapResult), hostName, folderPath));
+        return false;
+    }
+    m_virtualHostMappings.insert(hostName, folderPath);
+    appendLog(QStringLiteral("info"), QStringLiteral("Mapped widget virtual host host=%1 folder=%2").arg(hostName, folderPath));
+    return true;
 #else
     Q_UNUSED(hostName);
     return false;
@@ -338,8 +450,7 @@ void WidgetSettingsDialog::installConsoleLogging()
                 if (SUCCEEDED(args->get_WebMessageAsJson(&rawMessage)) && rawMessage) {
                     const QJsonDocument document = QJsonDocument::fromJson(QString::fromWCharArray(rawMessage).toUtf8());
                     const QJsonObject object = document.object();
-                    appendLog(object.value(QStringLiteral("level")).toString(QStringLiteral("log")),
-                              object.value(QStringLiteral("message")).toString());
+                    handleSettingsWebMessage(object);
                     CoTaskMemFree(rawMessage);
                 }
                 return S_OK;
@@ -360,10 +471,40 @@ void WidgetSettingsDialog::installSettingsBridge()
         "(() => {"
         "try {"
         "const api = window.desktop && typeof window.desktop === 'object' ? window.desktop : {};"
+        "const post = message => {"
+        " if (window.parent && window.parent !== window) {"
+        "  window.parent.postMessage(message, '*');"
+        "  return;"
+        " }"
+        " try { chrome.webview.postMessage(message); } catch (_) {}"
+        "};"
         "api.context = 'settings';"
         "api.widgetId = %1;"
         "api.instanceId = %2;"
         "api.widgetName = %3;"
+        "let instanceSeq = 0;"
+        "const instancePending = new Map();"
+        "const sendInstanceRequest = (type, value) => new Promise(resolve => {"
+        " const requestId = 'settings-instance-' + Date.now() + '-' + (++instanceSeq);"
+        " instancePending.set(requestId, resolve);"
+        " post(Object.assign({type:type, requestId:requestId}, value && typeof value === 'object' ? value : {}));"
+        "});"
+        "api.instances = api.instances || {};"
+        "api.instances.create = options => sendInstanceRequest('linwidget_create_instance_request', options && typeof options === 'object' ? {geometry:options} : {});"
+        "api.instances.list = () => sendInstanceRequest('linwidget_list_instances_request');"
+        "api.instances.close = instanceId => sendInstanceRequest('linwidget_close_instance_request', {targetInstanceId:String(instanceId || '')});"
+        "api.instances.remove = instanceId => sendInstanceRequest('linwidget_remove_instance_request', {targetInstanceId:String(instanceId || '')});"
+        "api.instances.load = instanceId => sendInstanceRequest('linwidget_load_instance_request', {targetInstanceId:String(instanceId || '')});"
+        "const handleMessage = event => {"
+        " const message = event.data || {};"
+        " if (!message || !message.type || !message.type.startsWith('linwidget_') || !message.type.endsWith('_response')) return;"
+        " const resolve = instancePending.get(message.requestId || '');"
+        " if (!resolve) return;"
+        " instancePending.delete(message.requestId || '');"
+        " resolve({ok: message.ok !== false, instanceId: message.instanceId || '', instances: Array.isArray(message.instances) ? message.instances : [], error: message.error || ''});"
+        "};"
+        "try { window.chrome.webview.addEventListener('message', handleMessage); } catch (_) {}"
+        "window.addEventListener('message', handleMessage);"
         "window.desktop = api;"
         "} catch (_) {}"
         "})();")
@@ -400,6 +541,147 @@ void WidgetSettingsDialog::installPermissionGuards()
     }
     script += QStringLiteral("})();");
     webView->AddScriptToExecuteOnDocumentCreated(reinterpret_cast<LPCWSTR>(script.utf16()), nullptr);
+#endif
+}
+
+void WidgetSettingsDialog::handleSettingsWebMessage(const QJsonObject& object)
+{
+    const QString type = object.value(QStringLiteral("type")).toString();
+    if (type == QStringLiteral("console_log")) {
+        appendLog(object.value(QStringLiteral("level")).toString(QStringLiteral("log")),
+                  object.value(QStringLiteral("message")).toString());
+        return;
+    }
+
+    const bool isCreate = type == QStringLiteral("linwidget_create_instance_request");
+    const bool isList = type == QStringLiteral("linwidget_list_instances_request");
+    const bool isClose = type == QStringLiteral("linwidget_close_instance_request");
+    const bool isRemove = type == QStringLiteral("linwidget_remove_instance_request");
+    const bool isLoad = type == QStringLiteral("linwidget_load_instance_request");
+    const bool isSettingsChanged = type == QStringLiteral("linwidget_settings_changed_request");
+    if (isSettingsChanged) {
+        ListView* view = ListView::instance();
+        WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
+        QJsonObject notifyMessage;
+        notifyMessage.insert(QStringLiteral("type"), QStringLiteral("linwidget_appearance_changed_notification"));
+        if (manager) {
+            manager->broadcastToWidgetInstances(m_manifest.id.trimmed().toLower(), notifyMessage);
+        }
+        // Forward notification to other open settings dialogs for the same widget package
+        for (const auto& dialog : openSettingsDialogs()) {
+            if (dialog && dialog->m_manifest.id.trimmed().toLower() == m_manifest.id.trimmed().toLower()) {
+#ifdef LINDESK_HAS_WEBVIEW2
+                if (auto* webView = static_cast<ICoreWebView2*>(dialog->m_webView)) {
+                    const QString json = QString::fromUtf8(QJsonDocument(notifyMessage).toJson(QJsonDocument::Compact));
+                    webView->PostWebMessageAsJson(reinterpret_cast<LPCWSTR>(json.utf16()));
+                }
+#endif
+            }
+        }
+        return;
+    }
+    if (!isCreate && !isList && !isClose && !isRemove && !isLoad) {
+        return;
+    }
+
+    const QString requestId = object.value(QStringLiteral("requestId")).toString();
+    QJsonObject response;
+    response.insert(QStringLiteral("type"), isCreate
+        ? QStringLiteral("linwidget_create_instance_response")
+        : (isList
+            ? QStringLiteral("linwidget_list_instances_response")
+            : (isClose ? QStringLiteral("linwidget_close_instance_response")
+                       : (isRemove ? QStringLiteral("linwidget_remove_instance_response")
+                                   : QStringLiteral("linwidget_load_instance_response")))));
+    response.insert(QStringLiteral("requestId"), requestId);
+
+    QString newInstanceId;
+    QString errorMessage;
+    bool ok = false;
+    if (m_instanceId.trimmed().isEmpty()) {
+        errorMessage = QStringLiteral("Settings page is not attached to a running widget instance.");
+    } else if (ListView* view = ListView::instance()) {
+        if (WidgetManager* manager = view->linWidgetManager()) {
+            if (isCreate) {
+                QRect requestedGeometry;
+                const QJsonObject geometry = object.value(QStringLiteral("geometry")).toObject();
+                if (!geometry.isEmpty()) {
+                    requestedGeometry = QRect(geometry.value(QStringLiteral("x")).toInt(),
+                                              geometry.value(QStringLiteral("y")).toInt(),
+                                              geometry.value(QStringLiteral("width")).toInt(),
+                                              geometry.value(QStringLiteral("height")).toInt());
+                }
+                const WidgetInstance source = manager->widgetInstance(m_instanceId);
+                if (!source.instanceId.isEmpty() && manager->hasRunningWidget(m_instanceId)) {
+                    ok = manager->createWidgetInstance(m_instanceId, requestedGeometry, &newInstanceId, &errorMessage);
+                } else {
+                    ok = manager->createWidgetInstanceFromPackage(m_packagePath, m_isDevelopment, false, requestedGeometry, &newInstanceId, &errorMessage);
+                }
+            } else {
+                QJsonArray instances;
+                const QString targetRegistryId = m_manifest.id.trimmed().toLower();
+                for (const WidgetLayoutState& state : manager->layoutStates()) {
+                    const bool sameMode = state.isDevelopment == m_isDevelopment || state.instanceId.startsWith(m_isDevelopment ? QStringLiteral("dev:") : QStringLiteral("installed:"));
+                    const bool sameRegistry = state.registryId.trimmed().toLower() == targetRegistryId ||
+                        state.instanceId == QStringLiteral("%1:%2").arg(m_isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"), targetRegistryId) ||
+                        state.instanceId.startsWith(QStringLiteral("%1:%2:").arg(m_isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed"), targetRegistryId));
+                    if (!sameMode || !sameRegistry) {
+                        continue;
+                    }
+                    QJsonObject item;
+                    item.insert(QStringLiteral("instanceId"), state.instanceId);
+                    item.insert(QStringLiteral("id"), state.instanceId);
+                    item.insert(QStringLiteral("visible"), state.visible);
+                    item.insert(QStringLiteral("running"), manager->hasRunningWidget(state.instanceId));
+                    item.insert(QStringLiteral("parentInstanceId"), state.parentInstanceId);
+                    item.insert(QStringLiteral("createdAt"), state.createdAt);
+                    QJsonObject geometry;
+                    geometry.insert(QStringLiteral("x"), state.geometry.x());
+                    geometry.insert(QStringLiteral("y"), state.geometry.y());
+                    geometry.insert(QStringLiteral("width"), state.geometry.width());
+                    geometry.insert(QStringLiteral("height"), state.geometry.height());
+                    item.insert(QStringLiteral("geometry"), geometry);
+                    instances.append(item);
+                }
+                if (isList) {
+                    response.insert(QStringLiteral("instances"), instances);
+                    ok = true;
+                } else {
+                    QString targetInstanceId = object.value(QStringLiteral("targetInstanceId")).toString().trimmed();
+                    if (targetInstanceId.isEmpty()) {
+                        targetInstanceId = m_instanceId;
+                    }
+                    bool allowed = false;
+                    for (const QJsonValue& value : instances) {
+                        if (value.toObject().value(QStringLiteral("instanceId")).toString() == targetInstanceId) {
+                            allowed = true;
+                            break;
+                        }
+                    }
+                    if (allowed) {
+                        ok = isClose ? (manager->stopWidget(targetInstanceId), true) : (isLoad ? manager->restartWidget(targetInstanceId) : manager->removeWidgetState(targetInstanceId));
+                        newInstanceId = targetInstanceId;
+                    } else {
+                        errorMessage = QStringLiteral("Target widget instance is outside the caller scope.");
+                    }
+                }
+            }
+        } else {
+            errorMessage = QStringLiteral("LinWidget manager is unavailable.");
+        }
+    } else {
+        errorMessage = QStringLiteral("Desktop view is unavailable.");
+    }
+
+    response.insert(QStringLiteral("ok"), ok);
+    response.insert(QStringLiteral("instanceId"), newInstanceId);
+    response.insert(QStringLiteral("error"), errorMessage);
+
+#ifdef LINDESK_HAS_WEBVIEW2
+    if (auto* webView = static_cast<ICoreWebView2*>(m_webView)) {
+        const QString json = QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        webView->PostWebMessageAsJson(reinterpret_cast<LPCWSTR>(json.utf16()));
+    }
 #endif
 }
 

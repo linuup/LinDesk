@@ -1,4 +1,4 @@
-﻿#include "ui/SettingUI.h"
+#include "ui/SettingUI.h"
 #include "Version.h"
 #include "box/LinBox.h"
 #include "box/BoxManager.h"
@@ -971,7 +971,7 @@ void SettingUI::initUI() {
         {0xE7F8, tr("Window")},
         {0xECAA, tr("Context Menu")},
         {0xF133, tr("Box")},
-        {0xE8A5, tr("LinWidgets")},
+        {0xF4A5, tr("LinWidgets")},
         {0xF22C, tr("Plugins")},
         {0xE946, tr("About")}
     };
@@ -1211,18 +1211,7 @@ void SettingUI::ensureTrayIcon()
 
 void SettingUI::restoreFromTray()
 {
-    if (m_trayIcon) {
-        m_trayIcon->hide();
-    }
-
-    if (windowState() & Qt::WindowMinimized) {
-        setWindowState(windowState() & ~Qt::WindowMinimized);
-    }
-
-    show();
-    showNormal();
-    raise();
-    activateWindow();
+    restoreAndActivate();
 }
 
 void SettingUI::exitFromTray()
@@ -1232,6 +1221,29 @@ void SettingUI::exitFromTray()
         m_trayIcon->hide();
     }
     QCoreApplication::quit();
+}
+
+void SettingUI::restoreAndActivate()
+{
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+    }
+
+    setWindowState(windowState() & ~Qt::WindowMinimized);
+    if (!isVisible()) {
+        show();
+    }
+    showNormal();
+    raise();
+    activateWindow();
+#ifdef Q_OS_WIN
+    if (const HWND hwnd = reinterpret_cast<HWND>(winId())) {
+        ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
+        SetActiveWindow(hwnd);
+    }
+#endif
 }
 
 QWidget* SettingUI::createGeneralPage() {
@@ -2936,6 +2948,7 @@ constexpr int SettingsLinWidgetOfficialInstalledPathRole = Qt::UserRole + 15;
 constexpr int SettingsLinWidgetManifestValidRole = Qt::UserRole + 16;
 constexpr int SettingsLinWidgetManifestErrorRole = Qt::UserRole + 17;
 constexpr int SettingsLinWidgetIconPathRole = Qt::UserRole + 18;
+constexpr int SettingsLinWidgetMultiInstanceRole = Qt::UserRole + 19;
 
 QString settingsPermissionsText(const QStringList& permissions)
 {
@@ -3028,9 +3041,17 @@ QStringList promptLinWidgetInstallPermissions(QWidget* parent, const LinWidget::
 
 QString settingsWidgetStateText(const QHash<QString, QString>& runningById,
                                 const QHash<QString, QString>& runningByPackage,
+                                const QHash<QString, int>& runningCountById,
                                 const QString& registryKey,
-                                const QString& packageKey)
+                                const QString& packageKey,
+                                bool multiInstance)
 {
+    if (multiInstance) {
+        const int count = runningCountById.value(registryKey, 0);
+        return count > 0
+            ? QStringLiteral("running %1/3").arg(count)
+            : QStringLiteral("stopped");
+    }
     return runningById.contains(registryKey) || runningByPackage.contains(packageKey)
         ? QStringLiteral("running")
         : QStringLiteral("stopped");
@@ -3194,7 +3215,7 @@ QWidget* SettingUI::createLinWidgetsPage()
     m_linWidgetUnloadButton = createSettingsActionButton(tr("Unload"), inspectorPanel);
     m_linWidgetReloadButton = createSettingsActionButton(tr("Reload"), inspectorPanel);
     m_linWidgetOpenFolderButton = createSettingsActionButton(tr("Open Folder"), inspectorPanel);
-    m_linWidgetDeleteButton = createSettingsActionButton(tr("Delete"), inspectorPanel, false, true);
+    m_linWidgetDeleteButton = createSettingsActionButton(tr("Uninstall"), inspectorPanel, false, true);
     actionRow->addWidget(m_linWidgetLoadButton);
     actionRow->addWidget(m_linWidgetUnloadButton);
     actionRow->addWidget(m_linWidgetReloadButton);
@@ -3265,7 +3286,7 @@ QWidget* SettingUI::createLinWidgetsPage()
     advancedLayout->addWidget(advancedPanel, 0, 1, 1, 1);
     advancedLayout->setColumnStretch(0, 1);
     advancedLayout->setColumnStretch(1, 1);
-    m_linWidgetsTabs->addTab(advancedTab, tr("Advanced"));
+    advancedTab->hide();
 
     auto* footerPanel = createPanel(page);
     footerPanel->setGraphicsEffect(nullptr);
@@ -3345,12 +3366,12 @@ QWidget* SettingUI::createLinWidgetsPage()
             QDesktopServices::openUrl(QUrl::fromLocalFile(path));
         }
     });
-    connect(m_linWidgetDeleteButton, &QPushButton::clicked, this, &SettingUI::deleteSelectedSettingsLinWidget);
+    connect(m_linWidgetDeleteButton, &QPushButton::clicked, this, &SettingUI::uninstallSelectedSettingsLinWidget);
     connect(m_linWidgetAddDevButton, &QPushButton::clicked, this, &SettingUI::addDevelopmentSettingsLinWidget);
     connect(m_linWidgetNewProjectButton, &QPushButton::clicked, this, &SettingUI::createDevelopmentSettingsLinWidget);
     connect(m_linWidgetExportZipButton, &QPushButton::clicked, this, &SettingUI::exportDevelopmentSettingsLinWidget);
     connect(m_linWidgetRemoveDevButton, &QPushButton::clicked, this, [this]() {
-        LinWidget::WidgetRegistryManager registry;
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
         registry.load();
         registry.removeDevelopmentProject(selectedSettingsLinWidgetRegistryId());
         registry.save();
@@ -3387,7 +3408,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
     m_installedLinWidgetsList->clear();
     m_developmentLinWidgetsList->clear();
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
     registry.load(&registryError);
     registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
@@ -3415,7 +3436,12 @@ void SettingUI::reloadLinWidgetsSettingsPage()
             : settingsResolveWidgetIconPath(entry.packagePath, entry.icon);
         const QString registryKey = settingsLinWidgetRegistryKey(entry.id, entry.isDevelopment);
         const QString packageKey = settingsLinWidgetPackageKey(entry.packagePath);
-        const QString state = settingsWidgetStateText(m_linWidgetInstancesById, m_linWidgetInstancesByPackage, registryKey, packageKey);
+        const QString state = settingsWidgetStateText(m_linWidgetInstancesById,
+                                                      m_linWidgetInstancesByPackage,
+                                                      m_linWidgetInstanceCountsById,
+                                                      registryKey,
+                                                      packageKey,
+                                                      manifestOk && manifest.multiInstance);
 
         auto* item = new QListWidgetItem();
         item->setData(SettingsLinWidgetPackagePathRole, entry.packagePath);
@@ -3434,6 +3460,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
         item->setData(SettingsLinWidgetManifestValidRole, manifestOk);
         item->setData(SettingsLinWidgetManifestErrorRole, manifestError);
         item->setData(SettingsLinWidgetIconPathRole, iconPath);
+        item->setData(SettingsLinWidgetMultiInstanceRole, manifestOk && manifest.multiInstance);
         const QString displayText = manifestOk
             ? settingsWidgetItemText(entry.name,
                                      entry.id,
@@ -3481,23 +3508,32 @@ void SettingUI::reloadLinWidgetsSettingsPage()
                                                        selectAndOpenLinWidgetSettingsItem(clickedItem);
                                                    });
             auto* rowLayout = qobject_cast<QHBoxLayout*>(row->layout());
-            auto* closeButton = createSettingsActionButton(tr("Close"), row);
+            const int instanceCount = m_linWidgetInstanceCountsById.value(registryKey, 0);
+            const bool rowRunning = state == QStringLiteral("running");
+            const QString closeButtonText = rowRunning ? tr("Close") : tr("Load");
+            auto* closeButton = createSettingsActionButton(closeButtonText, row);
             auto* uninstallButton = createSettingsActionButton(tr("Uninstall"), row, false, true);
-            closeButton->setEnabled(state == QStringLiteral("running") && (!m_linWidgetsRuntimeToggle || m_linWidgetsRuntimeToggle->checked()));
-            uninstallButton->setEnabled(state != QStringLiteral("running"));
+            closeButton->setEnabled(manifestOk &&
+                                    (!m_linWidgetsRuntimeToggle || m_linWidgetsRuntimeToggle->checked()) &&
+                                    (manifest.multiInstance ? instanceCount < 3 : true));
+            uninstallButton->setEnabled(true);
             rowLayout->addWidget(closeButton);
             rowLayout->addWidget(uninstallButton);
             connect(closeButton, &QPushButton::clicked, this, [this, item]() {
                 if (m_installedLinWidgetsList) {
                     m_installedLinWidgetsList->setCurrentItem(item);
                 }
-                unloadSelectedSettingsLinWidget();
+                if (item->data(SettingsLinWidgetMultiInstanceRole).toBool()) {
+                    loadSelectedSettingsLinWidget();
+                } else {
+                    unloadSelectedSettingsLinWidget();
+                }
             });
             connect(uninstallButton, &QPushButton::clicked, this, [this, item]() {
                 if (m_installedLinWidgetsList) {
                     m_installedLinWidgetsList->setCurrentItem(item);
                 }
-                deleteSelectedSettingsLinWidget();
+                uninstallSelectedSettingsLinWidget();
             });
             item->setSizeHint(QSize(0, 88));
             m_installedLinWidgetsList->setItemWidget(item, row);
@@ -3536,7 +3572,12 @@ void SettingUI::reloadLinWidgetsSettingsPage()
         const QString installedKey = settingsLinWidgetRegistryKey(manifest.id, false);
         const QString packageKey = isInstalled ? settingsLinWidgetPackageKey(installed.packagePath) : QString();
         const QString state = isInstalled
-            ? settingsWidgetStateText(m_linWidgetInstancesById, m_linWidgetInstancesByPackage, installedKey, packageKey)
+            ? settingsWidgetStateText(m_linWidgetInstancesById,
+                                      m_linWidgetInstancesByPackage,
+                                      m_linWidgetInstanceCountsById,
+                                      installedKey,
+                                      packageKey,
+                                      manifest.multiInstance)
             : QStringLiteral("not installed");
 
         auto* item = new QListWidgetItem();
@@ -3553,6 +3594,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
         item->setData(SettingsLinWidgetRequestedPermissionsRole, manifest.permissions);
         item->setData(SettingsLinWidgetOfficialInstalledPathRole, installed.packagePath);
         item->setData(SettingsLinWidgetIconPathRole, iconPath);
+        item->setData(SettingsLinWidgetMultiInstanceRole, manifest.multiInstance);
         const QString officialDisplayText = QStringLiteral("%1\nid: %2\nversion: %3    author: %4\npermissions: %5\nstate: %6\n%7")
             .arg(manifest.name)
             .arg(manifest.id)
@@ -3586,7 +3628,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
             });
         } else {
             auto* uninstallButton = createSettingsActionButton(tr("Uninstall"), row, false, true);
-            uninstallButton->setEnabled(state != QStringLiteral("running"));
+            uninstallButton->setEnabled(true);
             rowLayout->addWidget(uninstallButton);
             connect(uninstallButton, &QPushButton::clicked, this, [this, id = manifest.id]() {
                 m_linWidgetsTabs->setCurrentIndex(2);
@@ -3597,7 +3639,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
                         break;
                     }
                 }
-                deleteSelectedSettingsLinWidget();
+                uninstallSelectedSettingsLinWidget();
             });
         }
         item->setSizeHint(QSize(0, 88));
@@ -3697,7 +3739,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
                     }
                     return;
                 }
-                LinWidget::WidgetRegistryManager reg;
+                auto& reg = LinWidget::WidgetRegistryManager::instance();
                 reg.load();
                 reg.upsertFromPackage(targetPath, &errorMessage);
                 reg.setPermissionsGranted(manifest.id, false, grantedPermissions);
@@ -3718,10 +3760,9 @@ void SettingUI::reloadLinWidgetsSettingsPage()
     }
 
     if (m_linWidgetsStatusLabel) {
-        const QString summary = tr("Installed %1    Development %2    Official source path %3")
+        const QString summary = tr("Installed %1    Development %2")
             .arg(installedCount)
-            .arg(developmentCount)
-            .arg(runtimeLinWidgetsDirForSettings());
+            .arg(developmentCount);
         m_linWidgetsStatusLabel->setText(registryError.isEmpty()
             ? summary
             : tr("%1\nManifest errors:\n%2").arg(summary, registryError));
@@ -3741,12 +3782,19 @@ void SettingUI::refreshLinWidgetSettingsButtons()
     QListWidget* activeList = activeSettingsLinWidgetList();
     QListWidgetItem* activeItem = activeList ? activeList->currentItem() : nullptr;
     const bool manifestValid = !activeItem || activeItem->data(SettingsLinWidgetManifestValidRole).toBool();
+    const bool multiInstance = activeItem && activeItem->data(SettingsLinWidgetMultiInstanceRole).toBool();
+    const int instanceCount = m_linWidgetInstanceCountsById.value(selectedSettingsLinWidgetRegistryKey(), 0);
 
     if (m_linWidgetLoadButton) {
-        m_linWidgetLoadButton->setEnabled(hasSelection && !running && runtimeEnabled && manifestValid);
+        m_linWidgetLoadButton->setText(multiInstance ? tr("Add") : tr("Load"));
+        m_linWidgetLoadButton->setEnabled(hasSelection &&
+                                          runtimeEnabled &&
+                                          manifestValid &&
+                                          ((multiInstance && instanceCount < 3) || (!multiInstance && !running)));
     }
     if (m_linWidgetUnloadButton) {
         m_linWidgetUnloadButton->setEnabled(hasSelection && running && runtimeEnabled);
+        m_linWidgetUnloadButton->setText(multiInstance ? tr("Close One") : tr("Close"));
     }
     if (m_linWidgetReloadButton) {
         m_linWidgetReloadButton->setEnabled(hasSelection && running && runtimeEnabled);
@@ -3755,7 +3803,7 @@ void SettingUI::refreshLinWidgetSettingsButtons()
         m_linWidgetOpenFolderButton->setEnabled(hasSelection);
     }
     if (m_linWidgetDeleteButton) {
-        m_linWidgetDeleteButton->setEnabled(hasSelection && !isDevelopment && !running);
+        m_linWidgetDeleteButton->setEnabled(hasSelection && !isDevelopment);
     }
     if (m_linWidgetExportZipButton) {
         m_linWidgetExportZipButton->setEnabled(hasSelection && isDevelopment && !running);
@@ -3933,6 +3981,7 @@ void SettingUI::openLinWidgetSettingsDrawer(QListWidgetItem* item)
     const bool isDevelopment = item->data(SettingsLinWidgetDevelopmentRole).toBool();
     const QStringList requested = item->data(SettingsLinWidgetRequestedPermissionsRole).toStringList();
     const QStringList granted = item->data(SettingsLinWidgetGrantedPermissionsRole).toStringList();
+    const bool multiInstance = item->data(SettingsLinWidgetMultiInstanceRole).toBool();
     const QString registryKey = settingsLinWidgetRegistryKey(id, isDevelopment);
     const QString packageKey = settingsLinWidgetPackageKey(isOfficial ? item->data(SettingsLinWidgetOfficialInstalledPathRole).toString() : packagePath);
     const QString instanceId = m_linWidgetInstancesById.value(registryKey, m_linWidgetInstancesByPackage.value(packageKey));
@@ -3977,14 +4026,34 @@ void SettingUI::openLinWidgetSettingsDrawer(QListWidgetItem* item)
             installOfficialSettingsLinWidget(packagePath);
             closeDrawer();
         });
+    } else if (isOfficial && installed) {
+        primaryButton = createSettingsActionButton(tr("manage"), hero, true);
+        connect(primaryButton, &QPushButton::clicked, this, [this, id]() {
+            if (m_installedLinWidgetsList) {
+                for (int i = 0; i < m_installedLinWidgetsList->count(); ++i) {
+                    QListWidgetItem* installedItem = m_installedLinWidgetsList->item(i);
+                    if (installedItem && installedItem->data(SettingsLinWidgetRegistryIdRole).toString().compare(id, Qt::CaseInsensitive) == 0) {
+                        m_linWidgetsTabs->setCurrentIndex(2);
+                        m_installedLinWidgetsList->setCurrentItem(installedItem);
+                        openLinWidgetSettingsDrawer(installedItem);
+                        return;
+                    }
+                }
+            }
+        });
     } else if (isMarketplace) {
         primaryButton = createSettingsActionButton(tr("install"), hero, true);
         primaryButton->setEnabled(QFileInfo(packagePath).isDir());
     } else {
-        primaryButton = createSettingsActionButton(running ? tr("close") : tr("load"), hero, true);
-        connect(primaryButton, &QPushButton::clicked, this, [this, running]() {
+        primaryButton = createSettingsActionButton(multiInstance ? tr("add") : (running ? tr("close") : tr("load")), hero, true);
+        primaryButton->setEnabled(!multiInstance || m_linWidgetInstanceCountsById.value(registryKey, 0) < 3);
+        connect(primaryButton, &QPushButton::clicked, this, [this, running, multiInstance]() {
             m_preserveLinWidgetDrawerOnReload = true;
-            running ? unloadSelectedSettingsLinWidget() : loadSelectedSettingsLinWidget();
+            if (multiInstance) {
+                loadSelectedSettingsLinWidget();
+            } else {
+                running ? unloadSelectedSettingsLinWidget() : loadSelectedSettingsLinWidget();
+            }
             m_preserveLinWidgetDrawerOnReload = false;
         });
     }
@@ -4025,8 +4094,19 @@ void SettingUI::openLinWidgetSettingsDrawer(QListWidgetItem* item)
     addDetailRow(tr("version"), version.isEmpty() ? QStringLiteral("unknown") : version);
     addDetailRow(tr("author"), author.isEmpty() ? QStringLiteral("LinDesk") : author);
     addDetailRow(tr("permission"), settingsPermissionsText(requested));
-    addDetailRow(tr("status"), running ? tr("running") : (installed ? tr("installed") : tr("uninstall")));
+    addDetailRow(tr("status"), multiInstance && running
+        ? tr("running %1/3").arg(m_linWidgetInstanceCountsById.value(registryKey, 0))
+        : (running ? tr("running") : (installed ? tr("installed") : tr("uninstall"))));
     addDetailRow(tr("description"), description.isEmpty() ? tr("no description") : description);
+
+    if (isOfficial && installed) {
+        layout->addSpacing(4);
+        auto* note = createCardSubtitle(tr("This widget is already installed. Open the installed instance to manage permissions and runtime state."), details);
+        note->setWordWrap(true);
+        note->setMinimumWidth(0);
+        note->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        detailsLayout->addWidget(note);
+    }
 
     QString logTextForDrawer;
     QString errorsTextForDrawer = tr("no error");
@@ -4186,12 +4266,12 @@ void SettingUI::openLinWidgetSettingsDrawer(QListWidgetItem* item)
         actionRow->setSpacing(8);
         auto* reloadButton = createSettingsActionButton(tr("reload"), details);
         auto* folderButton = createSettingsActionButton(tr("open folder"), details);
-        auto* deleteButton = createSettingsActionButton(tr("delete"), details, false, true);
+        auto* deleteButton = createSettingsActionButton(tr("uninstall"), details, false, true);
         reloadButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         folderButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         deleteButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         reloadButton->setEnabled(running);
-        deleteButton->setEnabled(!isDevelopment && !running);
+        deleteButton->setEnabled(!isDevelopment);
         connect(reloadButton, &QPushButton::clicked, this, [this]() {
             m_preserveLinWidgetDrawerOnReload = true;
             reloadSelectedSettingsLinWidget();
@@ -4200,7 +4280,7 @@ void SettingUI::openLinWidgetSettingsDrawer(QListWidgetItem* item)
         connect(folderButton, &QPushButton::clicked, this, [packagePath]() {
             QDesktopServices::openUrl(QUrl::fromLocalFile(packagePath));
         });
-        connect(deleteButton, &QPushButton::clicked, this, &SettingUI::deleteSelectedSettingsLinWidget);
+        connect(deleteButton, &QPushButton::clicked, this, &SettingUI::uninstallSelectedSettingsLinWidget);
         actionRow->addWidget(reloadButton);
         actionRow->addWidget(folderButton);
         actionRow->addWidget(deleteButton);
@@ -4282,6 +4362,7 @@ void SettingUI::refreshLinWidgetSettingsRunningMaps()
 {
     m_linWidgetInstancesByPackage.clear();
     m_linWidgetInstancesById.clear();
+    m_linWidgetInstanceCountsById.clear();
 
     ListView* view = ListView::instance();
     LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
@@ -4294,10 +4375,16 @@ void SettingUI::refreshLinWidgetSettingsRunningMaps()
             continue;
         }
         m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(state.packagePath), state.instanceId);
+        const bool isDevelopment = state.isDevelopment || state.instanceId.startsWith(QStringLiteral("dev:"));
+        QString registryId = state.registryId;
         LinWidget::WidgetManifest manifest;
-        if (LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
-            m_linWidgetInstancesById.insert(settingsLinWidgetRegistryKey(manifest.id, state.instanceId.startsWith(QStringLiteral("dev:"))),
-                                           state.instanceId);
+        if (registryId.isEmpty() && LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
+            registryId = manifest.id;
+        }
+        if (!registryId.isEmpty()) {
+            const QString key = settingsLinWidgetRegistryKey(registryId, isDevelopment);
+            m_linWidgetInstancesById.insert(key, state.instanceId);
+            m_linWidgetInstanceCountsById.insert(key, m_linWidgetInstanceCountsById.value(key, 0) + 1);
         }
     }
 }
@@ -4335,20 +4422,26 @@ void SettingUI::loadSelectedSettingsLinWidget()
     LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
     QString instanceId;
     const QRect geometry(260, 220, manifest.width, manifest.height);
-    if (!manager || !manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &errorMessage)) {
+    const bool multiInstance = manifest.multiInstance;
+    const bool launched = manager && (multiInstance
+        ? manager->createWidgetInstanceFromPackage(packagePath, isDevelopment, isDevelopment, geometry, &instanceId, &errorMessage)
+        : manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &errorMessage));
+    if (!launched) {
         if (m_linWidgetsStatusLabel) {
             m_linWidgetsStatusLabel->setText(tr("Load failed: %1").arg(errorMessage));
         }
         return;
     }
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setLastRunState(registryId, isDevelopment, QStringLiteral("running"));
     registry.save();
 
     if (m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(tr("Loaded into WebView: %1").arg(instanceId));
+        m_linWidgetsStatusLabel->setText(multiInstance
+            ? tr("Added widget instance: %1").arg(instanceId)
+            : tr("Loaded into WebView: %1").arg(instanceId));
     }
     reloadLinWidgetsSettingsPage();
 }
@@ -4368,7 +4461,7 @@ void SettingUI::unloadSelectedSettingsLinWidget()
             manager->stopWidget(instanceId);
         }
     }
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
     registry.save();
@@ -4398,6 +4491,77 @@ void SettingUI::reloadSelectedSettingsLinWidget()
     refreshLinWidgetSettingsButtons();
 }
 
+void SettingUI::uninstallSelectedSettingsLinWidget()
+{
+    const QString packagePath = selectedSettingsLinWidgetPackagePath();
+    const QString registryId = selectedSettingsLinWidgetRegistryId();
+    const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
+    if (packagePath.isEmpty() || registryId.isEmpty()) {
+        refreshLinWidgetSettingsButtons();
+        return;
+    }
+
+    bool confirmed = true;
+    if (!isDevelopment) {
+        FluentDialog dialog(this);
+        dialog.setDialogTitle(tr("卸载小组件"));
+        dialog.setMessage(tr("确定要卸载这个小组件和它的保存记录吗？\n%1").arg(packagePath));
+        dialog.addActionButton(tr("卸载"), FluentDialog::ActionType::Primary, [&confirmed]() {
+            confirmed = true;
+        });
+        dialog.addActionButton(tr("取消"), FluentDialog::ActionType::Secondary);
+        confirmed = false;
+        dialog.exec();
+    }
+    if (!confirmed) {
+        return;
+    }
+
+    const QString stableInstanceId = settingsLinWidgetRegistryKey(registryId, isDevelopment);
+    if (ListView* view = ListView::instance()) {
+        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
+            const QVector<LinWidget::WidgetLayoutState> states = manager->layoutStates();
+            for (const LinWidget::WidgetLayoutState& state : states) {
+                const bool sameRegistry = state.registryId.compare(registryId, Qt::CaseInsensitive) == 0 ||
+                    state.instanceId == stableInstanceId ||
+                    state.instanceId.startsWith(stableInstanceId + QLatin1Char(':'));
+                const bool samePackage = settingsLinWidgetPackageKey(state.packagePath) == settingsLinWidgetPackageKey(packagePath);
+                const bool sameMode = state.isDevelopment == isDevelopment || state.instanceId.startsWith(isDevelopment ? QStringLiteral("dev:") : QStringLiteral("installed:"));
+                if (sameMode && (sameRegistry || samePackage)) {
+                    manager->removeWidgetState(state.instanceId);
+                }
+            }
+        }
+    }
+
+    if (isDevelopment) {
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
+        registry.load();
+        registry.removeDevelopmentProject(registryId);
+        registry.save();
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Removed development record: %1").arg(registryId));
+        }
+        reloadLinWidgetsSettingsPage();
+        return;
+    }
+
+    settingsRemoveLinWidgetLayoutState(stableInstanceId, packagePath);
+
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
+    registry.load();
+    registry.removeById(registryId);
+    registry.save();
+
+    QString errorMessage;
+    if (!settingsRemoveDirectory(packagePath, &errorMessage) && m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Widget record removed, folder delete failed: %1").arg(errorMessage));
+    } else if (m_linWidgetsStatusLabel) {
+        m_linWidgetsStatusLabel->setText(tr("Uninstalled installed widget: %1").arg(registryId));
+    }
+    reloadLinWidgetsSettingsPage();
+}
+
 void SettingUI::installOfficialSettingsLinWidget(const QString& packagePath)
 {
     LinWidget::WidgetManifest manifest;
@@ -4424,7 +4588,7 @@ void SettingUI::installOfficialSettingsLinWidget(const QString& packagePath)
         }
         return;
     }
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.upsertFromPackage(targetPath, &errorMessage);
     registry.setPermissionsGranted(manifest.id, false, grantedPermissions);
@@ -4463,11 +4627,14 @@ bool SettingUI::launchInstalledSettingsLinWidget(const QString& packagePath,
     }
 
     const QRect geometry(260, 220, manifest.width, manifest.height);
-    if (!manager->launchWidgetPackage(packagePath, geometry, false, false, instanceId, errorMessage)) {
+    const bool launched = manifest.multiInstance
+        ? manager->createWidgetInstanceFromPackage(packagePath, false, false, geometry, instanceId, errorMessage)
+        : manager->launchWidgetPackage(packagePath, geometry, false, false, instanceId, errorMessage);
+    if (!launched) {
         return false;
     }
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setLastRunState(manifest.id, false, QStringLiteral("running"));
     registry.save();
@@ -4495,7 +4662,7 @@ void SettingUI::resetOfficialSettingsLinWidget(const QString& packagePath)
         }
         return;
     }
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.upsertFromPackage(targetPath, &errorMessage);
     registry.save();
@@ -4511,7 +4678,7 @@ void SettingUI::addDevelopmentSettingsLinWidget()
     if (dir.isEmpty()) {
         return;
     }
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString errorMessage;
     registry.load();
     if (!registry.addDevelopmentProject(dir, &errorMessage) || !registry.save(&errorMessage)) {
@@ -4565,7 +4732,7 @@ void SettingUI::createDevelopmentSettingsLinWidget()
         return;
     }
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.addDevelopmentProject(projectDir, &errorMessage);
     registry.save();
@@ -4604,63 +4771,7 @@ void SettingUI::exportDevelopmentSettingsLinWidget()
 
 void SettingUI::deleteSelectedSettingsLinWidget()
 {
-    const QString packagePath = selectedSettingsLinWidgetPackagePath();
-    const QString registryId = selectedSettingsLinWidgetRegistryId();
-    const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
-    if (packagePath.isEmpty() || registryId.isEmpty()) {
-        return;
-    }
-    if (!selectedSettingsLinWidgetInstanceId().isEmpty()) {
-        if (m_linWidgetsStatusLabel) {
-            m_linWidgetsStatusLabel->setText(tr("Unload the widget before deleting it."));
-        }
-        return;
-    }
-
-    if (isDevelopment) {
-        LinWidget::WidgetRegistryManager registry;
-        registry.load();
-        registry.removeDevelopmentProject(registryId);
-        registry.save();
-        if (m_linWidgetsStatusLabel) {
-            m_linWidgetsStatusLabel->setText(tr("Removed development record: %1").arg(registryId));
-        }
-        reloadLinWidgetsSettingsPage();
-        return;
-    }
-
-    bool confirmed = false;
-    FluentDialog dialog(this);
-    dialog.setDialogTitle(tr("删除小组件"));
-    dialog.setMessage(tr("确定要删除这个已安装小组件和它的保存记录吗？\n%1").arg(packagePath));
-    dialog.addActionButton(tr("删除"), FluentDialog::ActionType::Primary, [&confirmed]() {
-        confirmed = true;
-    });
-    dialog.addActionButton(tr("取消"), FluentDialog::ActionType::Secondary);
-    dialog.exec();
-    if (!confirmed) {
-        return;
-    }
-
-    const QString instanceId = settingsLinWidgetRegistryKey(registryId, false);
-    if (ListView* view = ListView::instance()) {
-        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
-            manager->removeWidgetState(instanceId);
-        }
-    }
-    settingsRemoveLinWidgetLayoutState(instanceId, packagePath);
-
-    LinWidget::WidgetRegistryManager registry;
-    registry.load();
-    registry.removeById(registryId);
-    registry.save();
-    QString errorMessage;
-    if (!settingsRemoveDirectory(packagePath, &errorMessage) && m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(tr("Widget record removed, folder delete failed: %1").arg(errorMessage));
-    } else if (m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(tr("Deleted installed widget: %1").arg(registryId));
-    }
-    reloadLinWidgetsSettingsPage();
+    uninstallSelectedSettingsLinWidget();
 }
 
 void SettingUI::setSelectedSettingsLinWidgetPermission(const QString& permission, bool granted)
@@ -4699,7 +4810,7 @@ void SettingUI::setSettingsLinWidgetPermission(const QString& registryId,
         return;
     }
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
     if (!registry.load(&registryError)) {
         if (m_linWidgetsStatusLabel) {
@@ -5905,7 +6016,13 @@ void SettingUI::closeEvent(QCloseEvent* event) {
 
     const bool forceQuit = QCoreApplication::instance() &&
         QCoreApplication::instance()->property("LinDeskForceQuit").toBool();
-    if (!forceQuit && !m_isQuittingFromTray && shouldMinimizeToTray() && m_trayIcon) {
+    if (forceQuit || m_isQuittingFromTray) {
+        event->accept();
+        QWidget::closeEvent(event);
+        return;
+    }
+
+    if (shouldMinimizeToTray() && m_trayIcon) {
         event->ignore();
         hide();
         m_trayIcon->show();
@@ -5916,8 +6033,8 @@ void SettingUI::closeEvent(QCloseEvent* event) {
         return;
     }
 
-    this->hide();
-    event->ignore(); // Prevent destruction
+    event->ignore();
+    showMinimized();
 }
 
 void SettingUI::changeEvent(QEvent* event) {

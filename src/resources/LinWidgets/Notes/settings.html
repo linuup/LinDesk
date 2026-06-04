@@ -1,0 +1,962 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>便签设置 - Notes Settings</title>
+  <style>
+    :root {
+      --bg: #f7f9fb;
+      --text: #2c3e50;
+      --primary: #e2c044;
+      --border: #e2e8f0;
+      --card: #ffffff;
+    }
+    body { margin:0; padding:1.5rem; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#ffffff; color:var(--text); font-size:14px; transition: background-color 0.2s, color 0.2s; }
+    .container { max-width:480px; margin:0 auto; }
+    h2 { margin:0 0 1.5rem; font-size:18px; font-weight:600; border-bottom:2px solid var(--primary); padding-bottom:.5rem; }
+    .section { background:var(--card); border-radius:8px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 4px 6px -1px rgba(0,0,0,.05); border:1px solid var(--border); }
+    .section-title { font-weight:700; margin-bottom:.8rem; font-size:14px; color:#1a202c; }
+    .form-group { margin-bottom:1rem; }
+    .form-group:last-child { margin-bottom:0; }
+    label { display:block; margin-bottom:.4rem; color:#4a5568; font-weight:500; }
+    select, input[type="number"] { width:100%; padding:.6rem; border-radius:6px; border:1px solid var(--border); outline:none; box-sizing:border-box; font-size:13px; background:#fff; transition:border-color .2s; }
+    select:focus, input[type="number"]:focus { border-color:var(--primary); }
+    input[type="range"] { -webkit-appearance:none; width:100%; height:6px; border-radius:3px; background:var(--border); outline:none; margin:10px 0; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--primary); cursor:pointer; transition:transform .1s; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+    input[type="range"]::-webkit-slider-thumb:hover { transform:scale(1.25); }
+    .theme-picker { display:flex; gap:.8rem; flex-wrap:wrap; }
+    .theme-option { width:2.2rem; height:2.2rem; border-radius:50%; cursor:pointer; border:2px solid transparent; box-sizing:border-box; transition:all .2s; box-shadow:0 2px 4px rgba(0,0,0,.1); }
+    .theme-option:hover { transform:scale(1.1); }
+    .theme-option.active { border-color:#3182ce; transform:scale(1.1); box-shadow:0 0 0 2px rgba(49,130,206,.4); }
+    .theme-yellow { background:linear-gradient(135deg,#fffcf0,#ffeeba); }
+    .theme-green  { background:linear-gradient(135deg,#f0fff4,#c6f6d5); }
+    .theme-blue   { background:linear-gradient(135deg,#ebf8ff,#bee3f8); }
+    .theme-pink   { background:linear-gradient(135deg,#fff5f5,#fed7d7); }
+    .theme-white  { background:linear-gradient(135deg,#ffffff,#edf2f7); }
+    .theme-dark   { background:linear-gradient(135deg,#2d3748,#1a202c); }
+    .switch-container { display:flex; align-items:center; justify-content:space-between; }
+    .switch { position:relative; display:inline-block; width:44px; height:22px; }
+    .switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#cbd5e0; transition:.3s; border-radius:34px; }
+    .slider:before { position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px; background:#fff; transition:.3s; border-radius:50%; }
+    input:checked + .slider { background:var(--primary); }
+    input:checked + .slider:before { transform:translateX(22px); }
+    .tip { font-size:12px; color:#718096; margin-top:.3rem; line-height:1.4; }
+
+    /* Instance manager */
+    .inst-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:.8rem; }
+    .inst-header .section-title { margin-bottom:0; }
+    .btn-new { display:inline-flex; align-items:center; gap:5px; padding:.35rem .85rem; border-radius:6px; border:none; background:var(--primary); color:#5a4a10; font-size:13px; font-weight:600; cursor:pointer; transition:background .2s; font-family:inherit; white-space:nowrap; }
+    .btn-new:hover { background:#d4b030; }
+    .btn-new:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-new svg { width:14px; height:14px; flex-shrink:0; }
+    .inst-list { display:flex; flex-direction:column; gap:.5rem; }
+    .inst-item { display:flex; align-items:center; gap:.6rem; padding:.55rem .7rem; border-radius:7px; background:#f8f9fc; border:1px solid var(--border); }
+    .inst-dot { width:8px; height:8px; border-radius:50%; background:#68d391; flex-shrink:0; box-shadow:0 0 0 2px rgba(104,211,145,.3); }
+    .inst-dot.offline { background:#a0aec0; box-shadow:none; }
+    .inst-info { flex:1; min-width:0; }
+    .inst-id { font-size:11px; color:#a0aec0; font-family:monospace; }
+    .inst-geo { font-size:11px; color:#718096; margin-top:1px; }
+    .btn-act { width:26px; height:26px; border-radius:5px; border:none; background:transparent; color:#a0aec0; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background .15s,color .15s; padding:0; font-family:inherit; }
+    .btn-act.close:hover { background:rgba(237,137,54,.1); color:#dd6b20; }
+    .btn-act.remove:hover { background:rgba(245,101,101,.1); color:#e53e3e; }
+    .btn-act svg { width:14px; height:14px; }
+    .inst-empty { text-align:center; color:#a0aec0; font-size:13px; padding:.8rem 0 .2rem; }
+    .inst-footer { display:flex; align-items:center; justify-content:space-between; margin-top:.6rem; }
+    .inst-limit { font-size:12px; color:#e07000; }
+    .btn-refresh { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:#a0aec0; cursor:pointer; border:none; background:none; padding:0; transition:color .15s; font-family:inherit; }
+    .btn-refresh:hover { color:#4a5568; }
+    .btn-refresh svg { width:12px; height:12px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .spinning { animation:spin .7s linear infinite; }
+
+    /* Dashboard view */
+    .view-container { display: flex; flex-direction: column; }
+    .view-container.hidden { display: none !important; }
+    .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .btn-icon { background: none; border: none; cursor: pointer; color: var(--text); padding: 5px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s, color 0.2s; width: 36px; height: 36px; outline: none; }
+    .btn-icon:hover { background: rgba(0,0,0,0.05); }
+    .btn-icon svg { width: 22px; height: 22px; }
+    .dash-title { margin: 0 0 1rem 0; font-size: 28px; font-weight: 700; color: #1a202c; font-family: inherit; }
+    .search-container { position: relative; margin-bottom: 1.5rem; }
+    .search-container input { width: 100%; padding: 0.75rem 1rem 0.75rem 2.5rem; border-radius: 8px; border: 1px solid var(--border); outline: none; box-sizing: border-box; font-size: 14px; background: #edf2f7; transition: border-color 0.2s, background 0.2s; }
+    .search-container input:focus { border-color: var(--primary); background: #ffffff; }
+    .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: #a0aec0; pointer-events: none; }
+    
+    .notes-grid { display: flex; flex-direction: column; gap: 0.8rem; }
+    
+    /* Folded corner note card */
+    .note-card { position: relative; padding: 1.2rem; border-radius: 8px; margin-bottom: 0.2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column; cursor: pointer; border: 1px solid transparent; }
+    .note-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+    
+    .note-card-content { font-size: 14px; color: #2c3e50; white-space: pre-wrap; word-break: break-all; flex: 1; margin-right: 1rem; max-height: 4.5em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; line-height: 1.5; text-align: left; transition: max-height 0.25s ease-out; }
+    .note-card.expanded .note-card-content { max-height: 50em; -webkit-line-clamp: unset; overflow: visible; }
+    .note-card-time { font-size: 11px; color: #718096; white-space: nowrap; margin-top: 2px; transition: opacity 0.2s; }
+    
+    .note-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 0.8rem; width: 100%; position: relative; height: 16px; }
+    .card-theme-picker { display: flex; gap: 6px; opacity: 0; pointer-events: none; transition: opacity 0.2s; position: absolute; left: 0; bottom: 0; }
+    .note-card:hover .card-theme-picker { opacity: 1; pointer-events: auto; }
+    .note-card:hover .note-card-time { opacity: 0; }
+    
+    .card-theme-dot { width: 13px; height: 13px; border-radius: 50%; cursor: pointer; border: 1px solid rgba(0,0,0,0.15); transition: transform 0.15s; }
+    .card-theme-dot:hover { transform: scale(1.3); }
+    .card-theme-dot.theme-yellow { background: #ecc94b; }
+    .card-theme-dot.theme-green { background: #48bb78; }
+    .card-theme-dot.theme-blue { background: #4299e1; }
+    .card-theme-dot.theme-pink { background: #ed64a6; }
+    .card-theme-dot.theme-white { background: #fff; border-color: rgba(0,0,0,0.25); }
+    .card-theme-dot.theme-dark { background: #2d3748; }
+    
+    /* Theme color adaptations for notes and body */
+    /* Theme color adaptations for body */
+    body.theme-yellow { background: #ffffff; color: #2c3e50; }
+    body.theme-green { background: #ffffff; color: #2c3e50; }
+    body.theme-blue { background: #ffffff; color: #2c3e50; }
+    body.theme-pink { background: #ffffff; color: #2c3e50; }
+    body.theme-white { background: #ffffff; color: #2c3e50; }
+    body.theme-dark { background: #1a202c !important; color: #edf2f7 !important; }
+    body.theme-dark .dash-title { color: #edf2f7; }
+    body.theme-dark .btn-icon { color: #edf2f7; }
+    body.theme-dark .btn-icon:hover { background: rgba(255,255,255,0.08); }
+    body.theme-dark select, body.theme-dark input { background: #2d3748; color: #edf2f7; border-color: #4a5568; }
+    body.theme-dark .section { background: #2d3748; border-color: #4a5568; color: #edf2f7; }
+    body.theme-dark .section-title { color: #edf2f7; }
+    body.theme-dark .form-group label { color: #a0aec0; }
+    body.theme-dark .inst-item { background: #1a202c; border-color: #4a5568; }
+    body.theme-dark .tip { color: #a0aec0; }
+    body.theme-dark .btn-refresh { color: #a0aec0; }
+    body.theme-dark .btn-refresh:hover { color: #edf2f7; }
+
+    /* Note Card Themes (Minimalist style) */
+    .note-card { background: #ffffff; border: 1px solid #e2e8f0; }
+    .note-card .note-card-content { color: #2d3748; }
+    .note-card .note-card-time { color: #718096; }
+    body.theme-dark .note-card { background: #1e293b; border-color: #334155; }
+    body.theme-dark .note-card .note-card-content { color: #edf2f7; }
+    body.theme-dark .note-card .note-card-time { color: #a0aec0; }
+
+    .note-card.theme-yellow { border-left: 4px solid #ecc94b; }
+    .note-card.theme-yellow::after { content: ""; position: absolute; bottom: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 0 14px 14px; border-color: transparent transparent #ecc94b transparent; border-bottom-right-radius: 8px; }
+
+    .note-card.theme-green { border-left: 4px solid #48bb78; }
+    .note-card.theme-green::after { content: ""; position: absolute; bottom: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 0 14px 14px; border-color: transparent transparent #48bb78 transparent; border-bottom-right-radius: 8px; }
+
+    .note-card.theme-blue { border-left: 4px solid #4299e1; }
+    .note-card.theme-blue::after { content: ""; position: absolute; bottom: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 0 14px 14px; border-color: transparent transparent #4299e1 transparent; border-bottom-right-radius: 8px; }
+
+    .note-card.theme-pink { border-left: 4px solid #ed64a6; }
+    .note-card.theme-pink::after { content: ""; position: absolute; bottom: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 0 14px 14px; border-color: transparent transparent #ed64a6 transparent; border-bottom-right-radius: 8px; }
+
+    .note-card.theme-white { border-left: 4px solid #cbd5e1; }
+    .note-card.theme-white::after { content: ""; position: absolute; bottom: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 0 14px 14px; border-color: transparent transparent #cbd5e1 transparent; border-bottom-right-radius: 8px; }
+
+    .note-card.theme-dark { border-left: 4px solid #475569; }
+    .note-card.theme-dark::after { content: ""; position: absolute; bottom: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 0 14px 14px; border-color: transparent transparent #475569 transparent; border-bottom-right-radius: 8px; }
+    
+    .note-card .btn-delete { position: absolute; top: 50%; right: 15px; transform: translateY(-50%) scale(0.8); opacity: 0; transition: opacity 0.2s, transform 0.2s; background: rgba(245, 101, 101, 0.1); color: #e53e3e; border: none; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .note-card:hover .btn-delete { opacity: 1; transform: translateY(-50%) scale(1); }
+    .note-card:hover .note-card-time { opacity: 0; }
+    .note-card .btn-delete svg { width: 16px; height: 16px; }
+    
+    /* Custom Context Menu */
+    .context-menu {
+      position: fixed;
+      z-index: 10000;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 0;
+      min-width: 120px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      animation: menuFadeIn 0.12s ease-out;
+    }
+    @keyframes menuFadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .context-menu-item {
+      padding: 8px 16px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      text-align: left;
+    }
+    .context-menu-item:hover {
+      background: #f7fafc;
+    }
+    body.theme-dark .context-menu-item:hover {
+      background: #4a5568;
+    }
+    .context-menu-item.delete {
+      color: #e53e3e;
+    }
+    .context-menu-item.delete:hover {
+      background: #fff5f5;
+    }
+    body.theme-dark .context-menu-item.delete:hover {
+      background: rgba(229, 62, 62, 0.15);
+    }
+
+    /* Expanded card styles */
+    .note-card.expanded {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .note-card.expanded .note-card-content {
+      display: block;
+      max-height: none;
+      -webkit-line-clamp: unset;
+    }
+    
+    .settings-header-container { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; border-bottom: 2px solid var(--primary); padding-bottom: .5rem; }
+
+    /* Custom Confirm Overlay Dialog in settings */
+    .confirm-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s, visibility 0.2s;
+    }
+    .confirm-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .confirm-box {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+      border: 1px solid var(--border);
+      width: 85%;
+      max-width: 320px;
+      text-align: center;
+      transform: scale(1);
+      transition: transform 0.2s;
+    }
+    .confirm-overlay.hidden .confirm-box {
+      transform: scale(0.9);
+    }
+    .confirm-message {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0 0 1.2rem 0;
+      color: var(--text);
+    }
+    .confirm-actions {
+      display: flex;
+      gap: 0.8rem;
+      justify-content: center;
+    }
+    .confirm-btn {
+      padding: 0.5rem 1.2rem;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .confirm-btn:active {
+      transform: scale(0.97);
+    }
+    .btn-secondary {
+      background: var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover {
+      background: #cbd5e0;
+    }
+    .btn-primary {
+      background: #e53e3e;
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: #c53030;
+    }
+
+    body.theme-dark .confirm-box { background: #2d3748; border-color: #4a5568; }
+    body.theme-dark .confirm-message { color: #edf2f7; }
+    body.theme-dark .confirm-btn.btn-secondary { background: #4a5568; color: #edf2f7; }
+    body.theme-dark .confirm-btn.btn-secondary:hover { background: #718096; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- Dashboard View -->
+  <div id="dashboardView" class="view-container">
+    <div class="dash-header">
+      <button class="btn-icon" id="btnNewDash" title="新建便签">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="btn-icon" id="btnGoToSettings" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+    
+    <h1 class="dash-title">Sticky Notes</h1>
+    
+    <div class="search-container">
+      <input type="text" id="searchBar" placeholder="Search...">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </div>
+    
+    <div id="notesGrid" class="notes-grid">
+      <div class="inst-empty">加载中…</div>
+    </div>
+  </div>
+
+  <!-- Settings View -->
+  <div id="settingsView" class="view-container hidden">
+    <div class="settings-header-container">
+      <button class="btn-icon" id="btnBackToDash" title="返回主页">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      </button>
+      <h2 style="margin: 0; border: none; padding: 0;">便签设置 (Notes Settings)</h2>
+    </div>
+
+    <!-- Instance Manager -->
+    <div class="section">
+      <div class="inst-header">
+        <div class="section-title">实例管理 (Instance Manager)</div>
+        <button class="btn-new" id="btnNew">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          新建便签
+        </button>
+      </div>
+      <div id="instList" class="inst-list"><div class="inst-empty">加载中…</div></div>
+      <div class="inst-footer">
+        <span id="limitTip" class="inst-limit" style="display:none">⚠ 已达上限（3个）</span>
+        <button class="btn-refresh" id="btnRefresh">
+          <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+      </div>
+    </div>
+
+    <!-- Theme -->
+    <div class="section">
+      <div class="section-title">便签主题色 (Theme Color)</div>
+      <div class="theme-picker" id="themePicker">
+        <div class="theme-option theme-yellow" data-theme="yellow" title="暖心黄"></div>
+        <div class="theme-option theme-green"  data-theme="green"  title="薄荷绿"></div>
+        <div class="theme-option theme-blue"   data-theme="blue"   title="天空蓝"></div>
+        <div class="theme-option theme-pink"   data-theme="pink"   title="樱花粉"></div>
+        <div class="theme-option theme-white"  data-theme="white"  title="经典白"></div>
+        <div class="theme-option theme-dark"   data-theme="dark"   title="深邃灰"></div>
+      </div>
+    </div>
+
+    <!-- Font size -->
+    <div class="section">
+      <div class="section-title">排版与字号 (Typography)</div>
+      <div class="form-group">
+        <label for="fontSize">默认字体大小 (px)</label>
+        <input type="number" id="fontSize" min="10" max="60" value="15">
+      </div>
+    </div>
+
+    <!-- Opacity -->
+    <div class="section">
+      <div class="section-title">不透明度设置 (Opacity)</div>
+      <div class="form-group">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem">
+          <label for="opacity" style="margin-bottom:0">不透明度</label>
+          <span id="opacityVal" style="font-weight:600;color:var(--primary)">100%</span>
+        </div>
+        <input type="range" id="opacity" min="0" max="100" value="100">
+      </div>
+    </div>
+
+    <!-- Zoom key -->
+    <div class="section">
+      <div class="section-title">交互与快捷键 (Interaction)</div>
+      <div class="form-group">
+        <label for="zoomKey">滚轮缩放字体修饰键</label>
+        <select id="zoomKey">
+          <option value="all">任意修饰键 (Ctrl/Alt/Shift)</option>
+          <option value="ctrl">Ctrl</option>
+          <option value="alt">Alt</option>
+          <option value="shift">Shift</option>
+          <option value="none">禁用</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Confirm clear -->
+    <div class="section">
+      <div class="switch-container">
+        <div>
+          <div class="section-title" style="margin-bottom:.2rem">启用清空确认</div>
+          <div class="tip">点击垃圾桶图标时是否弹出确认弹窗</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="confirmClear" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Confirm Overlay Modal -->
+<div id="confirmOverlay" class="confirm-overlay hidden">
+  <div class="confirm-box">
+    <p class="confirm-message">确定要删除此便签实例吗？</p>
+    <div class="confirm-actions">
+      <button id="confirmOverlayCancel" class="confirm-btn btn-secondary">取消</button>
+      <button id="confirmOverlayYes" class="confirm-btn btn-primary">删除</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Settings ──────────────────────────────────────────────────────────────────
+const currentInstanceId = window.desktop && desktop.instanceId ? desktop.instanceId : 'default';
+
+const globalTheme = localStorage.getItem('lin_sticky_notes_theme') || 'yellow';
+const savedTheme  = localStorage.getItem(`lin_sticky_notes_instance_${currentInstanceId}_theme`) || globalTheme;
+const savedSize   = parseInt(localStorage.getItem(`lin_sticky_notes_instance_${currentInstanceId}_fontsize`) || localStorage.getItem('lin_sticky_notes_fontsize')) || 15;
+const savedOp     = localStorage.getItem('lin_sticky_notes_opacity') || '100';
+const savedZoom   = localStorage.getItem('lin_sticky_notes_zoom_key') || 'all';
+const savedConfirm = localStorage.getItem('lin_sticky_notes_confirm_clear') !== 'false';
+
+// Apply initial settings page theme class to body (only dark mode affects settings page theme)
+document.body.className = globalTheme === 'dark' ? 'theme-dark' : '';
+
+document.querySelector(`.theme-option[data-theme="${savedTheme}"]`)?.classList.add('active');
+document.getElementById('fontSize').value   = savedSize;
+document.getElementById('opacity').value    = savedOp;
+document.getElementById('opacityVal').textContent = savedOp + '%';
+document.getElementById('zoomKey').value    = savedZoom;
+document.getElementById('confirmClear').checked = savedConfirm;
+
+function notifyAppearanceChange() {
+  try {
+    if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === 'function') {
+      chrome.webview.postMessage({ type: 'linwidget_settings_changed_request' });
+    }
+  } catch (_) {}
+}
+
+document.getElementById('themePicker').addEventListener('click', e => {
+  const opt = e.target.closest('.theme-option');
+  if (!opt) return;
+  document.querySelectorAll('.theme-option').forEach(el => el.classList.remove('active'));
+  opt.classList.add('active');
+  
+  const instId = window.desktop && desktop.instanceId ? desktop.instanceId : 'default';
+  if (instId === 'default') {
+    localStorage.setItem('lin_sticky_notes_theme', opt.dataset.theme);
+    document.body.className = opt.dataset.theme === 'dark' ? 'theme-dark' : '';
+  } else {
+    localStorage.setItem(`lin_sticky_notes_instance_${instId}_theme`, opt.dataset.theme);
+  }
+  loadInstances();
+  notifyAppearanceChange();
+});
+document.getElementById('fontSize').addEventListener('input', () => {
+  let v = parseInt(document.getElementById('fontSize').value);
+  if (isNaN(v)) return;
+  v = Math.max(10, Math.min(60, v));
+  
+  const instId = window.desktop && desktop.instanceId ? desktop.instanceId : 'default';
+  if (instId === 'default') {
+    localStorage.setItem('lin_sticky_notes_fontsize', v + 'px');
+  } else {
+    localStorage.setItem(`lin_sticky_notes_instance_${instId}_fontsize`, v + 'px');
+  }
+  loadInstances();
+  notifyAppearanceChange();
+});
+document.getElementById('opacity').addEventListener('input', () => {
+  const v = document.getElementById('opacity').value;
+  document.getElementById('opacityVal').textContent = v + '%';
+  localStorage.setItem('lin_sticky_notes_opacity', v);
+  notifyAppearanceChange();
+});
+document.getElementById('zoomKey').addEventListener('change', () => {
+  localStorage.setItem('lin_sticky_notes_zoom_key', document.getElementById('zoomKey').value);
+  notifyAppearanceChange();
+});
+document.getElementById('confirmClear').addEventListener('change', function() {
+  localStorage.setItem('lin_sticky_notes_confirm_clear', this.checked ? 'true' : 'false');
+  notifyAppearanceChange();
+});
+
+// ── View Switching & Dashboard controls ───────────────────────────────────────
+document.getElementById('btnGoToSettings').addEventListener('click', () => {
+  document.getElementById('dashboardView').classList.add('hidden');
+  document.getElementById('settingsView').classList.remove('hidden');
+});
+
+document.getElementById('btnBackToDash').addEventListener('click', () => {
+  document.getElementById('settingsView').classList.add('hidden');
+  document.getElementById('dashboardView').classList.remove('hidden');
+});
+
+document.getElementById('btnNewDash').addEventListener('click', async () => {
+  btnNew.click();
+});
+
+document.getElementById('searchBar').addEventListener('input', () => {
+  renderNotesGrid(currentInstances);
+});
+
+// Custom confirm overlay logic
+let onConfirmCallback = null;
+function showConfirmOverlay(message, onConfirm) {
+  const overlay = document.getElementById('confirmOverlay');
+  overlay.querySelector('.confirm-message').textContent = message;
+  overlay.classList.remove('hidden');
+  onConfirmCallback = onConfirm;
+}
+document.getElementById('confirmOverlayCancel').addEventListener('click', () => {
+  document.getElementById('confirmOverlay').classList.add('hidden');
+  onConfirmCallback = null;
+});
+document.getElementById('confirmOverlayYes').addEventListener('click', () => {
+  document.getElementById('confirmOverlay').classList.add('hidden');
+  if (onConfirmCallback) {
+    onConfirmCallback();
+    onConfirmCallback = null;
+  }
+});
+
+// ── Instance Manager (desktop.instances.list / close / remove / create) ───────
+const instList  = document.getElementById('instList');
+const notesGrid = document.getElementById('notesGrid');
+const limitTip  = document.getElementById('limitTip');
+const btnNew    = document.getElementById('btnNew');
+const btnRefresh = document.getElementById('btnRefresh');
+const refreshIcon = document.getElementById('refreshIcon');
+const MAX = 3;
+let currentInstances = [];
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function withTimeout(promise, ms, label) {
+  const t = new Promise((_, rej) =>
+    setTimeout(() => rej(new Error(`${label} 超时（${ms/1000}s）`)), ms));
+  return Promise.race([promise, t]);
+}
+
+function formatTime(createdAt) {
+  if (!createdAt) return '';
+  const date = new Date(createdAt);
+  if (isNaN(date.getTime())) {
+    // If it is a string format of QDateTime or not a number, return as is or parse nicely
+    return String(createdAt);
+  }
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${hours}:${minutes} ${ampm}`;
+}
+
+function renderNotesGrid(list) {
+  const filterKeyword = document.getElementById('searchBar').value.toLowerCase().trim();
+  
+  const filtered = list.filter(item => {
+    const content = localStorage.getItem('lin_sticky_notes_instance_' + item.instanceId + '_content') || 'Take a note...';
+    return content.toLowerCase().includes(filterKeyword);
+  });
+  
+  if (list.length === 0) {
+    notesGrid.innerHTML = '<div class="inst-empty">暂无便签，点击左上角加号创建</div>';
+    return;
+  }
+  
+  if (filtered.length === 0) {
+    notesGrid.innerHTML = '<div class="inst-empty">未找到匹配的便签</div>';
+    return;
+  }
+  
+  notesGrid.innerHTML = '';
+  for (const item of filtered) {
+    const rawContent = localStorage.getItem('lin_sticky_notes_instance_' + item.instanceId + '_content') || '';
+    const cardTheme = localStorage.getItem('lin_sticky_notes_instance_' + item.instanceId + '_theme') || localStorage.getItem('lin_sticky_notes_theme') || 'yellow';
+    const cardFontSize = parseInt(localStorage.getItem('lin_sticky_notes_instance_' + item.instanceId + '_fontsize') || localStorage.getItem('lin_sticky_notes_fontsize')) || 15;
+    
+    // Parse HTML to extract text and image counts
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawContent, 'text/html');
+    const plainText = doc.body.textContent || doc.body.innerText || '';
+    const hasImages = doc.body.getElementsByTagName('img').length > 0;
+    
+    let previewText = 'Take a note...';
+    if (plainText.trim()) {
+      previewText = plainText.trim() + (hasImages ? ' [图片]' : '');
+    } else if (hasImages) {
+      previewText = '[图片]';
+    }
+    
+    const card = document.createElement('div');
+    card.dataset.id = item.instanceId;
+    card.className = 'note-card theme-' + cardTheme;
+    card.innerHTML = `
+      <div class="note-card-content" style="font-size: ${cardFontSize}px">${esc(previewText)}</div>
+      <div class="note-card-footer">
+        <div class="note-card-time">${formatTime(item.createdAt || Date.now())}</div>
+        <div class="card-theme-picker">
+          <div class="card-theme-dot theme-yellow" data-theme="yellow" title="暖心黄"></div>
+          <div class="card-theme-dot theme-green" data-theme="green" title="薄荷绿"></div>
+          <div class="card-theme-dot theme-blue" data-theme="blue" title="天空蓝"></div>
+          <div class="card-theme-dot theme-pink" data-theme="pink" title="樱花粉"></div>
+          <div class="card-theme-dot theme-white" data-theme="white" title="经典白"></div>
+          <div class="card-theme-dot theme-dark" data-theme="dark" title="深邃灰"></div>
+          <div style="width: 1px; height: 12px; background: rgba(0,0,0,0.15); margin: 0 4px;"></div>
+          <div class="card-font-size-adjuster" style="display: flex; align-items: center; gap: 4px; color: inherit;">
+            <button class="btn-font-dec" data-id="${esc(item.instanceId)}" title="减小字号" style="background: none; border: none; cursor: pointer; padding: 0 4px; font-weight: bold; font-size: 11px; color: inherit; display: flex; align-items: center; justify-content: center; outline: none;">A-</button>
+            <span class="card-font-size-val" style="font-size: 10px; font-weight: 600; min-width: 24px; text-align: center; color: inherit;">${cardFontSize}px</span>
+            <button class="btn-font-inc" data-id="${esc(item.instanceId)}" title="增大字号" style="background: none; border: none; cursor: pointer; padding: 0 4px; font-weight: bold; font-size: 11px; color: inherit; display: flex; align-items: center; justify-content: center; outline: none;">A+</button>
+          </div>
+        </div>
+      </div>
+      <button class="btn-delete" data-id="${esc(item.instanceId)}" title="删除此便签">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    `;
+    
+    card.querySelectorAll('.card-theme-dot').forEach(dot => {
+      dot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const theme = e.currentTarget.dataset.theme;
+        localStorage.setItem(`lin_sticky_notes_instance_${item.instanceId}_theme`, theme);
+        card.className = 'note-card theme-' + theme;
+        
+        if (item.instanceId === currentInstanceId) {
+          document.querySelectorAll('.theme-option').forEach(el => el.classList.remove('active'));
+          document.querySelector(`.theme-option[data-theme="${theme}"]`)?.classList.add('active');
+          document.body.className = 'theme-' + theme;
+        }
+        
+        notifyAppearanceChange();
+      });
+    });
+
+    card.querySelector('.btn-font-dec').addEventListener('click', (e) => {
+      e.stopPropagation();
+      let size = parseInt(localStorage.getItem(`lin_sticky_notes_instance_${item.instanceId}_fontsize`) || localStorage.getItem('lin_sticky_notes_fontsize')) || 15;
+      size = Math.max(10, size - 1);
+      localStorage.setItem(`lin_sticky_notes_instance_${item.instanceId}_fontsize`, size + 'px');
+      card.querySelector('.note-card-content').style.fontSize = size + 'px';
+      card.querySelector('.card-font-size-val').textContent = size + 'px';
+      
+      if (item.instanceId === currentInstanceId) {
+        document.getElementById('fontSize').value = size;
+      }
+      
+      notifyAppearanceChange();
+    });
+    
+    card.querySelector('.btn-font-inc').addEventListener('click', (e) => {
+      e.stopPropagation();
+      let size = parseInt(localStorage.getItem(`lin_sticky_notes_instance_${item.instanceId}_fontsize`) || localStorage.getItem('lin_sticky_notes_fontsize')) || 15;
+      size = Math.min(60, size + 1);
+      localStorage.setItem(`lin_sticky_notes_instance_${item.instanceId}_fontsize`, size + 'px');
+      card.querySelector('.note-card-content').style.fontSize = size + 'px';
+      card.querySelector('.card-font-size-val').textContent = size + 'px';
+      
+      if (item.instanceId === currentInstanceId) {
+        document.getElementById('fontSize').value = size;
+      }
+      
+      notifyAppearanceChange();
+    });
+    
+    card.querySelector('.btn-delete').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = e.currentTarget.dataset.id;
+      
+      const action = async () => {
+        console.log('[Notes Settings] Dashboard removing:', id);
+        try {
+          const r = await withTimeout(desktop.instances.remove(id), 5000, 'remove');
+          if (r && !r.ok) console.warn('[Notes Settings] remove failed:', r.error);
+        } catch (ex) { console.warn('[Notes Settings] remove timeout:', ex.message); }
+        await loadInstances();
+      };
+
+      const confirmClear = localStorage.getItem('lin_sticky_notes_confirm_clear') !== 'false';
+      if (confirmClear) {
+        showConfirmOverlay('确定要删除这个便签实例吗？此操作不可恢复。', action);
+      } else {
+        await action();
+      }
+    });
+    
+    card.addEventListener('click', () => {
+      card.classList.toggle('expanded');
+    });
+
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      closeContextMenu();
+      
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      
+      const isRunning = item.running;
+      
+      const actionItem = document.createElement('div');
+      actionItem.className = 'context-menu-item';
+      if (isRunning) {
+        actionItem.textContent = '关闭';
+        actionItem.addEventListener('click', async () => {
+          try {
+            await withTimeout(desktop.instances.close(item.instanceId), 5000, 'close');
+          } catch(ex) {}
+          await loadInstances();
+        });
+      } else {
+        actionItem.textContent = '加载';
+        actionItem.addEventListener('click', async () => {
+          try {
+            await withTimeout(desktop.instances.load(item.instanceId), 5000, 'load');
+          } catch(ex) {}
+          await loadInstances();
+        });
+      }
+      
+      const deleteItem = document.createElement('div');
+      deleteItem.className = 'context-menu-item delete';
+      deleteItem.textContent = '删除';
+      deleteItem.addEventListener('click', async () => {
+        const action = async () => {
+          try {
+            await withTimeout(desktop.instances.remove(item.instanceId), 5000, 'remove');
+          } catch (ex) {}
+          await loadInstances();
+        };
+        const confirmClear = localStorage.getItem('lin_sticky_notes_confirm_clear') !== 'false';
+        if (confirmClear) {
+          showConfirmOverlay('确定要删除这个便签实例吗？此操作不可恢复。', action);
+        } else {
+          await action();
+        }
+      });
+      
+      menu.appendChild(actionItem);
+      menu.appendChild(deleteItem);
+      
+      document.body.appendChild(menu);
+      
+      // Position menu at cursor
+      const rect = menu.getBoundingClientRect();
+      let left = e.clientX;
+      let top = e.clientY;
+      
+      if (left + rect.width > window.innerWidth) {
+        left = window.innerWidth - rect.width - 5;
+      }
+      if (top + rect.height > window.innerHeight) {
+        top = window.innerHeight - rect.height - 5;
+      }
+      
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      
+      currentContextMenu = menu;
+    });
+    
+    notesGrid.appendChild(card);
+  }
+}
+
+async function loadInstances() {
+  console.log('[Notes Settings] loadInstances called');
+  
+  if (!window.desktop || !desktop.instances || typeof desktop.instances.list !== 'function') {
+    const errMsg = 'desktop.instances.list 不可用（context=' + (window.desktop ? desktop.context : 'no desktop') + '）';
+    instList.innerHTML = `<div class="inst-empty">${errMsg}</div>`;
+    notesGrid.innerHTML = `<div class="inst-empty">${errMsg}</div>`;
+    return;
+  }
+
+  const hasExistingItems = instList.querySelectorAll('.inst-item').length > 0;
+  if (!hasExistingItems) {
+    instList.innerHTML = '<div class="inst-empty">加载中…</div>';
+    notesGrid.innerHTML = '<div class="inst-empty">加载中…</div>';
+  }
+  let result;
+  try {
+    result = await withTimeout(desktop.instances.list(), 5000, 'list');
+  } catch (e) {
+    const errMsg = `❌ ${e.message}<br><small>请在 Debug 页面 Remove 后重新 Load 便签（需要 multiInstance 生效）</small>`;
+    instList.innerHTML = `<div class="inst-empty">${errMsg}</div>`;
+    notesGrid.innerHTML = `<div class="inst-empty">${errMsg}</div>`;
+    console.warn('[Notes Settings] list failed:', e.message);
+    return;
+  }
+  console.log('[Notes Settings] list result:', JSON.stringify(result));
+
+  if (!result.ok) {
+    const errMsg = `加载失败: ${esc(result.error)}`;
+    instList.innerHTML = `<div class="inst-empty">${errMsg}</div>`;
+    notesGrid.innerHTML = `<div class="inst-empty">${errMsg}</div>`;
+    return;
+  }
+  
+  const list = result.instances || [];
+  currentInstances = list;
+  console.log('[Notes Settings] instances count:', list.length);
+  limitTip.style.display = list.length >= MAX ? 'block' : 'none';
+  
+  // Render Dashboard Grid
+  renderNotesGrid(list);
+
+  // Render original list inside Settings
+  if (list.length === 0) {
+    instList.innerHTML = '<div class="inst-empty">暂无便签实例</div>';
+    return;
+  }
+  instList.innerHTML = '';
+  let idx = 1;
+  for (const item of list) {
+    const statusText = item.running ? '运行中' : '未运行';
+    const visibleText = item.visible === false ? ' · 隐藏' : '';
+    const geo = item.geometry ? `${item.geometry.width}×${item.geometry.height}` : '';
+    const div = document.createElement('div');
+    div.className = 'inst-item';
+    div.innerHTML = `
+      <div class="${item.running ? 'inst-dot' : 'inst-dot offline'}" title="${statusText}"></div>
+      <div class="inst-info">
+        <div class="inst-id">便签 实例 ${idx++}</div>
+        <div class="inst-geo">${statusText}${visibleText}${geo ? '  ' + geo : ''}</div>
+      </div>
+      <button class="btn-act close" data-id="${esc(item.instanceId)}" style="display: none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+      </button>
+      <button class="btn-act remove" data-id="${esc(item.instanceId)}" title="删除此实例">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    `;
+    div.querySelector('.btn-act.close').addEventListener('click', async (e) => {
+      if (e.currentTarget.disabled) return;
+      const id = e.currentTarget.dataset.id;
+      console.log('[Notes Settings] closing:', id);
+      try {
+        const r = await withTimeout(desktop.instances.close(id), 5000, 'close');
+        if (r && !r.ok) console.warn('[Notes Settings] close failed:', r.error);
+      } catch (ex) { console.warn('[Notes Settings] close timeout:', ex.message); }
+      await loadInstances();
+    });
+    div.querySelector('.btn-act.remove').addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      
+      const action = async () => {
+        console.log('[Notes Settings] removing:', id);
+        try {
+          const r = await withTimeout(desktop.instances.remove(id), 5000, 'remove');
+          if (r && !r.ok) console.warn('[Notes Settings] remove failed:', r.error);
+        } catch (ex) { console.warn('[Notes Settings] remove timeout:', ex.message); }
+        await loadInstances();
+      };
+
+      const confirmClear = localStorage.getItem('lin_sticky_notes_confirm_clear') !== 'false';
+      if (confirmClear) {
+        showConfirmOverlay('确定要删除这个便签实例吗？此操作不可恢复。', action);
+      } else {
+        await action();
+      }
+    });
+    instList.appendChild(div);
+  }
+}
+
+btnNew.addEventListener('click', async () => {
+  console.log('[Notes Settings] create instance clicked');
+  let listResult;
+  try {
+    listResult = await withTimeout(desktop.instances.list(), 5000, 'list');
+    if (listResult.ok && (listResult.instances || []).length >= MAX) {
+      limitTip.style.display = 'block';
+      return;
+    }
+  } catch (e) { console.warn('[Notes Settings] pre-create list failed:', e.message); }
+
+  btnNew.disabled = true;
+  const btnNewDash = document.getElementById('btnNewDash');
+  if (btnNewDash) btnNewDash.disabled = true;
+  try {
+    const r = await withTimeout(desktop.instances.create(), 5000, 'create');
+    console.log('[Notes Settings] create result:', JSON.stringify(r));
+    if (r && !r.ok) console.warn('[Notes Settings] create failed:', r.error);
+  } catch (e) {
+    console.warn('[Notes Settings] create timeout:', e.message);
+  }
+  btnNew.disabled = false;
+  if (btnNewDash) btnNewDash.disabled = false;
+  await loadInstances();
+});
+
+btnRefresh.addEventListener('click', async () => {
+  refreshIcon.classList.add('spinning');
+  await loadInstances();
+  setTimeout(() => refreshIcon.classList.remove('spinning'), 400);
+});
+
+// Auto-refresh: poll every 2s so the list stays up-to-date
+let _autoRefreshTimer = null;
+function startAutoRefresh() {
+  stopAutoRefresh();
+  _autoRefreshTimer = setInterval(() => {
+    loadInstances();
+  }, 2000);
+}
+function stopAutoRefresh() {
+  if (_autoRefreshTimer) {
+    clearInterval(_autoRefreshTimer);
+    _autoRefreshTimer = null;
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopAutoRefresh();
+  else startAutoRefresh();
+});
+
+let currentContextMenu = null;
+
+function closeContextMenu() {
+  if (currentContextMenu) {
+    currentContextMenu.remove();
+    currentContextMenu = null;
+  }
+}
+
+document.addEventListener('click', closeContextMenu);
+document.addEventListener('contextmenu', (e) => {
+  if (!e.target.closest('.note-card')) {
+    closeContextMenu();
+  }
+});
+
+if (window.chrome && chrome.webview) {
+  chrome.webview.addEventListener('message', event => {
+    const message = event.data || {};
+    if (message.type === 'linwidget_appearance_changed_notification') {
+      console.log('[Notes Settings] Received appearance changed notification, reloading instances...');
+      loadInstances();
+    }
+  });
+}
+
+loadInstances();
+startAutoRefresh();
+</script>
+</body>
+</html>

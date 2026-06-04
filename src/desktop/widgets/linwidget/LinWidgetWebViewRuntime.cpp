@@ -1,4 +1,8 @@
 #include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
+#include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
+#include "desktop/ListView.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
+#include <QPointer>
 
 #include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetMessageTypes.h"
@@ -20,6 +24,7 @@
 #include <QPaintEvent>
 #include <QPoint>
 #include <QGuiApplication>
+#include <QUuid>
 #include <QScreen>
 #include <QSize>
 #include <QTimer>
@@ -679,6 +684,7 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
                 return;
             }
             entryUrl = QStringLiteral("https://%1/%2").arg(hostName, manifest.entry);
+            const QString accessToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
             const QJsonObject geometry = message.value(QStringLiteral("geometry")).toObject();
             const QRect rect(
@@ -688,6 +694,7 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
                 geometry.value(QStringLiteral("height")).toInt(manifest.height));
             m_sharedWidgetGeometries.insert(instanceId, rect);
             m_sharedWidgetHosts.insert(instanceId, hostName);
+            m_sharedWidgetAccessTokens.insert(instanceId, accessToken);
             appendLog(QStringLiteral("hit"), QStringLiteral("added shared rect id=%1 rect=%2,%3 %4x%5 rectCount=%6")
                 .arg(instanceId,
                      QString::number(rect.x()),
@@ -703,6 +710,8 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
                                                              permissions,
                                                              isDevelopment,
                                                              message.value(QStringLiteral("autoReload")).toBool(false),
+                                                             manifest.multiInstance,
+                                                             accessToken,
                                                              entryUrl));
             QTimer::singleShot(0, this, [this]() {
                 syncSharedRegion(QStringLiteral("add widget"));
@@ -718,6 +727,7 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
             m_sharedWidgetGeometries.remove(instanceId);
             m_sharedWidgetHosts.remove(instanceId);
             m_sharedWidgetPermissions.remove(instanceId);
+            m_sharedWidgetAccessTokens.remove(instanceId);
             syncSharedRegion(QStringLiteral("remove widget"));
             appendLog(QStringLiteral("hit"), QStringLiteral("removed shared rect id=%1 rectCount=%2")
                 .arg(instanceId, QString::number(m_sharedWidgetGeometries.size())));
@@ -765,7 +775,18 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
             queueOrSendHostPageMessage(message);
             return;
         }
+        if (type == QString::fromLatin1(WidgetMessageType::CreateWidgetInstanceResponse) ||
+            type == QString::fromLatin1(WidgetMessageType::ListWidgetInstancesResponse) ||
+            type == QString::fromLatin1(WidgetMessageType::CloseWidgetInstanceResponse) ||
+            type == QString::fromLatin1(WidgetMessageType::RemoveWidgetInstanceResponse)) {
+            queueOrSendHostPageMessage(message);
+            return;
+        }
         if (type == QString::fromLatin1(WidgetMessageType::UpdateAlignmentGuides)) {
+            queueOrSendHostPageMessage(message);
+            return;
+        }
+        if (type.startsWith(QStringLiteral("linwidget_"))) {
             queueOrSendHostPageMessage(message);
             return;
         }
@@ -1308,11 +1329,48 @@ void LinWidgetWebViewRuntime::installSharedWidgetApiBridge()
         "api.widgetId = api.widgetId || '';"
         "api.instanceId = api.instanceId || '';"
         "api.widgetName = api.widgetName || '';"
+        "api.ready = api.ready || new Promise(resolve => { api.__resolveReady = resolve; });"
         "api.resizeWidget = value => postToHost('linwidget_resize_widget', value);"
         "api.setWidgetGeometry = value => postToHost('linwidget_set_widget_geometry', value);"
         "api.setResizeUiVisible = value => postToHost('linwidget_set_resize_ui_visible', {visible: !!value});"
         "api.openSettings = () => postToHost('linwidget_open_settings');"
         "installSystemInfoApi(api);"
+        "let storageSeq = 0;"
+        "const storagePending = new Map();"
+        "const sendStorage = (scope, action, value) => new Promise((resolve, reject) => {"
+        " const requestId = 'storage-' + Date.now() + '-' + (++storageSeq);"
+        " storagePending.set(requestId, {resolve:resolve, reject:reject});"
+        " postToHost('linwidget_storage_request', Object.assign({scope:scope, action:action, requestId:requestId}, value && typeof value === 'object' ? value : {}));"
+        "});"
+        "const makeStorageScope = scope => ({"
+        " get: key => sendStorage(scope, 'get', {key:String(key||'')}).then(r => ({ok:true, value:r})).catch(e => ({ok:false, error:e.message})),"
+        " set: (key, value) => sendStorage(scope, 'set', {key:String(key||''), value:value}).then(() => ({ok:true})).catch(e => ({ok:false, error:e.message})),"
+        " remove: key => sendStorage(scope, 'remove', {key:String(key||'')}).then(() => ({ok:true})).catch(e => ({ok:false, error:e.message})),"
+        " clear: () => sendStorage(scope, 'clear', {}).then(() => ({ok:true})).catch(e => ({ok:false, error:e.message})),"
+        " all: () => sendStorage(scope, 'all', {}).then(r => ({ok:true, value:r})).catch(e => ({ok:false, error:e.message}))"
+        "});"
+        "api.storage = {instance: makeStorageScope('instance'), widget: makeStorageScope('widget')};"
+        "let instanceSeq = 0;"
+        "const instancePending = new Map();"
+        "const resolveInstanceRequest = message => {"
+        " const pending = instancePending.get(message.requestId || '');"
+        " if (!pending) return false;"
+        " instancePending.delete(message.requestId || '');"
+        " pending.resolve({ok: message.ok !== false, instanceId: message.instanceId || '', instances: Array.isArray(message.instances) ? message.instances : [], error: message.error || ''});"
+        " return true;"
+        "};"
+        "const sendInstanceRequest = (type, value) => new Promise(resolve => {"
+        " const requestId = 'instance-' + Date.now() + '-' + (++instanceSeq);"
+        " instancePending.set(requestId, {resolve:resolve});"
+        " postToHost(type, Object.assign({requestId:requestId}, value && typeof value === 'object' ? value : {}));"
+        "});"
+        "api.instances = {"
+        " create: options => sendInstanceRequest('linwidget_create_instance_request', options && typeof options === 'object' ? {geometry:options} : {}),"
+        " list: () => sendInstanceRequest('linwidget_list_instances_request'),"
+        " close: instanceId => sendInstanceRequest('linwidget_close_instance_request', {targetInstanceId:String(instanceId || '')}),"
+        " remove: instanceId => sendInstanceRequest('linwidget_remove_instance_request', {targetInstanceId:String(instanceId || '')})"
+        "};"
+        "api.instance = {id: api.instanceId || '', registryId: '', multiInstance: undefined, close: () => api.instances.close(api.instanceId || ''), remove: () => api.instances.remove(api.instanceId || '')};"
         "window.desktop = api;"
         "window.addEventListener('message', event => {"
         " const message = event.data || {};"
@@ -1330,6 +1388,22 @@ void LinWidgetWebViewRuntime::installSharedWidgetApiBridge()
         "  if (cb) { try { cb(message.data || {}); } catch (error) { setTimeout(() => { throw error; }, 0); } }"
         "  return;"
         " }"
+        " if (message.type === 'linwidget_storage_response') {"
+        "  const pending = storagePending.get(message.requestId || '');"
+        "  if (!pending) return;"
+        "  storagePending.delete(message.requestId || '');"
+        "  if (message.ok === false) pending.reject(new Error(message.error || 'Storage request failed'));"
+        "  else pending.resolve(message.value);"
+        "  return;"
+        " }"
+        " if (message.type === 'linwidget_create_instance_response') {"
+        "  resolveInstanceRequest(message);"
+        "  return;"
+        " }"
+        " if (message.type === 'linwidget_list_instances_response' || message.type === 'linwidget_close_instance_response' || message.type === 'linwidget_remove_instance_response') {"
+        "  resolveInstanceRequest(message);"
+        "  return;"
+        " }"
         " if (message.type !== 'linwidget_context') return;"
         " const nextApi = window.desktop && typeof window.desktop === 'object' ? window.desktop : api;"
         " nextApi.context = message.context || 'widget';"
@@ -1338,7 +1412,15 @@ void LinWidgetWebViewRuntime::installSharedWidgetApiBridge()
         " nextApi.widgetName = message.widgetName || '';"
         " nextApi.openSettings = nextApi.openSettings || (() => postToHost('linwidget_open_settings'));"
         " installSystemInfoApi(nextApi);"
+        " nextApi.instance = nextApi.instance && typeof nextApi.instance === 'object' ? nextApi.instance : {};"
+        " nextApi.instance.id = message.instanceId || '';"
+        " nextApi.instance.registryId = message.registryId || '';"
+        " nextApi.instance.multiInstance = !!message.multiInstance;"
+        " nextApi.instance.close = () => nextApi.instances.close(nextApi.instanceId || '');"
+        " nextApi.instance.remove = () => nextApi.instances.remove(nextApi.instanceId || '');"
         " window.desktop = nextApi;"
+        " if (typeof nextApi.__resolveReady === 'function') { try { nextApi.__resolveReady(nextApi); } catch (_) {} nextApi.__resolveReady = null; }"
+        " try { window.dispatchEvent(new CustomEvent('linwidgetready', {detail: nextApi})); } catch (_) {}"
         "});"
         "} catch (error) { try { console.error('LinWidget desktop bridge failed', error); } catch (_) {} }"
         "})();");
@@ -1393,6 +1475,8 @@ QJsonObject LinWidgetWebViewRuntime::widgetInstancePayload(const QString& instan
                                                      const QStringList& permissions,
                                                      bool isDevelopment,
                                                      bool autoReload,
+                                                     bool multiInstance,
+                                                     const QString& accessToken,
                                                      const QString& entryUrl) const
 {
     QJsonArray permissionArray;
@@ -1410,6 +1494,9 @@ QJsonObject LinWidgetWebViewRuntime::widgetInstancePayload(const QString& instan
     payload.insert(QStringLiteral("instanceId"), instanceId);
     payload.insert(QStringLiteral("widgetId"), instanceId);
     payload.insert(QStringLiteral("manifestId"), manifest.id);
+    payload.insert(QStringLiteral("registryId"), manifest.id.trimmed().toLower());
+    payload.insert(QStringLiteral("multiInstance"), multiInstance);
+    payload.insert(QStringLiteral("accessToken"), accessToken);
     payload.insert(QStringLiteral("packagePath"), packagePath);
     payload.insert(QStringLiteral("name"), manifest.name);
     payload.insert(QStringLiteral("resizable"), manifest.resizable);
@@ -1429,7 +1516,14 @@ QString LinWidgetWebViewRuntime::virtualHostNameForInstance(const QString& insta
                                                       const QStringList& permissions,
                                                       bool isDevelopment) const
 {
-    QString safe = instanceId.toLower();
+    QString prefix = isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed");
+    QString widgetId = instanceId;
+    QStringList parts = instanceId.split(QLatin1Char(':'));
+    if (parts.size() >= 2) {
+        prefix = parts[0];
+        widgetId = parts[1];
+    }
+    QString safe = (prefix + QLatin1Char('-') + widgetId).toLower();
     for (QChar& ch : safe) {
         if (!ch.isLetterOrNumber()) {
             ch = QLatin1Char('-');
@@ -1913,11 +2007,95 @@ void LinWidgetWebViewRuntime::handleWebMessageJson(const QString& json)
         if (instanceId.isEmpty()) {
             return;
         }
+        if (object.value(QStringLiteral("accessToken")).toString().trimmed() != m_sharedWidgetAccessTokens.value(instanceId)) {
+            appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: access token mismatch for system info").arg(instanceId));
+            return;
+        }
         QJsonObject message = object;
         message.insert(QStringLiteral("instanceId"), instanceId);
         message.insert(QStringLiteral("widgetId"), instanceId);
         message.remove(QStringLiteral("type"));
         sendManagerMessage(QString::fromLatin1(WidgetMessageType::SystemInfoRequest), message);
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_storage_request")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        if (object.value(QStringLiteral("accessToken")).toString().trimmed() != m_sharedWidgetAccessTokens.value(instanceId)) {
+            appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: access token mismatch for storage").arg(instanceId));
+            return;
+        }
+        QJsonObject message = object;
+        message.insert(QStringLiteral("instanceId"), instanceId);
+        message.insert(QStringLiteral("widgetId"), instanceId);
+        message.remove(QStringLiteral("type"));
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::StorageRequest), message);
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_create_instance_request")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        if (object.value(QStringLiteral("accessToken")).toString().trimmed() != m_sharedWidgetAccessTokens.value(instanceId)) {
+            appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: access token mismatch for create instance").arg(instanceId));
+            return;
+        }
+        QJsonObject message = object;
+        message.insert(QStringLiteral("instanceId"), instanceId);
+        message.insert(QStringLiteral("widgetId"), instanceId);
+        message.remove(QStringLiteral("type"));
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::CreateWidgetInstanceRequest), message);
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_list_instances_request")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        if (object.value(QStringLiteral("accessToken")).toString().trimmed() != m_sharedWidgetAccessTokens.value(instanceId)) {
+            appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: access token mismatch for list instances").arg(instanceId));
+            return;
+        }
+        QJsonObject message = object;
+        message.insert(QStringLiteral("instanceId"), instanceId);
+        message.insert(QStringLiteral("widgetId"), instanceId);
+        message.remove(QStringLiteral("type"));
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::ListWidgetInstancesRequest), message);
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_close_instance_request")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        if (object.value(QStringLiteral("accessToken")).toString().trimmed() != m_sharedWidgetAccessTokens.value(instanceId)) {
+            appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: access token mismatch for close instance").arg(instanceId));
+            return;
+        }
+        QJsonObject message = object;
+        message.insert(QStringLiteral("instanceId"), instanceId);
+        message.insert(QStringLiteral("widgetId"), instanceId);
+        message.remove(QStringLiteral("type"));
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::CloseWidgetInstanceRequest), message);
+        return;
+    }
+    if (m_sharedRuntime && type == QStringLiteral("linwidget_remove_instance_request")) {
+        const QString instanceId = object.value(QStringLiteral("instanceId")).toString(object.value(QStringLiteral("widgetId")).toString()).trimmed();
+        if (instanceId.isEmpty()) {
+            return;
+        }
+        if (object.value(QStringLiteral("accessToken")).toString().trimmed() != m_sharedWidgetAccessTokens.value(instanceId)) {
+            appendLog(QStringLiteral("permission"), QStringLiteral("%1 permission denied: access token mismatch for remove instance").arg(instanceId));
+            return;
+        }
+        QJsonObject message = object;
+        message.insert(QStringLiteral("instanceId"), instanceId);
+        message.insert(QStringLiteral("widgetId"), instanceId);
+        message.remove(QStringLiteral("type"));
+        sendManagerMessage(QString::fromLatin1(WidgetMessageType::RemoveWidgetInstanceRequest), message);
         return;
     }
     if (type == QStringLiteral("console_log")) {
@@ -2044,6 +2222,27 @@ void LinWidgetWebViewRuntime::handleWebMessageJson(const QString& json)
             { QStringLiteral("vertical"), QJsonObject({ { QStringLiteral("visible"), false } }) },
             { QStringLiteral("horizontal"), QJsonObject({ { QStringLiteral("visible"), false } }) }
         });
+        return;
+    }
+    if (type == QStringLiteral("linwidget_settings_changed_request")) {
+        ListView* view = ListView::instance();
+        WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
+        QJsonObject notifyMessage;
+        notifyMessage.insert(QStringLiteral("type"), QStringLiteral("linwidget_appearance_changed_notification"));
+        if (manager) {
+            manager->broadcastToWidgetInstances(m_widgetId.trimmed().toLower(), notifyMessage);
+        }
+        // Forward notification to open settings dialogs for the same widget package
+        for (const auto& dialog : WidgetSettingsDialog::openSettingsDialogs()) {
+            if (dialog && dialog->m_manifest.id.trimmed().toLower() == m_widgetId.trimmed().toLower()) {
+#ifdef LINDESK_HAS_WEBVIEW2
+                if (auto* webView = static_cast<ICoreWebView2*>(dialog->m_webView)) {
+                    const QString json = QString::fromUtf8(QJsonDocument(notifyMessage).toJson(QJsonDocument::Compact));
+                    webView->PostWebMessageAsJson(reinterpret_cast<LPCWSTR>(json.utf16()));
+                }
+#endif
+            }
+        }
         return;
     }
 }

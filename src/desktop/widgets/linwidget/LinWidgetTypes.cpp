@@ -128,6 +128,7 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("transparent"), manifest.transparent);
     object.insert(QStringLiteral("resizable"), manifest.resizable);
     object.insert(QStringLiteral("autoLoad"), manifest.autoLoad);
+    object.insert(QStringLiteral("multiInstance"), manifest.multiInstance);
     object.insert(QStringLiteral("entry"), manifest.entry);
     object.insert(QStringLiteral("settings"), manifest.settings);
     object.insert(QStringLiteral("icon"), manifest.icon);
@@ -177,7 +178,8 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         !readInt(object, QStringLiteral("maxHeight"), 0, &parsed.maxHeight, errorMessage) ||
         !readBool(object, QStringLiteral("transparent"), true, &parsed.transparent, errorMessage) ||
         !readBool(object, QStringLiteral("resizable"), true, &parsed.resizable, errorMessage) ||
-        !readBool(object, QStringLiteral("autoLoad"), false, &parsed.autoLoad, errorMessage)) {
+        !readBool(object, QStringLiteral("autoLoad"), false, &parsed.autoLoad, errorMessage) ||
+        !readBool(object, QStringLiteral("multiInstance"), false, &parsed.multiInstance, errorMessage)) {
         return false;
     }
     if (parsed.entry.isEmpty()) {
@@ -305,9 +307,13 @@ QJsonObject layoutStateToJson(const WidgetLayoutState& state)
     QJsonObject object;
     object.insert(QStringLiteral("instanceId"), state.instanceId);
     object.insert(QStringLiteral("packagePath"), state.packagePath);
+    object.insert(QStringLiteral("registryId"), state.registryId);
     object.insert(QStringLiteral("geometry"), geometry);
     object.insert(QStringLiteral("zOrder"), state.zOrder);
     object.insert(QStringLiteral("visible"), state.visible);
+    object.insert(QStringLiteral("isDevelopment"), state.isDevelopment);
+    object.insert(QStringLiteral("createdAt"), state.createdAt);
+    object.insert(QStringLiteral("parentInstanceId"), state.parentInstanceId);
     return object;
 }
 
@@ -321,6 +327,7 @@ bool layoutStateFromJson(const QJsonObject& object, WidgetLayoutState* state)
     WidgetLayoutState parsed;
     parsed.instanceId = object.value(QStringLiteral("instanceId")).toString().trimmed();
     parsed.packagePath = object.value(QStringLiteral("packagePath")).toString().trimmed();
+    parsed.registryId = object.value(QStringLiteral("registryId")).toString().trimmed().toLower();
     parsed.geometry = QRect(
         geometry.value(QStringLiteral("x")).toInt(),
         geometry.value(QStringLiteral("y")).toInt(),
@@ -328,6 +335,9 @@ bool layoutStateFromJson(const QJsonObject& object, WidgetLayoutState* state)
         geometry.value(QStringLiteral("height")).toInt());
     parsed.zOrder = object.value(QStringLiteral("zOrder")).toInt();
     parsed.visible = object.value(QStringLiteral("visible")).toBool(true);
+    parsed.isDevelopment = object.value(QStringLiteral("isDevelopment")).toBool(parsed.instanceId.startsWith(QStringLiteral("dev:")));
+    parsed.createdAt = object.value(QStringLiteral("createdAt")).toString().trimmed();
+    parsed.parentInstanceId = object.value(QStringLiteral("parentInstanceId")).toString().trimmed();
     if (parsed.instanceId.isEmpty() || parsed.packagePath.isEmpty() || !parsed.geometry.isValid()) {
         return false;
     }

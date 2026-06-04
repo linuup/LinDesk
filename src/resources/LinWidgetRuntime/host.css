@@ -38,6 +38,7 @@ body {
 }
 
 .linwidget-panel[data-resize-mode]:not([data-resize-mode=""]) .linwidget-resize-frame,
+body.dragging .linwidget-panel.active-move .linwidget-resize-frame,
 body.resizing .linwidget-panel .linwidget-resize-frame {
   opacity: 1;
 }

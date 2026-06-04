@@ -46,6 +46,7 @@ class SettingUI : public FluentBaseWidget {
 public:
     explicit SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidget* parent = nullptr);
     void setTargetBox(LinBox* target);
+    void restoreAndActivate();
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -98,6 +99,7 @@ private:
     void loadSelectedSettingsLinWidget();
     void unloadSelectedSettingsLinWidget();
     void reloadSelectedSettingsLinWidget();
+    void uninstallSelectedSettingsLinWidget();
     void installOfficialSettingsLinWidget(const QString& packagePath);
     void resetOfficialSettingsLinWidget(const QString& packagePath);
     bool launchInstalledSettingsLinWidget(const QString& packagePath,
@@ -230,6 +232,7 @@ private:
     QString m_currentLinWidgetLogPath;
     QHash<QString, QString> m_linWidgetInstancesByPackage;
     QHash<QString, QString> m_linWidgetInstancesById;
+    QHash<QString, int> m_linWidgetInstanceCountsById;
     QTimer* m_resizeRefreshTimer = nullptr;
     bool m_isQuittingFromTray = false;
     bool m_hasShownTrayHint = false;

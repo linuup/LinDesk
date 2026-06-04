@@ -56,6 +56,8 @@ private:
     void sendHostPageMessage(const QJsonObject& payload);
     void queueOrSendHostPageMessage(const QJsonObject& payload);
     void flushPendingHostPageMessages();
+    void queueOrReplacePendingSharedManagerMessage(const QJsonObject& message);
+    void flushPendingSharedManagerMessages();
     QJsonObject widgetInstancePayload(const QString& instanceId,
                                       const QString& packagePath,
                                       const WidgetManifest& manifest,
@@ -63,11 +65,14 @@ private:
                                       const QStringList& permissions,
                                       bool isDevelopment,
                                       bool autoReload,
+                                      bool multiInstance,
+                                      const QString& accessToken,
                                       const QString& entryUrl) const;
     QString virtualHostNameForInstance(const QString& instanceId,
                                        const QStringList& permissions,
                                        bool isDevelopment) const;
     bool mapWidgetVirtualHost(const QString& hostName, const QString& packagePath);
+    QString webViewErrorString(long result) const;
     void installSharedWebResourceGuards(void* environment);
     void openDevToolsWhenReady();
     void setSharedWindowGeometry();
@@ -114,7 +119,10 @@ private:
     QMap<QString, QRect> m_sharedWidgetGeometries;
     QMap<QString, QString> m_sharedWidgetHosts;
     QMap<QString, QStringList> m_sharedWidgetPermissions;
+    QMap<QString, QString> m_sharedWidgetAccessTokens;
+    QMap<QString, QString> m_virtualHostMappings;
     QVector<QJsonObject> m_pendingHostPageMessages;
+    QVector<QJsonObject> m_pendingSharedManagerMessages;
     bool m_hostPageReady = false;
     bool m_showWebViewBounds = false;
     bool m_forceShowSharedBackground = false;

@@ -13,6 +13,8 @@ LinWidget is the LinDesk desktop widget runtime. Widgets are HTML pages rendered
 5. [JavaScript API](#javascript-api)
    - [Identity](#identity)
    - [Host Controls](#host-controls)
+   - [Multi Instance](#multi-instance)
+   - [Storage](#storage)
    - [System Information](#system-information)
 6. [Settings Page](#settings-page)
 7. [Layout & Resize](#layout--resize)
@@ -150,6 +152,7 @@ html, body, .widget {
   "type": "html",
   "transparent": true,
   "resizable": true,
+  "multiInstance": false,
   "autoLoad": false,
   "entry": "index.html",
   "settings": "settings.html",
@@ -176,6 +179,7 @@ html, body, .widget {
 | `type` | string | no | `html` | Runtime type. `html` is supported. `native` shows a placeholder. |
 | `transparent` | bool | no | `true` | Enables a transparent host background. Set the HTML background to `transparent` as well when needed. |
 | `resizable` | bool | no | `true` | Enables host resize affordances and allows `desktop.resizeWidget()` / `desktop.setWidgetGeometry()`. |
+| `multiInstance` | bool | no | `false` | Allows the widget to create or load multiple independent instances. LinDesk currently allows up to 3 instances per widget. |
 | `autoLoad` | bool | no | `false` | Loads the widget automatically during the LinDesk restore flow. |
 | `entry` | string | no | `index.html` | HTML entry file relative to the widget folder. |
 | `settings` | string | no | empty | Optional settings page relative to the widget folder. When present, LinDesk shows a Settings action for the widget. |
@@ -206,6 +210,10 @@ console.log(desktop.context);    // "widget" or "settings"
 console.log(desktop.widgetId);   // manifest id
 console.log(desktop.instanceId); // running LinDesk instance id
 console.log(desktop.widgetName); // manifest display name
+
+console.log(desktop.instance.id);            // same as desktop.instanceId
+console.log(desktop.instance.registryId);    // manifest id used by LinDesk storage
+console.log(desktop.instance.multiInstance); // true when manifest multiInstance is enabled
 ```
 
 ### Host Controls
@@ -226,6 +234,249 @@ desktop.openSettings();
 ```
 
 LinDesk clamps the final size with `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, and the current WebView bounds. Resize calls are ignored when `resizable` is `false`.
+
+### Multi Instance
+
+Multi instance is opt in. Add `multiInstance: true` to `manifest.json`:
+
+```json
+{
+  "id": "example.notes.widget",
+  "name": "Notes",
+  "multiInstance": true,
+  "permissions": ["storage", "desktop"]
+}
+```
+
+Single instance widgets keep the stable instance id:
+
+```text
+installed:example.notes.widget
+dev:example.notes.widget
+```
+
+Multi instance widgets use an extra suffix:
+
+```text
+installed:example.notes.widget:<shortId>
+dev:example.notes.widget:<shortId>
+```
+
+LinDesk currently allows at most 3 running or saved instances for the same widget.
+
+#### `desktop.instances.create(options)`
+
+Creates a new instance for the same widget family.
+
+```js
+const result = await desktop.instances.create({
+  x: 320,
+  y: 240,
+  width: 360,
+  height: 260
+});
+
+if (result.ok) {
+  console.log(result.instanceId);
+} else {
+  console.warn(result.error);
+}
+```
+
+This API requires the `desktop` permission. If `options` is omitted, LinDesk creates the new instance near the source instance and clamps it to the visible desktop area:
+
+```js
+const result = await desktop.instances.create();
+```
+
+Success response:
+
+```js
+{
+  ok: true,
+  instanceId: "installed:example.notes.widget:01hxyz"
+}
+```
+
+#### `desktop.instances.list()`
+
+Returns all saved instances for the same manifest `id` and runtime mode. A development widget only sees development instances. An installed widget only sees installed instances.
+
+```js
+const result = await desktop.instances.list();
+if (result.ok) {
+  for (const item of result.instances) {
+    console.log(item.instanceId, item.running, item.geometry);
+  }
+}
+```
+
+Response shape:
+
+```js
+{
+  ok: true,
+  instances: [
+    {
+      instanceId: "installed:example.notes.widget:01hxyz",
+      id: "installed:example.notes.widget:01hxyz",
+      visible: true,
+      running: true,
+      parentInstanceId: "installed:example.notes.widget",
+      createdAt: "2026-06-02T10:00:00Z",
+      geometry: {
+        x: 320,
+        y: 240,
+        width: 360,
+        height: 260
+      }
+    }
+  ]
+}
+```
+
+#### `desktop.instances.close(instanceId)`
+
+Hides one instance from the desktop. It stops the iframe and marks the layout record as hidden. Instance data and the layout record remain available for later restore.
+
+If `instanceId` is omitted, the current instance is closed:
+
+```js
+await desktop.instances.close();
+```
+
+To close another instance from the same widget family:
+
+```js
+await desktop.instances.close("installed:example.notes.widget:01hxyz");
+```
+
+The current instance shortcut calls the same API:
+
+```js
+await desktop.instance.close();
+```
+
+#### `desktop.instances.remove(instanceId)`
+
+Deletes one saved instance layout record. It also stops the iframe when that instance is running. It does not remove the installed widget package, registry entry, shared widget storage, or other instances.
+
+If `instanceId` is omitted, the current instance is removed:
+
+```js
+await desktop.instances.remove();
+```
+
+To remove another instance from the same widget family:
+
+```js
+await desktop.instances.remove("installed:example.notes.widget:01hxyz");
+```
+
+The current instance shortcut calls the same API:
+
+```js
+await desktop.instance.remove();
+```
+
+All instance APIs return objects instead of throwing:
+
+```js
+{
+  ok: false,
+  error: "Target widget instance is outside the caller scope."
+}
+```
+
+`create`, `close`, and `remove` should be called after saving user data. `list`, `close`, and `remove` are scoped to the caller widget family, so a widget cannot manage another widget's instances.
+
+### Storage
+
+LinWidget has two storage paths:
+
+1. Browser storage: `localStorage`, `sessionStorage`, and `indexedDB`
+2. LinDesk storage API: `desktop.storage.instance` and `desktop.storage.widget`
+
+Browser storage still follows the WebView origin rules. For multi instance widgets, every instance can have an isolated browser origin. Use the LinDesk storage API when several instances need shared data.
+
+Both storage APIs require the `storage` permission:
+
+```json
+{ "permissions": ["storage"] }
+```
+
+#### Instance Storage
+
+`desktop.storage.instance` is private to the current running instance:
+
+```js
+await desktop.storage.instance.set("draft", {
+  title: "Private note",
+  body: "Only this instance can read it."
+});
+
+const result = await desktop.storage.instance.get("draft");
+if (result.ok) {
+  console.log(result.value);
+}
+
+await desktop.storage.instance.remove("draft");
+await desktop.storage.instance.clear();
+```
+
+#### Widget Storage
+
+`desktop.storage.widget` is shared by all instances with the same manifest `id`. This is the recommended storage for note lists, shared preferences, or data that a settings page should manage for all instances:
+
+```js
+const notes = [
+  { id: "note-1", text: "Shared across all note instances" }
+];
+
+await desktop.storage.widget.set("notes", notes);
+
+const result = await desktop.storage.widget.get("notes");
+if (result.ok) {
+  renderNotes(result.value || []);
+}
+```
+
+You can read the full object with `all()`:
+
+```js
+const result = await desktop.storage.widget.all();
+if (result.ok) {
+  console.log(result.value);
+}
+```
+
+#### Return Shape
+
+Every storage call returns:
+
+```js
+{
+  ok: true,
+  value: {}
+}
+```
+
+or:
+
+```js
+{
+  ok: false,
+  error: "Storage permission is required."
+}
+```
+
+LinDesk derives the storage namespace from the real running instance. Widgets cannot pass another widget id to read another widget's data.
+
+Data is stored under:
+
+```text
+%APPDATA%/LinDesk/LinWidgetsData/
+```
 
 ### System Information
 
@@ -520,3 +771,76 @@ Development projects can be added from any local folder through the **Debug LinW
 | 1 | HTML entries are loaded through the LinWidget virtual host origin. |
 | 2 | Settings pages are widget-provided HTML. LinDesk does not generate forms from a JSON schema yet. |
 | 3 | The Settings button is currently only available in the Debug LinWidgets list. Widget right-click menu integration is planned. |
+
+---
+
+## Example: Notes Widget Implementation
+
+The Notes widget (`Notes/`) is a multi-instance widget that demonstrates settings page integration, real-time synchronization, and instance lifecycle management.
+
+### Multi Instance
+
+The Notes widget enables `multiInstance: true` in its manifest and provides two header buttons for instance management:
+
+- **+** (Create): Calls `desktop.instances.create()` to spawn a new independent note instance.
+- **×** (Close): Calls `desktop.instances.close()` to close the current instance.
+
+```js
+// Create a new note instance
+createInstanceBtn.addEventListener('click', async () => {
+  if (window.desktop && desktop.instances) {
+    const result = await desktop.instances.create();
+    if (!result.ok) {
+      console.warn('Failed to create note instance:', result.error);
+    }
+  }
+});
+
+// Close the current note instance
+closeInstanceBtn.addEventListener('click', () => {
+  if (window.desktop && desktop.instances) {
+    desktop.instances.close();
+  }
+});
+```
+
+### Stored Configurations
+
+All settings are saved directly in `localStorage` under the shared origin:
+
+1. `lin_sticky_notes_theme`: Current visual theme. Supported values:
+   - `yellow` (Lemon Warm, default)
+   - `green` (Mint Fresh)
+   - `blue` (Sky Calm)
+   - `pink` (Cherry Sweet)
+   - `white` (Classic Light)
+   - `dark` (Dark Tech)
+2. `lin_sticky_notes_fontsize`: Default editor font size (e.g. `16px`).
+3. `lin_sticky_notes_zoom_key`: Modifier key combination for mouse wheel font zooming:
+   - `all` (Ctrl, Alt, or Shift)
+   - `ctrl`
+   - `alt`
+   - `shift`
+   - `none` (Disable wheel zoom)
+4. `lin_sticky_notes_confirm_clear`: Whether to prompt a confirmation card before clearing the note (`true` or `false`).
+5. `lin_sticky_notes_opacity`: Opacity level of the widget (range: `30` - `100`, default: `100`).
+
+### Real-Time Updates
+
+To achieve instant response without waiting for the settings window to close, the main widget (`index.html`) listens to the `storage` event:
+
+```javascript
+window.addEventListener('storage', (event) => {
+  if (event.key === 'lin_sticky_notes_theme') {
+    document.body.className = `theme-${event.newValue || 'yellow'}`;
+  } else if (event.key === 'lin_sticky_notes_fontsize') {
+    if (event.newValue) {
+      noteArea.style.fontSize = event.newValue;
+    }
+  } else if (event.key === 'lin_sticky_notes_opacity') {
+    if (event.newValue) {
+      applyOpacity(event.newValue);
+    }
+  }
+});
+```

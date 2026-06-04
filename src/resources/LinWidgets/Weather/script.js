@@ -5,9 +5,10 @@ const STORAGE_KEY_THEME    = "lindesk_weather_theme";
 const STORAGE_KEY_LOCATION = "lindesk_weather_location"; // JSON: { latitude, longitude, label, query }
 const STORAGE_KEY_CACHE    = "lindesk_weather_cache";    // JSON: { timestamp, locationLabel, data }
 
-const REFRESH_INTERVAL = 60 * 60 * 1000; // 1 hour
-const MAX_RETRIES      = 3;
-const RETRY_DELAY      = 3000; // 3 seconds between retries
+const REFRESH_INTERVAL    = 60 * 60 * 1000; // 1 hour
+const MAX_RETRIES         = 3;              // used only when cache is available
+const RETRY_DELAY         = 3000;           // base retry delay (ms)
+const MAX_RETRY_DELAY     = 30000;          // cap for exponential back-off (ms)
 
 const defaultLocation = {
   latitude: 31.2304,
@@ -284,41 +285,70 @@ function delay(ms) {
 }
 
 /**
- * Fetch weather data with retry logic.
- * Attempts up to MAX_RETRIES times with RETRY_DELAY between attempts.
- * Returns the parsed JSON on success, or throws on complete failure.
+ * Attempt a single weather fetch with a 10-second timeout.
+ * Returns the parsed JSON on success, or throws on failure.
  */
-async function fetchWeatherWithRetry(latitude, longitude) {
+async function fetchWeatherOnce(latitude, longitude) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      throw new Error(`天气服务返回 ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data.current_weather) {
+      throw new Error("当前天气数据缺失");
+    }
+    return data;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
 
-  let lastError;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+/**
+ * Fetch weather data with retry logic.
+ * - infiniteRetry=true : keep retrying indefinitely with exponential back-off
+ *   (used on first load when there is no cache to fall back to).
+ * - infiniteRetry=false: attempt up to MAX_RETRIES times, then throw so the
+ *   caller can fall back to cached data.
+ */
+async function fetchWeatherWithRetry(latitude, longitude, infiniteRetry = false) {
+  let attempt = 0;
+  const limit = infiniteRetry ? Infinity : MAX_RETRIES;
+
+  while (attempt < limit) {
+    attempt++;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        throw new Error(`天气服务返回 ${response.status}`);
-      }
-      const data = await response.json();
-      if (!data.current_weather) {
-        throw new Error("当前天气数据缺失");
-      }
+      const data = await fetchWeatherOnce(latitude, longitude);
       console.log(`[Weather] 第 ${attempt} 次请求成功`);
       return data;
     } catch (error) {
-      lastError = error;
-      console.warn(`[Weather] 第 ${attempt}/${MAX_RETRIES} 次请求失败:`, error.message);
-      if (attempt < MAX_RETRIES) {
-        await delay(RETRY_DELAY);
+      if (infiniteRetry) {
+        // Exponential back-off, capped at MAX_RETRY_DELAY
+        const waitMs = Math.min(RETRY_DELAY * Math.pow(2, attempt - 1), MAX_RETRY_DELAY);
+        console.warn(`[Weather] 第 ${attempt} 次请求失败，${waitMs / 1000}s 后重试:`, error.message);
+        await delay(waitMs);
+      } else {
+        console.warn(`[Weather] 第 ${attempt}/${MAX_RETRIES} 次请求失败:`, error.message);
+        if (attempt < MAX_RETRIES) {
+          await delay(RETRY_DELAY);
+        } else {
+          throw error;
+        }
       }
     }
   }
-  throw lastError;
 }
 
-async function updateWeather(locationQuery) {
+/**
+ * @param {string|null} locationQuery - user-supplied city name, or null for auto-detect.
+ * @param {boolean} forceInfiniteRetry - if true, retry indefinitely on failure (no cache fallback).
+ */
+async function updateWeather(locationQuery, forceInfiniteRetry = false) {
   try {
     let location;
     if (locationQuery) {
@@ -330,13 +360,14 @@ async function updateWeather(locationQuery) {
     }
     location = location || await getLocation();
 
-    const weather = await fetchWeatherWithRetry(location.latitude, location.longitude);
+    const weather = await fetchWeatherWithRetry(location.latitude, location.longitude, forceInfiniteRetry);
 
     // Success – render and update cache
     renderWeatherData(location.label, weather);
     saveWeatherCache(location.label, weather);
     console.log(`[Weather] 数据已更新并缓存`);
   } catch (error) {
+    // This branch is only reached when infiniteRetry=false and all MAX_RETRIES failed.
     console.warn(`[Weather] 全部 ${MAX_RETRIES} 次请求均失败，尝试使用缓存`, error.message);
 
     // Fall back to cached data
@@ -346,7 +377,8 @@ async function updateWeather(locationQuery) {
       console.log(`[Weather] 使用 ${ageMinutes} 分钟前的缓存数据`);
       renderWeatherData(cache.locationLabel, cache.data);
     } else {
-      // No cache at all – show error
+      // No cache at all – this should not happen since we use infiniteRetry
+      // when there is no cache, but guard just in case.
       setError("无法获取天气（无缓存）");
     }
   }
@@ -441,11 +473,16 @@ bindLocationSetting();
 
 // Immediately render cached data (instant, no network), then fetch fresh data
 const cachedWeather = getSavedWeatherCache();
-if (cachedWeather && cachedWeather.data) {
+const hasCachedData = !!(cachedWeather && cachedWeather.data);
+
+if (hasCachedData) {
   console.log("[Weather] 启动时使用缓存数据渲染");
   renderWeatherData(cachedWeather.locationLabel, cachedWeather.data);
 }
-// Fetch fresh data in background
-updateWeather();
-// Refresh every 1 hour
+
+// Fetch fresh data in background.
+// If there is no cache to show, keep retrying indefinitely until we succeed.
+updateWeather(null, !hasCachedData);
+
+// Refresh every 1 hour (limited retries – cache is available as fallback)
 setInterval(() => updateWeather(), REFRESH_INTERVAL);

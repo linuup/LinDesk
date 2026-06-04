@@ -82,7 +82,10 @@
     context: 'widget',
     instanceId: id,
     widgetId: record && record.manifestId ? record.manifestId : '',
-    widgetName: record && record.name ? record.name : ''
+    widgetName: record && record.name ? record.name : '',
+    registryId: record && record.registryId ? record.registryId : '',
+    multiInstance: Boolean(record && record.multiInstance),
+    permissions: record && Array.isArray(record.permissions) ? record.permissions : []
   });
 
   const sendWidgetContext = id => {
@@ -347,6 +350,7 @@ select,
     if (mode === 'move') {
       setSharedDragBackground(true);
     }
+    record.panel.classList.toggle('active-move', mode === 'move');
     record.panel.classList.toggle('active-resize', mode !== 'move');
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -374,6 +378,7 @@ select,
     if (mode === 'move') {
       setSharedDragBackground(true);
     }
+    record.panel.classList.toggle('active-move', mode === 'move');
     record.panel.classList.toggle('active-resize', mode !== 'move');
     record.panel.dataset.resizeMode = mode === 'move' ? '' : mode;
     record.panel.style.cursor = resizeCursorByMode[mode] || '';
@@ -471,7 +476,15 @@ select,
     };
 
     const iframe = document.createElement('iframe');
-    iframe.src = message.entryUrl || 'about:blank';
+    const entryUrl = message.entryUrl || 'about:blank';
+    try {
+      const url = new URL(entryUrl);
+      const granted = Array.isArray(message.permissions) ? message.permissions.join(',') : '';
+      url.searchParams.set('__linwidget_permissions', granted);
+      iframe.src = url.toString();
+    } catch (_) {
+      iframe.src = entryUrl;
+    }
     iframe.allow = 'clipboard-read; clipboard-write';
     iframe.addEventListener('load', () => {
       const record = widgets.get(id);
@@ -584,6 +597,9 @@ select,
       resizeUiVisible: true,
       development: Boolean(message.development),
       manifestId: String(message.manifestId || '').trim(),
+      registryId: String(message.registryId || message.manifestId || '').trim(),
+      multiInstance: Boolean(message.multiInstance),
+      accessToken: String(message.accessToken || '').trim(),
       name: String(message.name || '').trim(),
       permissions: Array.isArray(message.permissions) ? message.permissions : []
     });
@@ -718,6 +734,7 @@ select,
     if (active && active.id === id) {
       const record = widgets.get(id);
       if (record) {
+        record.panel.classList.remove('active-move');
         record.panel.classList.remove('active-resize');
         record.panel.dataset.resizeMode = '';
         record.panel.style.cursor = '';
@@ -813,6 +830,7 @@ select,
     setSharedDragBackground(false);
     clearAlignmentGuides();
     if (record) {
+      record.panel.classList.remove('active-move');
       record.panel.classList.remove('active-resize');
       record.panel.dataset.resizeMode = '';
       record.panel.style.cursor = '';
@@ -824,6 +842,7 @@ select,
     if (active) {
       const record = widgets.get(active.id);
       if (record) {
+        record.panel.classList.remove('active-move');
         record.panel.classList.remove('active-resize');
         record.panel.dataset.resizeMode = '';
         record.panel.style.cursor = '';
@@ -908,8 +927,73 @@ select,
       post(Object.assign({}, message, {
         type: 'linwidget_system_info_request',
         instanceId: id,
-        widgetId: id
+        widgetId: id,
+        accessToken: record ? record.accessToken : ''
       }));
+    } else if (message.type === 'linwidget_storage_request') {
+      const record = widgets.get(id);
+      if (!hasPermission(record, 'storage')) {
+        sendWidgetMessage(id, {
+          type: 'linwidget_storage_response',
+          requestId: message.requestId || '',
+          ok: false,
+          error: 'Storage permission is required.'
+        });
+        denyPermission(id, 'storage');
+        return;
+      }
+      post(Object.assign({}, message, {
+        type: 'linwidget_storage_request',
+        instanceId: id,
+        widgetId: id,
+        accessToken: record ? record.accessToken : ''
+      }));
+    } else if (message.type === 'linwidget_create_instance_request') {
+      const record = widgets.get(id);
+      if (!hasPermission(record, 'desktop')) {
+        sendWidgetMessage(id, {
+          type: 'linwidget_create_instance_response',
+          requestId: message.requestId || '',
+          ok: false,
+          error: 'Desktop permission is required.'
+        });
+        denyPermission(id, 'desktop');
+        return;
+      }
+      post(Object.assign({}, message, {
+        type: 'linwidget_create_instance_request',
+        instanceId: id,
+        widgetId: id,
+        accessToken: record ? record.accessToken : ''
+      }));
+    } else if (message.type === 'linwidget_list_instances_request') {
+      const record = widgets.get(id);
+      post(Object.assign({}, message, {
+        type: 'linwidget_list_instances_request',
+        instanceId: id,
+        widgetId: id,
+        accessToken: record ? record.accessToken : ''
+      }));
+    } else if (message.type === 'linwidget_close_instance_request') {
+      const record = widgets.get(id);
+      post({
+        type: 'linwidget_close_instance_request',
+        instanceId: id,
+        widgetId: id,
+        targetInstanceId: message.targetInstanceId || '',
+        requestId: message.requestId || '',
+        accessToken: record ? record.accessToken : ''
+      });
+    } else if (message.type === 'linwidget_remove_instance_request') {
+      const record = widgets.get(id);
+      post({
+        type: 'linwidget_remove_instance_request',
+        instanceId: id,
+        widgetId: id,
+        targetInstanceId: message.targetInstanceId || '',
+        requestId: message.requestId || '',
+        accessToken: record ? record.accessToken : ''
+      });
     } else if (message.type === 'permission_denied') {
       denyPermission(id, message.permission || 'unknown', message.url || '');
     } else if (message.type === 'linwidget_desktop_api') {
@@ -922,6 +1006,11 @@ select,
       if (!hasPermission(record, 'storage')) {
         denyPermission(id, 'storage');
       }
+    } else if (message.type && message.type.startsWith('linwidget_')) {
+      post(Object.assign({}, message, {
+        instanceId: id,
+        widgetId: id
+      }));
     }
   });
 
@@ -965,7 +1054,39 @@ select,
         type: 'linwidget_system_info_update'
       }));
       break;
+    case 'storage_response':
+      sendWidgetMessage(String(message.instanceId || message.widgetId || '').trim(), Object.assign({}, message, {
+        type: 'linwidget_storage_response'
+      }));
+      break;
+    case 'create_widget_instance_response':
+      sendWidgetMessage(String(message.targetInstanceId || '').trim(), {
+        type: 'linwidget_create_instance_response',
+        requestId: message.requestId || '',
+        ok: message.ok !== false,
+        instanceId: message.instanceId || '',
+        error: message.error || ''
+      });
+      break;
+    case 'list_widget_instances_response':
+      sendWidgetMessage(String(message.targetInstanceId || '').trim(), Object.assign({}, message, {
+        type: 'linwidget_list_instances_response'
+      }));
+      break;
+    case 'close_widget_instance_response':
+      sendWidgetMessage(String(message.targetInstanceId || '').trim(), Object.assign({}, message, {
+        type: 'linwidget_close_instance_response'
+      }));
+      break;
+    case 'remove_widget_instance_response':
+      sendWidgetMessage(String(message.targetInstanceId || '').trim(), Object.assign({}, message, {
+        type: 'linwidget_remove_instance_response'
+      }));
+      break;
     default:
+      if (message.type && message.type.startsWith('linwidget_')) {
+        sendWidgetMessage(String(message.instanceId || message.widgetId || '').trim(), message);
+      }
       break;
     }
   });

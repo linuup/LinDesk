@@ -39,6 +39,16 @@
         } catch (_) {
         }
       });
+      if (window.chrome && chrome.webview) {
+        chrome.webview.addEventListener('message', event => {
+          try {
+            if (frame && frame.contentWindow && event.data) {
+              frame.contentWindow.postMessage(event.data, '*');
+            }
+          } catch (_) {
+          }
+        });
+      }
     })();
   </script>
 </body>

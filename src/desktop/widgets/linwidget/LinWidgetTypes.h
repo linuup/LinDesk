@@ -30,6 +30,7 @@ struct WidgetManifest {
     bool transparent = true;
     bool resizable = true;
     bool autoLoad = false;
+    bool multiInstance = false;
     QString entry;
     QString settings;
     QString icon;
@@ -49,9 +50,13 @@ struct WidgetInstance {
 struct WidgetLayoutState {
     QString instanceId;
     QString packagePath;
+    QString registryId;
     QRect geometry;
     int zOrder = 0;
     bool visible = true;
+    bool isDevelopment = false;
+    QString createdAt;
+    QString parentInstanceId;
 };
 
 struct WidgetRegistryEntry {

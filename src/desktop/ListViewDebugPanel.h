@@ -5,12 +5,16 @@
 #include <QString>
 #include <QWidget>
 
+#include "ai/client/AIProviderBase.h"
+
 class QLabel;
 class QCheckBox;
+class QComboBox;
 class QFileSystemWatcher;
 class QGridLayout;
 class QListWidget;
 class QListWidgetItem;
+class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QResizeEvent;
@@ -21,6 +25,10 @@ class SoftDesktopTextPreview;
 class FluentToggleSwitch;
 namespace LinWidget {
 class WidgetManager;
+}
+namespace AI {
+class AICoreService;
+struct ChatRequest;
 }
 
 class ListViewDebugPanel : public QWidget
@@ -73,9 +81,19 @@ private:
 
     QWidget* createGeneralPage();
     QWidget* createLinWidgetsPage();
+    QWidget* createAIPage();
     QWidget* createLayoutPage();
     QWidget* createTextDiagnosticsPage();
     QWidget* wrapScrollablePage(QWidget* content);
+    void loadAIConfig();
+    void saveAIConfig();
+    AI::ChatRequest buildAIChatRequest() const;
+    void appendAIChatLine(const QString& role, const QString& content);
+    void clearAIConversation();
+    void setAIRequestRunning(bool running);
+    void applyAIProviderDefaults(bool forceBaseUrl);
+    void loadAIProviderConfig(int providerIndex);
+    void saveAIProviderConfig(int providerIndex);
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -132,6 +150,26 @@ private:
     QString m_lastLinWidgetInstanceId;
     QHash<QString, QString> m_linWidgetInstancesByPackage;
     QHash<QString, QString> m_linWidgetInstancesById;
+
+    // AI debug
+    AI::AICoreService* m_aiCoreService = nullptr;
+    QComboBox* m_aiProviderCombo = nullptr;
+    QLineEdit* m_aiBaseUrlEdit = nullptr;
+    QLineEdit* m_aiApiKeyEdit = nullptr;
+    QComboBox* m_aiModelCombo = nullptr;
+    QPlainTextEdit* m_aiSystemPromptEdit = nullptr;
+    QPlainTextEdit* m_aiUserPromptEdit = nullptr;
+    QPlainTextEdit* m_aiOutputView = nullptr;
+    QLabel* m_aiStatusLabel = nullptr;
+    QPushButton* m_aiSaveButton = nullptr;
+    QPushButton* m_aiSendButton = nullptr;
+    QPushButton* m_aiStreamButton = nullptr;
+    QPushButton* m_aiStopButton = nullptr;
+    QPushButton* m_aiClearButton = nullptr;
+    QString m_aiActiveRequestId;
+    QList<AI::ChatMessage> m_aiConversationMessages;
+    QString m_aiStreamingAssistantText;
+    int m_aiCurrentProviderIndex = 0;
 
     // Text preview
     SoftDesktopTextPreview* m_textPreview = nullptr;

@@ -12,5 +12,7 @@
   "transparent": true,
   "resizable": true,
   "entry": "index.html",
-  "permissions": ["storage"]
+  "settings": "settings.html",
+  "multiInstance": true,
+  "permissions": ["storage", "desktop"]
 }

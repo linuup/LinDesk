@@ -18,6 +18,11 @@
 #include <QScrollArea>
 #include <QFrame>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <windowsx.h>
+#endif
+
 class FluentDrawer : public QWidget {
 public:
     explicit FluentDrawer(QWidget* host, QWidget* parent = nullptr)
@@ -404,19 +409,22 @@ protected:
 #ifdef Q_OS_WIN
         MSG* msg = static_cast<MSG*>(message);
         if (msg->message == WM_NCHITTEST) {
-            int border = 15; // Increased to 15px to match root layout margins for better sensitivity
-            long x = GET_X_LPARAM(msg->lParam);
-            long y = GET_Y_LPARAM(msg->lParam);
-            QPoint pos = mapFromGlobal(QPoint(x, y));
-
-            int w = width();
-            int h = height();
+            const HWND hwnd = reinterpret_cast<HWND>(winId());
+            const LONG nativeX = GET_X_LPARAM(msg->lParam);
+            const LONG nativeY = GET_Y_LPARAM(msg->lParam);
+            RECT nativeRect{};
+            GetWindowRect(hwnd, &nativeRect);
+            const UINT dpi = GetDpiForWindow(hwnd);
+            const qreal scale = dpi > 0 ? static_cast<qreal>(dpi) / 96.0 : qMax<qreal>(1.0, devicePixelRatioF());
+            const int nativeBorder = qMax(1, qRound(15 * scale));
+            const QPoint pos(qRound((nativeX - nativeRect.left) / scale),
+                             qRound((nativeY - nativeRect.top) / scale));
 
             if (m_resizable) {
-                bool left = pos.x() < border;
-                bool right = pos.x() > w - border;
-                bool top = pos.y() < border;
-                bool bottom = pos.y() > h - border;
+                const bool left = nativeX >= nativeRect.left && nativeX < nativeRect.left + nativeBorder;
+                const bool right = nativeX <= nativeRect.right && nativeX > nativeRect.right - nativeBorder;
+                const bool top = nativeY >= nativeRect.top && nativeY < nativeRect.top + nativeBorder;
+                const bool bottom = nativeY <= nativeRect.bottom && nativeY > nativeRect.bottom - nativeBorder;
 
                 if (left && top) { *result = HTTOPLEFT; return true; }
                 if (right && top) { *result = HTTOPRIGHT; return true; }

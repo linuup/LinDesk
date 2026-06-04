@@ -18,7 +18,8 @@ namespace
     constexpr wchar_t kWindowClassName[] = L"LinDeskWin11MenuIslandHost";
     constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\LinDesk.Win11MenuHost";
     constexpr UINT kShowMenuMessage = WM_APP + 41;
-    constexpr int kAnchorWindowSize = 8;
+    constexpr int kAnchorWindowSize = 48;
+    constexpr int kAnchorOffset = 40;
     constexpr DWORD kMaxMessageSize = 1024 * 1024;
 
     struct AppState
@@ -44,6 +45,8 @@ namespace
     };
 
     AppState g_state;
+
+    void ApplyTransparentHost(HWND hwnd);
 
     std::filesystem::path GetExecutablePath()
     {
@@ -585,8 +588,8 @@ namespace
     RECT CalculateHostRect()
     {
         RECT rect{};
-        rect.left = g_state.requestedPoint.x;
-        rect.top = g_state.requestedPoint.y;
+        rect.left = g_state.requestedPoint.x - kAnchorOffset;
+        rect.top = g_state.requestedPoint.y - kAnchorOffset;
         rect.right = rect.left + kAnchorWindowSize;
         rect.bottom = rect.top + kAnchorWindowSize;
 
@@ -616,8 +619,21 @@ namespace
         const int width = clientRect.right - clientRect.left;
         const int height = clientRect.bottom - clientRect.top;
         SetWindowPos(g_state.islandWindow, nullptr, 0, 0, width, height, SWP_SHOWWINDOW);
+        ApplyTransparentHost(g_state.islandWindow);
         g_state.root.Width(static_cast<double>(width));
         g_state.root.Height(static_cast<double>(height));
+    }
+
+    void ApplyTransparentHost(HWND hwnd)
+    {
+        if (!hwnd)
+        {
+            return;
+        }
+        LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        exStyle |= WS_EX_LAYERED;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, exStyle);
+        SetLayeredWindowAttributes(hwnd, 0, 1, LWA_ALPHA);
     }
 
     void ShowMenuWindow()
@@ -638,6 +654,7 @@ namespace
             SWP_SHOWWINDOW);
         ShowWindow(g_state.hostWindow, SW_SHOW);
         UpdateWindow(g_state.hostWindow);
+        ApplyTransparentHost(g_state.hostWindow);
         SetForegroundWindow(g_state.hostWindow);
         SetActiveWindow(g_state.hostWindow);
         SetFocus(g_state.hostWindow);
@@ -688,6 +705,7 @@ namespace
         g_state.anchor.Width(1.0);
         g_state.anchor.Height(1.0);
         g_state.anchor.Opacity(0.0);
+        g_state.anchor.Margin(wux::ThicknessHelper::FromLengths(kAnchorOffset, kAnchorOffset, 0.0, 0.0));
         g_state.anchor.HorizontalAlignment(wux::HorizontalAlignment::Left);
         g_state.anchor.VerticalAlignment(wux::VerticalAlignment::Top);
         g_state.root.Children().Append(g_state.anchor);
@@ -786,6 +804,7 @@ namespace
             try
             {
                 g_state.hostWindow = hwnd;
+                ApplyTransparentHost(hwnd);
                 InitializeIsland(hwnd);
                 return 0;
             }
@@ -797,6 +816,17 @@ namespace
         case WM_SIZE:
             ResizeIslandToHost();
             return 0;
+
+        case WM_ERASEBKGND:
+            return 1;
+
+        case WM_PAINT:
+        {
+            PAINTSTRUCT paint{};
+            BeginPaint(hwnd, &paint);
+            EndPaint(hwnd, &paint);
+            return 0;
+        }
 
         case kShowMenuMessage:
             HandleShowMenuRequest();
@@ -840,6 +870,7 @@ namespace
         windowClass.lpfnWndProc = WindowProc;
         windowClass.lpszClassName = kWindowClassName;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        windowClass.hbrBackground = nullptr;
         return RegisterClassExW(&windowClass);
     }
 }
@@ -868,7 +899,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
 
     HWND hwnd = CreateWindowExW(
-        WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_LAYERED,
         kWindowClassName,
         L"Win11MenuIsland",
         WS_POPUP,

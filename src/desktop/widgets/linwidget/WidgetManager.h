@@ -33,10 +33,21 @@ public:
                              bool autoReload,
                              QString* instanceId = nullptr,
                              QString* errorMessage = nullptr);
+    bool createWidgetInstance(const QString& sourceInstanceId,
+                              const QRect& requestedGeometry,
+                              QString* newInstanceId = nullptr,
+                              QString* errorMessage = nullptr);
+    bool createWidgetInstanceFromPackage(const QString& packagePath,
+                                         bool isDevelopment,
+                                         bool autoReload,
+                                         const QRect& requestedGeometry,
+                                         QString* newInstanceId = nullptr,
+                                         QString* errorMessage = nullptr);
     bool restartWidget(const QString& instanceId);
     bool restoreFromConfig(const QString& configPath = QString(), QString* errorMessage = nullptr);
     bool saveToConfig(const QString& configPath = QString(), QString* errorMessage = nullptr) const;
     QVector<WidgetLayoutState> layoutStates() const;
+    bool hasRunningWidget(const QString& instanceId) const;
     bool moveWidget(const QString& instanceId, const QPoint& pos);
     bool resizeWidget(const QString& instanceId, const QSize& size);
     bool removeWidgetState(const QString& instanceId);
@@ -53,6 +64,7 @@ public:
     void stopWidget(const QString& instanceId);
     void stopAll();
     WidgetInstance widgetInstance(const QString& instanceId) const;
+    void broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message);
 
 signals:
     void widgetLaunched(const QString& instanceId);
@@ -62,6 +74,13 @@ signals:
 
 private:
     QString makeInstanceId(const WidgetManifest& manifest) const;
+    bool createWidgetInstanceFromPackageInternal(const QString& packagePath,
+                                                bool isDevelopment,
+                                                bool autoReload,
+                                                const QRect& requestedGeometry,
+                                                const QString& parentInstanceId,
+                                                QString* newInstanceId,
+                                                QString* errorMessage);
     bool ensureSharedHost(QString* errorMessage = nullptr);
     void restartSharedHost();
     void sendHostOptionsToSharedHost();
@@ -71,6 +90,7 @@ private:
                               QString* errorMessage = nullptr);
     void handleRuntimeMessage(const QString& widgetId, const QJsonObject& message);
     void handleSystemInfoRequest(const QJsonObject& message);
+    void handleStorageRequest(const QJsonObject& message);
     void sendSystemInfoResponse(const QString& instanceId,
                                 const QString& requestId,
                                 const QString& action,
@@ -80,6 +100,11 @@ private:
     void sendSystemInfoUpdate(const QString& instanceId,
                               const QString& watchId,
                               const QJsonObject& data);
+    void sendStorageResponse(const QString& instanceId,
+                             const QString& requestId,
+                             bool ok,
+                             const QJsonValue& value = QJsonValue(),
+                             const QString& errorMessage = QString());
     void stopSystemInfoWatchesForInstance(const QString& instanceId);
     int visibleWidgetCount() const;
     bool sharedWebViewMissingForVisibleWidgets() const;

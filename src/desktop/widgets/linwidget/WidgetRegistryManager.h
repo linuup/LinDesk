@@ -10,6 +10,8 @@ namespace LinWidget {
 
 class WidgetRegistryManager {
 public:
+    static WidgetRegistryManager& instance();
+
     bool load(QString* errorMessage = nullptr);
     bool save(QString* errorMessage = nullptr) const;
 
@@ -36,6 +38,7 @@ private:
     bool copyDirectoryForInstall(const QString& sourcePath, const QString& targetPath, QString* errorMessage) const;
 
     QHash<QString, WidgetRegistryEntry> m_entries;
+    bool m_loaded = false;
 };
 
 }

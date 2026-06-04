@@ -13,18 +13,6 @@
   - [ ] 快捷按钮点击后复用现有 Win11 菜单 commandId 执行逻辑
   - [ ] 无可用快捷操作时隐藏顶部横向区域
 
-# 菜单自定义显示
-- 每种类型的菜单扫描中目前没有使用系统提供的apiGetSubMenu来获取子菜单，这可能导致无法正确获取
-- 目前是激活的方式
-- if (hasSubMenu) {
-    if (contextMenu) {
-        contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
-            reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
-            MAKELPARAM(i, TRUE),
-            nullptr);
-    }
-    DebugLogMenuTree(itemInfo.hSubMenu, contextMenu, tag, depth + 1);
-}
 # 桌面图标
 1. [x] 根据注册表值显示或隐藏系统图标
 2. [x] 桌面图标交互增强
@@ -64,6 +52,9 @@
    - [x] 实现程序启动时反序列化加载所有格子
    - [x] 监听格子位置/大小变化，实时保存配置
 
+4. **小组件系统**
+   天气组件，当第一次加载数据时，如果没有缓存，网络也请求超时，请求失败了，此时不要执行3次就停止，应该一直加载直到请求到数据。
+   便签组件，添加自己管理实例的功能，可以在设置页统一管理。
 # 性能优化
 - [x] 桌面图标 renderData 缓存化
   拖拽选择和选择框移动卡顿改善特别大，`paintEvent()` 已改为直接绘制缓存，renderData 仅在位置、图标尺寸、选中、hover、重命名、文本等状态变化时重算

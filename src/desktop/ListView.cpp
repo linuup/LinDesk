@@ -1112,25 +1112,25 @@ QSet<quint64> ListView::collectDesktopIconOccupiedCells(const QStringList& ignor
     return occupiedCells;
 }
 
-// 闂傚倸鐗婇悷锕傚焵椤戣法鍔嶉柛銊﹀哺瀹曘劌螣閸濆嫮浠存繝娈垮枛椤戝懐鈧?
+// 闂傚倸鍊搁悧濠囨偡閿曞倸鐒垫い鎴ｆ硶閸斿秹鏌涢妸锕€鍝虹€规洏鍔岃灒闁告繂瀚禒瀛樼節濞堝灝鏋涙い鎴濇噽閳?
 ListView* ListView::m_instance = nullptr;
 int ListItemData::s_targetIconSize = ListView::kMediumIconW;
 
 ListView::ListView(QWidget* parent) : QWidget(parent),
-    m_lastRightClickPos(-1, -1)  // 闂佸憡甯楃换鍌烇綖閹版澘绀岄柡宓啰顦﹂梻浣诡儥閸犳岸宕戦敐澶婄閻犱礁纾粔瀵哥磽閸愭儳鏋欓悹鎰枛瀵噣鎮╅搹顐ｇ彙闂?
+    m_lastRightClickPos(-1, -1)  // 闂備礁鎲＄敮妤冩崲閸岀儑缍栭柟鐗堟緲缁€宀勬煛瀹擃喖鍟伴ˇ锕傛⒒娴ｈ鍎ラ柛鐘冲哺瀹曟垿鏁愭径濠勵槱闁荤姳绀佺壕顓犵矓鐎靛摜纾介柛鎰劤閺嬫瑩鎮归幇顔兼灈鐎殿噮鍣ｉ幃鈺呮惞椤愶絿褰欓梻?
 {
     setAcceptDrops(true);
-    // 闁荤姳绀佹晶浠嬫偪閸℃娴栫€光偓閸曨剚銆冮梺鐓庡暱閺堫剙鈻嶅▎鎾崇倞闁告挆鍐炬毈
+    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冾殢濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴姊洪悡搴℃毐闁哄牜鍓欓埢宥呪枎閹惧磭鍊為梺鍛婃寙閸愮偓姣?
     //SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, (PVOID)imagePath.toStdString().c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
 
 
-    // 闁荤姳绀佹晶浠嬫偪閸℃稑绫嶉柣妯挎閻濊埖淇婂Δ鈧Λ娑㈡偘閵夆晛鐭?
-    // 闁荤姳绀佹晶浠嬫偪閸℃稒鐒婚煫鍥ㄦ⒐椤牠鏌ら崘鍙夋拱婵?
+    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪☉缁秹鏌ｅΟ鎸庮仩闁绘繆鍩栨穱濠偽旈埀顒€螞濞戙垺鍋橀柕澶嗘櫅閻?
+    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪⊕閻掑鐓崶銊︹拹妞ゎ偅鐗犻弻銈夊礃閸欏鎷卞┑?
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
-    // 闁荤姳绀佹晶浠嬫偪閸℃稒鐒婚煫鍥ㄦ⒐椤牗顨ラ悙鑸电【闁告ɑ鍨归幏瀣箹娴ｆ彃浜鹃煫鍥ㄦ皑缁犳牜绱掗幇顓ф當鐟滅増鐩幆鍥┾偓锝庝簻閻撳倿鏌涘顒勫弰婵為棿鍗抽幆鍐礋椤愩垺鏆ラ柣?
-    //setAttribute(Qt::WA_TransparentForMouseEvents); // 闂佺绻嬪ù鍥敊韫囨稒鍊烽柣鐔告緲濮ｅ﹪姊洪銏㈢缂佽鍟扮划锝呂旈埀顒冦亹?
-    //setAttribute(Qt::WA_OpaquePaintEvent);  // 闂佸憡鍑归崹鎶藉极閵堝鍤勯悘鐐靛亾閻濐垶姊洪銏㈢婵″弶鍨垮畷?
+    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪⊕閻掑鐓崶銊︹拹妞ゎ偅鐗楅〃銉╂倷閼哥數銆愰梺鍛娚戦崹褰掑箯鐎ｎ喖绠瑰ù锝嗗絻娴滈箖鐓崶銊︾殤缂佺姵鐗滅槐鎺楀箛椤撗勭暥閻熸粎澧楅惄顖炲箚閸モ斁鍋撻敐搴濈盎闁绘挸鍊块弻娑橆潩椤掑嫬寮板┑鐐烘？閸楁娊骞嗛崘顔肩妞ゆ劑鍨洪弳銉╂煟?
+    //setAttribute(Qt::WA_TransparentForMouseEvents); // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗崐鐑芥煟閻斿憡绶叉慨锝咃躬濮婃椽顢曢姀銏㈩啈缂備浇顕ч崯鎵垝閿濆憘鏃堝焵椤掑啨浜?
+    //setAttribute(Qt::WA_OpaquePaintEvent);  // 闂備礁鎲￠崙褰掑垂閹惰棄鏋侀柕鍫濐槹閸ゅ嫰鎮橀悙闈涗壕闁绘繍鍨跺娲敃閵忋垻顔夊┑鈥冲级閸ㄥ灝鐣?
 
     setGeometry(QApplication::primaryScreen()->geometry());
     //setAutoFillBackground(true);
@@ -1159,24 +1159,24 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     //m_deskMonitor = new DirectoryMonitor(reinterpret_cast<HWND>(winId()),false, this);
     //m_deskMonitor->startListening();
     
-    // 闂佸吋鍎抽崲鑼躲亹閸ヮ剚鍎戦柣鏃堫棑閺変粙鏌ｉ妸銉ヮ仾妞ゃ垺鍨垮Λ鍐閿濆洨鍞撮悗?
+    // 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墯閸庢垿鏌ｉ弮鍫闁哄绮欓弻锝夊Ω閵夈儺浠惧銈冨灪閸ㄥ灝螞閸愵喖顫呴柨婵嗘川閸炴挳鎮?
     QString desktopPath;
     PWSTR path = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) {
         desktopPath = QString::fromWCharArray(path);
         CoTaskMemFree(path);
     } else {
-        // 闂傚倸瀚粔鑸殿殽閸ヮ剙妫橀悷娆忓閺€鎶芥煥濞戞瑧鐓┑鐐叉喘閹粙鍩夐〃绠僡ndardPaths
+        // 闂傚倸鍊哥€氼剛绮旈懜娈挎闁搞儺鍓欏Λ姗€鎮峰▎蹇擃伌闁衡偓閹惰姤鐓ユ繛鎴炵懅閻擃垰鈹戦悙鍙夊枠闁诡喕绮欓崺澶愩€冪粻鍍dardPaths
         desktopPath = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     }
-    m_desktopDir = desktopPath; // 婵烇絽娲︾换鍌炴偤閵娾晛绀嗛柣妤€鐗嗛悘鍥煕濞戞顏囥亹婢舵劖鐓?
+    m_desktopDir = desktopPath; // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁€鍡涙煟濡も偓閻楀棝鎮橀崶顒佺厱婵炴垶顏鍥ヤ汗濠㈣埖鍔栭悡?
     
-    qDebug() << "闂佺儵鏅滈崹鍓佹暜鐠轰警娴栫€光偓閸曨剚銆冮柣鐘辫閸ㄦ壆娆?" << desktopPath;
+    qDebug() << "闂備胶鍎甸弲婊堝垂閸撲焦鏆滈悹杞拌濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴鏌ｉ悩杈劅闁搞劍澹嗗▎?" << desktopPath;
     
-    // 濠电偛顦崝宀勫船娴犲鍤婃い蹇撳閺嗘澘鈽夐弬娆炬Ш閻炴凹鍋婂畷鍦偓锝呭缁€澶愭煕韫囧孩绁版い鏂跨箳閹瑰嫰濡歌濞堢姷绱掔€ｎ亶鍎旀俊璇х畵瀹曟艾顪冮崣銉х畾闂佸憡鐟ㄥ〒鍦閸洘鐒?
+    // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑嗛崵濠冦亜韫囨挸顏柡鍡樻緲閳藉寮▎鐐ㄩ柣鐐村嚬閸嬪﹤鐣烽崷顓涘亾閿濆懎顣崇紒鈧径鎰厱闊洤瀛╃粊鐗堛亜閺傝法绠抽柟鐟板婵℃瓕顦叉繛鍫㈠Х缁辨帞鈧綆浜堕崕鏃€淇婄拠褏鐣电€规洘鑹鹃—鍐矗閵壯呯暰闂備礁鎲￠悷銊ャ€掗崷顓燁潟闁割偅娲橀悞?
     qRegisterMetaType<FileSystemEventInfo>("FileSystemEventInfo");
     
-    // 婵炶揪缍€濞夋洟寮ˉ鐬歯闂佺儵鏅╅崰鏍礊瀹ュ鍎庨柟瀵稿仜娴犳﹢鏌?
+    // 濠电偠鎻紞鈧繛澶嬫礋瀵偊藟閻闂備胶鍎甸弲鈺呭窗閺嶎偆绀婄€广儱顦伴崕搴ㄦ煙鐎电浠滃ù鐘筹耿閺?
     m_linMonitor = new LinDirectoryMonitor(desktopPath, false, this);
     connect(m_linMonitor, &LinDirectoryMonitor::fileSystemChanged, this, &ListView::onFileSystemChanged);
     m_linMonitor->startListening();
@@ -1266,23 +1266,21 @@ void ListView::openLinWidgetSettings(const QString& instanceId)
         return;
     }
 
-    auto* dialog = new LinWidget::WidgetSettingsDialog(
+    auto* dialog = LinWidget::WidgetSettingsDialog::openOrCreate(
         instance.packagePath,
         manifest,
         instance.grantedPermissions,
         instance.isDevelopment,
         instance.instanceId,
-        this);
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-    dialog->initialize(&errorMessage);
-    connect(dialog, &QDialog::finished, this, [this, instanceId]() {
-        if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-            manager->restartWidget(instanceId);
-        }
-    });
-    dialog->show();
-    dialog->raise();
-    dialog->activateWindow();
+        this,
+        &errorMessage);
+    if (dialog) {
+        connect(dialog, &QDialog::finished, this, [this, instanceId]() {
+            if (LinWidget::WidgetManager* manager = linWidgetManager()) {
+                manager->restartWidget(instanceId);
+            }
+        }, Qt::UniqueConnection);
+    }
     if (!errorMessage.isEmpty()) {
         qWarning() << "[LinWidgetSettings]" << errorMessage;
     }
@@ -1337,7 +1335,7 @@ void ListView::initializeLinWidgets()
     manager->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
     setShowLinWidgetBlockedCells(settings.value("LinWidgets/ShowBlockedCells", false).toBool());
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
     registry.load(&registryError);
     registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
@@ -1379,7 +1377,7 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
 {
     qDebug() << "updateSystemIconVisibility:" << clsid << "->" << (hidden ? "hiding" : "showing");
     
-    // 闁荤喐鐟ョ€氼垳鈧灚鐗犲畷鐘诲嫉閸㈡〗ID闂佸搫绉堕崢褏妲愰敓鐘虫櫖闁割偀鎳ｉ埡鍛挃闁靛牆鎳庣拋鏌ユ煠鐎圭姵顥夐柣掳鍔戝畷鐑藉Ω瑜庨悾?:闂佸憡鎸哥粔鍓佹閹达附鏅?
+    // 闂佽崵鍠愰悷銉р偓姘煎灣閳ь剙鐏氶悧鐘茬暦閻樿瀚夐柛銏°€桰D闂備礁鎼粔鍫曞储瑜忓Σ鎰版晸閻樿櫕娅栭梺鍓插亐閹筹綁鍩￠崨顔规寖闂侀潧鐗嗛幊搴ｆ媼閺屻儲鐓犻悗鍦У椤ュ鏌ｆ幊閸旀垵鐣烽悜钘壩╃憸搴ㄦ偩?:闂備礁鎲￠幐鍝ョ矓閸撲焦顫曢柟杈鹃檮閺?
     QString normalizedClsid = clsid;
     normalizedClsid.replace("::", "");
 
@@ -1460,7 +1458,7 @@ void ListView::onWindowsShowHiddenFilesChanged(bool showHiddenFiles)
 
 void ListView::startListeningSpecialIcon()
 {
-    // 閻庢鍠掗崑鎾斥攽椤旂⒈鍎戞繛鎻掑暣瀹?
+    // 闁诲孩顔栭崰鎺楀磻閹炬枼鏀芥い鏃傗拡閸庢垶绻涢幓鎺戞殻鐎?
     if (monitor->startListening()) {
         sysIconRegisterInfo = monitor->getCurrentIcons();
 
@@ -1468,10 +1466,10 @@ void ListView::startListeningSpecialIcon()
             qDebug() << icon.name << ":" << (icon.isHidden ? "hiddening" : "showing");
         }*/
 
-        // 闁荤姳绀佹晶浠嬫偪閸℃稑鐐婇柣鎰摠閺嗩亞绱掗弮鈧悷鈺佲枔閿濆瀵?
+        // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪☉閻愬﹪鏌ｉ幇顒傛憼闁哄棭浜炵槐鎺楀籍閳ь剟鎮烽埡浣叉灁闁挎繂顦扮€?
         //monitor->setIconVisibility("{645FF040-5081-101B-9F08-00AA002F954E}", true);
     }
-    // 闁哄鏅濋崑鐐垫暜鐎涙鈹嶉柍銉ュ暱婵?
+    // 闂佸搫顦弲婵嬪磻閻愬灚鏆滈悗娑欘焽閳瑰秹鏌嶉妷銉ユ毐濠?
     connect(monitor, &DesktopInfoMonitor::iconVisibilityChanged,
         this, &ListView::updateSystemIconVisibility);
 }
@@ -2644,9 +2642,9 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
         // Since ListItems now intercept their own contextMenuEvent and emit signals,
         // this handler is only reached if the background (desktop) is clicked.
         
-        // 婵犵鈧啿鈧綊鎮樻径鎰煑闁规儼濮ら弳娑㈡煟閹邦喗鍤€闁搞値鍠楅幏鍛吋閸モ晜鐎繛鎴炴尭缁夋潙锕㈤鍛浄閻犱礁纾粔鍧楁煕閵壯冧壕闁绘牭缍佸畷鐘诲传閸曨厼骞嶉梺鍛婂姇閹锋垹妲愬┑鍡愨偓鎺楀川鐎涙褰戦悗鍦焾瀵泛锕㈡笟鈧弻鍛緞婢跺骸骞€
+        // 濠电姷顣介埀顒€鍟块埀顒€缍婇幃妯诲緞閹邦剛鐓戦梺瑙勫劶婵倝寮冲☉銏＄厽闁归偊鍠楅崵鈧梺鎼炲€ら崰妤呭箯閸涱収鍚嬮柛銉㈡櫆閻庮厽绻涢幋鐐村碍缂佸娼欓敃銏ゎ敂閸涱垼娴勯柣鐘辩绾绢厾绮旈崸妤佺厱闁靛／鍐у闂佺粯鐗紞浣哥暦閻樿浼犻柛鏇ㄥ幖楠炲秹姊洪崨濠傚闁归攱鍨瑰Σ鎰攽閸℃劏鍋撻幒妤€宸濋悗娑欘焽瑜版垿鎮楅崷顓х劸鐎殿喛娉涢敃銏＄瑹閳ь剟寮婚崨顔肩窞濠㈣泛楠搁獮鈧?
         clearCheckedItem();
-        // 闂佸搫瀚晶浠嬪Φ濮橆剦娴栫€光偓閸曨剚銆冮梺姹囧妼鐎氼剝銇愰幖浣圭叆妞ゆ柨鐏濈紞鍛存煕?
+        // 闂備礁鎼€氼剚鏅舵禒瀣︽慨姗嗗墻濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴姊哄Ч鍥у閻庢凹鍓濋妵鎰板箹娴ｅ湱鍙嗗銈嗘煥閻忔繄绱為崨瀛樼厱?
         requestSystemRightMenu(ObjectType::BackGround, rightClickPoint);
     }
 }
@@ -3352,7 +3350,7 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->model.displayName);
         } else if (isFolder && isDraggedDiskLetter) {
-            htmlText = QString("<b style='color:%1'>闂?/b> <span>%2</span> <b style='color:%1'>闂備焦褰冮懟顖炲垂閸楃儐鍤堟繛宸簼閹崇娀鏌?/b>")
+            htmlText = QString("<b style='color:%1'>闂?/b> <span>%2</span> <b style='color:%1'>闂傚倷鐒﹁ぐ鍐嚐椤栫偛鍨傞柛妤冨剱閸ゅ牊绻涘顔荤凹闁瑰磭濞€閺?/b>")
                 .arg(highlightColor, hitItem->model.displayName);
         } else if (isFolder) {
             actionKeyword = isCtrl ? "Copy to" : "Move to";
@@ -3525,7 +3523,7 @@ void ListView::dropEvent(QDropEvent* event)
             }
 
             if (!srcPaths.empty()) {
-                // 闂佸搫绉烽～澶婄暤娓氣偓閺屻劑顢欓悙顒傦紭婵烇絽娴傞崳锝夊Χ閹殿喚绠旈柨鏇炲€甸崑鎾村緞鐎ｎ亶浠存繝銏ｆ硾缁夋挳宕哄Δ鍛闁哄稁鍊ｉ埡鍛?
+                // 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ〒姘ｅ亾闁哄被鍔戦、娆撴倷椤掑偊绱┑鐑囩到濞村倿宕抽敐澶娢ч柟娈垮枤缁犳棃鏌ㄩ弴鐐测偓鐢稿磻閹炬潙绶為悗锝庝憾娴犲瓨绻濋姀锝嗙【缂佸鎸冲畷鍝勎旈崨顓狀吅闂佸搫绋侀崐锝夊煛閸涱厾顦?
                 bool result;
                 if (preferShortcutForDrop) {
                     result = createShortcutsInFolder(draggedPaths, m_desktopDir);
@@ -3767,7 +3765,7 @@ void ListView::dropEvent(QDropEvent* event)
             requestSaveBoxes();
         }
     } else {
-        // --- 婵犮垼鍩栭悧鐘诲磿閹绢喖绠柡宓啫姹查梻渚囧亝濡叉帞娆?---
+        // --- 濠电姰鍨奸崺鏍偋閻樿纾块柟缁㈠枛缁狀垶鏌″畵顔煎暙濮规煡姊绘笟鍥т簼婵″弶甯炲▎?---
         QString desktopDir = m_desktopDir;
         std::vector<std::wstring> srcPaths;
         for (const QString& local : draggedPaths) {
@@ -3778,7 +3776,7 @@ void ListView::dropEvent(QDropEvent* event)
         
         if (!srcPaths.empty()) {
             qDebug() << "External drop into Desktop:" << desktopDir;
-            // 闁荤姴顑呴崯浼村极?Shell API 闁哄鏅滅粙鏍€侀幋锕€绠柣銈庡灣椤︻噣鏌?婵烇絽娲︾换鍐偓?confirm 婵?true闂?
+            // 闂佽崵濮撮鍛村疮娴兼潙鏋?Shell API 闂佸搫顦弲婊呯矙閺嶎厹鈧線骞嬮敃鈧粻顖炴煟閵堝骸鐏ｆい锔诲櫍閺?濠电儑绲藉ú锔炬崲閸愵亖鍋?confirm 濠?true闂?
             CSystemApi::CopyFiles(srcPaths, desktopDir.toStdWString());
         }
     }
@@ -3824,7 +3822,7 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
-    // 闁兼儳鍢茶ぐ鍥┾偓鍦仦濡炲倿鎯冮崟顖涙殯闁烩晜顭囨慨鎼佸箑?
+    // 闂佸吋鍎抽崲鑼躲亹閸モ斁鍋撻崷顓炰沪婵＄偛鍊块幆鍐礋椤栨稒娈梺鐑╂櫆椤洦鎱ㄩ幖浣哥畱?
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
 
@@ -4058,7 +4056,7 @@ ListView* ListView::instance(QWidget* parent) {
 
 void ListView::initialize()
 {
-    // === 闂佸憡鑹鹃張顒勵敆?Windows 濠碘剝顨呴惌鍌氼焽娴兼潙绠抽柟鐑樺灥閻忔瑩鎮规担绋库挃闁?===
+    // === 闂備礁鎲￠懝楣冨嫉椤掑嫷鏁?Windows 婵犵鍓濋〃鍛存儗閸屾凹鐒藉ù鍏兼綑缁犳娊鏌熼悜妯虹仴闁诲繑鐟╅幃瑙勬媴缁嬪簱鎸冮梺?===
     bool osAutoArrange = false;
     bool osSnapToGrid = false;
     CSystemApi::GetDesktopConfigFlags(osAutoArrange, osSnapToGrid);
@@ -5331,7 +5329,7 @@ bool ListView::addItem(const QString& filePath, bool refresh)
 
     const bool added = !findAnyItemStateByPath(normalizedPath) && addDesktopModelItemFromPath(normalizedPath);
     
-    // 闂佸湱顣介崑鎾绘煛閸繍妲归柡瀣暞缁傛帡宕奸弴鐐插箣闂佸憡姊绘慨鎾矗?m_items 闂?m_allItems
+    // 闂備礁婀遍。浠嬪磻閹剧粯鐓涢柛顐ｇ箥濡插綊鏌＄€ｎ亜鏆炵紒鍌涘浮瀹曞ジ寮撮悙鎻掔闂備礁鎲″缁樻叏閹绢喖鐭?m_items 闂?m_allItems
     if (refresh) {
         requestSaveBoxes();
     }
@@ -5497,12 +5495,12 @@ bool ListView::handlePendingShellCreatedItem(const QString& newPath)
 }
 
 /// <summary>
-/// 闂佹眹鍨婚崰鎰板垂濮樿鲸鍠嗛柛鏇ㄥ亜閻?
-/// 1.unGrid濠碘槅鍨埀顒€纾涵鈧?
-/// UI闂佸憡甯楃粙鎴犵磽閹绘唸em,闂佺儵鏅涢悺銊ф暜閹绢喖绠甸柟閭︿簽鏉╂柨顫楄婵敻鎮ラ敐澶婄煑闁规儼濮ら弳娑㈡煕瑜庨崝鏍偉?
-/// 闂傚倸鐗婇幏绋╅梺鍛婂笚缁嬫垹绱撻幘缁樻櫖閻忕偟鍘ч埢蹇涙煟閳垛晛澧祌id闂佸憡甯楃粙鎴犵磽閹捐埖鍠嗛柛鏇ㄥ亜閻?
-/// 2.Grid濠碘槅鍨埀顒€纾涵鈧?
-/// 闂佸搫琚崕鎾敋濡ゅ懎鍐€闁绘挸娴烽幗宥夋偨椤栨艾鏆欓柣顏嶅墮琚欓煫鍥ч叄閸ゅ鏌涢弽褎鎯堥柣鎾寸懇瀵即顢涘顓炲墾闂佸搫鐗嗛ˇ浼村几閸愨晝顩烽悹楦挎閹界娀鏌涢敂鑽ゅ帨缂佽鲸绻冩穱濠囧磼濞戞矮鍑芥繛鎴炴尭缁夋挳鎮洪妸鈺佹嵍闁靛瀵屽鍓х磼娓氬灝鐏柍瑙勭墵瀵粙鎮℃惔锝嗘啢闂佹寧绋戞總鏃€绻涢崶顒佸仺闁靛ě灞藉壋婵炴垶鎸撮崑鎾斥槈閹垮啩绨奸柣妤€鎽滈埀顒佺⊕閸旀洖顭囧Δ鍛唨?
+/// 闂備焦鐪归崹濠氬窗閹版澘鍨傛慨妯块哺閸犲棝鏌涢弴銊ヤ簻闁?
+/// 1.unGrid婵犵妲呴崹顏堝焵椤掆偓绾绢厾娑甸埀?
+/// UI闂備礁鎲＄敮妤冪矙閹寸姷纾介柟缁樺敻em,闂備胶鍎甸弲娑㈡偤閵娧勬殰闁圭虎鍠栫粻鐢告煙闁缚绨介弶鈺傛煥椤顦村┑顔炬暬閹儵鏁愭径濠勭厬闂佽鍎兼慨銈夊汲濞戙垺鐓曠憸搴ㄥ礉閺嶎厽鍋?
+/// 闂傚倸鍊搁悧濠囧箯缁嬧晠姊洪崨濠傜瑲缂佸鍨圭槐鎾诲箻缂佹ɑ娅栭柣蹇曞仧閸樠囧煝韫囨稒鐓熼柍鍨涙櫅婢хid闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愬煐閸犲棝鏌涢弴銊ヤ簻闁?
+/// 2.Grid婵犵妲呴崹顏堝焵椤掆偓绾绢厾娑甸埀?
+/// 闂備礁鎼悮顐﹀磿閹绢噮鏁嬫俊銈呮噹閸愨偓闂佺粯鎸稿ù鐑藉箺瀹ュ鍋ㄦい鏍ㄨ壘閺嗘瑩鏌ｉ宥呭鐞氭瑩鐓崶褔鍙勯柛銈咁儔閺屾盯寮借閹牓鏌ｉ幘瀵告噰鐎殿喕鍗抽、娑橆潩椤撶偛澧鹃梻浣告惈閻楀棝藝娴兼潙鍑犻柛鎰ㄦ櫇椤╃兘鎮规ウ鎸庮仩闁圭晫濞€閺屾盯鏁傞懡銈呭辅缂備浇椴哥换鍐╃┍婵犲洤纾兼繛鎴炵煯閸戣姤绻涢幋鐐村碍缂佸鎸抽幃娲Ω閳轰焦宓嶉梺闈涱煭鐎靛苯顫忛崜褏纾煎〒姘仢閻忣噣鏌嶇憴鍕⒌鐎殿喕绮欓幃鈩冩償閿濆棙鍟㈤梻浣瑰缁嬫垶绺介弮鈧换娑㈠炊椤掍礁浠洪梺闈浤涚仦钘夊濠电偞鍨堕幐鎾磻閹炬枼妲堥柟鍨暕缁ㄥジ鏌ｅΔ鈧幗婊堝焵椤掍胶鈯曢柛鏃€娲栭…鍥旈崨顓炲敤?
 /// </summary>
 /// <returns></returns>
 QPoint ListView::generateItemPosition()
@@ -5510,11 +5508,11 @@ QPoint ListView::generateItemPosition()
     qDebug() << "[generateItemPosition] gridAlignment=" << m_iconShowRule.gridAlignment 
              << "m_lastRightClickPos=" << m_lastRightClickPos;
     
-    // 闂傚倸鐗婇崙鐥砳d闁汇埄鍨伴崯顐︽儑椤掍胶鈻旈柡鍐ㄥ€归弳鐕疘闂佺懓鐏濈粔宕囩礊閺冨倹鍠嗛柨鏇楀亾鐟滄澘鍊块幆鍐礋閸撲胶顦╅梺鍛婄懄婵炲﹪寮銏″殨婵犲﹤鍟粈瀣煛閸屾稒绶茬紓鍌涙崌閺佸秵寰勫☉姘鳖槷闂佺儵鏅涢悺銊ф暜鐎涙ɑ濯撮悹鎭掑妽閺嗗繐顫楄婵敻鎮ラ敐澶婄煑闁规儼濮ら弳娑樏归敐鍛ら柣?
+    // 闂傚倸鍊搁悧濠囧礄閻ョ牫d闂佹眹鍩勯崹浼村疮椤愶附鍎戞い鎺嶈兌閳绘棃鏌￠崘銊モ偓褰掑汲閻曠枠闂備胶鎳撻悘婵堢矓瀹曞洨绀婇柡鍐ㄥ€归崰鍡涙煥閺囨浜鹃悷婊勬緲閸婂潡骞嗛崘顔肩闁告挷鑳堕ˇ鈺呮⒑閸涘﹦鎳勫┑鐐诧躬瀵偊顢橀姀鈥虫濠电姴锕ら崯顐ょ矆鐎ｎ喗鐓涢柛灞剧⊕缁惰尙绱撻崒娑欏磳闁轰礁绉靛鍕槈濮橀硸妲烽梻浣哄劦閺呮盯鎮洪妸褎鏆滈悗娑櫳戞刊鎾偣閹帒濡介柡鍡楃箰椤顦村┑顔炬暬閹儵鏁愭径濠勭厬闂佽鍎兼慨銈夊汲濞戞◤褰掓晲閸涱垍銈夋煟?
     if (!m_iconShowRule.gridAlignment && m_lastRightClickPos != QPoint(-1, -1)) {
         QPoint pos = m_lastRightClickPos;
         qDebug() << "[generateItemPosition] Using right-click position:" << pos;
-        // 闂備焦褰冪粔鍫曟偪?m_lastRightClickPos闂佹寧绋戦惌鍌毼ｇ拠宸桨闁靛繈鍊栨慨娣疘闂佸憡甯楃粙鎴犵磽閹剧粯鍎嶉柛鏇ㄥ墯閻庮喖霉閻樿櫕鏋勭紒鈥冲暞閹峰懐鎹勯妸锔芥闁荤姴娲㈤崕鍗烆焽濡ゅ懎鍐€?
+        // 闂傚倷鐒﹁ぐ鍐矓閸洘鍋?m_lastRightClickPos闂備焦瀵х粙鎴︽儗閸屾锝囨嫚瀹割喗妗ㄩ梺闈涚箞閸婃牗鎱ㄥǎ鐤橀梻浣告啞鐢绮欓幋鐘电＝闁瑰墽绮崕宥夋煕閺囥劌澧柣搴枛闇夐柣妯挎珪閺嬪嫮绱掗垾鍐叉殲闁瑰嘲鎳愰幑鍕Ω閿旇姤顓归梺鑽ゅТ濞层垽宕曢崡鐑嗙劷婵°倕鎳庨崘鈧?
         m_lastRightClickPos = QPoint(-1, -1);
         return resolveCreatePosition(pos);
     }
@@ -5564,7 +5562,7 @@ QPoint ListView::generateItemPosition()
     const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
     return gridCellToPoint(overflowCell.x(), overflowCell.y(), layoutLeft, layoutTop, strideX, strideY);
 
-    return QPoint(0, 0); // 闂佺绻戠划宀€鑺遍搹顐ｄ氦闁哄倹瀵х粈鈧?
+    return QPoint(0, 0); // 闂備胶顭堢换鎴犲垝瀹€鈧懞閬嶆惞椤愶絼姘﹂梺鍝勫€圭€笛呯矆閳?
 }
 
 
@@ -5658,7 +5656,7 @@ void ListView::initRightMenuConnections() {
         menu->setSortByDateChecked(true);
         break;
     default:
-        menu->setSortByNameChecked(true); // 婵帗绋掗…鍫ヮ敇婵犳碍鐒诲璺侯槼閸橆剟鏌涘顒傂ょ悮?
+        menu->setSortByNameChecked(true); // 濠殿喗甯楃粙鎺椻€﹂崼銉晣濠电姵纰嶉悞璇差熆鐠轰警妲奸柛姗嗗墴閺屾稑顫濋鍌傘倗鎮?
         break;
     }
 }
@@ -6868,16 +6866,26 @@ void ListView::onMenuLinDesk() {
 }
 
 void ListView::showSettings(LinBox* target) {
-    if (m_settingsWindow) {
-        m_settingsWindow->setTargetBox(target);
-        m_settingsWindow->show();
-        m_settingsWindow->raise();
-        m_settingsWindow->activateWindow();
+    static QPointer<SettingUI> sharedSettingsWindow;
+    if (sharedSettingsWindow) {
+        m_settingsWindow = sharedSettingsWindow;
+        sharedSettingsWindow->setTargetBox(target);
+        QTimer::singleShot(0, sharedSettingsWindow, [window = QPointer<SettingUI>(sharedSettingsWindow)]() {
+            if (window) {
+                window->restoreAndActivate();
+            }
+        });
         return;
     }
     QVector<LinBox*> all = boxes();
-    m_settingsWindow = new SettingUI(target, all);
-    m_settingsWindow->show();
+    sharedSettingsWindow = new SettingUI(target, all);
+    m_settingsWindow = sharedSettingsWindow;
+    sharedSettingsWindow->show();
+    QTimer::singleShot(0, sharedSettingsWindow, [window = QPointer<SettingUI>(sharedSettingsWindow)]() {
+        if (window) {
+            window->restoreAndActivate();
+        }
+    });
 }
 
 void ListView::onMenuSortByName() {
@@ -7151,7 +7159,7 @@ void ListView::onMenuPasteShortcut() {
 
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 {
-    // 闁荤喐鐟ョ€氼垳鈧灚鐗犲畷鐘诲冀椤掑倻鍞撮悗鍨緲鐎氬摜妲愬▎鎴犵＜闁绘柨澧庨閬嶆煟椤剙濡肩€殿喕绮欏顒€顭ㄩ崟顒佺ギ闂佹寧绋戦懟顖炵嵁閹捐绠冲璺侯儐濮圭偤鎮樿箛鏇炰壕闁哄鏅犲鍫曟偑閸涱垳顦?
+    // 闂佽崵鍠愰悷銉р偓姘煎灣閳ь剙鐏氶悧鐘茬暦閻樿鍐€妞ゆ帒鍊婚崬鎾倵閸偅绶查悗姘憸濡叉劕鈻庨幋鐘碉紲闂佺粯鏌ㄦ晶搴敂闁秵鐓熸い顐墮婵¤偐鈧鍠曠划娆忣嚕椤掆偓椤劑宕熼浣恒偖闂備焦瀵х粙鎴︽嚐椤栫偟宓侀柟鎹愵嚙缁犲啿顭跨捄渚剱婵湱鍋ら幃妯跨疀閺囩偘澹曢梺鍝勵儌閺呯姴顕ｉ崼鏇熷亼闁告侗鍨抽ˇ?
     auto normalizePath = [](const QString& p) -> QString {
         QString s = QDir::toNativeSeparators(p);
         while (s.endsWith('\\') || s.endsWith('/'))
@@ -7168,7 +7176,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
              << "old:" << oldPath
              << "new:" << newPath;
 
-    // 闂備焦褰冪粔鐢稿蓟婵犲嫭鏆滈柛鎰╁妿濠€鐗堫殽閻愯埖纭鹃柛鈺傜洴瀵?
+    // 闂傚倷鐒﹁ぐ鍐矓閻㈢钃熷┑鐘插閺嗘粓鏌涢幇鈺佸婵犫偓閻楀牜娈介柣鎰煐绾箖鏌涢埡鍌滄创鐎?
     auto relayout = [this]() {
         if (m_iconShowRule.autoArrange) {
             applyAutoArrangeLayout(false, false);
@@ -7179,7 +7187,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         }
     };
 
-    // 闂佸湱顭堥ˇ顖滅礊鐎ｎ喖绀堢€广儱妫楃粭鎾诲箹閺夋垹绠烘い顐㈩樀瀹曟艾鈻庨幘铏仧闂?
+    // 闂備礁婀遍…鍫ニ囬婊呯閻庯綆鍠栫粈鍫⑩偓骞垮劚濡绮幘璇茬闁哄鍨圭粻鐑樸亜椤愩埄妯€鐎规洘鑹鹃埢搴ㄥ箻閾忣偒浠ч梻?
     auto resort = [this]() {
         this->performSort(m_iconShowRule.sortType);
     };
@@ -7240,7 +7248,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             handlePendingShellCreatedItem(newPath);
         }
         
-        // 婵烇絽娲︾换鍌炴偤閵娾晛绠板ù锝夘棑閻ｄ粙鏌涢弽銊у闁哄鍟粋鎺旀媼閸︻厾顦柣鐘辩劍濠㈡绱炲澶婃闁绘鐗婇悗顔济归悩铏瀯缂傚秴鎳愮槐?
+        // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣鏌ｉ悩杈╁妽婵犮垺顭囩槐鐐差吋婢跺﹥顥濋梺缁橆殔閻楀﹪鎮楅娴庡綊鎮╅搹顐ｇ€紓鍌氱Т閹虫劗妲?
         requestSaveBoxes();
         break;
     }
@@ -7251,7 +7259,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (deletePath.isEmpty()) break;
         if (consumePendingExternalRemoval(deletePath)) break;
         
-            // 婵烇絽娲︾换鍌炴偤閵娾晛绠板ù锝夘棑閻ｄ粙鏌涢弽銊у闁哄鍟粋鎺旀媼閸︻厾顦紓浣割槸椤嘲鈻嶆惔鈽嗗晠闁圭粯甯掗悘鈺呮⒒閸曗晛鈧牠寮搁崘鈺冾浄闁诡垶鍋婇崬鍓佹喐?
+            // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻喚绱撴担鍓叉Ц妞ゎ厼鍢查埢宥嗘償閳藉棗鏅犻梺鍦帛鐢帡鎮橀埡鍛拻闁告洍鏅涢埀顒佺墵瀵悂宕橀埡鍐炬祫闂佽鍨堕崑濠囧船閸撲焦鍠?
         removeTrackedPath(deletePath);
         break;
     }
@@ -7327,7 +7335,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             handlePendingShellCreatedItem(newPath);
         }
         
-        // 婵烇絽娲︾换鍌炴偤閵娾晛绠板ù锝夘棑閻ｄ粙鏌涢弽銊у闁哄鍟粋鎺旀媼閸︻厾顦梺鍝勬搐閻°劑寮绘繝鍥ㄧ厒鐎广儱鎳忛崵鎺楁煕濮橆剛校闁哄鍟粋鎺楀箚闁箑鏁归悷?
+        // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣姊洪崫鍕悙闁宦板姂瀵粯绻濋崶銊у帓閻庡箍鍎遍幊蹇涘吹閹烘鐓曟慨姗嗗墰鏍￠梺鍝勵儏閸燁垳绮嬮幒妤€绠氶梺顓ㄧ畱閺佸綊鎮?
         requestSaveBoxes();
         break;
     }
@@ -7545,7 +7553,7 @@ QVector<DesktopSnakeGameIcon> ListView::desktopSnakeIcons() const
     return icons;
 }
 
-	// 闂佺绻愰悧濠囧蓟閸パ屽殨闁逞屽墰閹?item 闂佹眹鍔岀€氼厽鏅跺澶婂珘濠㈣泛顦换鍡涙煕濞嗘垶鐒跨紒缁樼洴楠炴帡濡烽婊咁槷闂傚倸鍟鍫曨敆濞戙垺鐓傜€广儱鎷嬪Σ濠氬级閳哄啫浠﹂悽?
+	// 闂備胶顭堢换鎰版偋婵犲洤钃熼柛銉戝苯娈ㄩ梺閫炲苯澧伴柟?item 闂備焦鐪归崝宀€鈧凹鍘介弲璺侯吋婢跺﹤鐝樻繝銏ｆ硾椤︻喚鎹㈤崱娑欑厱婵炲棙鍨堕悞璺ㄧ磼缂佹娲存鐐村浮婵＄兘顢涘鍜佹Х闂傚倸鍊搁崯顐㈩嚕閸洦鏁嗘繛鎴欏灪閻撳倻鈧箍鍎遍幏瀣ｆ繝姘骇闁冲搫鍟禒锕傛偨?
 void ListView::resetRenameClickState()
 {
     m_lastClickedDesktopPath.clear();
@@ -7903,7 +7911,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 			targetBox->refreshLayout();
 		}
 		
-		// 婵烇絽娲︾换鍌炴偤閵娾晛鐐婇柣鎰靛墰閸ㄧ厧霉閿濆懐肖闁汇倕妫濆畷姘閺夋垵璧嬬紓鍌氬枤閸犳寮搁崘鈺冾浄?
+		// 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅閻愬﹪鏌ｉ幇闈涘闁搞劎鍘ч湁闁挎繂鎳愯倴闂佹眹鍊曞Λ婵嗙暦濮橆厼顕遍柡澶嬪灥鐠у绱撻崒姘灓闁哥姵顨婂鎼佸礃閳哄喚娴?
         if (targetBox || dropTargetState || desktopBackgroundFileOperation || desktopPositionsChanged) {
 		    requestSaveBoxes();
         }
@@ -7912,7 +7920,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 
 void ListView::createDragGhosts(const QPoint& clickPos)
 {
-	// 濠电偞鎸搁幊鎰板箖婵犲洤绫嶇憸蹇撯枔?ghost
+	// 婵犵數鍋為幐鎼佸箠閹版澘绠栧┑鐘叉搐缁秶鎲歌箛鎾灁?ghost
 	for (auto& ghost : m_ghosts) {
 		if (ghost.widget) ghost.widget->deleteLater();
 	}
@@ -8245,8 +8253,8 @@ void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVarian
             removeDesktopStateByPath(path);
             boxesToRefresh.insert(targetBox);
             
-            // 闁荤姳绀佹晶浠嬫偪?boxId 濡ょ姷鍋犲▔娑㈡儍?item 闁诲骸婀遍崑銈咁瀶椤栨搴ｆ嫚閹绘帩娼遍梺?box 婵?
-            // 婵炶揪缍€濞夋洟寮?addListItem 闂佸搫顦崕鏌ュ锤婵犲洤绀夐柣娆忔噽缁€澶愭倵閻熸澘鏆曠紒杈ㄦ緲椤垽鏁愰崶锝傚亾濡吋濯奸柛鎾楀懏鐎梺缁樼墪婢у酣鎮伴妷鈺佺煑闁挎繂瀚粈?m_contentArea
+            // 闂佽崵濮崇粈浣规櫠娴犲鍋?boxId 婵°倗濮烽崑鐘测枖濞戙垺鍎?item 闂佽楠稿﹢閬嶅磻閵堝拋鐎舵い鏍嚙鎼达絾瀚氶柟缁樺俯濞奸亶姊?box 濠?
+            // 濠电偠鎻紞鈧繛澶嬫礋瀵?addListItem 闂備礁鎼ˇ顓㈠磿閺屻儱閿ゅ┑鐘叉搐缁€澶愭煟濞嗗繑鍣界紒鈧径鎰€甸柣鐔告緲閺嗘洜绱掓潏銊︾凡妞ゎ偁鍨介弫鎰板炊閿濆倸浜炬俊顖氬悑婵ジ鏌涢幘妤€鎳忛悗顓㈡⒑缂佹澧褍閰ｉ幃浼村Ψ閳轰胶鐓戦梺鎸庣箓鐎氼垳绮?m_contentArea
         }
     }
 

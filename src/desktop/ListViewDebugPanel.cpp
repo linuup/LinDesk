@@ -14,8 +14,10 @@
 #include "ui/Fluent/FluentCard.h"
 #include "services/AppPaths.h"
 #include "services/DebugInfoExporter.h"
+#include "ai/AICoreService.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileDialog>
@@ -25,8 +27,11 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QProcess>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
@@ -45,6 +50,7 @@
 #include <QPainterPath>
 #include <QResizeEvent>
 #include <QToolButton>
+#include <QUuid>
 
 // Custom delegate to draw the Fluent Design 2 style sidebar
 #include <QTabBar>
@@ -83,6 +89,11 @@ QString debugConfigPath()
     return AppPaths::configFilePath();
 }
 
+QString aiConfigPath()
+{
+    return QDir(AppPaths::userConfigDir()).filePath(QStringLiteral("ai_studio.json"));
+}
+
 QString bundledLinWidgetsDir()
 {
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets"));
@@ -91,6 +102,133 @@ QString bundledLinWidgetsDir()
 QString userLinWidgetsDir()
 {
     return AppPaths::userLinWidgetsDir();
+}
+
+QString defaultAIBaseUrl(int providerIndex)
+{
+    switch (providerIndex) {
+    case 1:
+        return QStringLiteral("https://api.anthropic.com/v1");
+    case 2:
+        return QStringLiteral("http://127.0.0.1:11434");
+    case 3:
+        return QStringLiteral("https://generativelanguage.googleapis.com/v1beta");
+    case 4:
+        return QStringLiteral("https://api.deepseek.com");
+    case 5:
+        return QStringLiteral("https://dashscope.aliyuncs.com/compatible-mode/v1");
+    default:
+        return QStringLiteral("https://api.openai.com/v1");
+    }
+}
+
+QString defaultAIModel(int providerIndex)
+{
+    switch (providerIndex) {
+    case 1:
+        return QStringLiteral("claude-3-5-haiku-latest");
+    case 2:
+        return QStringLiteral("llama3.2");
+    case 3:
+        return QStringLiteral("gemini-2.5-flash");
+    case 4:
+        return QStringLiteral("deepseek-chat");
+    case 5:
+        return QStringLiteral("qwen-plus");
+    default:
+        return QStringLiteral("gpt-4o-mini");
+    }
+}
+
+QString aiProviderSettingsPrefix(int providerIndex)
+{
+    switch (providerIndex) {
+    case 1:
+        return QStringLiteral("Claude");
+    case 2:
+        return QStringLiteral("Ollama");
+    case 3:
+        return QStringLiteral("Google");
+    case 4:
+        return QStringLiteral("DeepSeek");
+    case 5:
+        return QStringLiteral("Qwen");
+    default:
+        return QStringLiteral("OpenAI");
+    }
+}
+
+int aiProviderIndexFromName(const QString& providerName)
+{
+    const QString normalized = providerName.trimmed();
+    for (int i = 0; i <= 5; ++i) {
+        if (aiProviderSettingsPrefix(i).compare(normalized, Qt::CaseInsensitive) == 0) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+QStringList defaultAIModels(int providerIndex)
+{
+    switch (providerIndex) {
+    case 1:
+        return {
+            QStringLiteral("claude-3-5-haiku-latest"),
+            QStringLiteral("claude-3-5-sonnet-latest")
+        };
+    case 2:
+        return {
+            QStringLiteral("llama3.2"),
+            QStringLiteral("llama3.1"),
+            QStringLiteral("qwen2.5")
+        };
+    case 3:
+        return {
+            QStringLiteral("gemini-2.5-flash"),
+            QStringLiteral("gemini-2.5-pro"),
+            QStringLiteral("gemini-1.5-flash")
+        };
+    case 4:
+        return {
+            QStringLiteral("deepseek-chat"),
+            QStringLiteral("deepseek-reasoner")
+        };
+    case 5:
+        return {
+            QStringLiteral("qwen-plus"),
+            QStringLiteral("qwen-turbo"),
+            QStringLiteral("qwen-max")
+        };
+    default:
+        return {
+            QStringLiteral("gpt-4o-mini"),
+            QStringLiteral("gpt-4o"),
+            QStringLiteral("gpt-4.1-mini")
+        };
+    }
+}
+
+QJsonObject loadAIConfigRoot()
+{
+    QFile file(aiConfigPath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        return QJsonObject();
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    return document.object();
+}
+
+void saveAIConfigRoot(const QJsonObject& root)
+{
+    const QString path = aiConfigPath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
 QString safeLinWidgetInstanceFileName(QString instanceId)
@@ -369,6 +507,7 @@ void ListViewDebugPanel::initUI() {
     m_tabBar = new QTabBar(headerContainer);
     m_tabBar->addTab("General Tools");
     m_tabBar->addTab("LinWidgets");
+    m_tabBar->addTab("AI");
     m_tabBar->addTab("Layout Settings");
     m_tabBar->addTab("Text Diagnostics");
     m_tabBar->setDrawBase(false);
@@ -380,6 +519,7 @@ void ListViewDebugPanel::initUI() {
     m_contentStack = new QStackedWidget(this);
     m_contentStack->addWidget(wrapScrollablePage(createGeneralPage()));
     m_contentStack->addWidget(wrapScrollablePage(createLinWidgetsPage()));
+    m_contentStack->addWidget(wrapScrollablePage(createAIPage()));
     m_contentStack->addWidget(wrapScrollablePage(createLayoutPage()));
     m_contentStack->addWidget(wrapScrollablePage(createTextDiagnosticsPage()));
     mainLayout->addWidget(m_contentStack);
@@ -731,7 +871,7 @@ void ListViewDebugPanel::reloadLinWidgetsList()
     m_installedLinWidgetsList->clear();
     m_developmentLinWidgetsList->clear();
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
     registry.load(&registryError);
     registry.syncFromFolder(userLinWidgetsDir(), &registryError);
@@ -1168,7 +1308,7 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
         return false;
     }
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setLastRunState(registryId, isDevelopment, QStringLiteral("running"));
     registry.save();
@@ -1202,7 +1342,7 @@ bool ListViewDebugPanel::unloadSelectedLinWidget()
     if (LinWidget::WidgetManager* manager = linWidgetManager()) {
         manager->stopWidget(instanceId);
     }
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
     registry.save();
@@ -1352,28 +1492,26 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
             }
             return;
         }
-        auto* dialog = new LinWidget::WidgetSettingsDialog(
+        auto* dialog = LinWidget::WidgetSettingsDialog::openOrCreate(
             packagePath,
             manifest,
             selectedLinWidgetGrantedPermissions(),
             item->data(LinWidgetDevelopmentRole).toBool(),
             selectedLinWidgetInstanceIdForLog(),
-            this);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-        dialog->initialize(&errorMessage);
-        connect(dialog, &QDialog::finished, this, [this]() {
-            const QString instanceId = selectedLinWidgetRunningInstanceId();
-            if (!instanceId.isEmpty()) {
-                if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-                    manager->restartWidget(instanceId);
+            this,
+            &errorMessage);
+        if (dialog) {
+            connect(dialog, &QDialog::finished, this, [this]() {
+                const QString instanceId = selectedLinWidgetRunningInstanceId();
+                if (!instanceId.isEmpty()) {
+                    if (LinWidget::WidgetManager* manager = linWidgetManager()) {
+                        manager->restartWidget(instanceId);
+                    }
+                    updateLinWidgetLogViewer();
+                    updateLinWidgetsButtons();
                 }
-                updateLinWidgetLogViewer();
-                updateLinWidgetsButtons();
-            }
-        });
-        dialog->show();
-        dialog->raise();
-        dialog->activateWindow();
+            }, Qt::UniqueConnection);
+        }
         if (!errorMessage.isEmpty() && m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(errorMessage);
         }
@@ -1471,7 +1609,7 @@ void ListViewDebugPanel::setSelectedLinWidgetGrantedPermission(const QString& pe
     }
     permissions.sort();
 
-    LinWidget::WidgetRegistryManager registry;
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
     registry.setPermissionsGranted(selectedLinWidgetRegistryId(), selectedLinWidgetIsDevelopment(), permissions);
     registry.save();
@@ -1826,7 +1964,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         if (dir.isEmpty()) {
             return;
         }
-        LinWidget::WidgetRegistryManager registry;
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
         QString errorMessage;
         registry.load();
         if (!registry.addDevelopmentProject(dir, &errorMessage)) {
@@ -1847,7 +1985,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::linWidgetLogsDir()));
     });
     connect(m_linWidgetsPackageButton, &QPushButton::clicked, this, [this]() {
-        LinWidget::WidgetRegistryManager registry;
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
         QString installedPath;
         QString errorMessage;
         registry.load();
@@ -1866,7 +2004,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             m_linWidgetsPageStatusLabel->setText("Reset bundled widget failed: " + errorMessage);
             return;
         }
-        LinWidget::WidgetRegistryManager registry;
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
         registry.load();
         for (const QString& folderName : resetFolders) {
             registry.upsertFromPackage(QDir(userLinWidgetsDir()).filePath(folderName), &errorMessage);
@@ -1876,7 +2014,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         reloadLinWidgetsList();
     });
     connect(m_linWidgetsRemoveDevButton, &QPushButton::clicked, this, [this]() {
-        LinWidget::WidgetRegistryManager registry;
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
         registry.load();
         registry.removeDevelopmentProject(selectedLinWidgetRegistryId());
         registry.save();
@@ -1914,7 +2052,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         removeLinWidgetLayoutState(registryKey, packagePath);
 
-        LinWidget::WidgetRegistryManager registry;
+        auto& registry = LinWidget::WidgetRegistryManager::instance();
         QString errorMessage;
         registry.load();
         if (isDevelopment) {
@@ -1936,6 +2074,472 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     reloadLinWidgetsList();
     updateLinWidgetLogViewer();
     return page;
+}
+
+QWidget* ListViewDebugPanel::createAIPage()
+{
+    auto* page = new QWidget();
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(32, 32, 32, 32);
+    layout->setSpacing(18);
+
+    layout->addWidget(createPageTitleLabel("AI"));
+    layout->addWidget(createPageSubtitleLabel("Configure an AI provider and send a quick API test request from the debug console."));
+    layout->addWidget(createPageSubtitleLabel(
+        QStringLiteral("Choose a provider, enter an API key, then select or type a model. Base URL is generated from the provider and only needs changes for proxy or self hosted endpoints.")));
+
+    const QString fieldStyle = QStringLiteral(
+        "QLineEdit, QComboBox, QPlainTextEdit {"
+        "  background: #ffffff;"
+        "  border: 1px solid rgba(15, 23, 42, 0.14);"
+        "  border-radius: 8px;"
+        "  padding: 8px 10px;"
+        "  font-family: %1;"
+        "  font-size: 13px;"
+        "  color: #111827;"
+        "}"
+        "QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {"
+        "  border: 1px solid #0f6cbd;"
+        "}"
+        "QComboBox::drop-down {"
+        "  width: 26px;"
+        "  border: none;"
+        "}").arg(AppFonts::uiCssFamily());
+
+    auto* configPanel = new QWidget(page);
+    configPanel->setObjectName(QStringLiteral("aiConfigPanel"));
+    configPanel->setAttribute(Qt::WA_StyledBackground, true);
+    configPanel->setStyleSheet(QStringLiteral(
+        "QWidget#aiConfigPanel {"
+        "  background: #ffffff;"
+        "  border: 1px solid rgba(15, 23, 42, 0.10);"
+        "  border-radius: 10px;"
+        "}"));
+    auto* configLayout = new QGridLayout(configPanel);
+    configLayout->setContentsMargins(16, 16, 16, 16);
+    configLayout->setHorizontalSpacing(14);
+    configLayout->setVerticalSpacing(12);
+
+    auto createFieldLabel = [](const QString& text, QWidget* parent) {
+        auto* label = new QLabel(text, parent);
+        label->setStyleSheet(QStringLiteral("font-size: 12px; font-weight: 600; color: #374151;"));
+        return label;
+    };
+
+    m_aiProviderCombo = new QComboBox(configPanel);
+    m_aiProviderCombo->addItem(QStringLiteral("OpenAI"), static_cast<int>(AI::AIClient::ProviderKind::OpenAI));
+    m_aiProviderCombo->addItem(QStringLiteral("Claude"), static_cast<int>(AI::AIClient::ProviderKind::Claude));
+    m_aiProviderCombo->addItem(QStringLiteral("Ollama"), static_cast<int>(AI::AIClient::ProviderKind::Ollama));
+    m_aiProviderCombo->addItem(QStringLiteral("Google"), static_cast<int>(AI::AIClient::ProviderKind::Google));
+    m_aiProviderCombo->addItem(QStringLiteral("DeepSeek"), static_cast<int>(AI::AIClient::ProviderKind::DeepSeek));
+    m_aiProviderCombo->addItem(QStringLiteral("Qwen"), static_cast<int>(AI::AIClient::ProviderKind::Qwen));
+    m_aiProviderCombo->setStyleSheet(fieldStyle);
+
+    m_aiApiKeyEdit = new QLineEdit(configPanel);
+    m_aiApiKeyEdit->setEchoMode(QLineEdit::Password);
+    m_aiApiKeyEdit->setPlaceholderText(QStringLiteral("API key, Ollama can stay empty"));
+    m_aiApiKeyEdit->setStyleSheet(fieldStyle);
+
+    m_aiModelCombo = new QComboBox(configPanel);
+    m_aiModelCombo->setEditable(true);
+    m_aiModelCombo->setInsertPolicy(QComboBox::NoInsert);
+    m_aiModelCombo->setStyleSheet(fieldStyle);
+
+    configLayout->addWidget(createFieldLabel(QStringLiteral("Provider"), configPanel), 0, 0);
+    configLayout->addWidget(m_aiProviderCombo, 1, 0);
+    configLayout->addWidget(createFieldLabel(QStringLiteral("Model"), configPanel), 0, 1);
+    configLayout->addWidget(m_aiModelCombo, 1, 1);
+    configLayout->addWidget(createFieldLabel(QStringLiteral("API Key"), configPanel), 2, 0, 1, 2);
+    configLayout->addWidget(m_aiApiKeyEdit, 3, 0, 1, 2);
+    configLayout->setColumnStretch(0, 1);
+    configLayout->setColumnStretch(1, 1);
+    layout->addWidget(configPanel);
+
+    auto* advancedPanel = new QWidget(page);
+    auto* advancedLayout = new QVBoxLayout(advancedPanel);
+    advancedLayout->setContentsMargins(0, 0, 0, 0);
+    advancedLayout->setSpacing(8);
+    auto* advancedToggle = createActionButton(QStringLiteral("Advanced Base URL"), false, false);
+    advancedToggle->setCheckable(true);
+    advancedToggle->setChecked(false);
+    advancedToggle->setFixedWidth(170);
+    m_aiBaseUrlEdit = new QLineEdit(advancedPanel);
+    m_aiBaseUrlEdit->setPlaceholderText(QStringLiteral("Provider default Base URL"));
+    m_aiBaseUrlEdit->setStyleSheet(fieldStyle);
+    m_aiBaseUrlEdit->setVisible(false);
+    advancedLayout->addWidget(advancedToggle, 0, Qt::AlignLeft);
+    advancedLayout->addWidget(m_aiBaseUrlEdit);
+    connect(advancedToggle, &QPushButton::toggled, m_aiBaseUrlEdit, &QLineEdit::setVisible);
+    layout->addWidget(advancedPanel);
+
+    m_aiStatusLabel = createPageSubtitleLabel(QStringLiteral("Ready."));
+    layout->addWidget(m_aiStatusLabel);
+
+    m_aiOutputView = new QPlainTextEdit(page);
+    m_aiOutputView->setReadOnly(true);
+    m_aiOutputView->setMinimumHeight(340);
+    m_aiOutputView->setStyleSheet(QStringLiteral(
+        "QPlainTextEdit {"
+        "  background: #0f172a;"
+        "  color: #dbeafe;"
+        "  border: 1px solid rgba(15, 23, 42, 0.16);"
+        "  border-radius: 10px;"
+        "  padding: 10px;"
+        "  font-family: Consolas, 'Cascadia Mono', monospace;"
+        "  font-size: 12px;"
+        "}"));
+    layout->addWidget(m_aiOutputView, 1);
+    m_aiUserPromptEdit = new QPlainTextEdit(page);
+    m_aiUserPromptEdit->setMinimumHeight(120);
+    m_aiUserPromptEdit->setPlaceholderText(QStringLiteral("Type a message here"));
+    m_aiUserPromptEdit->setStyleSheet(fieldStyle);
+    layout->addWidget(m_aiUserPromptEdit);
+
+    auto* actionRow = new QHBoxLayout();
+    actionRow->setContentsMargins(0, 0, 0, 0);
+    actionRow->setSpacing(10);
+    m_aiSaveButton = createActionButton(QStringLiteral("Save Config"), false, false);
+    m_aiSendButton = createActionButton(QStringLiteral("Send"), true, false);
+    m_aiStreamButton = createActionButton(QStringLiteral("Stream"), false, false);
+    m_aiStopButton = createActionButton(QStringLiteral("Stop"), false, true);
+    m_aiStopButton->setEnabled(false);
+    m_aiClearButton = createActionButton(QStringLiteral("Clear"), false, false);
+    actionRow->addWidget(m_aiSaveButton);
+    actionRow->addWidget(m_aiSendButton);
+    actionRow->addWidget(m_aiStreamButton);
+    actionRow->addWidget(m_aiStopButton);
+    actionRow->addWidget(m_aiClearButton);
+    actionRow->addStretch();
+    layout->addLayout(actionRow);
+
+    m_aiCoreService = new AI::AICoreService(page);
+    connect(m_aiCoreService, &AI::AICoreService::replyFinished, this, [this](const AI::ChatResponse& response) {
+        if (response.requestId != m_aiActiveRequestId) {
+            return;
+        }
+        appendAIChatLine(QStringLiteral("assistant"), response.text);
+        if (m_aiStatusLabel) {
+            m_aiStatusLabel->setText(QStringLiteral("Request finished. Provider: %1, status: %2.")
+                .arg(response.provider)
+                .arg(response.statusCode));
+        }
+        setAIRequestRunning(false);
+    });
+    connect(m_aiCoreService, &AI::AICoreService::streamDelta, this, [this](const QString& requestId, const QString& delta) {
+        if (requestId != m_aiActiveRequestId || !m_aiOutputView) {
+            return;
+        }
+        m_aiStreamingAssistantText += delta;
+        m_aiOutputView->moveCursor(QTextCursor::End);
+        m_aiOutputView->insertPlainText(delta);
+        m_aiOutputView->moveCursor(QTextCursor::End);
+        m_aiOutputView->ensureCursorVisible();
+        m_aiOutputView->repaint();
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    });
+    connect(m_aiCoreService, &AI::AICoreService::streamFinished, this, [this](const AI::ChatResponse& response) {
+        if (response.requestId != m_aiActiveRequestId) {
+            return;
+        }
+        if (!m_aiStreamingAssistantText.trimmed().isEmpty()) {
+            AI::ChatMessage assistantMessage;
+            assistantMessage.role = QStringLiteral("assistant");
+            assistantMessage.content = m_aiStreamingAssistantText;
+            m_aiConversationMessages.append(assistantMessage);
+        }
+        if (m_aiOutputView) {
+            m_aiOutputView->appendPlainText(QStringLiteral("\n\n[stream finished]"));
+        }
+        if (m_aiStatusLabel) {
+            m_aiStatusLabel->setText(QStringLiteral("Stream finished. Provider: %1, status: %2.")
+                .arg(response.provider)
+                .arg(response.statusCode));
+        }
+        setAIRequestRunning(false);
+    });
+    connect(m_aiCoreService, &AI::AICoreService::requestFailed, this, [this](const AI::ChatResponse& response) {
+        if (!m_aiActiveRequestId.isEmpty() && response.requestId != m_aiActiveRequestId) {
+            return;
+        }
+        if (m_aiOutputView) {
+            m_aiOutputView->appendPlainText(QStringLiteral("\n[error]\n%1").arg(response.error));
+        }
+        if (m_aiStatusLabel) {
+            m_aiStatusLabel->setText(QStringLiteral("Request failed: %1").arg(response.error));
+        }
+        setAIRequestRunning(false);
+        m_aiStreamingAssistantText.clear();
+    });
+    connect(m_aiCoreService, &AI::AICoreService::requestCanceled, this, [this](const QString& requestId) {
+        if (requestId != m_aiActiveRequestId) {
+            return;
+        }
+        if (m_aiOutputView) {
+            m_aiOutputView->appendPlainText(QStringLiteral("\n[canceled]"));
+        }
+        if (m_aiStatusLabel) {
+            m_aiStatusLabel->setText(QStringLiteral("Request canceled."));
+        }
+        setAIRequestRunning(false);
+    });
+
+    connect(m_aiProviderCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+        loadAIProviderConfig(index);
+    });
+    connect(m_aiSaveButton, &QPushButton::clicked, this, [this]() {
+        saveAIConfig();
+        if (m_aiStatusLabel) {
+            m_aiStatusLabel->setText(QStringLiteral("AI configuration saved."));
+        }
+    });
+    connect(m_aiSendButton, &QPushButton::clicked, this, [this]() {
+        AI::ChatRequest request = buildAIChatRequest();
+        if (request.model.trimmed().isEmpty() || request.messages.isEmpty() || request.messages.last().content.trimmed().isEmpty()) {
+            if (m_aiStatusLabel) {
+                m_aiStatusLabel->setText(QStringLiteral("Model and message are required."));
+            }
+            return;
+        }
+        m_aiActiveRequestId = request.requestId;
+        appendAIChatLine(QStringLiteral("user"), request.messages.last().content);
+        if (m_aiUserPromptEdit) {
+            m_aiUserPromptEdit->clear();
+        }
+        setAIRequestRunning(true);
+        m_aiCoreService->sendMessage(request);
+    });
+    connect(m_aiStreamButton, &QPushButton::clicked, this, [this]() {
+        AI::ChatRequest request = buildAIChatRequest();
+        if (request.model.trimmed().isEmpty() || request.messages.isEmpty() || request.messages.last().content.trimmed().isEmpty()) {
+            if (m_aiStatusLabel) {
+                m_aiStatusLabel->setText(QStringLiteral("Model and message are required."));
+            }
+            return;
+        }
+        m_aiActiveRequestId = request.requestId;
+        m_aiStreamingAssistantText.clear();
+        appendAIChatLine(QStringLiteral("user"), request.messages.last().content);
+        if (m_aiUserPromptEdit) {
+            m_aiUserPromptEdit->clear();
+        }
+        if (m_aiOutputView) {
+            m_aiOutputView->appendPlainText(QStringLiteral("\nassistant:\n"));
+        }
+        setAIRequestRunning(true);
+        m_aiCoreService->streamReply(request);
+    });
+    connect(m_aiStopButton, &QPushButton::clicked, this, [this]() {
+        if (!m_aiActiveRequestId.isEmpty() && m_aiCoreService) {
+            m_aiCoreService->cancelRequest(m_aiActiveRequestId);
+        }
+    });
+    connect(m_aiClearButton, &QPushButton::clicked, this, [this]() {
+        clearAIConversation();
+    });
+
+    loadAIConfig();
+    return page;
+}
+
+void ListViewDebugPanel::applyAIProviderDefaults(bool forceBaseUrl)
+{
+    if (!m_aiProviderCombo || !m_aiBaseUrlEdit || !m_aiModelCombo) {
+        return;
+    }
+
+    const int providerIndex = m_aiProviderCombo->currentIndex();
+    const QString currentModel = m_aiModelCombo->currentText().trimmed();
+    const QStringList models = defaultAIModels(providerIndex);
+
+    m_aiModelCombo->clear();
+    m_aiModelCombo->addItems(models);
+    if (!currentModel.isEmpty() && !models.contains(currentModel)) {
+        m_aiModelCombo->insertItem(0, currentModel);
+        m_aiModelCombo->setCurrentText(currentModel);
+    } else {
+        m_aiModelCombo->setCurrentText(models.isEmpty() ? QString() : models.first());
+    }
+
+    if (forceBaseUrl || m_aiBaseUrlEdit->text().trimmed().isEmpty()) {
+        m_aiBaseUrlEdit->setText(defaultAIBaseUrl(providerIndex));
+    }
+}
+
+void ListViewDebugPanel::loadAIProviderConfig(int providerIndex)
+{
+    if (!m_aiProviderCombo || !m_aiBaseUrlEdit || !m_aiApiKeyEdit || !m_aiModelCombo) {
+        return;
+    }
+
+    applyAIProviderDefaults(true);
+    const QJsonObject root = loadAIConfigRoot();
+    const QJsonObject providers = root.value(QStringLiteral("providers")).toObject();
+    const QJsonObject provider = providers.value(aiProviderSettingsPrefix(providerIndex)).toObject();
+
+    const QString savedBaseUrl = provider.value(QStringLiteral("baseUrl")).toString().trimmed();
+    if (!savedBaseUrl.isEmpty()) {
+        m_aiBaseUrlEdit->setText(savedBaseUrl);
+    }
+    m_aiApiKeyEdit->setText(provider.value(QStringLiteral("apiKey")).toString());
+    const QString savedModel = provider.value(QStringLiteral("model")).toString(defaultAIModel(providerIndex));
+    if (!savedModel.trimmed().isEmpty()) {
+        if (m_aiModelCombo->findText(savedModel) < 0) {
+            m_aiModelCombo->insertItem(0, savedModel);
+        }
+        m_aiModelCombo->setCurrentText(savedModel);
+        if (m_aiModelCombo->lineEdit()) {
+            m_aiModelCombo->lineEdit()->setText(savedModel);
+        }
+    }
+    if (m_aiSystemPromptEdit) {
+        m_aiSystemPromptEdit->setPlainText(provider.value(QStringLiteral("systemPrompt")).toString());
+    }
+    if (m_aiUserPromptEdit) {
+        m_aiUserPromptEdit->setPlainText(provider.value(QStringLiteral("userPrompt")).toString(QStringLiteral("Say hello from LinDesk AI Core.")));
+    }
+
+    QJsonObject nextRoot = root;
+    nextRoot.insert(QStringLiteral("currentProvider"), aiProviderSettingsPrefix(providerIndex));
+    saveAIConfigRoot(nextRoot);
+    m_aiCurrentProviderIndex = providerIndex;
+
+    if (m_aiCoreService && m_aiProviderCombo) {
+        const auto providerKind = static_cast<AI::AIClient::ProviderKind>(m_aiProviderCombo->itemData(providerIndex).toInt());
+        m_aiCoreService->setProvider(providerKind);
+    }
+    if (m_aiStatusLabel && m_aiProviderCombo) {
+        m_aiStatusLabel->setText(QStringLiteral("Loaded AI config: %1, model %2. File: %3")
+            .arg(m_aiProviderCombo->itemText(providerIndex), m_aiModelCombo->currentText(), aiConfigPath()));
+    }
+}
+
+void ListViewDebugPanel::saveAIProviderConfig(int providerIndex)
+{
+    if (!m_aiBaseUrlEdit || !m_aiApiKeyEdit || !m_aiModelCombo) {
+        return;
+    }
+
+    QJsonObject root = loadAIConfigRoot();
+    QJsonObject providers = root.value(QStringLiteral("providers")).toObject();
+    const QString providerName = aiProviderSettingsPrefix(providerIndex);
+    QJsonObject provider;
+    provider.insert(QStringLiteral("baseUrl"), m_aiBaseUrlEdit->text().trimmed());
+    provider.insert(QStringLiteral("apiKey"), m_aiApiKeyEdit->text());
+    provider.insert(QStringLiteral("model"), m_aiModelCombo->currentText().trimmed());
+    provider.insert(QStringLiteral("systemPrompt"), m_aiSystemPromptEdit ? m_aiSystemPromptEdit->toPlainText() : QString());
+    provider.insert(QStringLiteral("userPrompt"), m_aiUserPromptEdit ? m_aiUserPromptEdit->toPlainText() : QString());
+    providers.insert(providerName, provider);
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("providers"), providers);
+    saveAIConfigRoot(root);
+}
+
+void ListViewDebugPanel::loadAIConfig()
+{
+    if (!m_aiProviderCombo) {
+        return;
+    }
+
+    const QJsonObject root = loadAIConfigRoot();
+    const QString providerName = root.value(QStringLiteral("currentProvider")).toString(QStringLiteral("OpenAI"));
+    const int providerIndex = aiProviderIndexFromName(providerName);
+    {
+        const QSignalBlocker providerBlocker(m_aiProviderCombo);
+        m_aiProviderCombo->setCurrentIndex(providerIndex);
+    }
+    loadAIProviderConfig(providerIndex);
+    m_aiCurrentProviderIndex = providerIndex;
+}
+
+void ListViewDebugPanel::saveAIConfig()
+{
+    if (!m_aiProviderCombo || !m_aiBaseUrlEdit || !m_aiApiKeyEdit || !m_aiModelCombo) {
+        return;
+    }
+
+    const int providerIndex = m_aiProviderCombo->currentIndex();
+    QJsonObject root = loadAIConfigRoot();
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("currentProvider"), aiProviderSettingsPrefix(providerIndex));
+    saveAIConfigRoot(root);
+    saveAIProviderConfig(providerIndex);
+    m_aiCurrentProviderIndex = providerIndex;
+}
+
+AI::ChatRequest ListViewDebugPanel::buildAIChatRequest() const
+{
+    AI::ChatRequest request;
+    request.requestId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    request.model = m_aiModelCombo ? m_aiModelCombo->currentText().trimmed() : QString();
+    request.apiKey = m_aiApiKeyEdit ? m_aiApiKeyEdit->text() : QString();
+    request.baseUrl = QUrl(m_aiBaseUrlEdit ? m_aiBaseUrlEdit->text().trimmed() : QString());
+    request.systemPrompt = m_aiSystemPromptEdit ? m_aiSystemPromptEdit->toPlainText() : QString();
+    request.temperature = 0.2;
+
+    request.messages = m_aiConversationMessages;
+
+    const QString userText = m_aiUserPromptEdit ? m_aiUserPromptEdit->toPlainText() : QString();
+    AI::ChatMessage userMessage;
+    userMessage.role = QStringLiteral("user");
+    userMessage.content = userText;
+    request.messages.append(userMessage);
+
+    if (m_aiProviderCombo && m_aiCoreService) {
+        const auto provider = static_cast<AI::AIClient::ProviderKind>(m_aiProviderCombo->currentData().toInt());
+        m_aiCoreService->setProvider(provider);
+    }
+    return request;
+}
+
+void ListViewDebugPanel::appendAIChatLine(const QString& role, const QString& content)
+{
+    if (content.trimmed().isEmpty()) {
+        return;
+    }
+
+    AI::ChatMessage message;
+    message.role = role;
+    message.content = content;
+    m_aiConversationMessages.append(message);
+
+    if (m_aiOutputView) {
+        const QString label = role == QStringLiteral("assistant") ? QStringLiteral("assistant") : QStringLiteral("user");
+        m_aiOutputView->appendPlainText(QStringLiteral("\n%1:\n%2").arg(label, content));
+        m_aiOutputView->moveCursor(QTextCursor::End);
+    }
+}
+
+void ListViewDebugPanel::clearAIConversation()
+{
+    m_aiConversationMessages.clear();
+    m_aiStreamingAssistantText.clear();
+    if (m_aiOutputView) {
+        m_aiOutputView->clear();
+    }
+    if (m_aiStatusLabel) {
+        m_aiStatusLabel->setText(QStringLiteral("Conversation cleared."));
+    }
+}
+
+void ListViewDebugPanel::setAIRequestRunning(bool running)
+{
+    if (m_aiSendButton) {
+        m_aiSendButton->setEnabled(!running);
+    }
+    if (m_aiStreamButton) {
+        m_aiStreamButton->setEnabled(!running);
+    }
+    if (m_aiSaveButton) {
+        m_aiSaveButton->setEnabled(!running);
+    }
+    if (m_aiStopButton) {
+        m_aiStopButton->setEnabled(running);
+    }
+    if (m_aiStatusLabel && running) {
+        m_aiStatusLabel->setText(QStringLiteral("Request is running: %1 / %2")
+            .arg(m_aiProviderCombo ? m_aiProviderCombo->currentText() : QString(),
+                 m_aiModelCombo ? m_aiModelCombo->currentText() : QString()));
+    }
 }
 
 QWidget* ListViewDebugPanel::createLayoutPage() {
