@@ -93,7 +93,6 @@ set(CMAKE_AUTOUIC ON)
 
 enable_testing()
 
-add_subdirectory("OS")
 add_subdirectory("LinDeskUpdate")
 
 set(LINDESK_W11_MENU_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}/W11MenuUI/Win11MenuIsland.vcxproj")
@@ -149,16 +148,19 @@ endif()
 
 target_link_libraries(LinDesk
     PRIVATE
-        Shell32
+        Shell32
+
         Psapi
         Shlwapi
         Ole32
         Uuid
         Comctl32
         dwmapi
-        Winmm
+        Winmm
+
         Iphlpapi
-        Dxgi
+        Dxgi
+
         Pdh
         Qt5::Widgets
         Qt5::Core
@@ -169,7 +171,6 @@ target_link_libraries(LinDesk
         Qt5::Qml
         Qt5::Quick
         Qt5::QuickWidgets
-        "OS"
 )
 
 target_include_directories(LinDesk
@@ -181,6 +182,7 @@ target_include_directories(LinDesk
         ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
         ${CMAKE_CURRENT_SOURCE_DIR}/src/box
         ${CMAKE_CURRENT_SOURCE_DIR}/src/services
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services/SystemApi
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/Fluent
         ${CMAKE_CURRENT_SOURCE_DIR}/src/models

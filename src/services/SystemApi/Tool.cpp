@@ -1,4 +1,5 @@
 #include "Tool.h"
+#include <QDebug>
 
 class Tool;
 
@@ -18,7 +19,7 @@ unique_pidl_absolute Tool::GetRootPidl()
     hr = SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(pidl));
     if (FAILED(hr)) {
         // 如果获取 PIDL 失败，输出错误并返回 nullptr
-        std::cout << "Failed to get PIDL from desktop folder. HRESULT: " << hr;
+        qWarning() << "Failed to get PIDL from desktop folder. HRESULT: " << hr;
         return nullptr;
     }
     //HRESULT hr;
@@ -136,16 +137,18 @@ void Tool::ConvertToGUID(const std::wstring& clsidStr)
     if (SUCCEEDED(hr))
     {
         // 输出 GUID
-        wprintf(L"GUID: {%08lX-%04X-%04X-%04X-%04X%04X%04X}\n",
-            clsid.Data1, clsid.Data2, clsid.Data3,
-            (clsid.Data4[0] << 8) | clsid.Data4[1],
-            (clsid.Data4[2] << 8) | clsid.Data4[3],
-            (clsid.Data4[4] << 8) | clsid.Data4[5],
-            (clsid.Data4[6] << 8) | clsid.Data4[7]);
+        qDebug() << QString("GUID: {%1-%2-%3-%4-%5%6%7}")
+            .arg(clsid.Data1, 8, 16, QChar('0'))
+            .arg(clsid.Data2, 4, 16, QChar('0'))
+            .arg(clsid.Data3, 4, 16, QChar('0'))
+            .arg((clsid.Data4[0] << 8) | clsid.Data4[1], 4, 16, QChar('0'))
+            .arg((clsid.Data4[2] << 8) | clsid.Data4[3], 4, 16, QChar('0'))
+            .arg((clsid.Data4[4] << 8) | clsid.Data4[5], 4, 16, QChar('0'))
+            .arg((clsid.Data4[6] << 8) | clsid.Data4[7], 4, 16, QChar('0')).toUpper();
     }
     else
     {
-        std::wcout << L"Failed to convert string to GUID" << std::endl;
+        qWarning() << "Failed to convert string to GUID";
     }
 }
 

@@ -44,7 +44,7 @@
 #include <QWheelEvent>
 #include <climits>
 #include <shobjidl.h>
-#include "../OS/SystemApi/resources.h"
+#include "services/SystemApi/resources.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInfoTip.h"
 #include "desktop/ListViewFileOpsHelper.h"

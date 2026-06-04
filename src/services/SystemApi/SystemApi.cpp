@@ -4,6 +4,7 @@
 #include <Shlwapi.h>
 #include <fstream>
 #include <cstdio>
+#include <QDebug>
 
 namespace {
 constexpr size_t kShellLinkHeaderSize = 0x4C;
@@ -244,7 +245,6 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         return false;
     }
     
-    // 濡偓閺屻儲澧跨仦鏇炴倳閿涘牊鏁幐浣搞亣鐏忓繐鍟撻敍?
     std::wstring pathStr(shortcutPath);
     std::wstring extension;
     size_t dotPos = pathStr.find_last_of(L"./\\");
@@ -253,9 +253,7 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         for (auto& c : extension) c = towlower(c);
     }
     if (extension != L"lnk") {
-#ifndef NDEBUG
-        wprintf(L"[ResolveShortcutTarget] Skipping non-lnk file: %s (ext: %s)\n", shortcutPath, extension.c_str());
-#endif
+        qDebug() << "[ResolveShortcutTarget] Skipping non-lnk file:" << QString::fromWCharArray(shortcutPath) << "(ext:" << QString::fromStdWString(extension) << ")";
         return false;
     }
 
@@ -270,43 +268,30 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
     HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
                                   IID_PPV_ARGS(&shellLink));
     if (FAILED(hr) || !shellLink) {
-#ifndef NDEBUG
-        wprintf(L"[ResolveShortcutTarget] CoCreateInstance failed: hr=0x%08X\n", hr);
-#endif
+        qWarning() << "[ResolveShortcutTarget] CoCreateInstance failed: hr=" << QString("0x%1").arg(hr, 8, 16, QChar('0'));
         if (shouldUninit) CoUninitialize();
         return false;
     }
 
     hr = shellLink->QueryInterface(IID_PPV_ARGS(&persistFile));
     if (FAILED(hr) || !persistFile) {
-#ifndef NDEBUG
-        wprintf(L"[ResolveShortcutTarget] QueryInterface(IPersistFile) failed: hr=0x%08X\n", hr);
-#endif
+        qWarning() << "[ResolveShortcutTarget] QueryInterface(IPersistFile) failed: hr=" << QString("0x%1").arg(hr, 8, 16, QChar('0'));
         if (shouldUninit) CoUninitialize();
         return false;
     }
 
     hr = persistFile->Load(shortcutPath, STGM_READ);
     if (FAILED(hr)) {
-#ifndef NDEBUG
-        wprintf(L"[ResolveShortcutTarget] IPersistFile::Load failed: hr=0x%08X, path=%s\n", hr, shortcutPath);
-#endif
+        qWarning() << "[ResolveShortcutTarget] IPersistFile::Load failed: hr=" << QString("0x%1").arg(hr, 8, 16, QChar('0')) << "path=" << QString::fromWCharArray(shortcutPath);
         if (shouldUninit) CoUninitialize();
         return false;
     }
 
-    // 閺傝纭?: 闁俺绻?PIDL 閼惧嘲褰囬惄顔界垼
     hr = shellLink->GetIDList(wil::out_param(targetPidl));
     if (SUCCEEDED(hr) && targetPidl) {
         resolved = FillTargetNamesFromPidl(targetPidl.get(), targetParsingPath, targetDisplayName);
-#ifndef NDEBUG
-        if (resolved) {
-            //wprintf(L"[ResolveShortcutTarget] GetIDList succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
-        }
-#endif
     }
 
-    // 閺傝纭?: 閻╁瓨甯撮懢宄板絿鐠侯垰绶?
     if (!resolved) {
         WIN32_FIND_DATAW findData{};
         wchar_t resolvedPath[MAX_PATH] = { 0 };
@@ -315,27 +300,20 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
             targetParsingPath = resolvedPath;
             targetDisplayName = PathFindFileNameW(resolvedPath);
             resolved = true;
-#ifndef NDEBUG
-            wprintf(L"[ResolveShortcutTarget] GetPath succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
-#endif
+            qDebug() << "[ResolveShortcutTarget] GetPath succeeded:" << QString::fromWCharArray(shortcutPath) << "->" << QString::fromStdWString(targetParsingPath);
         }
     }
 
-    // 閺傝纭?: 閻╁瓨甯寸拠璇插絿閺傚洣娆?
     if (!resolved) {
         resolved = TryReadShortcutTargetFromFile(shortcutPath, targetParsingPath, targetDisplayName);
-#ifndef NDEBUG
         if (resolved) {
-            wprintf(L"[ResolveShortcutTarget] TryReadShortcutTargetFromFile succeeded: %s -> %s\n", shortcutPath, targetParsingPath.c_str());
+            qDebug() << "[ResolveShortcutTarget] TryReadShortcutTargetFromFile succeeded:" << QString::fromWCharArray(shortcutPath) << "->" << QString::fromStdWString(targetParsingPath);
         }
-#endif
     }
 
-#ifndef NDEBUG
     if (!resolved) {
-        wprintf(L"[ResolveShortcutTarget] All methods failed for: %s\n", shortcutPath);
+        qWarning() << "[ResolveShortcutTarget] All methods failed for:" << QString::fromWCharArray(shortcutPath);
     }
-#endif
 
     if (shouldUninit) {
         CoUninitialize();
@@ -372,11 +350,11 @@ void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int 
                     // Read successful, 'buffer' now holds the retrieved text
                 }
                 else {
-                    cout << "Failed to read memory" << endl;
+                    qWarning() << "Failed to read memory";
                 }
             }
             else {
-                cout << "SendMessage failed" << endl;
+                qWarning() << "SendMessage failed";
                 // Handle the error accordingly
             }
         }
@@ -412,7 +390,7 @@ std::string WideToUtf8(const wchar_t* wideStr)
 CSystemApi::CSystemApi()
 {
 #ifdef _DEBUG
-    cout << "SystemApi_DLL_Init" << endl;
+    qDebug() << "SystemApi_DLL_Init";
 #endif
 }
 
@@ -599,7 +577,7 @@ HWND CSystemApi::FindSysListView32()
 
     }
 #ifdef _DEBUG
-    cout << "syslistview32 hwnd:" << syslistview32 << endl;
+    qDebug() << "syslistview32 hwnd:" << syslistview32;
 #endif
     return syslistview32;
 }
@@ -688,10 +666,8 @@ vector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
         iItem.name = cleanedString;
         iItem.position = point;
         iconItemList.push_back(iItem);
-#ifndef NDEBUG
-        cout << "Name :" << utf8_string.c_str() << endl;
-        printf("Item(%d) 0 Position:(%d, %d)\n", i, point.x, point.y);
-#endif
+        qDebug() << QString("Name :%1").arg(QString::fromStdString(utf8_string));
+        qDebug() << QString("Item(%1) 0 Position:(%2, %3)").arg(i).arg(point.x).arg(point.y);
     }
     VirtualFreeEx(hProcess, ori, 0, MEM_RELEASE);
     CloseHandle(hProcess);
@@ -726,9 +702,8 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
     wil::com_ptr_nothrow<IShellFolder> deskISF;
     HRESULT hr = SHGetDesktopFolder(&deskISF);
     if (FAILED(hr)) {
-        // 婵″倹鐏夐崝鐘烘祰婢惰精瑙﹂敍灞惧ⅵ閸椾即鏁婄拠顖欎繆閹垰鑻熸潻鏂挎礀 nullptr
         DWORD error = GetLastError();
-        _tprintf(_T("Failed to get desktop folder interface: Error %d\n"), error);
+        qWarning() << "Failed to get desktop folder interface: Error" << error;
         return iconItems;
     }
     // 閸掓稑缂撻弸姘閸ｃ劋浜掗弸姘濡楀矂娼版稉濠勬畱閹碘偓閺堝銆?
@@ -759,7 +734,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
 
     if (FAILED(hr) || !enumIDList) {
         DWORD error = GetLastError();
-        _tprintf(_T("Failed to get enumeration of desktop items: %d\n"), error);
+        qWarning() << "Failed to get enumeration of desktop items: Error" << error;
         return iconItems;
     }
 
@@ -782,7 +757,7 @@ vector<IconItem> CSystemApi::GetDesktopPIDLItems()
         }
         else {
             DWORD error = GetLastError();
-            _tprintf(_T("Failed to get name: %d\n"), error);
+            qWarning() << "Failed to get name: Error" << error;
         }
 
         // 閼惧嘲褰囩憴锝嗙€界捄顖氱窞閿涘湯HGDN_FORPARSING閿?
@@ -871,9 +846,7 @@ void CSystemApi::GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid
         DWORD exStyle = (DWORD)SendMessage(sysListView, LVM_GETEXTENDEDLISTVIEWSTYLE, 0, 0);
         outSnapToGrid = (exStyle & LVS_EX_SNAPTOGRID) != 0;
 
-#ifndef NDEBUG
-        printf("[SystemApi] Found Desktop Window. AutoArrange=%d, SnapToGrid=%d\n", outAutoArrange, outSnapToGrid);
-#endif
+        qDebug() << "[SystemApi] Found Desktop Window. AutoArrange=" << outAutoArrange << "SnapToGrid=" << outSnapToGrid;
         return; // Found live state, no need for registry backup
     }
 
@@ -894,9 +867,7 @@ void CSystemApi::GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid
                 outAutoArrange = (fFlags & 0x01) != 0;
                 outSnapToGrid = (fFlags & 0x04) != 0;
                 RegCloseKey(hKey);
-#ifndef NDEBUG
-                printf("[SystemApi] Registry Path Success (%ls): AutoArrange=%d, SnapToGrid=%d\n", path, outAutoArrange, outSnapToGrid);
-#endif
+                qDebug() << "[SystemApi] Registry Path Success (" << QString::fromWCharArray(path) << "): AutoArrange=" << outAutoArrange << "SnapToGrid=" << outSnapToGrid;
                 return;
             }
             RegCloseKey(hKey);
@@ -911,12 +882,10 @@ const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
         return nullptr;
     }
 
-    // 閸旂姾娴?DLL 閺傚洣娆?
     HMODULE hModule = LoadLibraryA(filePath);
     if (hModule == NULL) {
-        // 婵″倹鐏夐崝鐘烘祰婢惰精瑙﹂敍灞惧ⅵ閸椾即鏁婄拠顖欎繆閹垰鑻熸潻鏂挎礀 nullptr
         DWORD error = GetLastError();
-        _tprintf(_T("Failed to load DLL: Error %d\n"), error);
+        qWarning() << "Failed to load DLL:" << filePath << "Error:" << error;
         return nullptr;
     }
 
@@ -924,9 +893,8 @@ const char* CSystemApi::GetTextFromDll(const char* filePath,int index)
     char* strBuffer = new char[MAX_PATH]; // 閸嬪洩顔?MAX_LOADSTRING 閺勵垵鍐绘径鐔枫亣閻ㄥ嫮绱﹂崘鎻掑隘婢堆冪毈
     int result = LoadStringA(hModule, index, strBuffer, MAX_PATH);
     if (result == 0) {
-        // 婵″倹鐏夐崝鐘烘祰鐎涙顑佹稉鎻掋亼鐠愩儻绱濋幍鎾冲祪闁挎瑨顕ゆ穱鈩冧紖閿涘矂鍣撮弨?DLL閿涘苯鑻熸潻鏂挎礀 nullptr
         DWORD error = GetLastError();
-        _tprintf(_T("Failed to load string from DLL: Error %d\n"), error);
+        qWarning() << "Failed to load string from DLL:" << filePath << "Index:" << index << "Error:" << error;
         FreeLibrary(hModule);
         delete[] strBuffer;
         return nullptr;
