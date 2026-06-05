@@ -1542,7 +1542,16 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
     if (resultAction == Qt::MoveAction) {
         QStringList removedSourcePaths;
         for (const QString& path : dragPaths) {
-            if (!path.isEmpty() && !QFileInfo::exists(path)) {
+            if (path.isEmpty()) {
+                continue;
+            }
+            // System/virtual items (e.g. "::{645FF040-...}") never exist on
+            // disk, so QFileInfo::exists() would always return false for them.
+            // Skip them to prevent accidental removal after a position-only move.
+            if (path.startsWith(QStringLiteral("::"))) {
+                continue;
+            }
+            if (!QFileInfo::exists(path)) {
                 removedSourcePaths.append(path);
             }
         }
