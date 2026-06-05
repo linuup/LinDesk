@@ -1249,101 +1249,12 @@ void ListView::setItemRenaming(const QString& filePath, bool renaming)
 
 void ListView::setFocusedItemPath(const QString& filePath)
 {
-    const QString normalizedPath = normalizeDesktopItemPath(filePath);
-    BoxManager* bm = BoxManager::instance();
-    QSet<LinBox*> dirtyBoxes;
-    auto updateBoxFocusState = [&](const QString& targetPath) {
-        if (!bm) {
-            return;
-        }
-        for (const auto& box : bm->allBoxes()) {
-            if (!box) {
-                continue;
-            }
-            bool boxDirty = false;
-            for (DesktopRootItemState& state : const_cast<QVector<DesktopRootItemState>&>(box->itemStates())) {
-                const bool focused = !targetPath.isEmpty()
-                    && normalizeDesktopItemPath(state.model.filePath) == targetPath;
-                if (state.model.focused != focused) {
-                    state.model.focused = focused;
-                    boxDirty = true;
-                }
-            }
-            if (boxDirty) {
-                dirtyBoxes.insert(box);
-            }
-        }
-    };
-
-    if (normalizedPath.isEmpty()) {
-        clearFocusedItem();
-        m_focusedDesktopPath.clear();
-        m_focusedBoxPath.clear();
-        updateBoxFocusState(QString());
-        for (LinBox* dirtyBox : dirtyBoxes) {
-            if (!dirtyBox) {
-                continue;
-            }
-            dirtyBox->refreshLayout();
-            dirtyBox->update();
-        }
-        return;
-    }
-
-    if (const DesktopRootItemState* state = findDesktopStateByPath(normalizedPath)) {
-        if (state->model.boxId.isEmpty()) {
-            clearFocusedItem();
-            m_focusedDesktopPath = normalizedPath;
-            m_focusedBoxPath.clear();
-            updateBoxFocusState(QString());
-            for (LinBox* dirtyBox : dirtyBoxes) {
-                if (!dirtyBox) {
-                    continue;
-                }
-                dirtyBox->refreshLayout();
-                dirtyBox->update();
-            }
-            return;
-        }
-    }
-
-    if (findAnyItemStateByPath(normalizedPath)) {
-        clearFocusedItem();
-        m_focusedDesktopPath.clear();
-        m_focusedBoxPath = normalizedPath;
-        updateBoxFocusState(normalizedPath);
-        for (LinBox* dirtyBox : dirtyBoxes) {
-            if (!dirtyBox) {
-                continue;
-            }
-            dirtyBox->refreshLayout();
-            dirtyBox->update();
-        }
-        return;
-    }
-
-    clearFocusedItem();
-    m_focusedBoxPath.clear();
-    updateBoxFocusState(QString());
-    for (LinBox* dirtyBox : dirtyBoxes) {
-        if (!dirtyBox) {
-            continue;
-        }
-        dirtyBox->refreshLayout();
-        dirtyBox->update();
-    }
+    ListViewSelectionController::setFocusedItemPath(*this, filePath);
 }
 
 void ListView::clearFocusedItem()
 {
-    if (!m_focusedDesktopPath.isEmpty()) {
-        clearItemExpandedState(m_focusedDesktopPath);
-    }
-    if (!m_focusedBoxPath.isEmpty()) {
-        clearItemExpandedState(m_focusedBoxPath);
-    }
-    m_focusedDesktopPath.clear();
-    m_focusedBoxPath.clear();
+    ListViewSelectionController::clearFocusedItem(*this);
 }
 
 void ListView::toggleItemSelection(const QString& filePath)
@@ -1358,107 +1269,7 @@ void ListView::selectRangeToPath(const QString& filePath, LinBox* box)
 
 void ListView::moveFocusInHost(LinBox* box, FocusMoveDirection direction, bool extendSelection, bool focusOnly)
 {
-    if (!box) {
-        const QStringList orderedPaths = selectableDesktopPaths();
-        if (orderedPaths.isEmpty()) {
-            return;
-        }
-
-        const QString currentPath = effectiveFocusedDesktopPath();
-        QString targetPath = findDirectionalDesktopFocusCandidate(currentPath, direction);
-        if (targetPath.isEmpty() && !currentPath.isEmpty()) {
-            const int currentIndex = orderedPaths.indexOf(currentPath);
-            if (currentIndex >= 0) {
-                const int delta = (direction == FocusMoveDirection::Left || direction == FocusMoveDirection::Up) ? -1 : 1;
-                const int fallbackIndex = qBound(0, currentIndex + delta, orderedPaths.size() - 1);
-                targetPath = orderedPaths.at(fallbackIndex);
-            }
-        }
-
-        if (targetPath.isEmpty()) {
-            return;
-        }
-
-        if (focusOnly) {
-            m_focusedDesktopPath = targetPath;
-            return;
-        }
-
-        if (extendSelection) {
-            QString anchorPath = m_anchorDesktopPath.isEmpty() ? targetPath : m_anchorDesktopPath;
-            const int anchorIndex = orderedPaths.indexOf(normalizeDesktopItemPath(anchorPath));
-            const int itemIndex = orderedPaths.indexOf(targetPath);
-            if (anchorIndex >= 0 && itemIndex >= 0) {
-                QStringList rangePaths;
-                const int start = qMin(anchorIndex, itemIndex);
-                const int end = qMax(anchorIndex, itemIndex);
-                for (int i = start; i <= end; ++i) {
-                    rangePaths.append(orderedPaths.at(i));
-                }
-                applyDesktopSelection(rangePaths, targetPath, false);
-            } else {
-                applyDesktopSelection({ targetPath }, targetPath, true);
-            }
-            if (m_anchorDesktopPath.isEmpty()) {
-                m_anchorDesktopPath = anchorPath;
-            }
-            return;
-        }
-
-        applyDesktopSelection({ targetPath }, targetPath, true);
-        m_anchorDesktopPath = targetPath;
-        return;
-    }
-
-    const QStringList orderedPaths = selectableBoxPaths(box);
-    if (orderedPaths.isEmpty()) {
-        return;
-    }
-
-    const QString currentPath = effectiveFocusedBoxPath();
-    QString targetPath = findDirectionalBoxFocusCandidate(box, currentPath, direction);
-
-    if (targetPath.isEmpty() && !currentPath.isEmpty()) {
-        const int currentIndex = orderedPaths.indexOf(currentPath);
-        if (currentIndex >= 0) {
-            const int delta = (direction == FocusMoveDirection::Left || direction == FocusMoveDirection::Up) ? -1 : 1;
-            const int fallbackIndex = qBound(0, currentIndex + delta, orderedPaths.size() - 1);
-            targetPath = orderedPaths.at(fallbackIndex);
-        }
-    }
-
-    if (targetPath.isEmpty()) {
-        return;
-    }
-
-    if (focusOnly) {
-        setFocusedItemPath(targetPath);
-        return;
-    }
-
-    if (extendSelection) {
-        const QString anchorPath = m_anchorBoxPath.isEmpty() ? targetPath : m_anchorBoxPath;
-        const int anchorIndex = orderedPaths.indexOf(normalizeDesktopItemPath(anchorPath));
-        const int itemIndex = orderedPaths.indexOf(targetPath);
-        if (anchorIndex >= 0 && itemIndex >= 0) {
-            QStringList rangePaths;
-            const int start = qMin(anchorIndex, itemIndex);
-            const int end = qMax(anchorIndex, itemIndex);
-            for (int i = start; i <= end; ++i) {
-                rangePaths.append(orderedPaths.at(i));
-            }
-            setSelectedItemPaths(rangePaths, targetPath, false);
-        } else {
-            setSelectedItemPaths({ targetPath }, targetPath, true);
-        }
-        if (m_anchorBoxPath.isEmpty()) {
-            m_anchorBoxPath = anchorPath;
-        }
-        return;
-    }
-
-    setSelectedItemPaths({ targetPath }, targetPath, true);
-    m_anchorBoxPath = targetPath;
+    ListViewSelectionController::moveFocusInHost(*this, box, direction, extendSelection, focusOnly);
 }
 
 void ListView::clearCutMarks()
@@ -1528,25 +1339,12 @@ void ListView::applyCutMarks(const QStringList& filePaths)
 
 QStringList ListView::selectedItemPaths() const
 {
-    QStringList paths;
-    paths.append(selectedDesktopPaths());
-    for (const QString& path : m_selectedBoxPaths) {
-        if (!path.isEmpty() && !paths.contains(path)) {
-            paths.append(path);
-        }
-    }
-    return paths;
+    return ListViewSelectionController::selectedItemPaths(*this);
 }
 
 QString ListView::focusedItemPath() const
 {
-    if (!m_focusedDesktopPath.isEmpty()) {
-        return effectiveFocusedDesktopPath();
-    }
-    if (!m_focusedBoxPath.isEmpty()) {
-        return effectiveFocusedBoxPath();
-    }
-    return QString();
+    return ListViewSelectionController::focusedItemPath(*this);
 }
 
 QString ListView::currentSpaceLookHoveredPath() const
@@ -1580,13 +1378,7 @@ QString ListView::currentSpaceLookHoveredPath() const
 
 QString ListView::anchorItemPath() const
 {
-    if (!m_anchorDesktopPath.isEmpty()) {
-        return effectiveAnchorDesktopPath();
-    }
-    if (!m_anchorBoxPath.isEmpty()) {
-        return effectiveAnchorBoxPath();
-    }
-    return QString();
+    return ListViewSelectionController::anchorItemPath(*this);
 }
 
 QString ListView::draggedItemPath() const
@@ -1630,9 +1422,7 @@ void ListView::clearDraggedItemPath(bool fromBoxOnly)
 
 void ListView::restoreSelectionStateByPaths(const QStringList& selectedPaths, const QString& focusedPath, const QString& anchorPath, bool expandSingle)
 {
-    setSelectedItemPaths(selectedPaths, focusedPath, expandSingle);
-    m_anchorDesktopPath = anchorPath.isEmpty() ? QString() : normalizeDesktopItemPath(anchorPath);
-    m_anchorBoxPath = anchorPath.isEmpty() ? QString() : normalizeDesktopItemPath(anchorPath);
+    ListViewSelectionController::restoreSelectionStateByPaths(*this, selectedPaths, focusedPath, anchorPath, expandSingle);
 }
 
 void ListView::writeSelectionToClipboard(bool cutOperation)
@@ -5114,27 +4904,12 @@ QStringList ListView::selectableBoxPaths(LinBox* box) const
 
 QString ListView::findDirectionalDesktopFocusCandidate(const QString& focusedPath, FocusMoveDirection direction) const
 {
-    QVector<DesktopRootItemState> candidates;
-    for (const auto& state : m_itemStates) {
-        if (shouldPaintDesktopModelState(state)) {
-            candidates.push_back(state);
-        }
-    }
-    return ListViewSelectionHelper::findDirectionalFocusCandidateInList(this, candidates, focusedPath, direction);
+    return ListViewSelectionController::findDirectionalDesktopFocusCandidate(*this, focusedPath, direction);
 }
 
 QString ListView::findDirectionalBoxFocusCandidate(LinBox* box, const QString& focusedPath, FocusMoveDirection direction) const
 {
-    if (!box) {
-        return QString();
-    }
-    QVector<DesktopRootItemState> candidates;
-    for (const auto& state : box->itemStates()) {
-        if (state.model.visible) {
-            candidates.push_back(state);
-        }
-    }
-    return ListViewSelectionHelper::findDirectionalFocusCandidateInList(this, candidates, focusedPath, direction);
+    return ListViewSelectionController::findDirectionalBoxFocusCandidate(*this, box, focusedPath, direction);
 }
 
 void ListView::setDesktopItemSelected(DesktopRootItemState* state, const QString& normalizedPath, bool selected, QRegion* dirtyRegion)

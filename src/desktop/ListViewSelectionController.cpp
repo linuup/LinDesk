@@ -681,3 +681,273 @@ void ListViewSelectionController::updateBackgroundSelectionThrottle(ListView& vi
         view.m_backgroundSelectionThrottleRelaxFrames = 0;
     }
 }
+
+void ListViewSelectionController::setFocusedItemPath(ListView& view, const QString& filePath)
+{
+    const QString normalizedPath = view.normalizeDesktopItemPath(filePath);
+    BoxManager* bm = BoxManager::instance();
+    QSet<LinBox*> dirtyBoxes;
+    auto updateBoxFocusState = [&](const QString& targetPath) {
+        if (!bm) {
+            return;
+        }
+        for (const auto& box : bm->allBoxes()) {
+            if (!box) {
+                continue;
+            }
+            bool boxDirty = false;
+            for (DesktopRootItemState& state : const_cast<QVector<DesktopRootItemState>&>(box->itemStates())) {
+                const bool focused = !targetPath.isEmpty()
+                    && view.normalizeDesktopItemPath(state.model.filePath) == targetPath;
+                if (state.model.focused != focused) {
+                    state.model.focused = focused;
+                    boxDirty = true;
+                }
+            }
+            if (boxDirty) {
+                dirtyBoxes.insert(box);
+            }
+        }
+    };
+
+    if (normalizedPath.isEmpty()) {
+        clearFocusedItem(view);
+        view.m_focusedDesktopPath.clear();
+        view.m_focusedBoxPath.clear();
+        updateBoxFocusState(QString());
+        for (LinBox* dirtyBox : dirtyBoxes) {
+            if (!dirtyBox) {
+                continue;
+            }
+            dirtyBox->refreshLayout();
+            dirtyBox->update();
+        }
+        return;
+    }
+
+    if (const DesktopRootItemState* state = view.findDesktopStateByPath(normalizedPath)) {
+        if (state->model.boxId.isEmpty()) {
+            clearFocusedItem(view);
+            view.m_focusedDesktopPath = normalizedPath;
+            view.m_focusedBoxPath.clear();
+            updateBoxFocusState(QString());
+            for (LinBox* dirtyBox : dirtyBoxes) {
+                if (!dirtyBox) {
+                    continue;
+                }
+                dirtyBox->refreshLayout();
+                dirtyBox->update();
+            }
+            return;
+        }
+    }
+
+    if (view.findAnyItemStateByPath(normalizedPath)) {
+        clearFocusedItem(view);
+        view.m_focusedDesktopPath.clear();
+        view.m_focusedBoxPath = normalizedPath;
+        updateBoxFocusState(normalizedPath);
+        for (LinBox* dirtyBox : dirtyBoxes) {
+            if (!dirtyBox) {
+                continue;
+            }
+            dirtyBox->refreshLayout();
+            dirtyBox->update();
+        }
+        return;
+    }
+
+    clearFocusedItem(view);
+    view.m_focusedBoxPath.clear();
+    updateBoxFocusState(QString());
+    for (LinBox* dirtyBox : dirtyBoxes) {
+        if (!dirtyBox) {
+            continue;
+        }
+        dirtyBox->refreshLayout();
+        dirtyBox->update();
+    }
+}
+
+void ListViewSelectionController::clearFocusedItem(ListView& view)
+{
+    if (!view.m_focusedDesktopPath.isEmpty()) {
+        view.clearItemExpandedState(view.m_focusedDesktopPath);
+    }
+    if (!view.m_focusedBoxPath.isEmpty()) {
+        view.clearItemExpandedState(view.m_focusedBoxPath);
+    }
+    view.m_focusedDesktopPath.clear();
+    view.m_focusedBoxPath.clear();
+}
+
+void ListViewSelectionController::moveFocusInHost(ListView& view, LinBox* box, ListView::FocusMoveDirection direction, bool extendSelection, bool focusOnly)
+{
+    if (!box) {
+        const QStringList orderedPaths = selectableDesktopPaths(view);
+        if (orderedPaths.isEmpty()) {
+            return;
+        }
+
+        const QString currentPath = view.effectiveFocusedDesktopPath();
+        QString targetPath = findDirectionalDesktopFocusCandidate(view, currentPath, direction);
+        if (targetPath.isEmpty() && !currentPath.isEmpty()) {
+            const int currentIndex = orderedPaths.indexOf(currentPath);
+            if (currentIndex >= 0) {
+                const int delta = (direction == ListView::FocusMoveDirection::Left || direction == ListView::FocusMoveDirection::Up) ? -1 : 1;
+                const int fallbackIndex = qBound(0, currentIndex + delta, orderedPaths.size() - 1);
+                targetPath = orderedPaths.at(fallbackIndex);
+            }
+        }
+
+        if (targetPath.isEmpty()) {
+            return;
+        }
+
+        if (focusOnly) {
+            view.m_focusedDesktopPath = targetPath;
+            return;
+        }
+
+        if (extendSelection) {
+            QString anchorPath = view.m_anchorDesktopPath.isEmpty() ? targetPath : view.m_anchorDesktopPath;
+            const int anchorIndex = orderedPaths.indexOf(view.normalizeDesktopItemPath(anchorPath));
+            const int itemIndex = orderedPaths.indexOf(targetPath);
+            if (anchorIndex >= 0 && itemIndex >= 0) {
+                QStringList rangePaths;
+                const int start = qMin(anchorIndex, itemIndex);
+                const int end = qMax(anchorIndex, itemIndex);
+                for (int i = start; i <= end; ++i) {
+                    rangePaths.append(orderedPaths.at(i));
+                }
+                view.applyDesktopSelection(rangePaths, targetPath, false);
+            } else {
+                view.applyDesktopSelection({ targetPath }, targetPath, true);
+            }
+            if (view.m_anchorDesktopPath.isEmpty()) {
+                view.m_anchorDesktopPath = anchorPath;
+            }
+            return;
+        }
+
+        view.applyDesktopSelection({ targetPath }, targetPath, true);
+        view.m_anchorDesktopPath = targetPath;
+        return;
+    }
+
+    const QStringList orderedPaths = selectableBoxPaths(view, box);
+    if (orderedPaths.isEmpty()) {
+        return;
+    }
+
+    const QString currentPath = view.effectiveFocusedBoxPath();
+    QString targetPath = findDirectionalBoxFocusCandidate(view, box, currentPath, direction);
+
+    if (targetPath.isEmpty() && !currentPath.isEmpty()) {
+        const int currentIndex = orderedPaths.indexOf(currentPath);
+        if (currentIndex >= 0) {
+            const int delta = (direction == ListView::FocusMoveDirection::Left || direction == ListView::FocusMoveDirection::Up) ? -1 : 1;
+            const int fallbackIndex = qBound(0, currentIndex + delta, orderedPaths.size() - 1);
+            targetPath = orderedPaths.at(fallbackIndex);
+        }
+    }
+
+    if (targetPath.isEmpty()) {
+        return;
+    }
+
+    if (focusOnly) {
+        view.setFocusedItemPath(targetPath);
+        return;
+    }
+
+    if (extendSelection) {
+        const QString anchorPath = view.m_anchorBoxPath.isEmpty() ? targetPath : view.m_anchorBoxPath;
+        const int anchorIndex = orderedPaths.indexOf(view.normalizeDesktopItemPath(anchorPath));
+        const int itemIndex = orderedPaths.indexOf(targetPath);
+        if (anchorIndex >= 0 && itemIndex >= 0) {
+            QStringList rangePaths;
+            const int start = qMin(anchorIndex, itemIndex);
+            const int end = qMax(anchorIndex, itemIndex);
+            for (int i = start; i <= end; ++i) {
+                rangePaths.append(orderedPaths.at(i));
+            }
+            setSelectedItemPaths(view, rangePaths, targetPath, false);
+        } else {
+            setSelectedItemPaths(view, { targetPath }, targetPath, true);
+        }
+        if (view.m_anchorBoxPath.isEmpty()) {
+            view.m_anchorBoxPath = anchorPath;
+        }
+        return;
+    }
+
+    setSelectedItemPaths(view, { targetPath }, targetPath, true);
+    view.m_anchorBoxPath = targetPath;
+}
+
+QString ListViewSelectionController::focusedItemPath(const ListView& view)
+{
+    if (!view.m_focusedDesktopPath.isEmpty()) {
+        return view.effectiveFocusedDesktopPath();
+    }
+    if (!view.m_focusedBoxPath.isEmpty()) {
+        return view.effectiveFocusedBoxPath();
+    }
+    return QString();
+}
+
+QString ListViewSelectionController::anchorItemPath(const ListView& view)
+{
+    if (!view.m_anchorDesktopPath.isEmpty()) {
+        return view.effectiveAnchorDesktopPath();
+    }
+    if (!view.m_anchorBoxPath.isEmpty()) {
+        return view.effectiveAnchorBoxPath();
+    }
+    return QString();
+}
+
+QString ListViewSelectionController::findDirectionalDesktopFocusCandidate(const ListView& view, const QString& focusedPath, ListView::FocusMoveDirection direction)
+{
+    QVector<DesktopRootItemState> candidates;
+    for (const auto& state : view.m_itemStates) {
+        if (view.shouldPaintDesktopModelState(state)) {
+            candidates.push_back(state);
+        }
+    }
+    return ListViewSelectionHelper::findDirectionalFocusCandidateInList(&view, candidates, focusedPath, direction);
+}
+
+QString ListViewSelectionController::findDirectionalBoxFocusCandidate(const ListView& view, LinBox* box, const QString& focusedPath, ListView::FocusMoveDirection direction)
+{
+    if (!box) {
+        return QString();
+    }
+    QVector<DesktopRootItemState> candidates;
+    for (const auto& state : box->itemStates()) {
+        if (state.model.visible) {
+            candidates.push_back(state);
+        }
+    }
+    return ListViewSelectionHelper::findDirectionalFocusCandidateInList(&view, candidates, focusedPath, direction);
+}
+
+QStringList ListViewSelectionController::selectedItemPaths(const ListView& view)
+{
+    QStringList paths;
+    paths.append(selectedDesktopPaths(view));
+    for (const QString& path : view.m_selectedBoxPaths) {
+        if (!path.isEmpty() && !paths.contains(path)) {
+            paths.append(path);
+        }
+    }
+    return paths;
+}
+
+void ListViewSelectionController::restoreSelectionStateByPaths(ListView& view, const QStringList& selectedPaths, const QString& focusedPath, const QString& anchorPath, bool expandSingle)
+{
+    setSelectedItemPaths(view, selectedPaths, focusedPath, expandSingle);
+    view.m_anchorDesktopPath = anchorPath.isEmpty() ? QString() : view.normalizeDesktopItemPath(anchorPath);
+    view.m_anchorBoxPath = anchorPath.isEmpty() ? QString() : view.normalizeDesktopItemPath(anchorPath);
+}
