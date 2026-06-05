@@ -6955,15 +6955,8 @@ void ListView::onMenuPasteShortcut() {
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 {
     // 闂佽崵鍠愰悷銉р偓姘煎灣閳ь剙鐏氶悧鐘茬暦閻樿鍐€妞ゆ帒鍊婚崬鎾倵閸偅绶查悗姘憸濡叉劕鈻庨幋鐘碉紲闂佺粯鏌ㄦ晶搴敂闁秵鐓熸い顐墮婵¤偐鈧鍠曠划娆忣嚕椤掆偓椤劑宕熼浣恒偖闂備焦瀵х粙鎴︽嚐椤栫偟宓侀柟鎹愵嚙缁犲啿顭跨捄渚剱婵湱鍋ら幃妯跨疀閺囩偘澹曢梺鍝勵儌閺呯姴顕ｉ崼鏇熷亼闁告侗鍨抽ˇ?
-    auto normalizePath = [](const QString& p) -> QString {
-        QString s = QDir::toNativeSeparators(p);
-        while (s.endsWith('\\') || s.endsWith('/'))
-            s.chop(1);
-        return s;
-    };
-
-    const QString newPath = normalizePath(eventInfo.newPath);
-    const QString oldPath = normalizePath(eventInfo.oldPath);
+    const QString newPath = normalizeDesktopPath(eventInfo.newPath);
+    const QString oldPath = normalizeDesktopPath(eventInfo.oldPath);
 
     qDebug() << "[onFileSystemChanged]"
              << "type:" << (int)eventInfo.eventType
