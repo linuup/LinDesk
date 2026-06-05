@@ -3519,14 +3519,14 @@ void SettingUI::reloadLinWidgetsSettingsPage()
             uninstallButton->setEnabled(true);
             rowLayout->addWidget(closeButton);
             rowLayout->addWidget(uninstallButton);
-            connect(closeButton, &QPushButton::clicked, this, [this, item]() {
+            connect(closeButton, &QPushButton::clicked, this, [this, item, rowRunning]() {
                 if (m_installedLinWidgetsList) {
                     m_installedLinWidgetsList->setCurrentItem(item);
                 }
-                if (item->data(SettingsLinWidgetMultiInstanceRole).toBool()) {
-                    loadSelectedSettingsLinWidget();
-                } else {
+                if (rowRunning) {
                     unloadSelectedSettingsLinWidget();
+                } else {
+                    loadSelectedSettingsLinWidget();
                 }
             });
             connect(uninstallButton, &QPushButton::clicked, this, [this, item]() {
