@@ -193,7 +193,7 @@ private:
     static BOOL CALLBACK FindRealDesktopInternal(HWND hwnd, LPARAM lparam);
     
     //读取桌面图标名称和坐标
-    static void GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize);
+    static void GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSizeChars);
     
     //获取pidl类型
     static SpecialFolders getFolderTypeFromName(const wchar_t* name);

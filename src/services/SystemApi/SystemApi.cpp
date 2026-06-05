@@ -327,27 +327,29 @@ HWND CSystemApi::global_SysListView32 = nullptr;
 HWND CSystemApi::global_realDesktop = nullptr;
 //reference
 //https://github.com/Puellaquae/Desktop-Snake
-void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSize)
+void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int row, int column, TCHAR* buffer, int bufferSizeChars)
 {
-    if (!MMEListViewProcess || !hwnd || !buffer || bufferSize <= 0) {
+    if (!MMEListViewProcess || !hwnd || !buffer || bufferSizeChars <= 0) {
         return;
     }
     buffer[0] = 0;
 
     LVITEM curItem{};
-    curItem.cchTextMax = bufferSize;
+    curItem.cchTextMax = bufferSizeChars;
     curItem.iSubItem = column;
 
+    const DWORD stringBufferSizeBytes = bufferSizeChars * sizeof(TCHAR);
+
     LVITEM* tempItem = (LVITEM*)VirtualAllocEx(MMEListViewProcess, NULL, sizeof(LVITEM), MEM_COMMIT, PAGE_READWRITE);
-    TCHAR* stringBuffer = (TCHAR*)VirtualAllocEx(MMEListViewProcess, NULL, bufferSize, MEM_COMMIT, PAGE_READWRITE);
+    TCHAR* stringBuffer = (TCHAR*)VirtualAllocEx(MMEListViewProcess, NULL, stringBufferSizeBytes, MEM_COMMIT, PAGE_READWRITE);
     if (tempItem != nullptr && stringBuffer != nullptr) {
         curItem.pszText = (LPTSTR)stringBuffer;
         if (WriteProcessMemory(MMEListViewProcess, tempItem, &curItem, sizeof(LVITEM), nullptr)) {
             bool res = SendMessage(hwnd, LVM_GETITEMTEXTW, row, (LPARAM)tempItem);
             if (res) {
                 // Read the text from the remote process
-                if (ReadProcessMemory(MMEListViewProcess, stringBuffer, buffer, bufferSize, NULL)) {
-                    // Read successful, 'buffer' now holds the retrieved text
+                if (ReadProcessMemory(MMEListViewProcess, stringBuffer, buffer, stringBufferSizeBytes, NULL)) {
+                    buffer[bufferSizeChars - 1] = 0;
                 }
                 else {
                     qWarning() << "Failed to read memory";
@@ -355,7 +357,6 @@ void CSystemApi::GetSpecifyItemString(HANDLE MMEListViewProcess, HWND hwnd, int 
             }
             else {
                 qWarning() << "SendMessage failed";
-                // Handle the error accordingly
             }
         }
     }
@@ -628,7 +629,7 @@ QVector<IconItem> CSystemApi::GetDesktopIconsItems(HWND sysListView32)
         TCHAR Object[512] = {};
         ListView_GetItemPosition(sysListView32, i, ori);
         ReadProcessMemory(hProcess, ori, &point, sizeof(POINT), NULL);
-        GetSpecifyItemString(hProcess, sysListView32, i, 0, Object, sizeof(Object));
+        GetSpecifyItemString(hProcess, sysListView32, i, 0, Object, sizeof(Object) / sizeof(Object[0]));
 
         QString qName = QString::fromWCharArray(Object);
         int nullIdx = qName.indexOf(QChar('\0'));
@@ -775,9 +776,9 @@ void CSystemApi::GetDesktopConfigFlags(bool& outAutoArrange, bool& outSnapToGrid
     }
 
     const wchar_t* regPaths[] = {
-        L"Software\Microsoft\Windows\Shell\Bags\1\Desktop",
-        L"Software\Microsoft\Windows\Shell\Bags\AllFolders\Shell\Desktop",
-        L"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags\AllFolders\Shell\Desktop"
+        L"Software\\Microsoft\\Windows\\Shell\\Bags\\1\\Desktop",
+        L"Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell\\Desktop",
+        L"Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\\AllFolders\\Shell\\Desktop"
     };
 
     for (auto path : regPaths) {
@@ -803,25 +804,23 @@ QString CSystemApi::GetTextFromDll(const QString& filePath, int index)
         return QString();
     }
 
-    HMODULE hModule = LoadLibraryA(filePath.toLocal8Bit().constData());
-    if (hModule == NULL) {
+    wil::unique_hmodule hModule(LoadLibraryW(filePath.toStdWString().c_str()));
+    if (!hModule) {
         DWORD error = GetLastError();
         qWarning() << "Failed to load DLL:" << filePath << "Error:" << error;
         return QString();
     }
 
-    char strBuffer[MAX_PATH];
-    int result = LoadStringA(hModule, index, strBuffer, MAX_PATH);
+    wchar_t strBuffer[MAX_PATH];
+    int result = LoadStringW(hModule.get(), index, strBuffer, MAX_PATH);
     if (result == 0) {
         DWORD error = GetLastError();
         qWarning() << "Failed to load string from DLL:" << filePath << "Index:" << index << "Error:" << error;
-        FreeLibrary(hModule);
         return QString();
     }
 
-    strBuffer[result] = '\0';
-    FreeLibrary(hModule);
-    return QString::fromLocal8Bit(strBuffer);
+    strBuffer[result] = L'\0';
+    return QString::fromWCharArray(strBuffer);
 }
 
 QString CSystemApi::GetTextFromDll(const QString& input)
@@ -832,7 +831,7 @@ QString CSystemApi::GetTextFromDll(const QString& input)
     
     QString result;
     ResourceInfo ri = Tool::GetResourceInfo(input.toStdString().c_str());
-    if (&ri) {
+    if (!ri.path.empty()) {
         result = CSystemApi::GetTextFromDll(QString::fromStdString(ri.path), ri.index);
     }
     return result;

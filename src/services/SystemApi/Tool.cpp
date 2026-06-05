@@ -82,30 +82,20 @@ std::string Tool::WideToUtf8(const wchar_t* wideStr)
 }
 ResourceInfo Tool::GetResourceInfo(const char* input)
 {
-    //std::unique_ptr<ResourceInfo> uptr(new ResourceInfo());
     ResourceInfo ri;
     if (!input || input[0] == '\0') {
         return ri;
     }
-    //ResourceInfo* uptr = nullptr;
-    // Find the last occurrence of ',' in the input string  
     const char* commaPos = strrchr(input, ',');
     if (commaPos != nullptr) {
-        // Extract the path part (up to the comma)
-        const char* commaPos = strrchr(input, ',');
-        ri.path = ri.path.assign(input, commaPos).replace(0, 1, "");
-        // Extract the index part (after the comma)
-        char* endPtr;
-        int index = std::strtol(commaPos + 1, &endPtr, 10);
-        ri.index = std::abs(index); // Convert to integer
-        if (*endPtr != '\0') { // Check if there's any non-digit character after the number
-            // throw std::invalid_argument("Invalid index format");
+        ri.path.assign(input, commaPos);
+        if (!ri.path.empty() && ri.path[0] == '@') {
+            ri.path.erase(0, 1);
         }
+        char* endPtr = nullptr;
+        int index = std::strtol(commaPos + 1, &endPtr, 10);
+        ri.index = std::abs(index);
     }
-    else {
-        // throw std::invalid_argument("Invalid resource string format: Missing comma separator");
-    }
-    //return uptr.get();
     return ri;
 }
 
