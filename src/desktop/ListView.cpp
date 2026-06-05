@@ -6770,12 +6770,13 @@ void ListView::showSettings(LinBox* target) {
     });
 }
 
-void ListView::onMenuSortByName() {
-    qDebug() << "ListView: Sort By Name triggered";
+void ListView::executeMenuSort(SortOrderType sortType, const QString& debugName)
+{
+    qDebug() << "ListView: Sort By" << debugName << "triggered";
     if (m_iconShowRule.autoArrange) {
-        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByName_ASC;
+        m_iconShowRule.sortTypeBeforeAutoArrange = sortType;
         QVector<DesktopRootItemState*> states = collectAutoArrangeStates();
-        sortAutoArrangeStates(states, SortOrderType::SortByName_ASC);
+        sortAutoArrangeStates(states, sortType);
         assignCustomSortOrders(states);
         m_iconShowRule.sortType = SortOrderType::SortByCustom;
         updateRightMenuState();
@@ -6785,85 +6786,29 @@ void ListView::onMenuSortByName() {
         return;
     }
 
-    this->sortItems(SortOrderType::SortByName_ASC);
+    this->sortItems(sortType);
     updateRightMenuState();
     if (!m_iconShowRule.autoArrange) {
         applyAutoArrangeLayout(false, false);
     }
     update();
     requestSaveBoxes();
+}
+
+void ListView::onMenuSortByName() {
+    executeMenuSort(SortOrderType::SortByName_ASC, "Name");
 }
 
 void ListView::onMenuSortBySize() {
-    qDebug() << "ListView: Sort By Size triggered";
-    if (m_iconShowRule.autoArrange) {
-        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortBySize_ASC;
-        QVector<DesktopRootItemState*> states = collectAutoArrangeStates();
-        sortAutoArrangeStates(states, SortOrderType::SortBySize_ASC);
-        assignCustomSortOrders(states);
-        m_iconShowRule.sortType = SortOrderType::SortByCustom;
-        updateRightMenuState();
-        applyAutoArrangeLayout(false, false);
-        update();
-        requestSaveBoxes();
-        return;
-    }
-
-    this->sortItems(SortOrderType::SortBySize_ASC);
-    updateRightMenuState();
-    if (!m_iconShowRule.autoArrange) {
-        applyAutoArrangeLayout(false, false);
-    }
-    update();
-    requestSaveBoxes();
+    executeMenuSort(SortOrderType::SortBySize_ASC, "Size");
 }
 
 void ListView::onMenuSortByType() {
-    qDebug() << "ListView: Sort By Type triggered";
-    if (m_iconShowRule.autoArrange) {
-        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByType_ASC;
-        QVector<DesktopRootItemState*> states = collectAutoArrangeStates();
-        sortAutoArrangeStates(states, SortOrderType::SortByType_ASC);
-        assignCustomSortOrders(states);
-        m_iconShowRule.sortType = SortOrderType::SortByCustom;
-        updateRightMenuState();
-        applyAutoArrangeLayout(false, false);
-        update();
-        requestSaveBoxes();
-        return;
-    }
-
-    this->sortItems(SortOrderType::SortByType_ASC);
-    updateRightMenuState();
-    if (!m_iconShowRule.autoArrange) {
-        applyAutoArrangeLayout(false, false);
-    }
-    update();
-    requestSaveBoxes();
+    executeMenuSort(SortOrderType::SortByType_ASC, "Type");
 }
 
 void ListView::onMenuSortByDate() {
-    qDebug() << "ListView: Sort By Date triggered";
-    if (m_iconShowRule.autoArrange) {
-        m_iconShowRule.sortTypeBeforeAutoArrange = SortOrderType::SortByDateModified_ASC;
-        QVector<DesktopRootItemState*> states = collectAutoArrangeStates();
-        sortAutoArrangeStates(states, SortOrderType::SortByDateModified_ASC);
-        assignCustomSortOrders(states);
-        m_iconShowRule.sortType = SortOrderType::SortByCustom;
-        updateRightMenuState();
-        applyAutoArrangeLayout(false, false);
-        update();
-        requestSaveBoxes();
-        return;
-    }
-
-    this->sortItems(SortOrderType::SortByDateModified_ASC);
-    updateRightMenuState();
-    if (!m_iconShowRule.autoArrange) {
-        applyAutoArrangeLayout(false, false);
-    }
-    update();
-    requestSaveBoxes();
+    executeMenuSort(SortOrderType::SortByDateModified_ASC, "Date");
 }
 
 void ListView::onMenuRefresh() {

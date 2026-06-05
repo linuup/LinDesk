@@ -514,6 +514,7 @@ public slots:
 private:
 	// 友元声明
 	friend class ListViewMappedBoxHelper;
+    void executeMenuSort(SortOrderType sortType, const QString& debugName);
 
 	struct GhostInfo {
 		QLabel* widget;
