@@ -890,7 +890,7 @@ void ListView::setItemRenaming(const QString& filePath, bool renaming)
         }
     }
 }
-
+    
 void ListView::setFocusedItemPath(const QString& filePath)
 {
     ListViewSelectionController::setFocusedItemPath(*this, filePath);
@@ -1905,7 +1905,7 @@ void ListView::initialize()
     }
 
     auto normalizeClsid = [](QString clsid) {
-        return clsid.replace("::", "").replace("{", "").replace("}", "").toLower();
+        return clsid.replace("::", "").replace("{", "").replace("}", "");
     };
 
     DesktopItemInitContext context;
@@ -2056,9 +2056,9 @@ bool ListView::fileHasHiddenAttribute(const QString& filePath) const
 
 void ListView::applyWindowsHiddenVisualState(DesktopRootItemModel& model)
 {
-    const bool isSpecial = model.itemData.type() == ObjectType::SpecialFolder ||
+    const bool isSpecial = !model.isShortcut && (model.itemData.type() == ObjectType::SpecialFolder ||
         SystemFolderCLSIDs.contains(model.itemData.getCLSID()) ||
-        model.filePath.startsWith("::");
+        model.filePath.startsWith("::"));
     const bool shouldFade = !isSpecial && m_showHiddenFiles && fileHasHiddenAttribute(model.filePath);
     model.isHiddenFileVisual = shouldFade;
 }
@@ -2069,9 +2069,9 @@ bool ListView::shouldShowFileSystemItem(const DesktopRootItemModel& model) const
         return false;
     }
 
-    const bool isSpecial = model.itemData.type() == ObjectType::SpecialFolder ||
+    const bool isSpecial = !model.isShortcut && (model.itemData.type() == ObjectType::SpecialFolder ||
         SystemFolderCLSIDs.contains(model.itemData.getCLSID()) ||
-        model.filePath.startsWith("::");
+        model.filePath.startsWith("::"));
     if (isSpecial) {
         return true;
     }
@@ -2851,7 +2851,20 @@ QString ListView::normalizeDesktopItemPath(const QString& filePath) const
     while (normalized.endsWith('\\')) {
         normalized.chop(1);
     }
-    return normalized;
+    int colonColonIndex = normalized.indexOf(QStringLiteral("::"));
+    if (colonColonIndex > 0) {
+        bool allSlashes = true;
+        for (int i = 0; i < colonColonIndex; ++i) {
+            if (normalized[i] != '\\' && normalized[i] != '/') {
+                allSlashes = false;
+                break;
+            }
+        }
+        if (allSlashes) {
+            normalized = normalized.mid(colonColonIndex);
+        }
+    }
+    return normalized.toLower();
 }
 
 DesktopRootItemState* ListView::findDesktopStateByPath(const QString& filePath)
@@ -2863,7 +2876,15 @@ DesktopRootItemState* ListView::findDesktopStateByPath(const QString& filePath)
 
     rebuildDesktopStateIndex();
     const auto it = m_desktopStateIndex.constFind(normalizedPath);
-    return it == m_desktopStateIndex.cend() ? nullptr : it.value();
+    if (it != m_desktopStateIndex.cend()) {
+        return it.value();
+    }
+    for (auto& state : m_itemStates) {
+        if (normalizeDesktopItemPath(state.model.filePath).compare(normalizedPath, Qt::CaseInsensitive) == 0) {
+            return &state;
+        }
+    }
+    return nullptr;
 }
 
 const DesktopRootItemState* ListView::findDesktopStateByPath(const QString& filePath) const
@@ -2876,7 +2897,15 @@ const DesktopRootItemState* ListView::findDesktopStateByPath(const QString& file
     ListView* self = const_cast<ListView*>(this);
     self->rebuildDesktopStateIndex();
     const auto it = self->m_desktopStateIndex.constFind(normalizedPath);
-    return it == self->m_desktopStateIndex.cend() ? nullptr : it.value();
+    if (it != self->m_desktopStateIndex.cend()) {
+        return it.value();
+    }
+    for (const auto& state : m_itemStates) {
+        if (normalizeDesktopItemPath(state.model.filePath).compare(normalizedPath, Qt::CaseInsensitive) == 0) {
+            return &state;
+        }
+    }
+    return nullptr;
 }
 
 bool ListView::isDesktopPathSelected(const QString& filePath) const
@@ -3074,29 +3103,33 @@ void ListView::removeDesktopStateByPath(const QString& filePath)
     }
 
     for (auto it = m_itemStates.begin(); it != m_itemStates.end(); ) {
-        if (normalizeDesktopItemPath(it->model.filePath) == normalizedPath) {
+        if (normalizeDesktopItemPath(it->model.filePath).compare(normalizedPath, Qt::CaseInsensitive) == 0) {
             const QRect dirty = desktopRootItemHighlightDirtyRect(it->model.renderData);
+            const QString foundPath = normalizeDesktopItemPath(it->model.filePath);
             it = m_itemStates.erase(it);
             markDesktopStateIndexDirty();
             markSpatialIndexDirty();
-            if (m_hoveredDesktopPath == normalizedPath) {
+            if (m_hoveredDesktopPath.compare(foundPath, Qt::CaseInsensitive) == 0) {
                 m_hoveredDesktopPath.clear();
             }
+            m_selectedDesktopPathSet.remove(foundPath);
+            m_selectedDesktopPaths.removeOne(foundPath);
             m_selectedDesktopPathSet.remove(normalizedPath);
             m_selectedDesktopPaths.removeOne(normalizedPath);
-            if (m_focusedDesktopPath == normalizedPath) {
+            if (m_focusedDesktopPath.compare(foundPath, Qt::CaseInsensitive) == 0) {
                 m_focusedDesktopPath.clear();
             }
-            if (m_anchorDesktopPath == normalizedPath) {
+            if (m_anchorDesktopPath.compare(foundPath, Qt::CaseInsensitive) == 0) {
                 m_anchorDesktopPath.clear();
             }
-            if (m_lastClickedDesktopPath == normalizedPath) {
+            if (m_lastClickedDesktopPath.compare(foundPath, Qt::CaseInsensitive) == 0) {
                 m_lastClickedDesktopPath.clear();
             }
-            if (m_draggedDesktopPath == normalizedPath) {
+            if (m_draggedDesktopPath.compare(foundPath, Qt::CaseInsensitive) == 0) {
                 m_draggedDesktopPath.clear();
             }
             update(dirty);
+            break;
         } else {
             ++it;
         }

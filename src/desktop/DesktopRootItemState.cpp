@@ -212,7 +212,7 @@ void initDesktopRootItemModel(DesktopRootItemModel& model, const ListItemData& d
     model.sourceIcon = IconCacheManager::instance().getIcon(QString("%1|base|%2").arg(iconKey).arg(ListItemData::s_targetIconSize), [&data]() {
         ListItemData mData = data; mData.initIcon(); return mData.icon();
     });
-    const bool isSpecial = (model.objectType == ObjectType::SpecialFolder) || context.systemFolderCLSIDs.contains(model.clsid) || model.fileInfo.fileName().toLower() == "desktop.ini" || model.filePath.startsWith("::");
+    const bool isSpecial = !model.isShortcut && ((model.objectType == ObjectType::SpecialFolder) || context.systemFolderCLSIDs.contains(model.clsid) || model.fileInfo.fileName().toLower() == "desktop.ini" || model.filePath.startsWith("::"));
     const bool isOsHidden = checkFileHiddenAttribute(model.filePath);
     const bool isAppHidden = DesktopItemLoader::shouldTreatAsHiddenShellFolder(data);
     model.isHiddenFileVisual = (isOsHidden || isAppHidden);

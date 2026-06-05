@@ -1,4 +1,4 @@
-﻿#include "box/BoxManager.h"
+#include "box/BoxManager.h"
 #include "box/LinBox.h"
 #include "desktop/ListView.h"
 #include "monitor/LinDirectoryMonitor.h"
@@ -629,6 +629,20 @@ QString BoxManager::getBoxIdForItem(const QString& filePath) const {
     
     QString target = QDir::toNativeSeparators(filePath);
     while (target.endsWith('\\')) target.chop(1);
+    
+    int targetColonIndex = target.indexOf(QStringLiteral("::"));
+    if (targetColonIndex > 0) {
+        bool allSlashes = true;
+        for (int i = 0; i < targetColonIndex; ++i) {
+            if (target[i] != '\\' && target[i] != '/') {
+                allSlashes = false;
+                break;
+            }
+        }
+        if (allSlashes) {
+            target = target.mid(targetColonIndex);
+        }
+    }
 
     for (auto& ptr : m_boxes) {
         LinBox* box = ptr.data();
@@ -636,7 +650,22 @@ QString BoxManager::getBoxIdForItem(const QString& filePath) const {
         for (const QString& filePathInBox : box->itemPaths()) {
             QString itemPath = QDir::toNativeSeparators(filePathInBox);
             while (itemPath.endsWith('\\')) itemPath.chop(1);
-            if (itemPath == target) {
+            
+            int itemColonIndex = itemPath.indexOf(QStringLiteral("::"));
+            if (itemColonIndex > 0) {
+                bool allSlashes = true;
+                for (int i = 0; i < itemColonIndex; ++i) {
+                    if (itemPath[i] != '\\' && itemPath[i] != '/') {
+                        allSlashes = false;
+                        break;
+                    }
+                }
+                if (allSlashes) {
+                    itemPath = itemPath.mid(itemColonIndex);
+                }
+            }
+            
+            if (itemPath.compare(target, Qt::CaseInsensitive) == 0) {
                 return box->boxId();
             }
         }

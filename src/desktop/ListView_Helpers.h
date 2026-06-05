@@ -27,7 +27,25 @@ QString normalizeDesktopPath(const QString& path)
     while (normalized.endsWith('\\') || normalized.endsWith('/')) {
         normalized.chop(1);
     }
-    return normalized;
+    int colonColonIndex = normalized.indexOf(QStringLiteral("::"));
+    if (colonColonIndex > 0) {
+        bool allSlashes = true;
+        for (int i = 0; i < colonColonIndex; ++i) {
+            if (normalized[i] != '\\' && normalized[i] != '/') {
+                allSlashes = false;
+                break;
+            }
+        }
+        if (allSlashes) {
+            normalized = normalized.mid(colonColonIndex);
+        }
+    }
+    return normalized.toLower();
+}
+
+bool doesFileExistNoResolve(const QString& filePath)
+{
+    return CSystemApi::GetPathType(filePath) != InvalidPath;
 }
 
 QString normalizeMappedFolderPathForLookup(const QString& path)

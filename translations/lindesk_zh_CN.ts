@@ -166,6 +166,63 @@ Do you want to re map this box to another folder?</source>
         <source>OK</source>
         <translation>确定</translation>
     </message>
+    <message>
+        <source>LinDesk is already running.</source>
+        <translation>LinDesk 正在运行中。</translation>
+    </message>
+</context>
+<context>
+    <name>LinWidgetWebViewRuntime</name>
+    <message>
+        <source>Native Widget
+%1</source>
+        <translation>原生控件
+%1</translation>
+    </message>
+    <message>
+        <source>WebView2 SDK is not enabled in this build.</source>
+        <translation>此版本未启用 WebView2 SDK。</translation>
+    </message>
+    <message>
+        <source>Entry file is missing: %1</source>
+        <translation>入口文件缺失：%1</translation>
+    </message>
+    <message>
+        <source>Cannot create native widget window.</source>
+        <translation>无法创建原生控件窗口。</translation>
+    </message>
+    <message>
+        <source>Failed to initialize WebView2 environment.</source>
+        <translation>无法初始化 WebView2 环境。</translation>
+    </message>
+    <message>
+        <source>Failed to create WebView2 controller.</source>
+        <translation>无法创建 WebView2 控制器。</translation>
+    </message>
+    <message>
+        <source>Failed to start WebView2 environment.</source>
+        <translation>无法启动 WebView2 环境。</translation>
+    </message>
+    <message>
+        <source>Shared runtime page is missing: %1</source>
+        <translation>共享运行时页面缺失：%1</translation>
+    </message>
+    <message>
+        <source>network: %1
+storage: %2
+desktop: %3</source>
+        <translation>网络：%1
+存储：%2
+桌面：%3</translation>
+    </message>
+    <message>
+        <source>HTML Widget Host
+%1
+%2%3</source>
+        <translation>HTML 控件宿主
+%1
+%2%3</translation>
+    </message>
 </context>
 <context>
     <name>ListView</name>
@@ -231,67 +288,67 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Start / Pause</source>
-        <translation>开始 / 暂停</translation>
+        <translation type="vanished">开始 / 暂停</translation>
     </message>
     <message>
         <source>Reset</source>
-        <translation>重置</translation>
+        <translation type="vanished">重置</translation>
     </message>
     <message>
         <source>Unpin</source>
-        <translation>取消固定</translation>
+        <translation type="vanished">取消固定</translation>
     </message>
     <message>
         <source>Pin</source>
-        <translation>固定</translation>
+        <translation type="vanished">固定</translation>
     </message>
     <message>
         <source>5 minutes</source>
-        <translation>5 分钟</translation>
+        <translation type="vanished">5 分钟</translation>
     </message>
     <message>
         <source>25 minutes</source>
-        <translation>25 分钟</translation>
+        <translation type="vanished">25 分钟</translation>
     </message>
     <message>
         <source>45 minutes</source>
-        <translation>45 分钟</translation>
+        <translation type="vanished">45 分钟</translation>
     </message>
     <message>
         <source>Custom minutes...</source>
-        <translation>自定义分钟...</translation>
+        <translation type="vanished">自定义分钟...</translation>
     </message>
     <message>
         <source>Mini mode</source>
-        <translation>迷你模式</translation>
+        <translation type="vanished">迷你模式</translation>
     </message>
     <message>
         <source>Card mode</source>
-        <translation>卡片模式</translation>
+        <translation type="vanished">卡片模式</translation>
     </message>
     <message>
         <source>Expanded mode</source>
-        <translation>展开模式</translation>
+        <translation type="vanished">展开模式</translation>
     </message>
     <message>
         <source>Turn sound off</source>
-        <translation>关闭声音</translation>
+        <translation type="vanished">关闭声音</translation>
     </message>
     <message>
         <source>Turn sound on</source>
-        <translation>开启声音</translation>
+        <translation type="vanished">开启声音</translation>
     </message>
     <message>
         <source>Remove timer</source>
-        <translation>移除计时器</translation>
+        <translation type="vanished">移除计时器</translation>
     </message>
     <message>
         <source>Custom Timer</source>
-        <translation>自定义计时器</translation>
+        <translation type="vanished">自定义计时器</translation>
     </message>
     <message>
         <source>Minutes</source>
-        <translation>分钟</translation>
+        <translation type="vanished">分钟</translation>
     </message>
     <message>
         <source>New Text Document.txt</source>
@@ -311,6 +368,62 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>ProgID %1</source>
         <translation>程序ID %1</translation>
+    </message>
+    <message>
+        <source>No Description</source>
+        <translation type="vanished">暂无描述</translation>
+    </message>
+    <message>
+        <source>Version</source>
+        <translation type="vanished">版本</translation>
+    </message>
+    <message>
+        <source>%1 visible, %2 hidden for %3.</source>
+        <translation>%1 可见，%2 对 %3 隐藏。</translation>
+    </message>
+    <message>
+        <source>Allow this widget to access external network services.</source>
+        <translation>允许此小部件访问外部网络服务。</translation>
+    </message>
+    <message>
+        <source>Allow this widget to save local browser state.</source>
+        <translation>允许此小部件保存本地浏览器状态。</translation>
+    </message>
+    <message>
+        <source>Allow this widget to use future privileged desktop APIs.</source>
+        <translation>允许此小部件使用未来特权的桌面 API。</translation>
+    </message>
+    <message>
+        <source>Allow this widget to use this permission.</source>
+        <translation>允许此小部件使用此权限。</translation>
+    </message>
+    <message>
+        <source>Install LinWidget</source>
+        <translation>安装 LinWidget</translation>
+    </message>
+    <message>
+        <source>%1 requests the following permissions. Checked permissions will be granted during installation.</source>
+        <translation>%1 请求以下权限。选中的权限将在安装过程中授予。</translation>
+    </message>
+    <message>
+        <source>This widget does not request sensitive permissions.</source>
+        <translation>此小部件不请求敏感权限。</translation>
+    </message>
+    <message>
+        <source>Install</source>
+        <translation>安装</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>暂无描述。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>版本</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -416,7 +529,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>New Timer</source>
-        <translation>新建计时器</translation>
+        <translation type="vanished">新建计时器</translation>
     </message>
 </context>
 <context>
@@ -535,7 +648,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Powered by Antigravity Design System</source>
-        <translation>由 Antigravity Design System 提供支持</translation>
+        <translation type="vanished">由 Antigravity Design System 提供支持</translation>
     </message>
     <message>
         <source>Settings</source>
@@ -895,11 +1008,11 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Installer already downloaded. Starting installer...</source>
-        <translation>安装程序已下载。正在启动安装程序...</translation>
+        <translation type="vanished">安装程序已下载。正在启动安装程序...</translation>
     </message>
     <message>
         <source>Downloading update...</source>
-        <translation>正在下载更新...</translation>
+        <translation type="vanished">正在下载更新...</translation>
     </message>
     <message>
         <source>Installer file is missing. Please download again.</source>
@@ -963,7 +1076,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Disk</source>
-        <translation>磁盘</translation>
+        <translation type="vanished">磁盘</translation>
     </message>
     <message>
         <source>No Extension File</source>
@@ -997,6 +1110,585 @@ Do you want to re map this box to another folder?</source>
         <source>Removed extension type.</source>
         <translation>已删除扩展类型。</translation>
     </message>
+    <message>
+        <source>LinWidgets</source>
+        <translation>LinWidgets</translation>
+    </message>
+    <message>
+        <source>Copy From</source>
+        <translation>复制来源</translation>
+    </message>
+    <message>
+        <source>Apply To</source>
+        <translation>应用到</translation>
+    </message>
+    <message>
+        <source>Copy Rules</source>
+        <translation>复制规则</translation>
+    </message>
+    <message>
+        <source>Choose a source type to copy hidden menu rules from.</source>
+        <translation>选择一个源类型来复制隐藏菜单规则。</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <source>No hidden rules to copy.</source>
+        <translation>没有要复制的隐藏规则。</translation>
+    </message>
+    <message>
+        <source>Copied %1 rules from %2.</source>
+        <translation>已从 %2 复制 %1 条规则。</translation>
+    </message>
+    <message>
+        <source>Apply Rules</source>
+        <translation>应用规则</translation>
+    </message>
+    <message>
+        <source>Choose target types to receive the current hidden menu rules.</source>
+        <translation>选择目标类型以接收当前隐藏的菜单规则。</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <source>No target type selected.</source>
+        <translation>未选择目标类型。</translation>
+    </message>
+    <message>
+        <source>Applied %1 rules to %2 types.</source>
+        <translation>已将 %1 条规则应用于 %2 个类型。</translation>
+    </message>
+    <message>
+        <source>Extension</source>
+        <translation>扩展</translation>
+    </message>
+    <message>
+        <source>Reuse Rules From</source>
+        <translation>复用规则来自</translation>
+    </message>
+    <message>
+        <source>Do Not Reuse</source>
+        <translation>不复用</translation>
+    </message>
+    <message>
+        <source>Enter a file extension.</source>
+        <translation>输入文件扩展名。</translation>
+    </message>
+    <message>
+        <source>Extension type already exists: %1</source>
+        <translation>扩展类型已存在: %1</translation>
+    </message>
+    <message>
+        <source>Added %1 and reused %2 rules.</source>
+        <translation>添加了 %1 个并复用了 %2 个规则。</translation>
+    </message>
+    <message>
+        <source>Make your desktop more powerful and beautiful</source>
+        <translation>让您的桌面更强大、更美丽</translation>
+    </message>
+    <message>
+        <source>Widget Runtime</source>
+        <translation>小组件系统</translation>
+    </message>
+    <message>
+        <source>Manage LinWidget runtime environment. Closing it will release widget resources.</source>
+        <translation>管理 LinWidget 运行时环境。关闭它将释放 widget 资源。</translation>
+    </message>
+    <message>
+        <source>Official</source>
+        <translation>官方</translation>
+    </message>
+    <message>
+        <source>Install widgets provided by LinDesk.</source>
+        <translation>安装由 LinDesk 提供的 widget。</translation>
+    </message>
+    <message>
+        <source>Marketplace</source>
+        <translation>小组件市场</translation>
+    </message>
+    <message>
+        <source>Browse the local market source, online discovery capability will be opened later.</source>
+        <translation>浏览本地市场源，在线发现功能将在以后开放。</translation>
+    </message>
+    <message>
+        <source>Manage widgets that have been copied to the Roaming directory.</source>
+        <translation>管理已复制到 Roaming 目录的 widget。</translation>
+    </message>
+    <message>
+        <source>Inspector</source>
+        <translation>检查器</translation>
+    </message>
+    <message>
+        <source>Select a widget to inspect details.</source>
+        <translation>选择一个 widget 以检查详细信息。</translation>
+    </message>
+    <message>
+        <source>Permissions</source>
+        <translation>权限</translation>
+    </message>
+    <message>
+        <source>Actions</source>
+        <translation>操作</translation>
+    </message>
+    <message>
+        <source>Load</source>
+        <translation>加载</translation>
+    </message>
+    <message>
+        <source>Unload</source>
+        <translation>卸载</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>重载</translation>
+    </message>
+    <message>
+        <source>Open Folder</source>
+        <translation>打开文件夹</translation>
+    </message>
+    <message>
+        <source>Uninstall</source>
+        <translation>卸载</translation>
+    </message>
+    <message>
+        <source>Live Log</source>
+        <translation>实时日志</translation>
+    </message>
+    <message>
+        <source>Recent Errors</source>
+        <translation>最近错误</translation>
+    </message>
+    <message>
+        <source>No errors.</source>
+        <translation>没有错误。</translation>
+    </message>
+    <message>
+        <source>Development</source>
+        <translation>开发</translation>
+    </message>
+    <message>
+        <source>Run widgets from source code directory and export local packages.</source>
+        <translation>从源代码目录运行 widget 并导出本地包。</translation>
+    </message>
+    <message>
+        <source>Advanced Tools</source>
+        <translation>高级工具</translation>
+    </message>
+    <message>
+        <source>Create, add, run and export development widgets.</source>
+        <translation>创建、添加、运行和导出开发 widget。</translation>
+    </message>
+    <message>
+        <source>Add Development Project</source>
+        <translation>添加开发项目</translation>
+    </message>
+    <message>
+        <source>New Widget Project</source>
+        <translation>新建 Widget 项目</translation>
+    </message>
+    <message>
+        <source>Export Zip Package</source>
+        <translation>导出 Zip 包</translation>
+    </message>
+    <message>
+        <source>Remove Development Record</source>
+        <translation>移除开发记录</translation>
+    </message>
+    <message>
+        <source>Open Logs Directory</source>
+        <translation>打开日志目录</translation>
+    </message>
+    <message>
+        <source>Open Roaming Directory</source>
+        <translation>打开漫游目录</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>%1
+Manifest error: %2
+%3</source>
+        <translation>%1
+Manifest 错误: %2
+%3</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>Install</source>
+        <translation>安装</translation>
+    </message>
+    <message>
+        <source>Marketplace is coming soon.</source>
+        <translation>市场即将推出。</translation>
+    </message>
+    <message>
+        <source>Marketplace install failed: %1</source>
+        <translation>市场安装失败: %1</translation>
+    </message>
+    <message>
+        <source>Marketplace install canceled: %1</source>
+        <translation>市场安装已取消: %1</translation>
+    </message>
+    <message>
+        <source>Installed and loaded marketplace widget: %1</source>
+        <translation>已安装并加载市场 widget: %1</translation>
+    </message>
+    <message>
+        <source>Installed marketplace widget: %1
+Load skipped: %2</source>
+        <translation>已安装市场 widget: %1
+加载已跳过: %2</translation>
+    </message>
+    <message>
+        <source>Installed %1    Development %2</source>
+        <translation>已安装 %1    开发 %2</translation>
+    </message>
+    <message>
+        <source>%1
+Manifest errors:
+%2</source>
+        <translation>%1
+Manifest 错误:
+%2</translation>
+    </message>
+    <message>
+        <source>Close One</source>
+        <translation>关闭一个</translation>
+    </message>
+    <message>
+        <source>Select an installed widget or development project.</source>
+        <translation>选择已安装的 widget 或开发项目。</translation>
+    </message>
+    <message>
+        <source>Select a widget to view its log.</source>
+        <translation>选择一个 widget 以查看其日志。</translation>
+    </message>
+    <message>
+        <source>No log instance.</source>
+        <translation>没有日志实例。</translation>
+    </message>
+    <message>
+        <source>Log file has not been created yet:
+%1</source>
+        <translation>日志文件尚未创建:
+%1</translation>
+    </message>
+    <message>
+        <source>Cannot open log file:
+%1</source>
+        <translation>无法打开日志文件:
+%1</translation>
+    </message>
+    <message>
+        <source>LinWidget 桌面小组件。</source>
+        <translation>LinDesktop 桌面小组件。</translation>
+    </message>
+    <message>
+        <source>install</source>
+        <translation>安装</translation>
+    </message>
+    <message>
+        <source>manage</source>
+        <translation>管理</translation>
+    </message>
+    <message>
+        <source>add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>load</source>
+        <translation>加载</translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation>详细信息</translation>
+    </message>
+    <message>
+        <source>version</source>
+        <translation>版本</translation>
+    </message>
+    <message>
+        <source>author</source>
+        <translation>作者</translation>
+    </message>
+    <message>
+        <source>permission</source>
+        <translation>权限</translation>
+    </message>
+    <message>
+        <source>status</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <source>running %1/3</source>
+        <translation>%1/3 正在运行</translation>
+    </message>
+    <message>
+        <source>running</source>
+        <translation>正在运行</translation>
+    </message>
+    <message>
+        <source>installed</source>
+        <translation>已安装</translation>
+    </message>
+    <message>
+        <source>uninstall</source>
+        <translation>卸载</translation>
+    </message>
+    <message>
+        <source>description</source>
+        <translation>描述</translation>
+    </message>
+    <message>
+        <source>no description</source>
+        <translation>无描述</translation>
+    </message>
+    <message>
+        <source>This widget is already installed. Open the installed instance to manage permissions and runtime state.</source>
+        <translation>此 widget 已安装。打开已安装的实例以管理权限和运行时状态。</translation>
+    </message>
+    <message>
+        <source>no error</source>
+        <translation>无错误</translation>
+    </message>
+    <message>
+        <source>log file not created: 
+%1</source>
+        <translation>日志文件尚未创建:
+%1</translation>
+    </message>
+    <message>
+        <source>failed to open log file: 
+%1</source>
+        <translation>无法打开日志文件:
+%1</translation>
+    </message>
+    <message>
+        <source>The widget request was intercepted by the permission system. Please authorize %1 and reload.</source>
+        <translation>widget 请求被权限系统拦截。请授权 %1 并重新加载。</translation>
+    </message>
+    <message>
+        <source>grant %1</source>
+        <translation>授权 %1</translation>
+    </message>
+    <message>
+        <source>permissions</source>
+        <translation>权限</translation>
+    </message>
+    <message>
+        <source>reload</source>
+        <translation>重新加载</translation>
+    </message>
+    <message>
+        <source>open folder</source>
+        <translation>打开文件夹</translation>
+    </message>
+    <message>
+        <source>preview</source>
+        <translation>预览</translation>
+    </message>
+    <message>
+        <source>%1 preview</source>
+        <translation>%1 预览</translation>
+    </message>
+    <message>
+        <source>Recent errors</source>
+        <translation>最近错误</translation>
+    </message>
+    <message>
+        <source>Load blocked: %1</source>
+        <translation>加载被阻止: %1</translation>
+    </message>
+    <message>
+        <source>Load failed: %1</source>
+        <translation>加载失败: %1</translation>
+    </message>
+    <message>
+        <source>Added widget instance: %1</source>
+        <translation>添加了 widget 实例: %1</translation>
+    </message>
+    <message>
+        <source>Loaded into WebView: %1</source>
+        <translation>已加载到 WebView: %1</translation>
+    </message>
+    <message>
+        <source>Unloaded from WebView: %1</source>
+        <translation>已从 WebView 卸载: %1</translation>
+    </message>
+    <message>
+        <source>Reloaded widget iframe: %1</source>
+        <translation>已重新加载 widget iframe: %1</translation>
+    </message>
+    <message>
+        <source>Uninstall widget</source>
+        <translation type="vanished">卸载小组件</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to uninstall this widget and its saved records?
+%1</source>
+        <translation type="vanished">你确定要卸载这个小组件和它的保存记录吗？
+%1</translation>
+    </message>
+    <message>
+        <source>Removed development record: %1</source>
+        <translation>移除了开发记录: %1</translation>
+    </message>
+    <message>
+        <source>Widget record removed, folder delete failed: %1</source>
+        <translation>移除了小组件记录，但文件夹删除失败: %1</translation>
+    </message>
+    <message>
+        <source>Uninstalled installed widget: %1</source>
+        <translation>卸载了已安装的小组件: %1</translation>
+    </message>
+    <message>
+        <source>Official install failed: %1</source>
+        <translation>官方安装失败: %1</translation>
+    </message>
+    <message>
+        <source>Official install canceled: %1</source>
+        <translation>官方安装已取消: %1</translation>
+    </message>
+    <message>
+        <source>Installed and loaded official widget: %1</source>
+        <translation>已安装并加载官方小组件: %1</translation>
+    </message>
+    <message>
+        <source>Installed official widget: %1
+Load skipped: %2</source>
+        <translation>已安装官方小组件: %1
+加载已跳过: %2</translation>
+    </message>
+    <message>
+        <source>LinWidget runtime is disabled.</source>
+        <translation>LinWidget 运行时已禁用。</translation>
+    </message>
+    <message>
+        <source>LinWidget manager is not available.</source>
+        <translation>LinWidget 管理器不可用。</translation>
+    </message>
+    <message>
+        <source>Official reset failed: %1</source>
+        <translation>官方重置失败: %1</translation>
+    </message>
+    <message>
+        <source>Reset official widget: %1</source>
+        <translation>重置官方小组件: %1</translation>
+    </message>
+    <message>
+        <source>Select LinWidget development project</source>
+        <translation>选择 LinWidget 开发项目</translation>
+    </message>
+    <message>
+        <source>Add development project failed: %1</source>
+        <translation>添加开发项目失败: %1</translation>
+    </message>
+    <message>
+        <source>Added development project: %1</source>
+        <translation>添加了开发项目: %1</translation>
+    </message>
+    <message>
+        <source>Choose parent folder for new widget project</source>
+        <translation>选择新 widget 项目的父文件夹</translation>
+    </message>
+    <message>
+        <source>Widget Id</source>
+        <translation>小组件 ID</translation>
+    </message>
+    <message>
+        <source>Use reverse domain style, for example com.example.weather</source>
+        <translation>使用反向域名风格，例如 com.example.weather</translation>
+    </message>
+    <message>
+        <source>Widget Name</source>
+        <translation>小组件名称</translation>
+    </message>
+    <message>
+        <source>Display name</source>
+        <translation>显示名称</translation>
+    </message>
+    <message>
+        <source>Author</source>
+        <translation>作者</translation>
+    </message>
+    <message>
+        <source>Description</source>
+        <translation>描述</translation>
+    </message>
+    <message>
+        <source>Short description</source>
+        <translation>简短描述</translation>
+    </message>
+    <message>
+        <source>Create project failed: %1</source>
+        <translation>创建项目失败: %1</translation>
+    </message>
+    <message>
+        <source>Created development project: %1</source>
+        <translation>创建了开发项目: %1</translation>
+    </message>
+    <message>
+        <source>Export LinWidget Zip</source>
+        <translation>导出 LinWidget Zip</translation>
+    </message>
+    <message>
+        <source>Zip package (*.zip)</source>
+        <translation>Zip 包 (*.zip)</translation>
+    </message>
+    <message>
+        <source>Export zip failed: %1</source>
+        <translation>导出 zip 包失败: %1</translation>
+    </message>
+    <message>
+        <source>Exported zip package: %1</source>
+        <translation>导出的 zip 包: %1</translation>
+    </message>
+    <message>
+        <source>Save permission failed: %1</source>
+        <translation>保存权限失败: %1</translation>
+    </message>
+    <message>
+        <source>Save permission failed: widget record not found.</source>
+        <translation>保存权限失败: 未找到小组件记录。</translation>
+    </message>
+    <message>
+        <source>Using cached installer: %1</source>
+        <translation>使用了缓存的安装程序: %1</translation>
+    </message>
+    <message>
+        <source>Downloading update to: %1</source>
+        <translation>正在下载更新到: %1</translation>
+    </message>
+    <message>
+        <source>卸载小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>确定要卸载这个小组件和它的保存记录吗？
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UpdateChecker</name>
@@ -1015,6 +1707,45 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Update installer URL is invalid.</source>
         <translation>更新安装程序 URL 无效。</translation>
+    </message>
+</context>
+<context>
+    <name>WidgetSettingsDialog</name>
+    <message>
+        <source>%1 Settings</source>
+        <translation>%1 设置</translation>
+    </message>
+    <message>
+        <source>This widget does not provide a settings page.</source>
+        <translation>这个小组件没有提供设置页面。</translation>
+    </message>
+    <message>
+        <source>Settings page is missing: %1</source>
+        <translation>设置页面缺失: %1</translation>
+    </message>
+    <message>
+        <source>WebView2 SDK is not enabled in this build.</source>
+        <translation>此版本未启用 WebView2 SDK。</translation>
+    </message>
+    <message>
+        <source>Cannot create native settings window.</source>
+        <translation>无法创建原生设置窗口。</translation>
+    </message>
+    <message>
+        <source>Failed to initialize WebView2 environment.</source>
+        <translation>初始化 WebView2 环境失败。</translation>
+    </message>
+    <message>
+        <source>Failed to create WebView2 controller.</source>
+        <translation>创建 WebView2 控制器失败。</translation>
+    </message>
+    <message>
+        <source>Failed to map widget settings host.</source>
+        <translation>映射小组件设置宿主失败。</translation>
+    </message>
+    <message>
+        <source>Failed to start WebView2 environment.</source>
+        <translation>启动 WebView2 环境失败。</translation>
     </message>
 </context>
 </TS>

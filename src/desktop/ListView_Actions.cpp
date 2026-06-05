@@ -1307,7 +1307,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         const QString& updatePath = !newPath.isEmpty() ? newPath : oldPath;
         if (updatePath.isEmpty()) break;
 
-        if (!QFileInfo::exists(updatePath)) {
+        if (CSystemApi::GetPathType(updatePath) == PathType::InvalidPath) {
             removeTrackedPath(updatePath);
             break;
         }
@@ -1461,24 +1461,6 @@ void ListView::createRecentModifiedItemsBox()
     requestSaveBoxes();
 }
 
-namespace {
-bool doesFileExistNoResolve(const QString& filePath)
-{
-    if (filePath.isEmpty()) {
-        return false;
-    }
-    if (filePath.startsWith(QStringLiteral("::"))) {
-        return true;
-    }
-#ifdef Q_OS_WIN
-    const std::wstring nativePath = QDir::toNativeSeparators(filePath).toStdWString();
-    const DWORD attributes = GetFileAttributesW(nativePath.c_str());
-    return attributes != INVALID_FILE_ATTRIBUTES;
-#else
-    return QFileInfo::exists(filePath);
-#endif
-}
-} // namespace
 
 bool ListView::startDesktopItemDrag(const QPoint& clickPos)
 {

@@ -1247,6 +1247,29 @@ void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVarian
         for (const QString& path : files) {
             DesktopRootItemState* state = findDesktopStateByPath(path);
             if (!state) {
+                if (path.startsWith(QStringLiteral("::")) || doesFileExistNoResolve(path)) {
+                    const ListItemData data = DesktopItemLoader().loadItem(path);
+                    if (!data.filePath().isEmpty() || path.startsWith(QStringLiteral("::"))) {
+                        DesktopRootItemState newState;
+                        DesktopItemInitContext context = currentDesktopItemInitContext();
+                        context.getBoxId = [boxId](const QString&) { return boxId; };
+                        initDesktopRootItemModel(newState.model, data, context);
+                        newState.model.boxId = boxId;
+                        newState.model.visible = true;
+
+                        if (m_savedIconPositions.contains(normalizeDesktopPath(path))) {
+                            const auto& savedInfo = m_savedIconPositions.value(normalizeDesktopPath(path));
+                            newState.model.position = QPoint(savedInfo.x, savedInfo.y);
+                        } else {
+                            newState.model.position = QPoint(0, 0);
+                        }
+
+                        targetBox->addItemState(newState, false);
+                        boxesToRefresh.insert(targetBox);
+                        qDebug() << "[applyBoxAssignmentsFromConfig] Dynamically loaded virtual/missing item:" << path;
+                        continue;
+                    }
+                }
                 qWarning() << "[applyBoxAssignmentsFromConfig] Item not found:" << path;
                 continue;
             }
@@ -1260,9 +1283,6 @@ void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVarian
             targetBox->addItemState(stateCopy, false);
             removeDesktopStateByPath(path);
             boxesToRefresh.insert(targetBox);
-            
-            // 闂佽崵濮崇粈浣规櫠娴犲鍋?boxId 婵°倗濮烽崑鐘测枖濞戙垺鍎?item 闂佽楠稿﹢閬嶅磻閵堝拋鐎舵い鏍嚙鎼达絾瀚氶柟缁樺俯濞奸亶姊?box 濠?
-            // 濠电偠鎻紞鈧繛澶嬫礋瀵?addListItem 闂備礁鎼ˇ顓㈠磿閺屻儱閿ゅ┑鐘叉搐缁€澶愭煟濞嗗繑鍣界紒鈧径鎰€甸柣鐔告緲閺嗘洜绱掓潏銊︾凡妞ゎ偁鍨介弫鎰板炊閿濆倸浜炬俊顖氬悑婵ジ鏌涢幘妤€鎳忛悗顓㈡⒑缂佹澧褍閰ｉ幃浼村Ψ閳轰胶鐓戦梺鎸庣箓鐎氼垳绮?m_contentArea
         }
     }
 
@@ -1290,7 +1310,28 @@ void ListView::applySavedPositionsToItems(const QMap<QString, QMap<QString, QVar
                 boxState->model.position = savedPos;
             }
         } else {
-            qWarning() << "[ListView] No desktop item matched config path:" << it.key();
+            // It might be a virtual folder or a persistent desktop item that was not returned by loadAllItems()
+            // We should load it dynamically!
+            const QString path = it.key();
+            if (path.startsWith(QStringLiteral("::")) || doesFileExistNoResolve(path)) {
+                const ListItemData data = DesktopItemLoader().loadItem(path);
+                if (!data.filePath().isEmpty() || path.startsWith(QStringLiteral("::"))) {
+                    DesktopRootItemState newState;
+                    DesktopItemInitContext context = currentDesktopItemInitContext();
+                    context.getBoxId = [boxIdFromConfig](const QString&) { return boxIdFromConfig; };
+                    initDesktopRootItemModel(newState.model, data, context);
+                    newState.model.boxId = boxIdFromConfig;
+                    newState.model.customSortOrder = posInfo.value("ord").toInt();
+                    newState.model.position = savedPos;
+                    newState.model.visible = true;
+
+                    m_itemStates.push_back(newState);
+                    markDesktopStateIndexDirty();
+                    qDebug() << "[applySavedPositionsToItems] Dynamically loaded virtual/missing item:" << path;
+                }
+            } else {
+                qWarning() << "[ListView] No desktop item matched config path:" << it.key();
+            }
         }
     }
 }

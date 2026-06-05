@@ -1,9 +1,9 @@
 ﻿{
-    "version":  "1.0.7",
+    "version":  "1.0.8",
     "channel":  "stable",
-    "url":  "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.7/LinDesk_Setup_1.0.7.exe",
-    "sha256":  "f51926fe9b3da216fd50ec918746cfcc98d4ff23efb11f1e8eae9197f2b927a3",
-    "notes":  "LinDesk update.",
-    "publishedAt":  "2026-06-05T06:07:49Z",
+    "url":  "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.8/LinDesk_Setup_1.0.8.exe",
+    "sha256":  "e14ccb0a6490c63c13faedecfb537c5ceb2839b3dc42a7099dfc89640b3bb99a",
+    "notes":  "1.组件系统优化小组件功能。2.修复不同缩放比例下点击异常的问题。",
+    "publishedAt":  "2026-06-05T16:06:03Z",
     "minSupportedVersion":  "1.0.0"
 }

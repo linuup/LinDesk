@@ -1259,7 +1259,7 @@ QString ListViewFileOpsHelper::uniquePasteDestinationPath(const QString& sourceP
     const QString originalFileName = sourceInfo.fileName();
     QString originalCandidate = dir.filePath(originalFileName);
 
-    if (!QFileInfo::exists(originalCandidate)) {
+    if (CSystemApi::GetPathType(originalCandidate) == PathType::InvalidPath) {
         return QDir::toNativeSeparators(originalCandidate);
     }
 
@@ -1273,7 +1273,7 @@ QString ListViewFileOpsHelper::uniquePasteDestinationPath(const QString& sourceP
 
     QString candidate = dir.filePath(QString("%1(%2)%3").arg(nameStem).arg(1).arg(extension));
     int suffix = 2;
-    while (QFileInfo::exists(candidate)) {
+    while (CSystemApi::GetPathType(candidate) != PathType::InvalidPath) {
         candidate = dir.filePath(QString("%1(%2)%3").arg(nameStem).arg(suffix).arg(extension));
         ++suffix;
     }
@@ -1292,7 +1292,7 @@ QString ListViewFileOpsHelper::uniqueNewFolderPath(const QString& targetDir, con
     }
 
     QString candidate = dir.filePath(effectiveBaseName);
-    if (!QFileInfo::exists(candidate)) {
+    if (CSystemApi::GetPathType(candidate) == PathType::InvalidPath) {
         return QDir::toNativeSeparators(candidate);
     }
 
@@ -1300,7 +1300,7 @@ QString ListViewFileOpsHelper::uniqueNewFolderPath(const QString& targetDir, con
     do {
         candidate = dir.filePath(QString("%1 (%2)").arg(effectiveBaseName).arg(suffix));
         ++suffix;
-    } while (QFileInfo::exists(candidate));
+    } while (CSystemApi::GetPathType(candidate) != PathType::InvalidPath);
 
     return QDir::toNativeSeparators(candidate);
 }
@@ -1312,7 +1312,7 @@ QString ListViewFileOpsHelper::uniqueShortcutPathForTarget(const QString& source
     QDir dir(targetDir);
     QString candidate = dir.filePath(baseName + " - Shortcut.lnk");
     int suffix = 2;
-    while (QFileInfo::exists(candidate)) {
+    while (CSystemApi::GetPathType(candidate) != PathType::InvalidPath) {
         candidate = dir.filePath(QString("%1 - Shortcut (%2).lnk").arg(baseName).arg(suffix));
         ++suffix;
     }
@@ -1335,12 +1335,12 @@ bool ListViewFileOpsHelper::createDirectoryPath(const QString& targetPath)
 
 bool ListViewFileOpsHelper::copyPathToExactDestination(const QString& sourcePath, const QString& destinationPath)
 {
-    const QFileInfo sourceInfo(sourcePath);
-    if (!sourceInfo.exists()) {
+    PathType srcType = CSystemApi::GetPathType(sourcePath);
+    if (srcType == PathType::InvalidPath) {
         return false;
     }
 
-    if (sourceInfo.isDir()) {
+    if (srcType == PathType::DirectoryPath) {
         QDir destParent = QFileInfo(destinationPath).dir();
         if (!destParent.exists() && !destParent.mkpath(".")) {
             return false;
@@ -1370,7 +1370,7 @@ bool ListViewFileOpsHelper::copyPathToExactDestination(const QString& sourcePath
         return false;
     }
 
-    if (QFile::exists(destinationPath) && !QFile::remove(destinationPath)) {
+    if (CSystemApi::GetPathType(destinationPath) != PathType::InvalidPath && !QFile::remove(destinationPath)) {
         return false;
     }
 
@@ -1379,8 +1379,8 @@ bool ListViewFileOpsHelper::copyPathToExactDestination(const QString& sourcePath
 
 bool ListViewFileOpsHelper::movePathToExactDestination(const QString& sourcePath, const QString& destinationPath)
 {
-    const QFileInfo sourceInfo(sourcePath);
-    if (!sourceInfo.exists()) {
+    PathType srcType = CSystemApi::GetPathType(sourcePath);
+    if (srcType == PathType::InvalidPath) {
         return false;
     }
 
@@ -1389,8 +1389,8 @@ bool ListViewFileOpsHelper::movePathToExactDestination(const QString& sourcePath
         return false;
     }
 
-    if (QFileInfo::exists(destinationPath)) {
-        if (QFileInfo(destinationPath).isDir()) {
+    if (CSystemApi::GetPathType(destinationPath) != PathType::InvalidPath) {
+        if (CSystemApi::GetPathType(destinationPath) == PathType::DirectoryPath) {
             if (!QDir(destinationPath).removeRecursively()) {
                 return false;
             }
@@ -1399,7 +1399,7 @@ bool ListViewFileOpsHelper::movePathToExactDestination(const QString& sourcePath
         }
     }
 
-    if (sourceInfo.isDir()) {
+    if (srcType == PathType::DirectoryPath) {
         if (QDir().rename(sourcePath, destinationPath)) {
             return true;
         }

@@ -170,6 +170,58 @@ Do you want to re map this box to another folder?</source>
         <source>OK</source>
         <translation>OK</translation>
     </message>
+    <message>
+        <source>LinDesk is already running.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LinWidgetWebViewRuntime</name>
+    <message>
+        <source>Native Widget
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WebView2 SDK is not enabled in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Entry file is missing: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot create native widget window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to initialize WebView2 environment.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to create WebView2 controller.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to start WebView2 environment.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shared runtime page is missing: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>network: %1
+storage: %2
+desktop: %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HTML Widget Host
+%1
+%2%3</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ListView</name>
@@ -235,67 +287,67 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Start / Pause</source>
-        <translation>Start / Pause</translation>
+        <translation type="vanished">Start / Pause</translation>
     </message>
     <message>
         <source>Reset</source>
-        <translation>Reset</translation>
+        <translation type="vanished">Reset</translation>
     </message>
     <message>
         <source>Unpin</source>
-        <translation>Unpin</translation>
+        <translation type="vanished">Unpin</translation>
     </message>
     <message>
         <source>Pin</source>
-        <translation>Pin</translation>
+        <translation type="vanished">Pin</translation>
     </message>
     <message>
         <source>5 minutes</source>
-        <translation>5 minutes</translation>
+        <translation type="vanished">5 minutes</translation>
     </message>
     <message>
         <source>25 minutes</source>
-        <translation>25 minutes</translation>
+        <translation type="vanished">25 minutes</translation>
     </message>
     <message>
         <source>45 minutes</source>
-        <translation>45 minutes</translation>
+        <translation type="vanished">45 minutes</translation>
     </message>
     <message>
         <source>Custom minutes...</source>
-        <translation>Custom minutes...</translation>
+        <translation type="vanished">Custom minutes...</translation>
     </message>
     <message>
         <source>Mini mode</source>
-        <translation>Mini mode</translation>
+        <translation type="vanished">Mini mode</translation>
     </message>
     <message>
         <source>Card mode</source>
-        <translation>Card mode</translation>
+        <translation type="vanished">Card mode</translation>
     </message>
     <message>
         <source>Expanded mode</source>
-        <translation>Expanded mode</translation>
+        <translation type="vanished">Expanded mode</translation>
     </message>
     <message>
         <source>Turn sound off</source>
-        <translation>Turn sound off</translation>
+        <translation type="vanished">Turn sound off</translation>
     </message>
     <message>
         <source>Turn sound on</source>
-        <translation>Turn sound on</translation>
+        <translation type="vanished">Turn sound on</translation>
     </message>
     <message>
         <source>Remove timer</source>
-        <translation>Remove timer   </translation>
+        <translation type="vanished">Remove timer   </translation>
     </message>
     <message>
         <source>Custom Timer</source>
-        <translation>Custom Timer</translation>
+        <translation type="vanished">Custom Timer</translation>
     </message>
     <message>
         <source>Minutes</source>
-        <translation>Minutes</translation>
+        <translation type="vanished">Minutes</translation>
     </message>
     <message>
         <source>New Text Document.txt</source>
@@ -315,6 +367,54 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>ProgID %1</source>
         <translation>ProgID %1</translation>
+    </message>
+    <message>
+        <source>暂无描述。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>版本</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 visible, %2 hidden for %3.</source>
+        <translation type="unfinished">%1 visible, %2 hidden for %3.</translation>
+    </message>
+    <message>
+        <source>Allow this widget to access external network services.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow this widget to save local browser state.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow this widget to use future privileged desktop APIs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow this widget to use this permission.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install LinWidget</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 requests the following permissions. Checked permissions will be granted during installation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This widget does not request sensitive permissions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished">Cancel</translation>
     </message>
 </context>
 <context>
@@ -420,7 +520,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>New Timer</source>
-        <translation>New Timer</translation>
+        <translation type="vanished">New Timer</translation>
     </message>
 </context>
 <context>
@@ -539,7 +639,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Powered by Antigravity Design System</source>
-        <translation>Powered by Antigravity Design System</translation>
+        <translation type="vanished">Powered by Antigravity Design System</translation>
     </message>
     <message>
         <source>Settings</source>
@@ -862,11 +962,11 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Installer already downloaded. Starting installer...</source>
-        <translation>Installer already downloaded. Starting installer...</translation>
+        <translation type="vanished">Installer already downloaded. Starting installer...</translation>
     </message>
     <message>
         <source>Downloading update...</source>
-        <translation>Downloading update...</translation>
+        <translation type="vanished">Downloading update...</translation>
     </message>
     <message>
         <source>Installer file is missing. Please download again.</source>
@@ -930,7 +1030,7 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>Disk</source>
-        <translation>Disk</translation>
+        <translation type="vanished">Disk</translation>
     </message>
     <message>
         <source>No Extension File</source>
@@ -964,6 +1064,565 @@ Do you want to re map this box to another folder?</source>
         <source>Removed extension type.</source>
         <translation>Removed extension type.</translation>
     </message>
+    <message>
+        <source>LinWidgets</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy From</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply To</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy Rules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a source type to copy hidden menu rules from.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No hidden rules to copy.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copied %1 rules from %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply Rules</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose target types to receive the current hidden menu rules.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No target type selected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applied %1 rules to %2 types.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extension</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reuse Rules From</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Do Not Reuse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Enter a file extension.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extension type already exists: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added %1 and reused %2 rules.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Make your desktop more powerful and beautiful</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widget Runtime</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage LinWidget runtime environment. Closing it will release widget resources.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Official</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install widgets provided by LinDesk.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marketplace</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Browse the local market source, online discovery capability will be opened later.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Manage widgets that have been copied to the Roaming directory.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Inspector</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a widget to inspect details.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Actions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uninstall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Log</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent Errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No errors.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Development</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Run widgets from source code directory and export local packages.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Advanced Tools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Create, add, run and export development widgets.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add Development Project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New Widget Project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export Zip Package</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove Development Record</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Logs Directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Roaming Directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation type="unfinished">Refresh</translation>
+    </message>
+    <message>
+        <source>%1
+Manifest error: %2
+%3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Install</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marketplace is coming soon.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marketplace install failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marketplace install canceled: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installed and loaded marketplace widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installed marketplace widget: %1
+Load skipped: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installed %1    Development %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1
+Manifest errors:
+%2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close One</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select an installed widget or development project.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a widget to view its log.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No log instance.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Log file has not been created yet:
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot open log file:
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget 桌面小组件。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>install</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>manage</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>add</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>load</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Details</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>author</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>permission</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>status</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>running %1/3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>installed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>uninstall</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>description</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no description</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This widget is already installed. Open the installed instance to manage permissions and runtime state.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>log file not created: 
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>failed to open log file: 
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The widget request was intercepted by the permission system. Please authorize %1 and reload.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>grant %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>permissions</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>open folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 preview</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recent errors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load blocked: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added widget instance: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Loaded into WebView: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unloaded from WebView: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reloaded widget iframe: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>确定要卸载这个小组件和它的保存记录吗？
+%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed development record: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widget record removed, folder delete failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Uninstalled installed widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Official install failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Official install canceled: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installed and loaded official widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installed official widget: %1
+Load skipped: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime is disabled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget manager is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Official reset failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reset official widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select LinWidget development project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add development project failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Added development project: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose parent folder for new widget project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widget Id</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use reverse domain style, for example com.example.weather</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Widget Name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display name</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Author</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Description</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Short description</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Create project failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Created development project: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export LinWidget Zip</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zip package (*.zip)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Export zip failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Exported zip package: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save permission failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save permission failed: widget record not found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Using cached installer: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading update to: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UpdateChecker</name>
@@ -982,6 +1641,45 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>Update installer URL is invalid.</source>
         <translation>Update installer URL is invalid.</translation>
+    </message>
+</context>
+<context>
+    <name>WidgetSettingsDialog</name>
+    <message>
+        <source>%1 Settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This widget does not provide a settings page.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings page is missing: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>WebView2 SDK is not enabled in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot create native settings window.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to initialize WebView2 environment.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to create WebView2 controller.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to map widget settings host.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to start WebView2 environment.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

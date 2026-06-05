@@ -69,15 +69,32 @@ $notes = $Notes
 if ($isInteractive) {
     Write-Host "=== LinDesk Packaging Assistant ===" -ForegroundColor Cyan
     Write-Host "Current version in CMakeLists.txt is: $currentVersion" -ForegroundColor Yellow
-    
-    $inputVersion = Read-Host "Enter new version number (e.g. 1.0.8, press Enter to keep current)"
-    if ([string]::IsNullOrWhiteSpace($inputVersion)) {
-        $version = $currentVersion
-    } else {
+    Write-Host ""
+
+    while ($true) {
+        $inputVersion = Read-Host "Enter version number (e.g. 1.0.8, press Enter to keep $currentVersion)"
+        if ([string]::IsNullOrWhiteSpace($inputVersion)) {
+            $version = $currentVersion
+            break
+        }
         if ($inputVersion -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Invalid version format. Expected X.Y.Z (e.g. 1.0.8)"
+            Write-Host "Invalid version format '$inputVersion'. Expected X.Y.Z (e.g. 1.0.8)" -ForegroundColor Red
+            continue
+        }
+        $parts = $inputVersion -split '\.'
+        $valid = $true
+        foreach ($p in $parts) {
+            if ([int]$p -lt 0 -or [int]$p -gt 999) {
+                $valid = $false
+                break
+            }
+        }
+        if (-not $valid) {
+            Write-Host "Version segment out of range (0-999). Please re-enter." -ForegroundColor Red
+            continue
         }
         $version = $inputVersion
+        break
     }
 
     $inputNotes = Read-Host "Enter release description / update notes (press Enter for default)"
@@ -89,6 +106,9 @@ if ($isInteractive) {
 } else {
     if ([string]::IsNullOrEmpty($version)) {
         $version = $currentVersion
+    }
+    if ($version -notmatch '^\d+\.\d+\.\d+$') {
+        throw "Invalid version format '$version'. Expected X.Y.Z (e.g. 1.0.8)"
     }
     if ([string]::IsNullOrEmpty($notes)) {
         $notes = "LinDesk update."
@@ -117,22 +137,10 @@ if ($versionChanged) {
 }
 
 # Compile Release configuration
-$shouldBuild = $true
-if ($isInteractive) {
-    $buildOption = Read-Host "Compile project in Release mode before packaging? [Y/n]"
-    if ([string]::IsNullOrWhiteSpace($buildOption) -or $buildOption.Trim().ToLower() -eq 'y' -or $buildOption.Trim().ToLower() -eq 'yes') {
-        $shouldBuild = $true
-    } else {
-        $shouldBuild = $false
-    }
-}
-
-if ($shouldBuild) {
-    Write-Host "Building LinDesk in Release mode..." -ForegroundColor Green
-    & cmake --build (Join-Path $repoRoot "build/build_64") --config Release
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to build LinDesk in Release mode."
-    }
+Write-Host "Building LinDesk in Release mode..." -ForegroundColor Green
+& cmake --build (Join-Path $repoRoot "build/build_64") --config Release
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to build LinDesk in Release mode."
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallerDir)) {

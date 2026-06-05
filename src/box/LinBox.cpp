@@ -347,6 +347,19 @@ QString normalizeBoxItemPath(const QString& filePath)
     while (normalized.endsWith('/') || normalized.endsWith('\\')) {
         normalized.chop(1);
     }
+    int colonColonIndex = normalized.indexOf(QStringLiteral("::"));
+    if (colonColonIndex > 0) {
+        bool allSlashes = true;
+        for (int i = 0; i < colonColonIndex; ++i) {
+            if (normalized[i] != '\\' && normalized[i] != '/') {
+                allSlashes = false;
+                break;
+            }
+        }
+        if (allSlashes) {
+            normalized = normalized.mid(colonColonIndex);
+        }
+    }
     return normalized.toLower();
 }
 
@@ -1185,6 +1198,7 @@ void LinBox::refreshLayout() {
     m_lastLayoutShowType = m_showType;
     m_lastLayoutVisualSignature = currentLayoutVisualSignature();
     m_isRefreshingLayout = false;
+    update();
 }
 
 QRect LinBox::globalRenameEditorRectForPath(const QString& filePath) const
@@ -2047,7 +2061,8 @@ bool LinBox::startItemDrag(const QPoint& boxPos)
     if (resultAction == Qt::MoveAction) {
         QStringList removedSourcePaths;
         for (const QString& path : dragPaths) {
-            if (!path.isEmpty() && !QFileInfo::exists(path)) {
+            const QString normPath = normalizeBoxItemPath(path);
+            if (!path.isEmpty() && !normPath.startsWith(QLatin1String("::")) && CSystemApi::GetPathType(path) == PathType::InvalidPath) {
                 removedSourcePaths.append(path);
             }
         }
