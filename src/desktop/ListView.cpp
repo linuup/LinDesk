@@ -3170,22 +3170,8 @@ void ListView::dragEnterEvent(QDragEnterEvent* event)
             event->ignore();
             return;
         }
-        if (!desktopSource) {
-            if (shouldPreferShortcutForDrop(draggedPaths, event->keyboardModifiers(), externalSource)) {
-                event->setDropAction(Qt::LinkAction);
-            } else if (event->keyboardModifiers() & Qt::ControlModifier) {
-                event->setDropAction(Qt::CopyAction);
-            } else {
-                event->setDropAction(Qt::MoveAction);
-            }
-            ListViewFileOpsHelper::updateInternalDragDescription(
-                event->mimeData(),
-                event->dropAction(),
-                QCoreApplication::translate("ListView", "Desktop"));
-            event->accept();
-            return;
-        }
-        if (shouldPreferShortcutForDrop(draggedPaths, event->keyboardModifiers(), false)) {
+
+        if (shouldPreferShortcutForDrop(draggedPaths, event->keyboardModifiers(), externalSource)) {
             event->setDropAction(Qt::LinkAction);
         } else if (event->keyboardModifiers() & Qt::ControlModifier) {
             event->setDropAction(Qt::CopyAction);
@@ -6962,15 +6948,8 @@ void ListView::onMenuPasteShortcut() {
         return;
     }
 
-    int createdCount = 0;
-    for (const QString& filePath : filePaths) {
-        const QString shortcutPath = ListViewFileOpsHelper::uniqueShortcutPathForTarget(filePath, m_desktopDir);
-        if (ListViewFileOpsHelper::createShellShortcut(filePath, shortcutPath)) {
-            ++createdCount;
-        }
-    }
-
-    qDebug() << "ListView: Paste Shortcut triggered, created:" << createdCount << "of" << filePaths.size();
+    bool ok = createShortcutsInFolder(filePaths, m_desktopDir);
+    qDebug() << "ListView: Paste Shortcut triggered, result:" << ok;
 }
 
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
