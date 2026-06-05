@@ -1461,6 +1461,25 @@ void ListView::createRecentModifiedItemsBox()
     requestSaveBoxes();
 }
 
+namespace {
+bool doesFileExistNoResolve(const QString& filePath)
+{
+    if (filePath.isEmpty()) {
+        return false;
+    }
+    if (filePath.startsWith(QStringLiteral("::"))) {
+        return true;
+    }
+#ifdef Q_OS_WIN
+    const std::wstring nativePath = QDir::toNativeSeparators(filePath).toStdWString();
+    const DWORD attributes = GetFileAttributesW(nativePath.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES;
+#else
+    return QFileInfo::exists(filePath);
+#endif
+}
+} // namespace
+
 bool ListView::startDesktopItemDrag(const QPoint& clickPos)
 {
     const QStringList dragPaths = selectedDesktopPaths();
@@ -1542,16 +1561,7 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
     if (resultAction == Qt::MoveAction) {
         QStringList removedSourcePaths;
         for (const QString& path : dragPaths) {
-            if (path.isEmpty()) {
-                continue;
-            }
-            // System/virtual items (e.g. "::{645FF040-...}") never exist on
-            // disk, so QFileInfo::exists() would always return false for them.
-            // Skip them to prevent accidental removal after a position-only move.
-            if (path.startsWith(QStringLiteral("::"))) {
-                continue;
-            }
-            if (!QFileInfo::exists(path)) {
+            if (!doesFileExistNoResolve(path)) {
                 removedSourcePaths.append(path);
             }
         }
