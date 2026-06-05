@@ -343,11 +343,70 @@ void appendSharedLog(const QString& level, const QString& message)
         file.write(line.toUtf8());
     }
 }
+
+#ifdef LINDESK_SOURCE_DIR
+bool copyDirRecursively(const QString& sourcePath, const QString& targetPath)
+{
+    QDir sourceDir(sourcePath);
+    if (!sourceDir.exists()) {
+        return false;
+    }
+    QDir targetDir(targetPath);
+    if (!targetDir.exists()) {
+        if (!targetDir.mkpath(QStringLiteral("."))) {
+            return false;
+        }
+    }
+
+    const QFileInfoList entries = sourceDir.entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries, QDir::Name);
+    for (const QFileInfo& entry : entries) {
+        const QString name = entry.fileName();
+        if (name == QStringLiteral(".git") ||
+            name == QStringLiteral(".webview2") ||
+            name == QStringLiteral("node_modules") ||
+            name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("temp"), Qt::CaseInsensitive) == 0) {
+            continue;
+        }
+
+        const QString targetEntryPath = targetDir.filePath(name);
+        if (entry.isDir()) {
+            if (!copyDirRecursively(entry.absoluteFilePath(), targetEntryPath)) {
+                return false;
+            }
+        } else {
+            if (QFile::exists(targetEntryPath)) {
+                const QFileInfo targetInfo(targetEntryPath);
+                if (entry.lastModified() <= targetInfo.lastModified() && entry.size() == targetInfo.size()) {
+                    continue;
+                }
+                QFile::remove(targetEntryPath);
+            }
+            QFile::copy(entry.absoluteFilePath(), targetEntryPath);
+        }
+    }
+    return true;
+}
+
+void ensureDevelopmentResources()
+{
+    const QString sourceDir = QString::fromUtf8(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources");
+    const QString targetDir = QCoreApplication::applicationDirPath() + QStringLiteral("/resources");
+    if (QDir(sourceDir).exists()) {
+        copyDirRecursively(sourceDir, targetDir);
+    }
+}
+#endif
 }
 
 WidgetManager::WidgetManager(QObject* parent)
     : QObject(parent)
 {
+#ifdef LINDESK_SOURCE_DIR
+    ensureDevelopmentResources();
+#endif
+
     m_runtimeHealthTimer.setInterval(kRuntimeHealthCheckIntervalMs);
     connect(&m_runtimeHealthTimer, &QTimer::timeout, this, &WidgetManager::checkRuntimeHealth);
 
