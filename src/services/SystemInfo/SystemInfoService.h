@@ -54,6 +54,7 @@ private:
     PDH_HQUERY m_gpuQuery = nullptr;
     PDH_HCOUNTER m_gpuUsageCounter = nullptr;
     bool m_hasGpuUsageSample = false;
+    bool m_gpuQueryFailed = false;
 #endif
 };
 

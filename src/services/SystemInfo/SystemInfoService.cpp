@@ -572,30 +572,33 @@ QJsonObject SystemInfoService::diskSnapshot() const
 
 #ifdef Q_OS_WIN
     wchar_t driveBuffer[512] = {};
-    const DWORD length = GetLogicalDriveStringsW(static_cast<DWORD>(sizeof(driveBuffer) / sizeof(driveBuffer[0])), driveBuffer);
-    const wchar_t* cursor = driveBuffer;
-    const wchar_t* end = driveBuffer + length;
-    while (cursor < end && *cursor) {
-        const QString root = QString::fromWCharArray(cursor);
-        cursor += wcslen(cursor) + 1;
-        if (GetDriveTypeW(reinterpret_cast<LPCWSTR>(root.utf16())) != DRIVE_FIXED) {
-            continue;
-        }
+    const DWORD maxLen = sizeof(driveBuffer) / sizeof(driveBuffer[0]);
+    const DWORD length = GetLogicalDriveStringsW(maxLen, driveBuffer);
+    if (length > 0 && length < maxLen) {
+        const wchar_t* cursor = driveBuffer;
+        const wchar_t* end = driveBuffer + length;
+        while (cursor < end && *cursor) {
+            const QString root = QString::fromWCharArray(cursor);
+            cursor += wcslen(cursor) + 1;
+            if (GetDriveTypeW(reinterpret_cast<LPCWSTR>(root.utf16())) != DRIVE_FIXED) {
+                continue;
+            }
 
-        ULARGE_INTEGER freeToCaller = {};
-        ULARGE_INTEGER total = {};
-        ULARGE_INTEGER free = {};
-        if (!GetDiskFreeSpaceExW(reinterpret_cast<LPCWSTR>(root.utf16()), &freeToCaller, &total, &free)) {
-            continue;
-        }
+            ULARGE_INTEGER freeToCaller = {};
+            ULARGE_INTEGER total = {};
+            ULARGE_INTEGER free = {};
+            if (!GetDiskFreeSpaceExW(reinterpret_cast<LPCWSTR>(root.utf16()), &freeToCaller, &total, &free)) {
+                continue;
+            }
 
-        totalBytes += total.QuadPart;
-        freeBytes += free.QuadPart;
-        QJsonObject drive;
-        drive.insert(QStringLiteral("root"), root);
-        drive.insert(QStringLiteral("totalBytes"), static_cast<double>(total.QuadPart));
-        drive.insert(QStringLiteral("freeBytes"), static_cast<double>(free.QuadPart));
-        drives.append(drive);
+            totalBytes += total.QuadPart;
+            freeBytes += free.QuadPart;
+            QJsonObject drive;
+            drive.insert(QStringLiteral("root"), root);
+            drive.insert(QStringLiteral("totalBytes"), static_cast<double>(total.QuadPart));
+            drive.insert(QStringLiteral("freeBytes"), static_cast<double>(free.QuadPart));
+            drives.append(drive);
+        }
     }
 #endif
 
