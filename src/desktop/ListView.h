@@ -139,6 +139,7 @@ class ListView : public QWidget {
 	Q_OBJECT
 	friend class ListViewSelectionHelper;
 friend class ListViewDragDropHelper;
+friend class ListViewSelectionController;
 
 public:
 	// 枚举定义

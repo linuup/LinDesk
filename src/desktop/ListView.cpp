@@ -8,6 +8,7 @@
 #include <QSettings>
 #include "desktop/ListView.h"
 #include "desktop/ListViewSelectionHelper.h"
+#include "desktop/ListViewSelectionController.h"
 #include "desktop/ListViewDragDropHelper.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
@@ -1118,154 +1119,22 @@ void ListView::clearCheckedItem()
 
 void ListView::clearSelectionState()
 {
-    clearCheckedItem();
-    clearFocusedItem();
-    clearCutMarks();
-    resetRenameClickState();
+    ListViewSelectionController::clearSelectionState(*this);
 }
 
 void ListView::setSelectedItemPaths(const QStringList& filePaths, const QString& focusedPath, bool expandSingle)
 {
-    const QString normalizedFocusedPath = normalizeDesktopItemPath(focusedPath);
-    QStringList desktopPaths;
-    QStringList boxPaths;
-
-    for (const QString& path : filePaths) {
-        const QString normalizedPath = normalizeDesktopItemPath(path);
-        if (normalizedPath.isEmpty()) {
-            continue;
-        }
-
-        if (const DesktopRootItemState* state = findDesktopStateByPath(normalizedPath)) {
-            if (state->model.boxId.isEmpty()) {
-                if (!desktopPaths.contains(normalizedPath)) {
-                    desktopPaths.append(normalizedPath);
-                }
-                continue;
-            }
-        }
-
-        if (findAnyItemStateByPath(normalizedPath) && !boxPaths.contains(normalizedPath)) {
-            boxPaths.append(normalizedPath);
-        }
-    }
-
-    if (!desktopPaths.isEmpty()) {
-        BoxManager* bm = BoxManager::instance();
-        if (bm) {
-            QSet<LinBox*> dirtyBoxes;
-            for (const QString& path : m_selectedBoxPaths) {
-                clearItemExpandedState(path);
-            }
-            for (const auto& box : bm->allBoxes()) {
-                if (!box) {
-                    continue;
-                }
-                for (DesktopRootItemState& state : const_cast<QVector<DesktopRootItemState>&>(box->itemStates())) {
-                    if (state.model.isSelected || state.model.focused) {
-                        state.model.isSelected = false;
-                        state.model.renderData.selected = false;
-                        state.model.renderData.hovered = state.model.isHovered;
-                        state.model.focused = false;
-                        dirtyBoxes.insert(box);
-                    }
-                }
-            }
-            for (LinBox* dirtyBox : dirtyBoxes) {
-                if (!dirtyBox) {
-                    continue;
-                }
-                dirtyBox->refreshLayout();
-                dirtyBox->update();
-            }
-        }
-        m_selectedBoxPaths.clear();
-        m_focusedBoxPath.clear();
-        m_anchorBoxPath.clear();
-        clearFocusedItem();
-        applyDesktopSelection(desktopPaths,
-            normalizedFocusedPath.isEmpty() ? desktopPaths.last() : normalizedFocusedPath,
-            expandSingle && desktopPaths.size() == 1);
-        if (m_anchorDesktopPath.isEmpty()) {
-            m_anchorDesktopPath = desktopPaths.first();
-        }
-        return;
-    }
-
-    if (!boxPaths.isEmpty()) {
-        clearDesktopSelection();
-        clearFocusedItem();
-        m_focusedDesktopPath.clear();
-        m_anchorDesktopPath.clear();
-        for (const QString& path : m_selectedBoxPaths) {
-            clearItemExpandedState(path);
-        }
-
-        BoxManager* bm = BoxManager::instance();
-        QSet<LinBox*> dirtyBoxes;
-        const QString resolvedFocusedPath = normalizedFocusedPath.isEmpty() ? boxPaths.last() : normalizedFocusedPath;
-        if (bm) {
-            for (const auto& box : bm->allBoxes()) {
-                if (!box) {
-                    continue;
-                }
-                bool boxDirty = false;
-                for (DesktopRootItemState& state : const_cast<QVector<DesktopRootItemState>&>(box->itemStates())) {
-                    const QString statePath = normalizeDesktopItemPath(state.model.filePath);
-                    const bool selected = boxPaths.contains(statePath);
-                    const bool focused = statePath == resolvedFocusedPath;
-                    if (state.model.isSelected != selected) {
-                        state.model.isSelected = selected;
-                        state.model.renderData.selected = selected;
-                        state.model.renderData.hovered = state.model.isHovered && !selected;
-                        boxDirty = true;
-                    }
-                    if (state.model.focused != focused) {
-                        state.model.focused = focused;
-                        boxDirty = true;
-                    }
-                }
-                if (boxDirty) {
-                    dirtyBoxes.insert(box);
-                }
-            }
-        }
-
-        for (const QString& path : boxPaths) {
-            setItemFullNameExpanded(path, false);
-        }
-        if (expandSingle && boxPaths.size() == 1) {
-            setItemFullNameExpanded(boxPaths.first(), true);
-        }
-
-        for (LinBox* dirtyBox : dirtyBoxes) {
-            if (!dirtyBox) {
-                continue;
-            }
-            dirtyBox->refreshLayout();
-            dirtyBox->update();
-        }
-
-        m_selectedBoxPaths = boxPaths.toVector();
-        m_focusedBoxPath = resolvedFocusedPath;
-        if (m_anchorBoxPath.isEmpty()) {
-            m_anchorBoxPath = boxPaths.first();
-        }
-        return;
-    }
-
-    clearSelectionState();
+    ListViewSelectionController::setSelectedItemPaths(*this, filePaths, focusedPath, expandSingle);
 }
 
 void ListView::setSelectedItems(const QStringList& filePaths, bool expandSingle)
 {
-    const QString focusedPath = filePaths.isEmpty() ? QString() : normalizeDesktopItemPath(filePaths.last());
-    setSelectedItemPaths(filePaths, focusedPath, expandSingle);
+    ListViewSelectionController::setSelectedItems(*this, filePaths, expandSingle);
 }
 
 void ListView::applySelectionState(const QStringList& filePaths, const QString& focusedPath, bool expandSingle)
 {
-    setSelectedItemPaths(filePaths, focusedPath, expandSingle);
+    ListViewSelectionController::applySelectionState(*this, filePaths, focusedPath, expandSingle);
 }
 
 void ListView::setItemFullNameExpanded(const QString& filePath, bool expanded)
@@ -1479,98 +1348,12 @@ void ListView::clearFocusedItem()
 
 void ListView::toggleItemSelection(const QString& filePath)
 {
-    const QString normalizedPath = normalizeDesktopItemPath(filePath);
-    if (normalizedPath.isEmpty()) {
-        return;
-    }
-
-    if (const DesktopRootItemState* state = findDesktopStateByPath(normalizedPath)) {
-        if (state->model.boxId.isEmpty()) {
-            QStringList updatedPaths = selectedDesktopPaths();
-            if (updatedPaths.contains(normalizedPath)) {
-                updatedPaths.removeAll(normalizedPath);
-                clearItemExpandedState(normalizedPath);
-            } else {
-                updatedPaths.append(normalizedPath);
-                setItemFullNameExpanded(normalizedPath, false);
-            }
-            applyDesktopSelection(updatedPaths, normalizedPath, false);
-            if (m_anchorDesktopPath.isEmpty() && !updatedPaths.isEmpty()) {
-                m_anchorDesktopPath = normalizedPath;
-            }
-            return;
-        }
-    }
-
-    if (findAnyItemStateByPath(normalizedPath)) {
-        QStringList updatedPaths = selectedBoxPaths();
-        if (m_selectedBoxPaths.contains(normalizedPath)) {
-            updatedPaths.removeAll(normalizedPath);
-            clearItemExpandedState(normalizedPath);
-        } else {
-            updatedPaths.append(normalizedPath);
-            setItemFullNameExpanded(normalizedPath, false);
-        }
-        setSelectedItemPaths(updatedPaths, normalizedPath, false);
-        if (m_anchorBoxPath.isEmpty() && !updatedPaths.isEmpty()) {
-            m_anchorBoxPath = normalizedPath;
-        }
-    }
+    ListViewSelectionController::toggleItemSelection(*this, filePath);
 }
 
 void ListView::selectRangeToPath(const QString& filePath, LinBox* box)
 {
-    const QString normalizedPath = normalizeDesktopItemPath(filePath);
-    if (normalizedPath.isEmpty()) {
-        return;
-    }
-
-    if (!box) {
-        const QStringList orderedPaths = selectableDesktopPaths();
-        if (orderedPaths.isEmpty()) {
-            return;
-        }
-
-        const QString anchorPath = m_anchorDesktopPath.isEmpty() ? normalizedPath : m_anchorDesktopPath;
-        const int anchorIndex = orderedPaths.indexOf(normalizeDesktopItemPath(anchorPath));
-        const int itemIndex = orderedPaths.indexOf(normalizedPath);
-        if (anchorIndex < 0 || itemIndex < 0) {
-            applyDesktopSelection({ normalizedPath }, normalizedPath, true);
-            m_anchorDesktopPath = normalizedPath;
-            return;
-        }
-
-        QStringList rangePaths;
-        const int start = qMin(anchorIndex, itemIndex);
-        const int end = qMax(anchorIndex, itemIndex);
-        for (int i = start; i <= end; ++i) {
-            rangePaths.append(orderedPaths.at(i));
-        }
-        applyDesktopSelection(rangePaths, normalizedPath, false);
-        return;
-    }
-
-    const QStringList orderedPaths = selectableBoxPaths(box);
-    if (orderedPaths.isEmpty()) {
-        return;
-    }
-
-    const QString anchorPath = m_anchorBoxPath.isEmpty() ? normalizedPath : m_anchorBoxPath;
-    const int anchorIndex = orderedPaths.indexOf(normalizeDesktopItemPath(anchorPath));
-    const int itemIndex = orderedPaths.indexOf(normalizedPath);
-    if (anchorIndex < 0 || itemIndex < 0) {
-        setSelectedItemPaths({ normalizedPath }, normalizedPath, true);
-        m_anchorBoxPath = normalizedPath;
-        return;
-    }
-
-    QStringList rangePaths;
-    const int start = qMin(anchorIndex, itemIndex);
-    const int end = qMax(anchorIndex, itemIndex);
-    for (int i = start; i <= end; ++i) {
-        rangePaths.append(orderedPaths.at(i));
-    }
-    setSelectedItemPaths(rangePaths, normalizedPath, false);
+    ListViewSelectionController::selectRangeToPath(*this, filePath, box);
 }
 
 void ListView::moveFocusInHost(LinBox* box, FocusMoveDirection direction, bool extendSelection, bool focusOnly)
@@ -2330,116 +2113,22 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
 
 void ListView::beginBackgroundSelection(const QPoint& startPos)
 {
-    clearCheckedItem();
-    setFocus();
-    if (mouseGrabber() != this) {
-        grabMouse();
-    }
-    rebuildSpatialIndex();
-    rebuildBackgroundSelectionOcclusionRegion();
-    m_backgroundSelectionThrottleTimer->stop();
-    m_backgroundSelectionFrameTimer.invalidate();
-    m_backgroundSelectionThrottleMs = kBackgroundSelectionThrottleFastMs;
-    m_backgroundSelectionRefreshCostMs = 0.0;
-    m_backgroundSelectionThrottleRelaxFrames = 0;
-    m_pendingBackgroundSelectionPos = startPos;
-    m_hasPendingBackgroundSelectionUpdate = false;
-    resetBackgroundSelectionCandidateCache();
-
-    m_isSelecting = true;
-    m_startPos = startPos;
-    m_selectionStart = startPos;
-    m_selectionRect = QRect(startPos, QSize(0, 0));
+    ListViewSelectionController::beginBackgroundSelection(*this, startPos);
 }
 
 bool ListView::updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect)
 {
-    if (!m_isSelecting) {
-        return false;
-    }
-
-    const QRect rect = QRect(m_selectionStart, currentPos).normalized();
-    const bool shouldShowSelection = rect.width() > 3 || rect.height() > 3;
-    const QRect previousRect = m_selectionRect;
-    m_selectionRect = rect;
-    m_pendingBackgroundSelectionPos = currentPos;
-    m_hasPendingBackgroundSelectionUpdate = true;
-
-    if (shouldShowSelection) {
-        const int throttleMs = currentBackgroundSelectionThrottleMs();
-        const bool shouldFlushNow =
-            !m_backgroundSelectionFrameTimer.isValid() ||
-            m_backgroundSelectionFrameTimer.elapsed() >= throttleMs;
-
-        if (shouldFlushNow) {
-            flushBackgroundSelectionUpdate();
-        } else if (!m_backgroundSelectionThrottleTimer->isActive()) {
-            const int remainingMs = qMax(1, throttleMs - static_cast<int>(m_backgroundSelectionFrameTimer.elapsed()));
-            m_backgroundSelectionThrottleTimer->start(remainingMs);
-        }
-    } else {
-        m_backgroundSelectionThrottleTimer->stop();
-        m_hasPendingBackgroundSelectionUpdate = false;
-        m_selectionRect = QRect();
-        resetBackgroundSelectionCandidateCache();
-        clearCheckedItem();
-        if (!previousRect.isNull()) {
-            update(previousRect.adjusted(-2, -2, 2, 2));
-        }
-    }
-
-    if (selectionRect) {
-        *selectionRect = shouldShowSelection ? rect : QRect();
-    }
-
-    return shouldShowSelection;
+    return ListViewSelectionController::updateBackgroundSelection(*this, currentPos, selectionRect);
 }
 
 void ListView::endBackgroundSelection()
 {
-    const QRect previousRect = m_selectionRect;
-    if (m_hasPendingBackgroundSelectionUpdate) {
-        flushBackgroundSelectionUpdate();
-    }
-    m_backgroundSelectionThrottleTimer->stop();
-    m_backgroundSelectionFrameTimer.invalidate();
-    m_hasPendingBackgroundSelectionUpdate = false;
-    m_isSelecting = false;
-    m_startPos = QPoint();
-    m_selectionStart = QPoint();
-    m_selectionRect = QRect();
-    m_backgroundSelectionOcclusionRegion = QRegion();
-    m_backgroundSelectionThrottleMs = kBackgroundSelectionThrottleFastMs;
-    m_backgroundSelectionRefreshCostMs = 0.0;
-    m_backgroundSelectionThrottleRelaxFrames = 0;
-    resetBackgroundSelectionCandidateCache();
-    if (mouseGrabber() == this) {
-        releaseMouse();
-    }
-    if (!previousRect.isNull()) {
-        update(previousRect.adjusted(-2, -2, 2, 2));
-    }
+    ListViewSelectionController::endBackgroundSelection(*this);
 }
 
 void ListView::flushBackgroundSelectionUpdate()
 {
-    if (!m_isSelecting || !m_hasPendingBackgroundSelectionUpdate) {
-        return;
-    }
-
-    m_backgroundSelectionThrottleTimer->stop();
-    const QRect rect = QRect(m_selectionStart, m_pendingBackgroundSelectionPos).normalized();
-    QElapsedTimer refreshTimer;
-    refreshTimer.start();
-    if (rect.width() > 3 || rect.height() > 3) {
-        refreshCheckedItem(rect);
-    } else {
-        clearCheckedItem();
-    }
-
-    updateBackgroundSelectionThrottle(qMax<qint64>(1, refreshTimer.elapsed()), rect);
-    m_backgroundSelectionFrameTimer.restart();
-    m_hasPendingBackgroundSelectionUpdate = false;
+    ListViewSelectionController::flushBackgroundSelectionUpdate(*this);
 }
 
 void ListView::markSpatialIndexDirty()
@@ -2449,141 +2138,27 @@ void ListView::markSpatialIndexDirty()
 
 void ListView::resetBackgroundSelectionCandidateCache()
 {
-    m_backgroundSelectionPreviousUncoveredRegion = QRegion();
-    m_backgroundSelectionCandidateStates.clear();
-    m_backgroundSelectionCandidateScratchStates.clear();
-    m_backgroundSelectionCandidateSet.clear();
+    ListViewSelectionController::resetBackgroundSelectionCandidateCache(*this);
 }
 
 void ListView::updateBackgroundSelectionCandidateCache(const QRegion& uncoveredSelectionRegion)
 {
-    if (!m_spatialIndex) {
-        m_backgroundSelectionCandidateStates.clear();
-        m_backgroundSelectionCandidateStates.reserve(m_itemStates.size());
-        for (auto& state : m_itemStates) {
-            if (uncoveredSelectionRegion.intersects(state.model.renderData.selectionContentRect)) {
-                m_backgroundSelectionCandidateStates.append(&state);
-            }
-        }
-        m_backgroundSelectionPreviousUncoveredRegion = uncoveredSelectionRegion;
-        return;
-    }
-
-    const QRegion addedRegion = m_backgroundSelectionPreviousUncoveredRegion.isEmpty()
-        ? uncoveredSelectionRegion
-        : uncoveredSelectionRegion.subtracted(m_backgroundSelectionPreviousUncoveredRegion);
-
-    if (!addedRegion.isEmpty()) {
-        const QVector<QRect> addedRects = addedRegion.rects();
-        for (const QRect& addedRect : addedRects) {
-            const QVector<DesktopRootItemState*> queryStates = m_spatialIndex->query(addedRect);
-            for (DesktopRootItemState* state : queryStates) {
-                if (!state || m_backgroundSelectionCandidateSet.contains(state)) {
-                    continue;
-                }
-                if (!uncoveredSelectionRegion.intersects(state->model.renderData.selectionContentRect)) {
-                    continue;
-                }
-                m_backgroundSelectionCandidateSet.insert(state);
-                m_backgroundSelectionCandidateStates.append(state);
-            }
-        }
-    }
-
-    if (!m_backgroundSelectionPreviousUncoveredRegion.isEmpty()) {
-        const QRegion removedRegion = m_backgroundSelectionPreviousUncoveredRegion.subtracted(uncoveredSelectionRegion);
-        if (!removedRegion.isEmpty()) {
-            m_backgroundSelectionCandidateScratchStates.clear();
-            m_backgroundSelectionCandidateScratchStates.reserve(m_backgroundSelectionCandidateStates.size());
-            for (DesktopRootItemState* state : m_backgroundSelectionCandidateStates) {
-                if (state && uncoveredSelectionRegion.intersects(state->model.renderData.selectionContentRect)) {
-                    m_backgroundSelectionCandidateScratchStates.append(state);
-                    continue;
-                }
-                if (state) {
-                    m_backgroundSelectionCandidateSet.remove(state);
-                }
-            }
-            m_backgroundSelectionCandidateStates.swap(m_backgroundSelectionCandidateScratchStates);
-        }
-    }
-
-    m_backgroundSelectionPreviousUncoveredRegion = uncoveredSelectionRegion;
+    ListViewSelectionController::updateBackgroundSelectionCandidateCache(*this, uncoveredSelectionRegion);
 }
 
 void ListView::rebuildBackgroundSelectionOcclusionRegion()
 {
-    m_backgroundSelectionOcclusionRegion = QRegion();
-
-    BoxManager* manager = BoxManager::instance();
-    if (!manager) {
-        return;
-    }
-
-    const QWidget* sharedParent = parentWidget();
-    for (const QPointer<LinBox>& boxPtr : manager->allBoxes()) {
-        LinBox* box = boxPtr.data();
-        if (!box || !box->isVisible()) {
-            continue;
-        }
-
-        QRect boxRectInView;
-        if (box->parentWidget() == sharedParent) {
-            boxRectInView = QRect(mapFromParent(box->geometry().topLeft()), box->geometry().size());
-        } else {
-            boxRectInView = QRect(mapFromGlobal(box->mapToGlobal(QPoint(0, 0))), box->size());
-        }
-
-        if (!boxRectInView.isEmpty()) {
-            m_backgroundSelectionOcclusionRegion += boxRectInView;
-        }
-    }
+    ListViewSelectionController::rebuildBackgroundSelectionOcclusionRegion(*this);
 }
 
 int ListView::currentBackgroundSelectionThrottleMs() const
 {
-    return m_backgroundSelectionThrottleMs;
+    return ListViewSelectionController::currentBackgroundSelectionThrottleMs(*this);
 }
 
 void ListView::updateBackgroundSelectionThrottle(qint64 refreshElapsedMs, const QRect& selectionRect)
 {
-    const qreal viewportArea = qMax(1, width() * height());
-    const qreal selectionArea = qMax(1, selectionRect.width() * selectionRect.height());
-    const qreal coverage = qBound<qreal>(0.0, selectionArea / viewportArea, 1.0);
-    const qreal weightedCostMs = qMax<qreal>(1.0, static_cast<qreal>(refreshElapsedMs)) * (1.0 + coverage * 0.35);
-
-    if (m_backgroundSelectionRefreshCostMs <= 0.0) {
-        m_backgroundSelectionRefreshCostMs = weightedCostMs;
-    } else {
-        m_backgroundSelectionRefreshCostMs = (m_backgroundSelectionRefreshCostMs * 0.7) + (weightedCostMs * 0.3);
-    }
-
-    int targetThrottleMs = kBackgroundSelectionThrottleFastMs;
-    if (m_backgroundSelectionRefreshCostMs >= 9.0 || refreshElapsedMs >= 12) {
-        targetThrottleMs = kBackgroundSelectionThrottleMaxMs;
-    } else if (m_backgroundSelectionRefreshCostMs >= 5.5 || refreshElapsedMs >= 8) {
-        targetThrottleMs = kBackgroundSelectionThrottleBusyMs;
-    } else if (m_backgroundSelectionRefreshCostMs >= 2.5 || refreshElapsedMs >= 4) {
-        targetThrottleMs = kBackgroundSelectionThrottleBalancedMs;
-    }
-
-    if (targetThrottleMs > m_backgroundSelectionThrottleMs) {
-        m_backgroundSelectionThrottleMs = targetThrottleMs;
-        m_backgroundSelectionThrottleRelaxFrames = 0;
-    } else if (targetThrottleMs < m_backgroundSelectionThrottleMs) {
-        ++m_backgroundSelectionThrottleRelaxFrames;
-        if (m_backgroundSelectionThrottleRelaxFrames >= kBackgroundSelectionThrottleRelaxFrameThreshold) {
-            m_backgroundSelectionThrottleMs = targetThrottleMs;
-            m_backgroundSelectionThrottleRelaxFrames = 0;
-        }
-    } else {
-        m_backgroundSelectionThrottleRelaxFrames = 0;
-    }
-
-    if (m_isSelecting && m_backgroundSelectionThrottleTimer && m_backgroundSelectionThrottleTimer->isActive() && m_backgroundSelectionFrameTimer.isValid()) {
-        const int remainingMs = qMax(1, m_backgroundSelectionThrottleMs - static_cast<int>(m_backgroundSelectionFrameTimer.elapsed()));
-        m_backgroundSelectionThrottleTimer->start(remainingMs);
-    }
+    ListViewSelectionController::updateBackgroundSelectionThrottle(*this, refreshElapsedMs, selectionRect);
 }
 
 void ListView::markDesktopRenderDataDirty(DesktopRootItemState* state)
@@ -5489,43 +5064,22 @@ const DesktopRootItemState* ListView::findDesktopStateByPath(const QString& file
 
 bool ListView::isDesktopPathSelected(const QString& filePath) const
 {
-    const QString normalizedPath = normalizeDesktopItemPath(filePath);
-    return !normalizedPath.isEmpty() && m_selectedDesktopPathSet.contains(normalizedPath);
+    return ListViewSelectionController::isDesktopPathSelected(*this, filePath);
 }
 
 QVector<DesktopRootItemModel> ListView::selectedDesktopModels() const
 {
-    QVector<DesktopRootItemModel> models;
-    models.reserve(m_selectedDesktopPaths.size());
-    for (const QString& path : m_selectedDesktopPaths) {
-        const DesktopRootItemState* state = findDesktopStateByPath(path);
-        if (state) {
-            models.push_back(state->model);
-        }
-    }
-    return models;
+    return ListViewSelectionController::selectedDesktopModels(*this);
 }
 
 QStringList ListView::selectedDesktopPaths() const
 {
-    QStringList paths;
-    for (const QString& path : m_selectedDesktopPaths) {
-        if (!path.isEmpty()) {
-            paths.append(path);
-        }
-    }
-    return paths;
+    return ListViewSelectionController::selectedDesktopPaths(*this);
 }
 
 QStringList ListView::selectedBoxPaths() const
 {
-    QStringList paths;
-    for (const QString& path : m_selectedBoxPaths) {
-        if (!path.isEmpty()) {
-            paths.append(path);
-        }
-    }
-    return paths;
+    return ListViewSelectionController::selectedBoxPaths(*this);
 }
 
 QString ListView::effectiveFocusedDesktopPath() const
@@ -5550,38 +5104,12 @@ QString ListView::effectiveAnchorBoxPath() const
 
 QStringList ListView::selectableDesktopPaths() const
 {
-    QStringList paths;
-    paths.reserve(m_itemStates.size());
-    for (const auto& state : m_itemStates) {
-        if (!shouldPaintDesktopModelState(state)) {
-            continue;
-        }
-        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
-        if (!normalizedPath.isEmpty()) {
-            paths.append(normalizedPath);
-        }
-    }
-    return paths;
+    return ListViewSelectionController::selectableDesktopPaths(*this);
 }
 
 QStringList ListView::selectableBoxPaths(LinBox* box) const
 {
-    QStringList paths;
-    if (!box) {
-        return paths;
-    }
-    const auto& states = box->itemStates();
-    paths.reserve(states.size());
-    for (const auto& state : states) {
-        if (!state.model.visible) {
-            continue;
-        }
-        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
-        if (!normalizedPath.isEmpty()) {
-            paths.append(normalizedPath);
-        }
-    }
-    return paths;
+    return ListViewSelectionController::selectableBoxPaths(*this, box);
 }
 
 QString ListView::findDirectionalDesktopFocusCandidate(const QString& focusedPath, FocusMoveDirection direction) const
@@ -5611,88 +5139,22 @@ QString ListView::findDirectionalBoxFocusCandidate(LinBox* box, const QString& f
 
 void ListView::setDesktopItemSelected(DesktopRootItemState* state, const QString& normalizedPath, bool selected, QRegion* dirtyRegion)
 {
-    if (!state || normalizedPath.isEmpty()) {
-        return;
-    }
-
-    if (selected) {
-        if (!m_selectedDesktopPathSet.contains(normalizedPath)) {
-            m_selectedDesktopPaths.push_back(normalizedPath);
-        }
-        m_selectedDesktopPathSet.insert(normalizedPath);
-    } else {
-        m_selectedDesktopPathSet.remove(normalizedPath);
-        m_selectedDesktopPaths.removeOne(normalizedPath);
-    }
-
-    if (state->model.isSelected == selected && state->model.renderData.selected == selected) {
-        return;
-    }
-
-    state->model.isSelected = selected;
-    state->model.renderData.selected = selected;
-    const QRect dirty = desktopRootItemHighlightDirtyRect(state->model.renderData);
-    if (dirtyRegion) {
-        *dirtyRegion += dirty;
-        return;
-    }
-    update(dirty);
+    ListViewSelectionController::setDesktopItemSelected(*this, state, normalizedPath, selected, dirtyRegion);
 }
 
 void ListView::setDesktopItemSelected(const QString& filePath, bool selected, QRegion* dirtyRegion)
 {
-    DesktopRootItemState* state = findDesktopStateByPath(filePath);
-    if (!state) {
-        return;
-    }
-
-    const QString normalizedPath = normalizeDesktopItemPath(state->model.filePath);
-    setDesktopItemSelected(state, normalizedPath, selected, dirtyRegion);
+    ListViewSelectionController::setDesktopItemSelected(*this, filePath, selected, dirtyRegion);
 }
 
 void ListView::clearDesktopSelection(QRegion* dirtyRegion)
 {
-    const QStringList previousSelection = selectedDesktopPaths();
-    for (const QString& path : previousSelection) {
-        clearItemExpandedState(path);
-        setDesktopItemSelected(path, false, dirtyRegion);
-    }
-    m_selectedDesktopPaths.clear();
-    m_selectedDesktopPathSet.clear();
+    ListViewSelectionController::clearDesktopSelection(*this, dirtyRegion);
 }
 
 void ListView::applyDesktopSelection(const QStringList& filePaths, const QString& focusedPath, bool expandSingle)
 {
-    QRegion dirtyRegion;
-    clearDesktopSelection(&dirtyRegion);
-
-    QStringList filteredPaths;
-    for (const QString& path : filePaths) {
-        const QString normalizedPath = normalizeDesktopItemPath(path);
-        if (normalizedPath.isEmpty() || filteredPaths.contains(normalizedPath)) {
-            continue;
-        }
-        if (!findDesktopStateByPath(normalizedPath)) {
-            continue;
-        }
-        filteredPaths.append(normalizedPath);
-        setDesktopItemSelected(normalizedPath, true, &dirtyRegion);
-    }
-
-    if (!dirtyRegion.isEmpty()) {
-        update(dirtyRegion);
-    }
-
-    m_focusedDesktopPath = filteredPaths.isEmpty()
-        ? QString()
-        : normalizeDesktopItemPath(focusedPath.isEmpty() ? filteredPaths.last() : focusedPath);
-    if (m_focusedDesktopPath.isEmpty() && !filteredPaths.isEmpty()) {
-        m_focusedDesktopPath = filteredPaths.last();
-    }
-
-    if (expandSingle && filteredPaths.size() == 1) {
-        setItemFullNameExpanded(filteredPaths.first(), true);
-    }
+    ListViewSelectionController::applyDesktopSelection(*this, filePaths, focusedPath, expandSingle);
 }
 
 void ListView::removeItemPathsBatch(const QStringList& paths, bool refresh)
@@ -5868,7 +5330,7 @@ const DesktopRootItemState* ListView::findDesktopItemAt(const QPoint& pos) const
 
 QRect ListView::desktopSelectionRectForItem(const DesktopRootItemState& state) const
 {
-    return state.model.renderData.selectionContentRect;
+    return ListViewSelectionController::desktopSelectionRectForItem(*this, state);
 }
 
 void ListView::updateHoveredDesktopItem(const QPoint& pos)
