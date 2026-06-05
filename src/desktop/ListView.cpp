@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include "desktop/ListView.h"
+#include "desktop/ListViewSelectionHelper.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
@@ -6083,67 +6084,13 @@ QStringList ListView::selectableBoxPaths(LinBox* box) const
 
 QString ListView::findDirectionalDesktopFocusCandidate(const QString& focusedPath, FocusMoveDirection direction) const
 {
-    if (m_itemStates.isEmpty()) {
-        return QString();
-    }
-
-    const DesktopRootItemState* focusedState = focusedPath.isEmpty()
-        ? nullptr
-        : findDesktopStateByPath(focusedPath);
-    if (!focusedState) {
-        const QStringList orderedPaths = selectableDesktopPaths();
-        return orderedPaths.isEmpty() ? QString() : orderedPaths.first();
-    }
-
-    const QPoint currentCenter = focusedState->model.renderData.selectionContentRect.center();
-    qint64 bestDistanceSquared = LLONG_MAX;
-    int bestPrimaryDistance = INT_MAX;
-    QString candidatePath;
-
+    QVector<DesktopRootItemState> candidates;
     for (const auto& state : m_itemStates) {
-        if (!shouldPaintDesktopModelState(state)) {
-            continue;
-        }
-
-        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
-        if (normalizedPath.isEmpty() || normalizedPath == normalizeDesktopItemPath(focusedPath)) {
-            continue;
-        }
-
-        const QPoint candidateCenter = state.model.renderData.selectionContentRect.center();
-        const int dx = candidateCenter.x() - currentCenter.x();
-        const int dy = candidateCenter.y() - currentCenter.y();
-
-        int primaryDistance = INT_MAX;
-        switch (direction) {
-        case FocusMoveDirection::Left:
-            if (dx >= 0) continue;
-            primaryDistance = -dx;
-            break;
-        case FocusMoveDirection::Right:
-            if (dx <= 0) continue;
-            primaryDistance = dx;
-            break;
-        case FocusMoveDirection::Up:
-            if (dy >= 0) continue;
-            primaryDistance = -dy;
-            break;
-        case FocusMoveDirection::Down:
-            if (dy <= 0) continue;
-            primaryDistance = dy;
-            break;
-        }
-
-        const qint64 distanceSquared = static_cast<qint64>(dx) * dx + static_cast<qint64>(dy) * dy;
-        if (distanceSquared < bestDistanceSquared ||
-            (distanceSquared == bestDistanceSquared && primaryDistance < bestPrimaryDistance)) {
-            bestDistanceSquared = distanceSquared;
-            bestPrimaryDistance = primaryDistance;
-            candidatePath = normalizedPath;
+        if (shouldPaintDesktopModelState(state)) {
+            candidates.push_back(state);
         }
     }
-
-    return candidatePath;
+    return ListViewSelectionHelper::findDirectionalFocusCandidateInList(this, candidates, focusedPath, direction);
 }
 
 QString ListView::findDirectionalBoxFocusCandidate(LinBox* box, const QString& focusedPath, FocusMoveDirection direction) const
@@ -6151,64 +6098,13 @@ QString ListView::findDirectionalBoxFocusCandidate(LinBox* box, const QString& f
     if (!box) {
         return QString();
     }
-
-    const DesktopRootItemState* focusedState = focusedPath.isEmpty()
-        ? nullptr
-        : box->findItemStateByPath(focusedPath);
-    if (!focusedState) {
-        const QStringList orderedPaths = selectableBoxPaths(box);
-        return orderedPaths.isEmpty() ? QString() : orderedPaths.first();
-    }
-
-    const QPoint currentCenter = focusedState->model.renderData.selectionContentRect.center();
-    qint64 bestDistanceSquared = LLONG_MAX;
-    int bestPrimaryDistance = INT_MAX;
-    QString candidatePath;
-
+    QVector<DesktopRootItemState> candidates;
     for (const auto& state : box->itemStates()) {
-        if (!state.model.visible) {
-            continue;
-        }
-
-        const QString normalizedPath = normalizeDesktopItemPath(state.model.filePath);
-        if (normalizedPath.isEmpty() || normalizedPath == normalizeDesktopItemPath(focusedPath)) {
-            continue;
-        }
-
-        const QPoint candidateCenter = state.model.renderData.selectionContentRect.center();
-        const int dx = candidateCenter.x() - currentCenter.x();
-        const int dy = candidateCenter.y() - currentCenter.y();
-
-        int primaryDistance = INT_MAX;
-        switch (direction) {
-        case FocusMoveDirection::Left:
-            if (dx >= 0) continue;
-            primaryDistance = -dx;
-            break;
-        case FocusMoveDirection::Right:
-            if (dx <= 0) continue;
-            primaryDistance = dx;
-            break;
-        case FocusMoveDirection::Up:
-            if (dy >= 0) continue;
-            primaryDistance = -dy;
-            break;
-        case FocusMoveDirection::Down:
-            if (dy <= 0) continue;
-            primaryDistance = dy;
-            break;
-        }
-
-        const qint64 distanceSquared = static_cast<qint64>(dx) * dx + static_cast<qint64>(dy) * dy;
-        if (distanceSquared < bestDistanceSquared ||
-            (distanceSquared == bestDistanceSquared && primaryDistance < bestPrimaryDistance)) {
-            bestDistanceSquared = distanceSquared;
-            bestPrimaryDistance = primaryDistance;
-            candidatePath = normalizedPath;
+        if (state.model.visible) {
+            candidates.push_back(state);
         }
     }
-
-    return candidatePath;
+    return ListViewSelectionHelper::findDirectionalFocusCandidateInList(this, candidates, focusedPath, direction);
 }
 
 void ListView::setDesktopItemSelected(DesktopRootItemState* state, const QString& normalizedPath, bool selected, QRegion* dirtyRegion)

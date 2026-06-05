@@ -54,6 +54,7 @@ class WidgetManager;
 
 class ListView : public QWidget {
 	Q_OBJECT
+	friend class ListViewSelectionHelper;
 
 public:
 	// 枚举定义
