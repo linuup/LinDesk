@@ -1,4 +1,5 @@
 #pragma once
+#include <QtMath>
 #include <QList>
 #include <QObject>
 #include <QPainter>
@@ -52,9 +53,92 @@ namespace LinWidget {
 class WidgetManager;
 }
 
+
+inline quint64 packGridCell(int gridX, int gridY)
+{
+    return ((quint64)(uint)gridX << 32) | (quint64)(uint)gridY;
+}
+
+inline QPoint pointToGridCell(const QPoint& pos, int marginLeft, int marginTop, int strideX, int strideY)
+{
+    const int gridX = qMax(0, qRound((double)(pos.x() - marginLeft) / qMax(1, strideX)));
+    const int gridY = qMax(0, qRound((double)(pos.y() - marginTop) / qMax(1, strideY)));
+    return QPoint(gridX, gridY);
+}
+
+inline QPoint gridCellToPoint(int gridX, int gridY, int marginLeft, int marginTop, int strideX, int strideY)
+{
+    return QPoint(marginLeft + gridX * strideX, marginTop + gridY * strideY);
+}
+
+inline int maxGridRowsForHeight(int viewHeight, int marginTop, int bottomPadding, int iconHeight, int strideY)
+{
+    int rows = 0;
+    int gridY = 0;
+    while (marginTop + gridY * strideY <= viewHeight - bottomPadding - iconHeight) {
+        ++rows;
+        ++gridY;
+    }
+    return qMax(1, rows);
+}
+
+inline int maxGridColsForWidth(int viewWidth, int marginLeft, int iconWidth, int strideX)
+{
+    int cols = 0;
+    int gridX = 0;
+    while (marginLeft + gridX * strideX <= viewWidth - iconWidth) {
+        ++cols;
+        ++gridX;
+    }
+    return qMax(1, cols);
+}
+
+inline QPoint gridIndexToCell(int linearIndex, int maxRows)
+{
+    const int safeRows = qMax(1, maxRows);
+    return QPoint(linearIndex / safeRows, linearIndex % safeRows);
+}
+
+inline int pointToGridLinearIndex(const QPoint& pos, int marginLeft, int marginTop, int strideX, int strideY, int maxRows)
+{
+    const int safeStrideX = qMax(1, strideX);
+    const int safeStrideY = qMax(1, strideY);
+    const int safeRows = qMax(1, maxRows);
+
+    int gridX = qMax(0, qFloor(static_cast<double>(pos.x() - marginLeft) / safeStrideX));
+    int gridY = qMax(0, qFloor(static_cast<double>(pos.y() - marginTop) / safeStrideY));
+
+    gridX += gridY / safeRows;
+    gridY %= safeRows;
+    return gridX * safeRows + gridY;
+}
+
+inline int maxGridRowsForBounds(int layoutTop, int usableBottom, int itemHeight, int strideY)
+{
+    int rows = 0;
+    int gridY = 0;
+    while (layoutTop + gridY * strideY + itemHeight - 1 <= usableBottom) {
+        ++rows;
+        ++gridY;
+    }
+    return qMax(1, rows);
+}
+
+inline int maxGridColsForBounds(int layoutLeft, int usableRight, int itemWidth, int strideX)
+{
+    int cols = 0;
+    int gridX = 0;
+    while (layoutLeft + gridX * strideX + itemWidth - 1 <= usableRight) {
+        ++cols;
+        ++gridX;
+    }
+    return qMax(1, cols);
+}
+
 class ListView : public QWidget {
 	Q_OBJECT
 	friend class ListViewSelectionHelper;
+friend class ListViewDragDropHelper;
 
 public:
 	// 枚举定义
