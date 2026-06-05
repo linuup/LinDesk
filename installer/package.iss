@@ -43,7 +43,8 @@ en.closeFailed=Unable to close {#AppName}. Please close it manually and try agai
 zh.closeFailed=无法关闭 {#AppName}。请手动关闭后重试。
 
 [Files]
-Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini,resources\LinWidgets\ApiTester,resources\LinWidgets\ApiTester\*"
+Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini,resources,resources\*"
+Source: "..\src\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs; Excludes: "LinWidgets\ApiTester,LinWidgets\ApiTester\*,*.git,*.webview2,*node_modules*,*cache*,*tmp*,*temp*"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:desktopIcon}"; GroupDescription: "{cm:shortcutGroup}"

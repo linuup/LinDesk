@@ -146,6 +146,8 @@ if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/include/WebView2.h")
     target_link_libraries(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
 endif()
 
+target_compile_definitions(LinDesk PRIVATE "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRENT_SOURCE_DIR})\"")
+
 target_link_libraries(LinDesk
     PRIVATE
         Shell32
@@ -259,16 +261,6 @@ add_custom_command(TARGET LinDesk POST_BUILD
         $<TARGET_FILE_DIR:LinDesk>
     COMMENT "Copying OpenSSL DLLs to output directory..."
 )
-
-# Post-build: Copy Qt resource source files to executable directory for installer packaging
-add_custom_command(TARGET LinDesk POST_BUILD
-    COMMAND powershell -NoProfile -ExecutionPolicy Bypass -File
-        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy_resources.ps1"
-        -Source "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
-        -Target "$<TARGET_FILE_DIR:LinDesk>/resources"
-    COMMENT "Copying resource files to output directory..."
-)
-
 
 if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2Loader.dll")
     add_custom_command(TARGET LinDesk POST_BUILD
