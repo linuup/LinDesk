@@ -2,7 +2,8 @@ param(
     [string]$RepoOwner = "linuup",
     [string]$RepoName = "LinDesk_Update",
     [string]$Channel = "stable",
-    [string]$Notes = "LinDesk update.",
+    [string]$Version = "",
+    [string]$Notes = "",
     [string]$MinSupportedVersion = "1.0.0",
     [string]$InnoSetupDir = "D:\Inno Setup 6",
     [string]$IssPath = "",
@@ -23,8 +24,8 @@ function Wait-BeforeExit {
 
 trap {
     Write-Host ""
-    Write-Host "Failed to build installer or generate update metadata."
-    Write-Host $_.Exception.Message
+    Write-Host "Failed to build installer or generate update metadata." -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
     Wait-BeforeExit
     exit 1
 }
@@ -49,11 +50,90 @@ if (-not (Test-Path $cmakePath)) {
     throw "CMakeLists.txt was not found at $cmakePath."
 }
 
+# Read CMake value to get current version
 $cmakeContent = Get-Content -LiteralPath $cmakePath -Raw
 $major = Read-CMakeValue -Content $cmakeContent -Name "LINDESK_VERSION_MAJOR"
 $minor = Read-CMakeValue -Content $cmakeContent -Name "LINDESK_VERSION_MINOR"
 $patch = Read-CMakeValue -Content $cmakeContent -Name "LINDESK_VERSION_PATCH"
-$version = "$major.$minor.$patch"
+$currentVersion = "$major.$minor.$patch"
+
+# Check if running interactively
+$isInteractive = $true
+if ($Version -or $NoPause) {
+    $isInteractive = $false
+}
+
+$version = $Version
+$notes = $Notes
+
+if ($isInteractive) {
+    Write-Host "=== LinDesk Packaging Assistant ===" -ForegroundColor Cyan
+    Write-Host "Current version in CMakeLists.txt is: $currentVersion" -ForegroundColor Yellow
+    
+    $inputVersion = Read-Host "Enter new version number (e.g. 1.0.8, press Enter to keep current)"
+    if ([string]::IsNullOrWhiteSpace($inputVersion)) {
+        $version = $currentVersion
+    } else {
+        if ($inputVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Invalid version format. Expected X.Y.Z (e.g. 1.0.8)"
+        }
+        $version = $inputVersion
+    }
+
+    $inputNotes = Read-Host "Enter release description / update notes (press Enter for default)"
+    if ([string]::IsNullOrWhiteSpace($inputNotes)) {
+        $notes = "LinDesk update."
+    } else {
+        $notes = $inputNotes
+    }
+} else {
+    if ([string]::IsNullOrEmpty($version)) {
+        $version = $currentVersion
+    }
+    if ([string]::IsNullOrEmpty($notes)) {
+        $notes = "LinDesk update."
+    }
+}
+
+# If version changed, update CMakeLists.txt and reconfigure
+$versionChanged = $version -ne $currentVersion
+if ($versionChanged) {
+    Write-Host "Updating version to $version in CMakeLists.txt..." -ForegroundColor Green
+    $versionParts = $version -split '\.'
+    $newMajor = $versionParts[0]
+    $newMinor = $versionParts[1]
+    $newPatch = $versionParts[2]
+
+    $cmakeContent = $cmakeContent -replace 'set\(\s*LINDESK_VERSION_MAJOR\s+\d+\s*\)', "set(LINDESK_VERSION_MAJOR $newMajor)"
+    $cmakeContent = $cmakeContent -replace 'set\(\s*LINDESK_VERSION_MINOR\s+\d+\s*\)', "set(LINDESK_VERSION_MINOR $newMinor)"
+    $cmakeContent = $cmakeContent -replace 'set\(\s*LINDESK_VERSION_PATCH\s+\d+\s*\)', "set(LINDESK_VERSION_PATCH $newPatch)"
+    Set-Content -LiteralPath $cmakePath -Value $cmakeContent -Force
+
+    Write-Host "Reconfiguring CMake..." -ForegroundColor Green
+    & cmake -S $repoRoot -B (Join-Path $repoRoot "build/build_64")
+    if ($LASTEXITCODE -ne 0) {
+        throw "CMake configuration failed."
+    }
+}
+
+# Compile Release configuration
+$shouldBuild = $true
+if ($isInteractive) {
+    $buildOption = Read-Host "Compile project in Release mode before packaging? [Y/n]"
+    if ([string]::IsNullOrWhiteSpace($buildOption) -or $buildOption.Trim().ToLower() -eq 'y' -or $buildOption.Trim().ToLower() -eq 'yes') {
+        $shouldBuild = $true
+    } else {
+        $shouldBuild = $false
+    }
+}
+
+if ($shouldBuild) {
+    Write-Host "Building LinDesk in Release mode..." -ForegroundColor Green
+    & cmake --build (Join-Path $repoRoot "build/build_64") --config Release
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build LinDesk in Release mode."
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($InstallerDir)) {
     $InstallerDir = Join-Path $repoRoot "installer"
@@ -76,7 +156,7 @@ if (-not (Test-Path $IssPath)) {
     throw "Inno Setup script was not found: $IssPath"
 }
 
-Write-Host "Building installer with Inno Setup..."
+Write-Host "Building installer with Inno Setup..." -ForegroundColor Green
 Write-Host "  ISCC: $isccPath"
 Write-Host "  ISS: $IssPath"
 & $isccPath $IssPath
@@ -100,7 +180,7 @@ $metadata = [ordered]@{
     channel = $Channel
     url = $url
     sha256 = $hash
-    notes = $Notes
+    notes = $notes
     publishedAt = $publishedAt
     minSupportedVersion = $MinSupportedVersion
 }
@@ -112,7 +192,7 @@ if (-not (Test-Path $outputDir)) {
 }
 
 if (Test-Path $OutputPath) {
-    Write-Host "Existing update metadata found. Overwriting: $OutputPath"
+    Write-Host "Existing update metadata found. Overwriting: $OutputPath" -ForegroundColor Yellow
     Remove-Item -LiteralPath $OutputPath -Force
 }
 
@@ -120,7 +200,7 @@ try {
     Set-Content -LiteralPath $OutputPath -Value $json -Encoding UTF8 -Force
 
     Write-Host ""
-    Write-Host "Success: built installer and generated update metadata."
+    Write-Host "Success: built installer and generated update metadata." -ForegroundColor Green
     Write-Host "  Version: $version"
     Write-Host "  ISS: $IssPath"
     Write-Host "  Installer: $installerPath"
@@ -131,8 +211,8 @@ try {
     exit 0
 } catch {
     Write-Host ""
-    Write-Host "Failed to generate update metadata."
-    Write-Host $_.Exception.Message
+    Write-Host "Failed to generate update metadata." -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
     Wait-BeforeExit
     exit 1
 }
