@@ -625,6 +625,10 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
     }
 
     if (m_sharedRuntime) {
+        if (!m_webView) {
+            m_pendingSharedManagerMessages.append(message);
+            return;
+        }
         if (type == QString::fromLatin1(WidgetMessageType::UpdateHostGeometry)) {
             const QRect hostGeometry(
                 message.value(QStringLiteral("x")).toInt(x()),
@@ -1012,6 +1016,10 @@ void LinWidgetWebViewRuntime::renderHtmlWidget()
                                 if (m_isDevelopment) {
                                     webView->OpenDevToolsWindow();
                                 }
+                                for (const QJsonObject& msg : m_pendingSharedManagerMessages) {
+                                    handleManagerMessage(msg);
+                                }
+                                m_pendingSharedManagerMessages.clear();
                             }
                             return S_OK;
                         }).Get());
@@ -1135,6 +1143,10 @@ void LinWidgetWebViewRuntime::renderSharedHtmlRuntime()
                                 const QString uri = QUrl::fromLocalFile(entryPath).toString();
                                 appendLog(QStringLiteral("info"), QStringLiteral("navigate shared runtime=%1").arg(uri));
                                 webView->Navigate(reinterpret_cast<LPCWSTR>(uri.utf16()));
+                                for (const QJsonObject& msg : m_pendingSharedManagerMessages) {
+                                    handleManagerMessage(msg);
+                                }
+                                m_pendingSharedManagerMessages.clear();
                             }
                             return S_OK;
                         }).Get());

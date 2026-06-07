@@ -69,7 +69,7 @@ public:
     void syncWidgetWindowLayer(const QString& instanceId);
     void syncAllWidgetWindowLayers();
     void stopWidget(const QString& instanceId);
-    void stopAll();
+    void stopAll(bool includeWallpaper = true);
     WidgetInstance widgetInstance(const QString& instanceId) const;
     void broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message);
 

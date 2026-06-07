@@ -791,7 +791,7 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
         return false;
     }
 
-    stopAll();
+    stopAll(false);
 
     QVector<WidgetLayoutState> states;
     const QString path = configPath.isEmpty() ? ConfigManager::defaultConfigPath() : configPath;
@@ -1050,7 +1050,7 @@ WId WidgetManager::hostParentWindow() const
 void WidgetManager::setDesktopLayerWindow(WId layerWindow)
 {
     m_desktopLayerWindow = layerWindow;
-    if (!m_activeWallpaper) {
+    if (m_activeWallpaperId.isEmpty()) {
         loadWallpaperConfig();
     }
     syncAllWidgetWindowLayers();
@@ -1473,27 +1473,34 @@ QStringList WidgetManager::watchedDirectoriesForPackage(const QString& packagePa
     return result;
 }
 
-void WidgetManager::stopAll()
+void WidgetManager::stopAll(bool includeWallpaper)
 {
     const bool wasStoppingAll = m_stoppingAll;
     m_stoppingAll = true;
     const QStringList ids = m_runningWidgets.values();
     for (const QString& id : ids) {
+        WidgetInstance inst = m_instances.value(id);
+        if (!includeWallpaper && inst.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            continue;
+        }
         stopWidget(id);
     }
-    m_runningWidgets.clear();
-    m_instances.clear();
-    qDeleteAll(m_systemInfoWatchTimers);
-    m_systemInfoWatchTimers.clear();
-    if (m_webViewRuntime) {
-        LinWidgetWebViewRuntime* runtime = m_webViewRuntime;
-        m_webViewRuntime = nullptr;
-        runtime->close();
-        runtime->deleteLater();
+
+    if (includeWallpaper) {
+        m_runningWidgets.clear();
+        m_instances.clear();
+        qDeleteAll(m_systemInfoWatchTimers);
+        m_systemInfoWatchTimers.clear();
+        if (m_webViewRuntime) {
+            LinWidgetWebViewRuntime* runtime = m_webViewRuntime;
+            m_webViewRuntime = nullptr;
+            runtime->close();
+            runtime->deleteLater();
+        }
+        m_widgetWindows.remove(QString::fromLatin1(kSharedHostId));
+        m_sharedWebViewWindow = 0;
+        m_sharedWebViewWindowClass.clear();
     }
-    m_widgetWindows.remove(QString::fromLatin1(kSharedHostId));
-    m_sharedWebViewWindow = 0;
-    m_sharedWebViewWindowClass.clear();
     m_stoppingAll = wasStoppingAll;
 }
 
@@ -2115,7 +2122,7 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
     } else {
         instance.isDevelopment = true;
     }
-    instance.autoReload = instance.isDevelopment;
+    instance.autoReload = false;
     instance.grantedPermissions = grantedPermissionsForManifest(manifest, packagePath, instance.isDevelopment);
     
     QRect screenGeom(0, 0, 1920, 1080);

@@ -618,6 +618,10 @@ void LinDesktop::stopDesktopHostWindowMonitor()
 
 void LinDesktop::handleDesktopHostWindowEvent(HWND hwnd, DWORD event)
 {
+    if (hwnd && isOwnLinWidgetRuntimeWindowOrDescendant(hwnd)) {
+        return;
+    }
+
     if (event == EVENT_OBJECT_REORDER ||
         event == EVENT_OBJECT_SHOW ||
         event == EVENT_OBJECT_HIDE ||
@@ -1084,6 +1088,10 @@ bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* r
             shellEvent == HSHELL_REDRAW ||
             shellEvent == HSHELL_WINDOWREPLACED ||
             shellEvent == HSHELL_WINDOWREPLACING) {
+            HWND eventHwnd = reinterpret_cast<HWND>(msg->lParam);
+            if (eventHwnd && isOwnLinWidgetRuntimeWindowOrDescendant(eventHwnd)) {
+                return QWidget::nativeEvent(eventType, message, result);
+            }
             scheduleLinWidgetLayerRecovery();
         }
         return QWidget::nativeEvent(eventType, message, result);
