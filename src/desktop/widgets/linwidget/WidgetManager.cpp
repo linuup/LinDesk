@@ -1148,14 +1148,37 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         logicalLayerGeometry.moveTopLeft(QPoint(0, 0));
     }
 
-    ShowWindow(widgetWindow, SW_SHOWNOACTIVATE);
-
-    UINT setWindowFlags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE;
-
     HWND insertAfter = inProcessSharedRuntime ? HWND_TOP : layerWindow;
     if (hasActiveWallpaper()) {
         insertAfter = layerWindow;
     }
+
+    // Check if window is already correctly positioned and Z-ordered to prevent infinite loops
+    RECT currentRect = {};
+    GetWindowRect(widgetWindow, &currentRect);
+    POINT ptLeftTop = { currentRect.left, currentRect.top };
+    if (parentHwnd) {
+        ScreenToClient(parentHwnd, &ptLeftTop);
+    }
+    
+    bool geometryCorrect = (ptLeftTop.x == nativeLayerGeometry.x() &&
+                            ptLeftTop.y == nativeLayerGeometry.y() &&
+                            (currentRect.right - currentRect.left) == nativeLayerGeometry.width() &&
+                            (currentRect.bottom - currentRect.top) == nativeLayerGeometry.height());
+
+    bool zOrderCorrect = false;
+    if (insertAfter == layerWindow) {
+        zOrderCorrect = (GetWindow(widgetWindow, GW_HWNDPREV) == layerWindow);
+    } else if (insertAfter == HWND_TOP) {
+        zOrderCorrect = (GetWindow(widgetWindow, GW_HWNDFIRST) == widgetWindow);
+    }
+
+    if (geometryCorrect && zOrderCorrect && IsWindowVisible(widgetWindow)) {
+        return; // Already in correct position, Z-order, and visible, skip to prevent recursive loop
+    }
+
+    UINT setWindowFlags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE;
+    ShowWindow(widgetWindow, SW_SHOWNOACTIVATE);
 
     const BOOL ok = SetWindowPos(widgetWindow,
                                  insertAfter,
