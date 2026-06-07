@@ -1131,9 +1131,15 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
     RECT layerClientRect = {};
     GetClientRect(layerWindow, &layerClientRect);
     const bool inProcessSharedRuntime = m_webViewRuntime != nullptr;
+    POINT pt = { 0, 0 };
+    ClientToScreen(layerWindow, &pt);
+    HWND parentHwnd = GetParent(layerWindow);
+    if (parentHwnd) {
+        ScreenToClient(parentHwnd, &pt);
+    }
     const QRect nativeLayerGeometry = inProcessSharedRuntime
-        ? QRect(0,
-                0,
+        ? QRect(pt.x,
+                pt.y,
                 qMax(0L, layerClientRect.right - layerClientRect.left),
                 qMax(0L, layerClientRect.bottom - layerClientRect.top))
         : windowRect(layerWindow);
@@ -1217,7 +1223,13 @@ bool WidgetManager::ensureSharedHost(QString* errorMessage)
 
     WidgetInstance sharedInstance = instance;
     sharedInstance.geometry = QRect(80, 80, manifest.width, manifest.height);
-    const WId parentWindow = m_desktopLayerWindow != 0 ? m_desktopLayerWindow : m_hostParentWindow;
+    WId parentWindow = m_desktopLayerWindow != 0 ? m_desktopLayerWindow : m_hostParentWindow;
+    if (m_desktopLayerWindow != 0) {
+        HWND parentHwnd = GetParent(reinterpret_cast<HWND>(m_desktopLayerWindow));
+        if (parentHwnd) {
+            parentWindow = reinterpret_cast<WId>(parentHwnd);
+        }
+    }
     auto* runtime = new LinWidgetWebViewRuntime(QString::fromLatin1(kSharedHostId),
                                                 QString(),
                                                 sharedInstance.geometry,
