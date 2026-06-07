@@ -204,6 +204,7 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
     entry.sourcePath.clear();
     entry.autoReload = false;
     entry.autoLoad = manifest.autoLoad;
+    entry.role = manifest.role;
     entry.permissionsGranted = PermissionManager().normalizePermissions(entry.permissionsGranted);
     entry.updatedAt = now;
 
@@ -253,6 +254,7 @@ bool WidgetRegistryManager::addDevelopmentProject(const QString& sourcePath, QSt
     entry.sourcePath = entry.packagePath;
     entry.autoReload = true;
     entry.autoLoad = manifest.autoLoad;
+    entry.role = manifest.role;
     entry.permissionsGranted = PermissionManager().normalizePermissions(
         entry.permissionsGranted + QStringList{ QStringLiteral("network"), QStringLiteral("storage"), QStringLiteral("desktop") });
     entry.updatedAt = now;

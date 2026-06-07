@@ -464,10 +464,22 @@ select,
     }
     removeWidget({ instanceId: id });
 
+    const isWallpaper = message.role === 'wallpaper';
     const panel = document.createElement('section');
-    panel.className = 'linwidget-panel';
+    panel.className = isWallpaper ? 'linwidget-panel linwidget-wallpaper' : 'linwidget-panel';
     panel.dataset.instanceId = id;
-    panel.style.zIndex = String(clampNumber(message.zOrder, widgets.size + 1));
+    if (isWallpaper) {
+      panel.style.zIndex = '1';
+      panel.style.left = '0px';
+      panel.style.top = '0px';
+      panel.style.width = '100%';
+      panel.style.height = '100%';
+      if (message.interactive === false) {
+        panel.style.pointerEvents = 'none';
+      }
+    } else {
+      panel.style.zIndex = String(clampNumber(message.zOrder, widgets.size + 1));
+    }
     const constraints = {
       minWidth: message.minWidth,
       minHeight: message.minHeight,
@@ -522,7 +534,7 @@ select,
     resizeFrame.className = 'linwidget-resize-frame';
     const resizeModes = ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'];
 
-    const resizable = message.resizable !== false;
+    const resizable = !isWallpaper && message.resizable !== false;
 
     panel.addEventListener('pointermove', event => updateResizeHover(widgets.get(id), event));
     panel.addEventListener('pointerleave', () => {
@@ -582,9 +594,11 @@ select,
     });
 
     panel.appendChild(iframe);
-    panel.appendChild(shield);
-    panel.appendChild(resizeFrame);
-    resizeHandles.forEach(handle => panel.appendChild(handle));
+    if (!isWallpaper) {
+      panel.appendChild(shield);
+      panel.appendChild(resizeFrame);
+      resizeHandles.forEach(handle => panel.appendChild(handle));
+    }
     widgets.set(id, {
       panel,
       iframe,
@@ -594,16 +608,19 @@ select,
       reloadAttempts: 0,
       constraints,
       resizable,
-      resizeUiVisible: true,
+      resizeUiVisible: !isWallpaper,
       development: Boolean(message.development),
       manifestId: String(message.manifestId || '').trim(),
       registryId: String(message.registryId || message.manifestId || '').trim(),
       multiInstance: Boolean(message.multiInstance),
       accessToken: String(message.accessToken || '').trim(),
       name: String(message.name || '').trim(),
-      permissions: Array.isArray(message.permissions) ? message.permissions : []
+      permissions: Array.isArray(message.permissions) ? message.permissions : [],
+      role: message.role
     });
-    applyGeometry(panel, message.geometry || message, constraints);
+    if (!isWallpaper) {
+      applyGeometry(panel, message.geometry || message, constraints);
+    }
     surface.appendChild(panel);
     const record = widgets.get(id);
     if (record) {
@@ -631,7 +648,7 @@ select,
   const updateWidgetGeometry = message => {
     const id = String(message.instanceId || message.widgetId || '').trim();
     const record = widgets.get(id);
-    if (!record) {
+    if (!record || record.role === 'wallpaper') {
       return;
     }
     applyGeometry(record.panel, message.geometry || message, record.constraints);

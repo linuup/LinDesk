@@ -58,6 +58,25 @@ inline QString linWidgetRegistryFilePath()
     return QDir(userLinWidgetsDir()).filePath(QStringLiteral("registry.json"));
 }
 
+inline QString userWallpapersDir()
+{
+    const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("LinWallpapers"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
+inline QString wallpaperRegistryFilePath()
+{
+    return QDir(userWallpapersDir()).filePath(QStringLiteral("registry.json"));
+}
+
+inline QString runtimeWallpapersDir()
+{
+    const QString dirPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/wallpapers"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
 inline QString linWidgetLogsDir()
 {
     const QString dirPath = userLocalConfigDir();

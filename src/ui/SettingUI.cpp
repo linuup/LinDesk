@@ -2880,27 +2880,14 @@ QString safeLinWidgetInstanceFileNameForSettings(QString instanceId)
 
 bool settingsEnsureDefaultLinWidgetsInstalled()
 {
-    const QDir sourceRoot(runtimeLinWidgetsDirForSettings());
-    if (!sourceRoot.exists()) {
-        return false;
-    }
-
+    // Do not auto-install any default widgets on first launch.
     const QString targetRoot = AppPaths::userLinWidgetsDir();
     const QString markerPath = QDir(targetRoot).filePath(QStringLiteral(".defaults-installed"));
     if (QFileInfo::exists(markerPath)) {
         return true;
     }
 
-    const QFileInfoList entries = sourceRoot.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QFileInfo& entry : entries) {
-        const QString targetPath = QDir(targetRoot).filePath(entry.fileName());
-        if (QFileInfo::exists(targetPath)) {
-            continue;
-        }
-        QString copyError;
-        settingsCopyLinWidgetDirectory(entry.absoluteFilePath(), targetPath, &copyError);
-    }
-
+    QDir().mkpath(targetRoot);
     QFile marker(markerPath);
     if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         marker.write("1\n");

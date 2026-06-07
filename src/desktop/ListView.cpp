@@ -64,6 +64,7 @@
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 
@@ -483,27 +484,15 @@ void ListView::setShowLinWidgetBlockedCells(bool show)
 
 void ListView::ensureBundledLinWidgetsInstalled()
 {
-    const QDir bundledDir(runtimeLinWidgetsDir());
-    if (!bundledDir.exists()) {
-        qDebug() << "[LinWidgetAutoLoad] runtime bundled widgets missing" << bundledDir.absolutePath();
-        return;
-    }
-
+    // Do not auto-install any bundled widgets on first launch.
+    // The user can install them via the Settings UI's Official widgets panel.
     const QString targetRoot = AppPaths::userLinWidgetsDir();
     const QString markerPath = QDir(targetRoot).filePath(QStringLiteral(".defaults-installed"));
     if (QFileInfo::exists(markerPath)) {
         return;
     }
 
-    const QFileInfoList entries = bundledDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QFileInfo& entry : entries) {
-        const QString targetPath = QDir(targetRoot).filePath(entry.fileName());
-        if (QFileInfo::exists(targetPath)) {
-            continue;
-        }
-        copyLinWidgetResourceDirectory(entry.absoluteFilePath(), targetPath);
-    }
-
+    QDir().mkpath(targetRoot);
     QFile marker(markerPath);
     if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         marker.write("1\n");
@@ -646,6 +635,31 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
 {
     Q_UNUSED(eventType);
     MSG* msg = static_cast<MSG*>(message);
+    if (msg && msg->message == WM_NCHITTEST) {
+        QPoint globalPos = QCursor::pos();
+        QPoint clientPos = mapFromGlobal(globalPos);
+
+        if (m_linWidgetManager) {
+            if (m_linWidgetManager->isWidgetAt(clientPos)) {
+                if (result) {
+                    *result = HTTRANSPARENT;
+                }
+                return true;
+            }
+
+            bool isWallpaperInteractive = m_linWidgetManager->isWallpaperInteractive();
+
+            if (isWallpaperInteractive) {
+                if (!findDesktopStateAt(clientPos)) {
+                    if (result) {
+                        *result = HTTRANSPARENT;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
     if (msg && msg->message == WM_HOTKEY) {
         handleHotkey(static_cast<int>(msg->wParam));
         if (result) {
@@ -1323,6 +1337,15 @@ void ListView::mousePressEvent(QMouseEvent* event)
         logListViewDpiTrace("mousePress", this, event->pos(), event->globalPos());
     }
 #endif
+    if (m_linWidgetManager) {
+        auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
+        if (activeWall && !activeWall->isInteractive()) {
+            QString buttonStr = event->button() == Qt::LeftButton ? QStringLiteral("left") :
+                                event->button() == Qt::RightButton ? QStringLiteral("right") :
+                                QStringLiteral("middle");
+            activeWall->mirrorMouseDown(event->x(), event->y(), buttonStr);
+        }
+    }
     RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
@@ -1401,6 +1424,12 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
+    if (m_linWidgetManager) {
+        auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
+        if (activeWall && !activeWall->isInteractive()) {
+            activeWall->mirrorMouseMove(event->x(), event->y());
+        }
+    }
     // handle multi-dragging
     if (m_isDragging && !m_ghosts.isEmpty()) {
         QPoint mousePos = event->globalPos();
@@ -1448,6 +1477,15 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (m_linWidgetManager) {
+        auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
+        if (activeWall && !activeWall->isInteractive()) {
+            QString buttonStr = event->button() == Qt::LeftButton ? QStringLiteral("left") :
+                                event->button() == Qt::RightButton ? QStringLiteral("right") :
+                                QStringLiteral("middle");
+            activeWall->mirrorMouseUp(event->x(), event->y(), buttonStr);
+        }
+    }
     // No-op for Item-based drags, as QDropEvent now handles them
     if (m_isDragging) {
         if (!m_draggedDesktopPath.isEmpty()) {

@@ -125,6 +125,7 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("maxWidth"), manifest.maxWidth);
     object.insert(QStringLiteral("maxHeight"), manifest.maxHeight);
     object.insert(QStringLiteral("type"), runtimeTypeToString(manifest.type));
+    object.insert(QStringLiteral("role"), manifest.role);
     object.insert(QStringLiteral("transparent"), manifest.transparent);
     object.insert(QStringLiteral("resizable"), manifest.resizable);
     object.insert(QStringLiteral("autoLoad"), manifest.autoLoad);
@@ -150,7 +151,18 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         !requireString(object, QStringLiteral("description"), false, &parsed.description, errorMessage) ||
         !requireString(object, QStringLiteral("entry"), false, &parsed.entry, errorMessage) ||
         !requireString(object, QStringLiteral("settings"), false, &parsed.settings, errorMessage) ||
+        !requireString(object, QStringLiteral("role"), false, &parsed.role, errorMessage) ||
         !requireString(object, QStringLiteral("icon"), false, &parsed.icon, errorMessage)) {
+        return false;
+    }
+    if (parsed.role.isEmpty()) {
+        parsed.role = QStringLiteral("widget");
+    }
+    if (parsed.role.compare(QStringLiteral("widget"), Qt::CaseInsensitive) != 0 &&
+        parsed.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) != 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget manifest field role must be widget or wallpaper.");
+        }
         return false;
     }
 
@@ -204,7 +216,8 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         const QString permission = value.toString().trimmed().toLower();
         if (permission != QStringLiteral("network") &&
             permission != QStringLiteral("storage") &&
-            permission != QStringLiteral("desktop")) {
+            permission != QStringLiteral("desktop") &&
+            permission != QStringLiteral("audio")) {
             if (errorMessage) {
                 *errorMessage = QStringLiteral("Widget manifest permission is not supported: %1.").arg(permission);
             }
@@ -362,6 +375,7 @@ QJsonObject registryEntryToJson(const WidgetRegistryEntry& entry)
     object.insert(QStringLiteral("icon"), entry.icon);
     object.insert(QStringLiteral("packagePath"), entry.packagePath);
     object.insert(QStringLiteral("runtimeType"), entry.runtimeType);
+    object.insert(QStringLiteral("role"), entry.role);
     object.insert(QStringLiteral("defaultWidth"), entry.defaultSize.width());
     object.insert(QStringLiteral("defaultHeight"), entry.defaultSize.height());
     object.insert(QStringLiteral("isDevelopment"), entry.isDevelopment);
@@ -392,6 +406,7 @@ bool registryEntryFromJson(const QJsonObject& object, WidgetRegistryEntry* entry
     parsed.icon = object.value(QStringLiteral("icon")).toString().trimmed();
     parsed.packagePath = object.value(QStringLiteral("packagePath")).toString().trimmed();
     parsed.runtimeType = object.value(QStringLiteral("runtimeType")).toString(QStringLiteral("html")).trimmed();
+    parsed.role = object.value(QStringLiteral("role")).toString(QStringLiteral("widget")).trimmed();
     parsed.defaultSize = QSize(
         object.value(QStringLiteral("defaultWidth")).toInt(),
         object.value(QStringLiteral("defaultHeight")).toInt());

@@ -14,6 +14,7 @@
 namespace LinWidget {
 
 class LinWidgetWebViewRuntime;
+class LinWallpaperWebViewRuntime;
 
 class WidgetManager : public QObject {
     Q_OBJECT
@@ -23,6 +24,12 @@ public:
     ~WidgetManager() override;
 
     bool start();
+    bool startWallpaper(const QString& packagePath, bool interactive = false, QString* errorMessage = nullptr);
+    void stopWallpaper();
+    LinWallpaperWebViewRuntime* activeWallpaperRuntime() const;
+    void syncWallpaperWindowLayer();
+    void loadWallpaperConfig();
+    void saveWallpaperConfig(const QString& packagePath, bool interactive);
     bool launchWidgetPackage(const QString& packagePath,
                              const QRect& geometry,
                              QString* instanceId = nullptr,
@@ -65,6 +72,10 @@ public:
     void stopAll();
     WidgetInstance widgetInstance(const QString& instanceId) const;
     void broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message);
+
+    bool hasActiveWallpaper() const;
+    bool isWidgetAt(const QPoint& clientPos) const;
+    bool isWallpaperInteractive() const;
 
 signals:
     void widgetLaunched(const QString& instanceId);
@@ -120,6 +131,8 @@ private:
     QStringList watchedFilesForPackage(const QString& packagePath) const;
     QStringList watchedDirectoriesForPackage(const QString& packagePath) const;
 
+    QVector<WidgetLayoutState> filterWallpapers(const QVector<WidgetLayoutState>& states) const;
+
     LayoutManager m_layout;
     PermissionManager m_permissions;
     WId m_hostParentWindow = 0;
@@ -139,6 +152,10 @@ private:
     bool m_stoppingAll = false;
     bool m_showWebViewBounds = false;
     bool m_enabled = true;
+    LinWallpaperWebViewRuntime* m_activeWallpaper = nullptr;
+    QString m_activeWallpaperId;
+    QString m_activeWallpaperPackagePath;
+    bool m_activeWallpaperInteractive = false;
 };
 
 }

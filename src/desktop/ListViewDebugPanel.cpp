@@ -420,26 +420,14 @@ QStringList resetAllBundledLinWidgets(QString* errorMessage = nullptr)
 
 void ensureDefaultLinWidgetsInstalled()
 {
-    const QDir bundledDir(bundledLinWidgetsDir());
-    if (!bundledDir.exists()) {
-        return;
-    }
-
+    // Do not auto-install any default widgets on first launch.
     const QString targetRoot = userLinWidgetsDir();
     const QString markerPath = QDir(targetRoot).filePath(QStringLiteral(".defaults-installed"));
     if (QFileInfo::exists(markerPath)) {
         return;
     }
 
-    const QFileInfoList entries = bundledDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QFileInfo& entry : entries) {
-        const QString targetPath = QDir(targetRoot).filePath(entry.fileName());
-        if (QFileInfo::exists(targetPath)) {
-            continue;
-        }
-        copyDirectoryForFirstInstall(entry.absoluteFilePath(), targetPath);
-    }
-
+    QDir().mkpath(targetRoot);
     QFile marker(markerPath);
     if (marker.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         marker.write("1\n");

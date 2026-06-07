@@ -6,6 +6,7 @@
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
+#include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "services/AppPaths.h"
 #include "services/DpiCoordinateHelper.h"
 
@@ -424,6 +425,7 @@ WidgetManager::~WidgetManager()
     qDeleteAll(m_systemInfoWatchTimers);
     m_systemInfoWatchTimers.clear();
     stopAll();
+    stopWallpaper();
 }
 
 bool WidgetManager::start()
@@ -813,6 +815,9 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
                 if (!WidgetPackage::loadManifest(entry.packagePath, &manifest, nullptr)) {
                     continue;
                 }
+                if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+                    continue;
+                }
                 const QString instanceId = instanceLayoutId(manifest, entry.isDevelopment);
                 if (knownInstanceIds.contains(instanceId)) {
                     for (WidgetLayoutState& state : states) {
@@ -857,6 +862,10 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
             continue;
         }
 
+        if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            continue;
+        }
+
         WidgetInstance instance;
         instance.instanceId = state.instanceId;
         instance.packagePath = state.packagePath;
@@ -891,15 +900,37 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
     return ok;
 }
 
+QVector<WidgetLayoutState> WidgetManager::filterWallpapers(const QVector<WidgetLayoutState>& states) const
+{
+    QVector<WidgetLayoutState> filtered;
+    for (const WidgetLayoutState& state : states) {
+        WidgetInstance inst = m_instances.value(state.instanceId);
+        if (inst.instanceId.isEmpty()) {
+            WidgetManifest manifest;
+            if (WidgetPackage::loadManifest(state.packagePath, &manifest)) {
+                if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+                    continue;
+                }
+            }
+        } else {
+            if (inst.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+                continue;
+            }
+        }
+        filtered.append(state);
+    }
+    return filtered;
+}
+
 bool WidgetManager::saveToConfig(const QString& configPath, QString* errorMessage) const
 {
     const QString path = configPath.isEmpty() ? ConfigManager::defaultConfigPath() : configPath;
-    return ConfigManager::saveLayout(path, deduplicatedLayoutStates(m_layout.states()), errorMessage);
+    return ConfigManager::saveLayout(path, deduplicatedLayoutStates(filterWallpapers(m_layout.states())), errorMessage);
 }
 
 QVector<WidgetLayoutState> WidgetManager::layoutStates() const
 {
-    QVector<WidgetLayoutState> states = deduplicatedLayoutStates(m_layout.states());
+    QVector<WidgetLayoutState> states = deduplicatedLayoutStates(filterWallpapers(m_layout.states()));
     if (!m_enabled) {
         for (WidgetLayoutState& state : states) {
             state.visible = false;
@@ -1019,6 +1050,9 @@ WId WidgetManager::hostParentWindow() const
 void WidgetManager::setDesktopLayerWindow(WId layerWindow)
 {
     m_desktopLayerWindow = layerWindow;
+    if (!m_activeWallpaper) {
+        loadWallpaperConfig();
+    }
     syncAllWidgetWindowLayers();
 }
 
@@ -1039,6 +1073,34 @@ void WidgetManager::setShowWebViewBounds(bool enabled)
 bool WidgetManager::showWebViewBounds() const
 {
     return m_showWebViewBounds;
+}
+
+bool WidgetManager::hasActiveWallpaper() const
+{
+    for (const WidgetInstance& instance : m_instances) {
+        if (instance.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
+{
+    for (const WidgetInstance& instance : m_instances) {
+        if (instance.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            continue;
+        }
+        if (instance.geometry.contains(clientPos)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool WidgetManager::isWallpaperInteractive() const
+{
+    return hasActiveWallpaper();
 }
 
 void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
@@ -1084,8 +1146,13 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
 
     UINT setWindowFlags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE;
 
+    HWND insertAfter = inProcessSharedRuntime ? HWND_TOP : layerWindow;
+    if (hasActiveWallpaper()) {
+        insertAfter = layerWindow;
+    }
+
     const BOOL ok = SetWindowPos(widgetWindow,
-                                 inProcessSharedRuntime ? HWND_TOP : layerWindow,
+                                 insertAfter,
                                  nativeLayerGeometry.x(),
                                  nativeLayerGeometry.y(),
                                  nativeLayerGeometry.width(),
@@ -1115,6 +1182,7 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
 void WidgetManager::syncAllWidgetWindowLayers()
 {
     syncWidgetWindowLayer(QString::fromLatin1(kSharedHostId));
+    syncWallpaperWindowLayer();
 }
 
 bool WidgetManager::ensureSharedHost(QString* errorMessage)
@@ -1995,6 +2063,181 @@ void WidgetManager::saveToDefaultConfig()
     QString errorMessage;
     if (!saveToConfig(QString(), &errorMessage) && !errorMessage.isEmpty()) {
         emit widgetError(QString(), errorMessage);
+    }
+}
+
+bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive, QString* errorMessage)
+{
+    if (!m_enabled) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("LinWidgets runtime is disabled.");
+        }
+        return false;
+    }
+
+    WidgetManifest manifest;
+    if (!WidgetPackage::loadManifest(packagePath, &manifest, errorMessage)) {
+        return false;
+    }
+
+    if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) != 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Selected package is not a wallpaper.");
+        }
+        return false;
+    }
+
+    stopWallpaper();
+
+    m_activeWallpaperPackagePath = packagePath;
+    m_activeWallpaperId = manifest.id;
+    m_activeWallpaperInteractive = interactive;
+
+    WidgetInstance instance;
+    instance.instanceId = makeInstanceId(manifest);
+    instance.packagePath = packagePath;
+    instance.manifest = manifest;
+    if (packagePath.contains(QStringLiteral("/LinWidgets/"), Qt::CaseInsensitive) || 
+        packagePath.contains(QStringLiteral("\\LinWidgets\\"), Qt::CaseInsensitive)) {
+        instance.isDevelopment = false;
+    } else {
+        instance.isDevelopment = true;
+    }
+    instance.autoReload = instance.isDevelopment;
+    instance.grantedPermissions = grantedPermissionsForManifest(manifest, packagePath, instance.isDevelopment);
+    
+    QRect screenGeom(0, 0, 1920, 1080);
+    if (QScreen* screen = QGuiApplication::primaryScreen()) {
+        screenGeom = screen->geometry();
+    }
+    instance.geometry = screenGeom;
+
+    WidgetLayoutState layoutState;
+    layoutState.instanceId = instance.instanceId;
+    layoutState.packagePath = packagePath;
+    layoutState.registryId = registryIdForManifest(manifest);
+    layoutState.geometry = screenGeom;
+    layoutState.visible = true;
+    layoutState.isDevelopment = instance.isDevelopment;
+    layoutState.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+
+    QString launchError;
+    if (!launchWidgetInstance(instance, layoutState, &launchError)) {
+        if (errorMessage) {
+            *errorMessage = launchError;
+        }
+        return false;
+    }
+
+    saveWallpaperConfig(packagePath, interactive);
+    return true;
+}
+
+void WidgetManager::stopWallpaper()
+{
+    QString wallpaperInstanceId;
+    for (const WidgetInstance& instance : m_instances) {
+        if (instance.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            wallpaperInstanceId = instance.instanceId;
+            break;
+        }
+    }
+
+    if (!wallpaperInstanceId.isEmpty()) {
+        stopWidget(wallpaperInstanceId);
+    }
+    m_activeWallpaperId.clear();
+    m_activeWallpaperPackagePath.clear();
+    m_activeWallpaperInteractive = false;
+}
+
+LinWallpaperWebViewRuntime* WidgetManager::activeWallpaperRuntime() const
+{
+    return nullptr;
+}
+
+void WidgetManager::syncWallpaperWindowLayer()
+{
+#ifdef Q_OS_WIN
+    if (!m_activeWallpaper || m_desktopLayerWindow == 0) {
+        return;
+    }
+
+    HWND wallpaperHwnd = reinterpret_cast<HWND>(m_activeWallpaper->winId());
+    HWND listViewHwnd = reinterpret_cast<HWND>(m_desktopLayerWindow);
+    HWND desktopHwnd = GetParent(listViewHwnd);
+    if (!IsWindow(wallpaperHwnd) || !IsWindow(listViewHwnd) || !IsWindow(desktopHwnd)) {
+        return;
+    }
+
+    if (GetParent(wallpaperHwnd) != desktopHwnd) {
+        SetParent(wallpaperHwnd, desktopHwnd);
+        LONG_PTR style = GetWindowLongPtr(wallpaperHwnd, GWL_STYLE);
+        style &= ~WS_POPUP;
+        style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+        SetWindowLongPtr(wallpaperHwnd, GWL_STYLE, style);
+    }
+
+    RECT desktopClientRect = {};
+    GetClientRect(desktopHwnd, &desktopClientRect);
+    int w = desktopClientRect.right - desktopClientRect.left;
+    int h = desktopClientRect.bottom - desktopClientRect.top;
+
+    if (w > 0 && h > 0) {
+        m_activeWallpaper->setGeometry(0, 0, w, h);
+    }
+    m_activeWallpaper->show();
+
+    SetWindowPos(wallpaperHwnd,
+                 listViewHwnd,
+                 0, 0, w, h,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+#endif
+}
+
+void WidgetManager::loadWallpaperConfig()
+{
+    const QString configPath = AppPaths::wallpaperRegistryFilePath();
+    if (!QFileInfo::exists(configPath)) {
+        return;
+    }
+
+    QFile file(configPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) {
+        return;
+    }
+
+    const QJsonObject activeObj = doc.object().value(QStringLiteral("activeWallpaper")).toObject();
+    const QString packagePath = activeObj.value(QStringLiteral("packagePath")).toString();
+    const bool interactive = activeObj.value(QStringLiteral("interactive")).toBool(false);
+
+    if (!packagePath.isEmpty() && QFileInfo::exists(packagePath)) {
+        QString error;
+        if (!startWallpaper(packagePath, interactive, &error)) {
+            qWarning() << "[WidgetManager] Failed to auto-load wallpaper:" << error;
+        }
+    }
+}
+
+void WidgetManager::saveWallpaperConfig(const QString& packagePath, bool interactive)
+{
+    const QString configPath = AppPaths::wallpaperRegistryFilePath();
+    QJsonObject activeObj;
+    activeObj.insert(QStringLiteral("id"), m_activeWallpaperId);
+    activeObj.insert(QStringLiteral("packagePath"), packagePath);
+    activeObj.insert(QStringLiteral("interactive"), interactive);
+
+    QJsonObject rootObj;
+    rootObj.insert(QStringLiteral("activeWallpaper"), activeObj);
+
+    QFile file(configPath);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(rootObj).toJson(QJsonDocument::Indented));
     }
 }
 

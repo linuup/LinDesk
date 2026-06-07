@@ -120,6 +120,7 @@ private:
     QMap<QString, QString> m_sharedWidgetHosts;
     QMap<QString, QStringList> m_sharedWidgetPermissions;
     QMap<QString, QString> m_sharedWidgetAccessTokens;
+    QMap<QString, QString> m_sharedWidgetRoles;
     QMap<QString, QString> m_virtualHostMappings;
     QVector<QJsonObject> m_pendingHostPageMessages;
     QVector<QJsonObject> m_pendingSharedManagerMessages;

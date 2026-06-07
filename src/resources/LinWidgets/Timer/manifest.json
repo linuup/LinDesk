@@ -10,5 +10,7 @@
   "minHeight": 100,
   "width": 220,
   "height": 240,
-  "permissions": []
+  "permissions": [
+    "storage"
+  ]
 }

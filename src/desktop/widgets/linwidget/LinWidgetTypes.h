@@ -21,6 +21,7 @@ struct WidgetManifest {
     QString author;
     QString description;
     RuntimeType type = RuntimeType::Html;
+    QString role = QStringLiteral("widget");
     int width = 300;
     int height = 120;
     int minWidth = 120;
@@ -68,6 +69,7 @@ struct WidgetRegistryEntry {
     QString icon;
     QString packagePath;
     QString runtimeType;
+    QString role = QStringLiteral("widget");
     QSize defaultSize;
     bool isDevelopment = false;
     QString sourcePath;

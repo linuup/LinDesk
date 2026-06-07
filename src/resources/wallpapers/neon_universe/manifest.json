@@ -1,0 +1,12 @@
+{
+  "id": "com.lindesk.wallpaper.neon_universe",
+  "name": "Neon Universe Interactive Starfield",
+  "version": "1.0.0",
+  "description": "An official dynamic web wallpaper featuring reactive particle dust, gravity attractions, and music visualizer elements.",
+  "type": "html",
+  "entry": "index.html",
+  "role": "wallpaper",
+  "permissions": [
+    "audio"
+  ]
+}

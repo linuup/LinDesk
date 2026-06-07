@@ -687,14 +687,21 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
             const QString accessToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
             const QJsonObject geometry = message.value(QStringLiteral("geometry")).toObject();
-            const QRect rect(
+            QRect rect(
                 geometry.value(QStringLiteral("x")).toInt(message.value(QStringLiteral("x")).toInt()),
                 geometry.value(QStringLiteral("y")).toInt(message.value(QStringLiteral("y")).toInt()),
                 geometry.value(QStringLiteral("width")).toInt(manifest.width),
                 geometry.value(QStringLiteral("height")).toInt(manifest.height));
+            const QString role = manifest.role;
+            if (role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+                if (QScreen* screen = QGuiApplication::primaryScreen()) {
+                    rect = screen->geometry();
+                }
+            }
             m_sharedWidgetGeometries.insert(instanceId, rect);
             m_sharedWidgetHosts.insert(instanceId, hostName);
             m_sharedWidgetAccessTokens.insert(instanceId, accessToken);
+            m_sharedWidgetRoles.insert(instanceId, role);
             appendLog(QStringLiteral("hit"), QStringLiteral("added shared rect id=%1 rect=%2,%3 %4x%5 rectCount=%6")
                 .arg(instanceId,
                      QString::number(rect.x()),
@@ -728,6 +735,7 @@ void LinWidgetWebViewRuntime::handleManagerMessage(const QJsonObject& message)
             m_sharedWidgetHosts.remove(instanceId);
             m_sharedWidgetPermissions.remove(instanceId);
             m_sharedWidgetAccessTokens.remove(instanceId);
+            m_sharedWidgetRoles.remove(instanceId);
             syncSharedRegion(QStringLiteral("remove widget"));
             appendLog(QStringLiteral("hit"), QStringLiteral("removed shared rect id=%1 rectCount=%2")
                 .arg(instanceId, QString::number(m_sharedWidgetGeometries.size())));
@@ -1508,6 +1516,7 @@ QJsonObject LinWidgetWebViewRuntime::widgetInstancePayload(const QString& instan
     payload.insert(QStringLiteral("autoReload"), autoReload);
     payload.insert(QStringLiteral("permissions"), permissionArray);
     payload.insert(QStringLiteral("geometry"), geometryObject);
+    payload.insert(QStringLiteral("role"), manifest.role);
     payload.insert(QStringLiteral("entryUrl"), entryUrl);
     return payload;
 }
@@ -1558,10 +1567,17 @@ bool LinWidgetWebViewRuntime::mapWidgetVirtualHost(const QString& hostName, cons
     }
     const std::wstring host = hostName.toStdWString();
     const std::wstring folder = QDir::toNativeSeparators(packagePath).toStdWString();
-    return SUCCEEDED(webView3->SetVirtualHostNameToFolderMapping(
+    const HRESULT hr = webView3->SetVirtualHostNameToFolderMapping(
         host.c_str(),
         folder.c_str(),
-        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS));
+        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS);
+    if (FAILED(hr)) {
+        qWarning() << "[LinWidgetWebViewRuntime] SetVirtualHostNameToFolderMapping failed with"
+                   << QString::number(hr, 16)
+                   << "for host:" << hostName
+                   << "folder:" << packagePath;
+    }
+    return SUCCEEDED(hr);
 #else
     Q_UNUSED(hostName);
     Q_UNUSED(packagePath);
@@ -1720,7 +1736,15 @@ void LinWidgetWebViewRuntime::updateNativeWindowRegion(void* windowHandle)
         return;
     }
 
-    if (m_showWebViewBounds || m_forceShowSharedBackground) {
+    bool hasWallpaper = false;
+    for (auto it = m_sharedWidgetRoles.begin(); it != m_sharedWidgetRoles.end(); ++it) {
+        if (it.value().compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            hasWallpaper = true;
+            break;
+        }
+    }
+
+    if (m_showWebViewBounds || m_forceShowSharedBackground || hasWallpaper) {
         SetWindowRgn(window, nullptr, TRUE);
         return;
     }
