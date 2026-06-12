@@ -2163,6 +2163,8 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
     // Place the wallpaper window behind ListView immediately and dynamically apply WS_EX_LAYERED to ListView
     ListView* lv = ListView::instance();
     if (lv) {
+        wallpaper->stackUnder(lv);
+        lv->raise();
         lv->syncLinWidgetLayer();
     } else {
         syncWallpaperWindowLayer();

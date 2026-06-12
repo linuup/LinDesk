@@ -1,5 +1,6 @@
 #include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
+#include "desktop/ListView.h"
 #include "services/AppPaths.h"
 #include <QDir>
 #include <QFileInfo>
@@ -205,8 +206,9 @@ bool LinWallpaperWebViewRuntime::nativeEvent(const QByteArray& eventType, void* 
     } else if (msg->message == WM_WINDOWPOSCHANGING) {
         WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(msg->lParam);
         HWND listViewHwnd = nullptr;
-        if (parentWidget()) {
-            listViewHwnd = reinterpret_cast<HWND>(parentWidget()->winId());
+        ListView* lv = ListView::instance();
+        if (lv) {
+            listViewHwnd = reinterpret_cast<HWND>(lv->winId());
         }
         if (listViewHwnd) {
             wp->hwndInsertAfter = listViewHwnd;
