@@ -1001,10 +1001,6 @@ void LinDesktop::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
-    if (listView && listView->linWidgetManager() && listView->linWidgetManager()->hasActiveWallpaper()) {
-        return; // Let the Web Wallpaper show through from behind
-    }
-
     QPainter painter(this);
 
     if (m_transitionOpacity < 1.0f && !m_prevScaledBackImagePixmap.isNull()) {

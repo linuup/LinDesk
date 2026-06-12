@@ -2197,12 +2197,8 @@ void WidgetManager::stopWallpaper()
     }
 
     // Repaint LinDesktop to restore the static wallpaper
-    QWidget* lw = QWidget::find(m_desktopLayerWindow);
-    if (lw) {
-        QWidget* p = lw->parentWidget();
-        if (p) {
-            p->update();
-        }
+    if (lv && lv->parentWidget()) {
+        lv->parentWidget()->update();
     }
 }
 
