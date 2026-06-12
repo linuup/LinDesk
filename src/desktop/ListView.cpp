@@ -322,6 +322,21 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     setGeometry(QApplication::primaryScreen()->geometry());
     //setAutoFillBackground(true);
 
+#ifdef Q_OS_WIN
+    // Apply WS_EX_LAYERED so DWM composites ListView as a layered window.
+    // This allows the wallpaper WebView behind it to show through transparent (un-painted) regions.
+    QTimer::singleShot(0, this, [this]() {
+        HWND hwnd = reinterpret_cast<HWND>(winId());
+        if (hwnd) {
+            LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+            exStyle |= WS_EX_LAYERED;
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+            // LWA_ALPHA=255: fully opaque per-pixel, but painted transparent areas truly show through
+            SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+        }
+    });
+#endif
+
     monitor = new DesktopInfoMonitor(this);
     startListeningSpecialIcon();
     m_windowsConfigMonitor = new WindowsConfigMonitor(this);

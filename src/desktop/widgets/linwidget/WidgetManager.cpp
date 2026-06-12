@@ -1077,20 +1077,12 @@ bool WidgetManager::showWebViewBounds() const
 
 bool WidgetManager::hasActiveWallpaper() const
 {
-    for (const WidgetInstance& instance : m_instances) {
-        if (instance.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
-            return true;
-        }
-    }
-    return false;
+    return m_activeWallpaper != nullptr;
 }
 
 bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
 {
     for (const WidgetInstance& instance : m_instances) {
-        if (instance.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
-            continue;
-        }
         if (instance.geometry.contains(clientPos)) {
             return true;
         }
@@ -1148,10 +1140,9 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         logicalLayerGeometry.moveTopLeft(QPoint(0, 0));
     }
 
+    // Widget shared runtime is always above ListView.
+    // Wallpaper has its own dedicated window (m_activeWallpaper) placed behind ListView.
     HWND insertAfter = inProcessSharedRuntime ? HWND_TOP : layerWindow;
-    if (hasActiveWallpaper()) {
-        insertAfter = layerWindow;
-    }
 
     // Check if window is already correctly positioned and Z-ordered to prevent infinite loops
     RECT currentRect = {};
@@ -2135,72 +2126,59 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
     m_activeWallpaperId = manifest.id;
     m_activeWallpaperInteractive = interactive;
 
-    WidgetInstance instance;
-    instance.instanceId = makeInstanceId(manifest);
-    instance.packagePath = packagePath;
-    instance.manifest = manifest;
-    if (packagePath.contains(QStringLiteral("/LinWidgets/"), Qt::CaseInsensitive) || 
-        packagePath.contains(QStringLiteral("\\LinWidgets\\"), Qt::CaseInsensitive)) {
-        instance.isDevelopment = false;
-    } else {
-        instance.isDevelopment = true;
+    // Determine the parent window (LinDesktop, parent of ListView)
+    QWidget* parentWidget = nullptr;
+    if (m_desktopLayerWindow != 0) {
+        parentWidget = QWidget::find(m_desktopLayerWindow);
+        if (parentWidget) {
+            parentWidget = parentWidget->parentWidget(); // LinDesktop
+        }
     }
-    instance.autoReload = false;
-    instance.grantedPermissions = grantedPermissionsForManifest(manifest, packagePath, instance.isDevelopment);
-    
-    QRect screenGeom(0, 0, 1920, 1080);
-    if (QScreen* screen = QGuiApplication::primaryScreen()) {
-        screenGeom = screen->geometry();
-    }
-    instance.geometry = screenGeom;
 
-    WidgetLayoutState layoutState;
-    layoutState.instanceId = instance.instanceId;
-    layoutState.packagePath = packagePath;
-    layoutState.registryId = registryIdForManifest(manifest);
-    layoutState.geometry = screenGeom;
-    layoutState.visible = true;
-    layoutState.isDevelopment = instance.isDevelopment;
-    layoutState.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    auto* wallpaper = new LinWallpaperWebViewRuntime(manifest.id, packagePath, parentWidget);
+    wallpaper->setInteractive(interactive);
 
-    QString launchError;
-    if (!launchWidgetInstance(instance, layoutState, &launchError)) {
+    QString initError;
+    if (!wallpaper->initialize(&initError)) {
+        delete wallpaper;
+        m_activeWallpaperId.clear();
+        m_activeWallpaperPackagePath.clear();
         if (errorMessage) {
-            *errorMessage = launchError;
+            *errorMessage = initError.isEmpty()
+                ? QStringLiteral("Failed to initialize wallpaper WebView.")
+                : initError;
         }
         return false;
     }
 
+    m_activeWallpaper = wallpaper;
+
+    // Place the wallpaper window behind ListView immediately
+    syncWallpaperWindowLayer();
+
     saveWallpaperConfig(packagePath, interactive);
 
-    QWidget* lw = QWidget::find(m_desktopLayerWindow);
-    if (lw) {
-        QWidget* p = lw->parentWidget();
-        if (p) {
-            p->update();
-        }
+    // Repaint LinDesktop so the static wallpaper is hidden
+    if (parentWidget) {
+        parentWidget->update();
     }
 
     return true;
 }
 
+
 void WidgetManager::stopWallpaper()
 {
-    QString wallpaperInstanceId;
-    for (const WidgetInstance& instance : m_instances) {
-        if (instance.manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
-            wallpaperInstanceId = instance.instanceId;
-            break;
-        }
-    }
-
-    if (!wallpaperInstanceId.isEmpty()) {
-        stopWidget(wallpaperInstanceId);
+    if (m_activeWallpaper) {
+        m_activeWallpaper->hide();
+        m_activeWallpaper->deleteLater();
+        m_activeWallpaper = nullptr;
     }
     m_activeWallpaperId.clear();
     m_activeWallpaperPackagePath.clear();
     m_activeWallpaperInteractive = false;
 
+    // Repaint LinDesktop to restore the static wallpaper
     QWidget* lw = QWidget::find(m_desktopLayerWindow);
     if (lw) {
         QWidget* p = lw->parentWidget();
@@ -2212,7 +2190,7 @@ void WidgetManager::stopWallpaper()
 
 LinWallpaperWebViewRuntime* WidgetManager::activeWallpaperRuntime() const
 {
-    return nullptr;
+    return m_activeWallpaper;
 }
 
 void WidgetManager::syncWallpaperWindowLayer()
