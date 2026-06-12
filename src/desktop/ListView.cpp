@@ -1291,6 +1291,10 @@ void ListView::paintEvent(QPaintEvent* event)
         return;
     }
 
+    if (m_linWidgetManager && m_linWidgetManager->hasActiveWallpaper() && !m_linWidgetManager->isWallpaperInteractive()) {
+        painter.fillRect(event->rect(), QColor(0, 0, 0, 1));
+    }
+
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
             return;

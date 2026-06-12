@@ -1099,7 +1099,7 @@ bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
 
 bool WidgetManager::isWallpaperInteractive() const
 {
-    return hasActiveWallpaper();
+    return hasActiveWallpaper() && m_activeWallpaperInteractive;
 }
 
 void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)

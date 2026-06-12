@@ -197,6 +197,20 @@ bool LinWallpaperWebViewRuntime::nativeEvent(const QByteArray& eventType, void* 
             *result = HTTRANSPARENT;
             return true;
         }
+    } else if (msg->message == WM_MOUSEACTIVATE) {
+        if (result) {
+            *result = MA_NOACTIVATE;
+        }
+        return true;
+    } else if (msg->message == WM_WINDOWPOSCHANGING) {
+        WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(msg->lParam);
+        HWND listViewHwnd = nullptr;
+        if (parentWidget()) {
+            listViewHwnd = reinterpret_cast<HWND>(parentWidget()->winId());
+        }
+        if (listViewHwnd) {
+            wp->hwndInsertAfter = listViewHwnd;
+        }
     }
 #endif
     return QWidget::nativeEvent(eventType, message, result);
