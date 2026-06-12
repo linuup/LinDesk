@@ -557,7 +557,6 @@ void ListView::syncLinWidgetLayer()
     }
 #endif
 
-    m_linWidgetManager->setDesktopLayerWindow(winId());
     m_linWidgetManager->syncAllWidgetWindowLayers();
 }
 

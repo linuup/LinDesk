@@ -1053,6 +1053,9 @@ WId WidgetManager::hostParentWindow() const
 
 void WidgetManager::setDesktopLayerWindow(WId layerWindow)
 {
+    if (m_desktopLayerWindow == layerWindow) {
+        return;
+    }
     m_desktopLayerWindow = layerWindow;
     if (m_activeWallpaperId.isEmpty()) {
         loadWallpaperConfig();
