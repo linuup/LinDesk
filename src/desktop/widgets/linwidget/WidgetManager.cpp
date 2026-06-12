@@ -1,5 +1,4 @@
 #include "desktop/widgets/linwidget/WidgetManager.h"
-
 #include "desktop/widgets/linwidget/ConfigManager.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetMessageTypes.h"
@@ -30,6 +29,11 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
+
+// Define _LMERRLOG_ and _LMAUDIT_ to prevent lmerrlog.h/lmaudit.h from defining HLOG, which conflicts with PDH_HLOG/HLOG in pdh.h
+#define _LMERRLOG_
+#define _LMAUDIT_
+#include "desktop/ListView.h"
 
 namespace LinWidget {
 namespace {
@@ -2153,8 +2157,13 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 
     m_activeWallpaper = wallpaper;
 
-    // Place the wallpaper window behind ListView immediately
-    syncWallpaperWindowLayer();
+    // Place the wallpaper window behind ListView immediately and dynamically apply WS_EX_LAYERED to ListView
+    ListView* lv = ListView::instance();
+    if (lv) {
+        lv->syncLinWidgetLayer();
+    } else {
+        syncWallpaperWindowLayer();
+    }
 
     saveWallpaperConfig(packagePath, interactive);
 
@@ -2177,6 +2186,12 @@ void WidgetManager::stopWallpaper()
     m_activeWallpaperId.clear();
     m_activeWallpaperPackagePath.clear();
     m_activeWallpaperInteractive = false;
+
+    // Sync layered window style to remove WS_EX_LAYERED since wallpaper is stopped
+    ListView* lv = ListView::instance();
+    if (lv) {
+        lv->syncLinWidgetLayer();
+    }
 
     // Repaint LinDesktop to restore the static wallpaper
     QWidget* lw = QWidget::find(m_desktopLayerWindow);

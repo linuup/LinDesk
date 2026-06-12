@@ -322,21 +322,6 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     setGeometry(QApplication::primaryScreen()->geometry());
     //setAutoFillBackground(true);
 
-#ifdef Q_OS_WIN
-    // Apply WS_EX_LAYERED so DWM composites ListView as a layered window.
-    // This allows the wallpaper WebView behind it to show through transparent (un-painted) regions.
-    QTimer::singleShot(0, this, [this]() {
-        HWND hwnd = reinterpret_cast<HWND>(winId());
-        if (hwnd) {
-            LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-            exStyle |= WS_EX_LAYERED;
-            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
-            // LWA_ALPHA=255: fully opaque per-pixel, but painted transparent areas truly show through
-            SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
-        }
-    });
-#endif
-
     monitor = new DesktopInfoMonitor(this);
     startListeningSpecialIcon();
     m_windowsConfigMonitor = new WindowsConfigMonitor(this);
@@ -547,6 +532,31 @@ void ListView::syncLinWidgetLayer()
     if (!m_linWidgetManager) {
         return;
     }
+
+#ifdef Q_OS_WIN
+    HWND hwnd = reinterpret_cast<HWND>(winId());
+    if (hwnd) {
+        LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        bool hasWallpaper = m_linWidgetManager->hasActiveWallpaper();
+        if (hasWallpaper) {
+            if (!(exStyle & WS_EX_LAYERED)) {
+                exStyle |= WS_EX_LAYERED;
+                SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+                // Set constant alpha to 255 so that the painted areas (icons, boxes) remain fully opaque.
+                // Translucent/unpainted areas will let the wallpaper sibling window behind it show through.
+                SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+                SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            }
+        } else {
+            if (exStyle & WS_EX_LAYERED) {
+                exStyle &= ~WS_EX_LAYERED;
+                SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+                SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            }
+        }
+    }
+#endif
+
     m_linWidgetManager->setDesktopLayerWindow(winId());
     m_linWidgetManager->syncAllWidgetWindowLayers();
 }

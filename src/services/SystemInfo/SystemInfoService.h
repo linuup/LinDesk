@@ -2,13 +2,13 @@
 
 #ifdef Q_OS_WIN
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
+#define _WIN32_WINNT 0x0A00
 #endif
 #ifndef WINVER
-#define WINVER 0x0600
+#define WINVER 0x0A00
 #endif
 #ifndef NTDDI_VERSION
-#define NTDDI_VERSION 0x06000000
+#define NTDDI_VERSION 0x0A000000
 #endif
 #endif
 
