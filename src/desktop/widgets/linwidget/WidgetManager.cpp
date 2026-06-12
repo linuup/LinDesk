@@ -2172,6 +2172,15 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
     }
 
     saveWallpaperConfig(packagePath, interactive);
+
+    QWidget* lw = QWidget::find(m_desktopLayerWindow);
+    if (lw) {
+        QWidget* p = lw->parentWidget();
+        if (p) {
+            p->update();
+        }
+    }
+
     return true;
 }
 
@@ -2191,6 +2200,14 @@ void WidgetManager::stopWallpaper()
     m_activeWallpaperId.clear();
     m_activeWallpaperPackagePath.clear();
     m_activeWallpaperInteractive = false;
+
+    QWidget* lw = QWidget::find(m_desktopLayerWindow);
+    if (lw) {
+        QWidget* p = lw->parentWidget();
+        if (p) {
+            p->update();
+        }
+    }
 }
 
 LinWallpaperWebViewRuntime* WidgetManager::activeWallpaperRuntime() const

@@ -1,4 +1,6 @@
 #include "desktop/LinDesktop.h"
+#include "desktop/ListView.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
 #include "desktop/RenameManager.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
@@ -998,6 +1000,10 @@ void LinDesktop::mouseReleaseEvent(QMouseEvent* event)
 void LinDesktop::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
+
+    if (listView && listView->linWidgetManager() && listView->linWidgetManager()->hasActiveWallpaper()) {
+        return; // Let the Web Wallpaper show through from behind
+    }
 
     QPainter painter(this);
 

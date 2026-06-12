@@ -640,6 +640,7 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         QPoint clientPos = mapFromGlobal(globalPos);
 
         if (m_linWidgetManager) {
+            // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through
             if (m_linWidgetManager->isWidgetAt(clientPos)) {
                 if (result) {
                     *result = HTTRANSPARENT;
@@ -647,14 +648,34 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
                 return true;
             }
 
-            bool isWallpaperInteractive = m_linWidgetManager->isWallpaperInteractive();
+            const bool isWallpaperActive = m_linWidgetManager->hasActiveWallpaper();
+            const bool isWallpaperInteractive = isWallpaperActive && m_linWidgetManager->isWallpaperInteractive();
 
             if (isWallpaperInteractive) {
-                if (!findDesktopStateAt(clientPos)) {
-                    if (result) {
-                        *result = HTTRANSPARENT;
+                // Keep HTCLIENT if cursor is over a desktop icon
+                if (findDesktopStateAt(clientPos)) {
+                    // Fall through to default HTCLIENT handling
+                } else {
+                    // Check if cursor is over any LinBox child widget
+                    bool overBox = false;
+                    for (LinBox* box : boxes()) {
+                        if (!box || !box->isVisible()) {
+                            continue;
+                        }
+                        // mapFromGlobal to get position relative to the box
+                        const QPoint boxLocal = box->mapFromGlobal(globalPos);
+                        if (box->rect().contains(boxLocal)) {
+                            overBox = true;
+                            break;
+                        }
                     }
-                    return true;
+                    if (!overBox) {
+                        // Empty desktop space with active interactive wallpaper: pass through
+                        if (result) {
+                            *result = HTTRANSPARENT;
+                        }
+                        return true;
+                    }
                 }
             }
         }
