@@ -74,6 +74,7 @@ public:
     void broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message);
 
     bool hasActiveWallpaper() const;
+    QWidget* activeWallpaperWidget() const;
     bool isWidgetAt(const QPoint& clientPos) const;
     bool isWallpaperInteractive() const;
 

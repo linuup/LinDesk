@@ -1087,6 +1087,11 @@ bool WidgetManager::hasActiveWallpaper() const
     return m_activeWallpaper != nullptr;
 }
 
+QWidget* WidgetManager::activeWallpaperWidget() const
+{
+    return m_activeWallpaper;
+}
+
 bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
 {
     for (const WidgetInstance& instance : m_instances) {

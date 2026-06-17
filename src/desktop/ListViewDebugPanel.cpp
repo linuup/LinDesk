@@ -43,6 +43,10 @@
 #include <QVBoxLayout>
 #include <QTimer>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
@@ -811,6 +815,144 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
         QDesktopServices::openUrl(QUrl::fromLocalFile(localPath));
     });
     addGeneralCard(new FluentCard(u8"\uE8A7", "Local Logs", "Open LinDesk LocalAppData directory", openLocalBtn));
+
+    // Z-Order Debugger Card
+    QWidget* zOrderDebugWidget = new QWidget(page);
+    QVBoxLayout* zLayout = new QVBoxLayout(zOrderDebugWidget);
+    zLayout->setContentsMargins(0, 0, 0, 0);
+    zLayout->setSpacing(8);
+
+    QLabel* zInfoLabel = new QLabel("HWND Info: Loading...", zOrderDebugWidget);
+    zInfoLabel->setStyleSheet("font-family: monospace; font-size: 11px; color: #4b5563;");
+    zLayout->addWidget(zInfoLabel);
+
+    auto updateZInfo = [this, zInfoLabel]() {
+#ifdef Q_OS_WIN
+        ListView* lv = ListView::instance();
+        HWND lvHwnd = lv ? reinterpret_cast<HWND>(lv->winId()) : nullptr;
+        HWND wpHwnd = nullptr;
+        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
+            wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
+        }
+
+        QString text = QString("ListView HWND: %1\nWallpaper HWND: %2\n")
+            .arg(lvHwnd ? QString("0x%1").arg(reinterpret_cast<quintptr>(lvHwnd), 0, 16) : "None")
+            .arg(wpHwnd ? QString("0x%1").arg(reinterpret_cast<quintptr>(wpHwnd), 0, 16) : "None");
+
+        if (lvHwnd) {
+            text += QString("ListView Parent: 0x%1\n").arg(reinterpret_cast<quintptr>(GetParent(lvHwnd)), 0, 16);
+        }
+        if (wpHwnd) {
+            text += QString("Wallpaper Parent: 0x%1\n").arg(reinterpret_cast<quintptr>(GetParent(wpHwnd)), 0, 16);
+        }
+
+        if (lvHwnd && wpHwnd && GetParent(lvHwnd) == GetParent(wpHwnd)) {
+            HWND parent = GetParent(lvHwnd);
+            HWND sibling = GetWindow(parent, GW_CHILD);
+            int lvIdx = -1;
+            int wpIdx = -1;
+            int currentIdx = 0;
+            while (sibling) {
+                if (sibling == lvHwnd) lvIdx = currentIdx;
+                if (sibling == wpHwnd) wpIdx = currentIdx;
+                sibling = GetWindow(sibling, GW_HWNDNEXT);
+                currentIdx++;
+            }
+            if (lvIdx != -1 && wpIdx != -1) {
+                text += QString("Z-Order Index (lower is higher on screen):\nListView: %1, Wallpaper: %2\nStatus: %3")
+                    .arg(lvIdx)
+                    .arg(wpIdx)
+                    .arg(lvIdx < wpIdx ? "ListView is ON TOP of Wallpaper (Correct)" : "Wallpaper is ON TOP of ListView (Error!)");
+            } else {
+                text += "Unable to trace sibling indices.";
+            }
+        } else {
+            text += "Windows are not siblings or one of them is missing.";
+        }
+        zInfoLabel->setText(text);
+#else
+        zInfoLabel->setText("Z-Order debug is only supported on Windows.");
+#endif
+    };
+
+    updateZInfo();
+
+    QGridLayout* btnGrid = new QGridLayout();
+    btnGrid->setSpacing(6);
+
+    QPushButton* btnBehind = createActionButton("Wallpaper behind ListView", false, false);
+    connect(btnBehind, &QPushButton::clicked, this, [this, updateZInfo]() {
+#ifdef Q_OS_WIN
+        ListView* lv = ListView::instance();
+        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
+            HWND lvHwnd = reinterpret_cast<HWND>(lv->winId());
+            HWND wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
+            SetWindowPos(wpHwnd, lvHwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            updateZInfo();
+        }
+#endif
+    });
+    btnGrid->addWidget(btnBehind, 0, 0);
+
+    QPushButton* btnBottom = createActionButton("Wallpaper to Bottom", false, false);
+    connect(btnBottom, &QPushButton::clicked, this, [this, updateZInfo]() {
+#ifdef Q_OS_WIN
+        ListView* lv = ListView::instance();
+        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
+            HWND wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
+            SetWindowPos(wpHwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            updateZInfo();
+        }
+#endif
+    });
+    btnGrid->addWidget(btnBottom, 0, 1);
+
+    QPushButton* btnTop = createActionButton("Wallpaper to Top", false, false);
+    connect(btnTop, &QPushButton::clicked, this, [this, updateZInfo]() {
+#ifdef Q_OS_WIN
+        ListView* lv = ListView::instance();
+        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
+            HWND wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
+            SetWindowPos(wpHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            updateZInfo();
+        }
+#endif
+    });
+    btnGrid->addWidget(btnTop, 1, 0);
+
+    QPushButton* btnLvRaise = createActionButton("ListView Raise", false, false);
+    connect(btnLvRaise, &QPushButton::clicked, this, [this, updateZInfo]() {
+        ListView* lv = ListView::instance();
+        if (lv) {
+            lv->raise();
+            updateZInfo();
+        }
+    });
+    btnGrid->addWidget(btnLvRaise, 1, 1);
+
+    QPushButton* btnStackUnder = createActionButton("Wallpaper stackUnder(ListView)", false, false);
+    connect(btnStackUnder, &QPushButton::clicked, this, [this, updateZInfo]() {
+        ListView* lv = ListView::instance();
+        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
+            lv->linWidgetManager()->activeWallpaperWidget()->stackUnder(lv);
+            updateZInfo();
+        }
+    });
+    btnGrid->addWidget(btnStackUnder, 2, 0);
+
+    QPushButton* btnRefresh = createActionButton("Refresh Status", true, false);
+    connect(btnRefresh, &QPushButton::clicked, this, [updateZInfo]() {
+        updateZInfo();
+    });
+    btnGrid->addWidget(btnRefresh, 2, 1);
+
+    zLayout->addLayout(btnGrid);
+
+    addGeneralCard(new FluentCard(
+        u8"\uE70F",
+        "Z-Order Diagnostics & Controls",
+        "Manually test and monitor relative window layering between ListView and Webview Wallpaper.",
+        zOrderDebugWidget), true);
 
     layout->addLayout(m_generalGrid);
     updateAdaptiveLayout();
