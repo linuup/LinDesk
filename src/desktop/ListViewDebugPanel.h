@@ -84,6 +84,7 @@ private:
     QWidget* createAIPage();
     QWidget* createLayoutPage();
     QWidget* createTextDiagnosticsPage();
+    QWidget* createZOrderPage();
     QWidget* wrapScrollablePage(QWidget* content);
     void loadAIConfig();
     void saveAIConfig();
