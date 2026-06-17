@@ -216,9 +216,15 @@ bool LinWallpaperWebViewRuntime::nativeEvent(const QByteArray& eventType, void* 
         return true;
     } else if (msg->message == WM_WINDOWPOSCHANGING) {
         WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(msg->lParam);
-        // Completely lock Z-order — prevent any Z-order changes
-        // that might bring the wallpaper above ListView
-        wp->flags |= SWP_NOZORDER;
+        HWND listViewHwnd = nullptr;
+        ListView* lv = ListView::instance();
+        if (lv) {
+            listViewHwnd = reinterpret_cast<HWND>(lv->winId());
+        }
+        if (listViewHwnd) {
+            wp->hwndInsertAfter = listViewHwnd;
+            wp->flags &= ~SWP_NOZORDER;
+        }
     }
 #endif
     return QWidget::nativeEvent(eventType, message, result);
