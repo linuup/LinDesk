@@ -1,6 +1,7 @@
 #include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/ListView.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
 #include "services/AppPaths.h"
 #include <QDir>
 #include <QFileInfo>
@@ -12,6 +13,7 @@
 #include <QResizeEvent>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QTimer>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -161,6 +163,15 @@ void LinWallpaperWebViewRuntime::renderHtmlWallpaper()
                                 webView->Navigate(L"https://wallpaper.local.lindesk/index.html");
                                 m_webViewReady = true;
                             }
+
+                            // Re-sync Z-order after async WebView2 init to ensure
+                            // wallpaper stays below ListView
+                            QTimer::singleShot(0, this, [this]() {
+                                ListView* lv = ListView::instance();
+                                if (lv && lv->linWidgetManager()) {
+                                    lv->linWidgetManager()->syncWallpaperWindowLayer();
+                                }
+                            });
                             return S_OK;
                         }).Get());
                 return S_OK;
@@ -205,14 +216,9 @@ bool LinWallpaperWebViewRuntime::nativeEvent(const QByteArray& eventType, void* 
         return true;
     } else if (msg->message == WM_WINDOWPOSCHANGING) {
         WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(msg->lParam);
-        HWND listViewHwnd = nullptr;
-        ListView* lv = ListView::instance();
-        if (lv) {
-            listViewHwnd = reinterpret_cast<HWND>(lv->winId());
-        }
-        if (listViewHwnd) {
-            wp->hwndInsertAfter = listViewHwnd;
-        }
+        // Completely lock Z-order — prevent any Z-order changes
+        // that might bring the wallpaper above ListView
+        wp->flags |= SWP_NOZORDER;
     }
 #endif
     return QWidget::nativeEvent(eventType, message, result);
