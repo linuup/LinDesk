@@ -154,6 +154,7 @@ private:
     bool m_showWebViewBounds = false;
     bool m_enabled = true;
     LinWallpaperWebViewRuntime* m_activeWallpaper = nullptr;
+    QWidget* m_linDesktopParent = nullptr;
     QString m_activeWallpaperId;
     QString m_activeWallpaperPackagePath;
     bool m_activeWallpaperInteractive = false;

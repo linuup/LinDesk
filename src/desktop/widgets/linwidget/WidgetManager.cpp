@@ -1057,6 +1057,12 @@ void WidgetManager::setDesktopLayerWindow(WId layerWindow)
         return;
     }
     m_desktopLayerWindow = layerWindow;
+
+    QWidget* lv = QWidget::find(layerWindow);
+    if (lv) {
+        m_linDesktopParent = lv->parentWidget();
+    }
+
     if (m_activeWallpaperId.isEmpty()) {
         loadWallpaperConfig();
     }
@@ -2140,11 +2146,18 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 
     // Determine the parent window (LinDesktop, parent of ListView)
     QWidget* parentWidget = nullptr;
-    if (m_desktopLayerWindow != 0) {
+    ListView* lv = ListView::instance();
+    if (lv) {
+        parentWidget = lv->parentWidget(); // LinDesktop
+    } else if (m_desktopLayerWindow != 0) {
         parentWidget = QWidget::find(m_desktopLayerWindow);
         if (parentWidget) {
             parentWidget = parentWidget->parentWidget(); // LinDesktop
         }
+    }
+
+    if (parentWidget) {
+        m_linDesktopParent = parentWidget;
     }
 
     auto* wallpaper = new LinWallpaperWebViewRuntime(manifest.id, packagePath, parentWidget);
@@ -2165,14 +2178,19 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 
     m_activeWallpaper = wallpaper;
 
-    // Place the wallpaper window behind ListView immediately and dynamically apply WS_EX_LAYERED to ListView
-    ListView* lv = ListView::instance();
+    // Reparent ListView to wallpaper so it always renders on top
     if (lv) {
-        wallpaper->stackUnder(lv);
+        wallpaper->winId(); // Force creation of native handle!
+        lv->setParent(wallpaper);
+    }
+
+    syncWallpaperWindowLayer();
+
+    if (lv) {
+        lv->show();
         lv->raise();
+        lv->setFocus();
         lv->syncLinWidgetLayer();
-    } else {
-        syncWallpaperWindowLayer();
     }
 
     saveWallpaperConfig(packagePath, interactive);
@@ -2188,6 +2206,25 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 
 void WidgetManager::stopWallpaper()
 {
+    ListView* lv = ListView::instance();
+    if (lv && m_activeWallpaper && lv->parentWidget() == m_activeWallpaper) {
+        QWidget* linDesktop = m_linDesktopParent;
+        if (!linDesktop && m_desktopLayerWindow != 0) {
+            linDesktop = QWidget::find(m_desktopLayerWindow);
+            if (linDesktop) {
+                linDesktop = linDesktop->parentWidget();
+            }
+        }
+        if (linDesktop) {
+            lv->setParent(linDesktop);
+            lv->setGeometry(linDesktop->rect());
+            lv->show();
+            lv->raise();
+            lv->setFocus();
+            lv->syncLinWidgetLayer();
+        }
+    }
+
     if (m_activeWallpaper) {
         m_activeWallpaper->hide();
         m_activeWallpaper->deleteLater();
@@ -2198,7 +2235,6 @@ void WidgetManager::stopWallpaper()
     m_activeWallpaperInteractive = false;
 
     // Sync layered window style to remove WS_EX_LAYERED since wallpaper is stopped
-    ListView* lv = ListView::instance();
     if (lv) {
         lv->syncLinWidgetLayer();
     }
@@ -2223,8 +2259,14 @@ void WidgetManager::syncWallpaperWindowLayer()
 
     HWND wallpaperHwnd = reinterpret_cast<HWND>(m_activeWallpaper->winId());
     HWND listViewHwnd = reinterpret_cast<HWND>(m_desktopLayerWindow);
-    HWND desktopHwnd = GetParent(listViewHwnd);
-    if (!IsWindow(wallpaperHwnd) || !IsWindow(listViewHwnd) || !IsWindow(desktopHwnd)) {
+    HWND desktopHwnd = nullptr;
+    if (m_linDesktopParent) {
+        desktopHwnd = reinterpret_cast<HWND>(m_linDesktopParent->winId());
+    } else {
+        desktopHwnd = GetParent(listViewHwnd);
+    }
+
+    if (!IsWindow(wallpaperHwnd) || !IsWindow(desktopHwnd)) {
         return;
     }
 
@@ -2246,10 +2288,19 @@ void WidgetManager::syncWallpaperWindowLayer()
     }
     m_activeWallpaper->show();
 
-    SetWindowPos(wallpaperHwnd,
-                 listViewHwnd,
-                 0, 0, w, h,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    ListView* lv = ListView::instance();
+    if (lv && lv->parentWidget() == m_activeWallpaper) {
+        lv->setGeometry(0, 0, w, h);
+        SetWindowPos(wallpaperHwnd,
+                     HWND_BOTTOM,
+                     0, 0, w, h,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    } else {
+        SetWindowPos(wallpaperHwnd,
+                     listViewHwnd,
+                     0, 0, w, h,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+    }
 #endif
 }
 

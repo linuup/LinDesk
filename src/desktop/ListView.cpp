@@ -70,6 +70,20 @@
 
 
 
+static LinDesktop* findLinDesktopAncestor(QWidget* w)
+{
+    while (w) {
+        if (LinDesktop* desk = qobject_cast<LinDesktop*>(w)) {
+            return desk;
+        }
+        w = w->parentWidget();
+    }
+    return nullptr;
+}
+
+
+
+
 QRect ListView::desktopLayoutBounds() const
 {
     QScreen* activeScreen = screen();
@@ -313,6 +327,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
 
     // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪☉缁秹鏌ｅΟ鎸庮仩闁绘繆鍩栨穱濠偽旈埀顒€螞濞戙垺鍋橀柕澶嗘櫅閻?
     // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪⊕閻掑鐓崶銊︹拹妞ゎ偅鐗犻弻銈夊礃閸欏鎷卞┑?
+    setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
     // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪⊕閻掑鐓崶銊︹拹妞ゎ偅鐗楅〃銉╂倷閼哥數銆愰梺鍛娚戦崹褰掑箯鐎ｎ喖绠瑰ù锝嗗絻娴滈箖鐓崶銊︾殤缂佺姵鐗滅槐鎺楀箛椤撗勭暥閻熸粎澧楅惄顖炲箚閸モ斁鍋撻敐搴濈盎闁绘挸鍊块弻娑橆潩椤掑嫬寮板┑鐐烘？閸楁娊骞嗛崘顔肩妞ゆ劑鍨洪弳銉╂煟?
@@ -1498,7 +1513,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     if (m_isSelecting) {
         QRect rect;
         const bool shouldShowSelection = updateBackgroundSelection(event->pos(), &rect);
-        if (LinDesktop* desktop = qobject_cast<LinDesktop*>(parentWidget())) {
+        if (LinDesktop* desktop = findLinDesktopAncestor(parentWidget())) {
             if (desktop->selectArea) {
                 desktop->selectArea->setSelectionRect(rect);
             }
@@ -1549,7 +1564,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     
     // Clear selection state if we were selecting background
     if (m_isSelecting) {
-        if (LinDesktop* desktop = qobject_cast<LinDesktop*>(parentWidget())) {
+        if (LinDesktop* desktop = findLinDesktopAncestor(parentWidget())) {
             desktop->clearSelectionOverlay();
         }
         endBackgroundSelection();

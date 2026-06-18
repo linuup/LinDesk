@@ -2624,7 +2624,17 @@ QWidget* ListViewDebugPanel::createLayoutPage() {
     layout->addWidget(createPageTitleLabel("Layout & Behavior"));
     layout->addWidget(createPageSubtitleLabel("Adjust desktop spacing and desktop embedding behavior for visual debugging."));
 
-    LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
+    LinDesktop* desk = nullptr;
+    if (m_listView) {
+        QWidget* p = m_listView;
+        while (p) {
+            if (LinDesktop* d = qobject_cast<LinDesktop*>(p)) {
+                desk = d;
+                break;
+            }
+            p = p->parentWidget();
+        }
+    }
     m_embedToggle = new FluentToggleSwitch();
     if (desk) m_embedToggle->setChecked(desk->isEmbedded(), false);
     connect(m_embedToggle, &FluentToggleSwitch::toggled, this, [desk](bool checked){

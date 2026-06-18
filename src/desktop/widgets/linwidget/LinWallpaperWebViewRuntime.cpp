@@ -36,6 +36,7 @@ LinWallpaperWebViewRuntime::LinWallpaperWebViewRuntime(QString wallpaperId,
     , m_wallpaperId(std::move(wallpaperId))
     , m_packagePath(std::move(packagePath))
 {
+    setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TranslucentBackground, false);
     setAttribute(Qt::WA_NoSystemBackground, false);
 }
@@ -187,6 +188,11 @@ void LinWallpaperWebViewRuntime::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
     updateWebViewBounds();
+
+    ListView* lv = ListView::instance();
+    if (lv && lv->parentWidget() == this) {
+        lv->setGeometry(rect());
+    }
 }
 
 void LinWallpaperWebViewRuntime::updateWebViewBounds()
@@ -214,17 +220,6 @@ bool LinWallpaperWebViewRuntime::nativeEvent(const QByteArray& eventType, void* 
             *result = MA_NOACTIVATE;
         }
         return true;
-    } else if (msg->message == WM_WINDOWPOSCHANGING) {
-        WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(msg->lParam);
-        HWND listViewHwnd = nullptr;
-        ListView* lv = ListView::instance();
-        if (lv) {
-            listViewHwnd = reinterpret_cast<HWND>(lv->winId());
-        }
-        if (listViewHwnd) {
-            wp->hwndInsertAfter = listViewHwnd;
-            wp->flags &= ~SWP_NOZORDER;
-        }
     }
 #endif
     return QWidget::nativeEvent(eventType, message, result);
