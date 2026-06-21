@@ -521,7 +521,9 @@ void LinWidgetWebViewRuntime::attachToParentWindow()
     const QRect nativeGeometry = m_sharedRuntime
         ? QRect(QPoint(0, 0), parentClientNativeRect(parentWindow).size())
         : childLogicalRectToNative(parentWindow, logicalGeometry);
-    SetWindowPos(hostWindow, HWND_TOP,
+    // Shared runtime is placed BELOW ListView initially.
+    // syncWidgetWindowLayer() will keep it correctly ordered under ListView.
+    SetWindowPos(hostWindow, HWND_BOTTOM,
                  nativeGeometry.x(), nativeGeometry.y(),
                  nativeGeometry.width(), nativeGeometry.height(),
                  SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);

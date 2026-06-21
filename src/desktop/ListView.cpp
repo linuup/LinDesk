@@ -552,13 +552,17 @@ void ListView::syncLinWidgetLayer()
     HWND hwnd = reinterpret_cast<HWND>(winId());
     if (hwnd) {
         LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-        bool hasWallpaper = m_linWidgetManager->hasActiveWallpaper();
-        if (hasWallpaper) {
+        // WS_EX_LAYERED is needed whenever ANY WebView content (wallpaper OR widgets)
+        // sits below ListView in Z-order, so the transparent areas of ListView
+        // let the WebView content show through.
+        bool hasWebViewBelow = m_linWidgetManager->hasActiveWallpaper()
+                               || (m_linWidgetManager->desktopLayerWindow() != 0 && m_linWidgetManager->isWidgetLayerEmbedded());
+        if (hasWebViewBelow) {
             if (!(exStyle & WS_EX_LAYERED)) {
                 exStyle |= WS_EX_LAYERED;
                 SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
-                // Set constant alpha to 255 so that the painted areas (icons, boxes) remain fully opaque.
-                // Translucent/unpainted areas will let the wallpaper sibling window behind it show through.
+                // Alpha=255: painted areas (icons) stay fully opaque;
+                // unpainted (transparent) areas let the sibling windows below show through.
                 SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
                 SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
             }

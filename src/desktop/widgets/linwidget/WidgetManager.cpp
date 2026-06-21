@@ -1113,6 +1113,23 @@ bool WidgetManager::isWallpaperInteractive() const
     return hasActiveWallpaper() && m_activeWallpaperInteractive;
 }
 
+void WidgetManager::setWidgetLayerEmbedded(bool embedded)
+{
+    if (m_widgetLayerEmbedded != embedded) {
+        m_widgetLayerEmbedded = embedded;
+        syncAllWidgetWindowLayers();
+        ListView* lv = ListView::instance();
+        if (lv) {
+            lv->syncLinWidgetLayer();
+        }
+    }
+}
+
+bool WidgetManager::isWidgetLayerEmbedded() const
+{
+    return m_widgetLayerEmbedded;
+}
+
 void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
 {
 #ifdef Q_OS_WIN
@@ -1158,9 +1175,9 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         logicalLayerGeometry.moveTopLeft(QPoint(0, 0));
     }
 
-    // Widget shared runtime is always above ListView.
-    // Wallpaper has its own dedicated window (m_activeWallpaper) placed behind ListView.
-    HWND insertAfter = inProcessSharedRuntime ? HWND_TOP : layerWindow;
+    // If embedded is true, we place the widget host below ListView (layerWindow).
+    // Otherwise, we place it above everything (HWND_TOP) so it is independent.
+    HWND insertAfter = m_widgetLayerEmbedded ? layerWindow : HWND_TOP;
 
     // Check if window is already correctly positioned and Z-ordered to prevent infinite loops
     RECT currentRect = {};
@@ -2291,15 +2308,21 @@ void WidgetManager::syncWallpaperWindowLayer()
     ListView* lv = ListView::instance();
     if (lv && lv->parentWidget() == m_activeWallpaper) {
         lv->setGeometry(0, 0, w, h);
+        // Place wallpaper at the bottom.
+        // Do NOT use SWP_FRAMECHANGED to prevent potential infinite event loops on ListView resize/move.
         SetWindowPos(wallpaperHwnd,
                      HWND_BOTTOM,
                      0, 0, w, h,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
     } else {
+        // Place wallpaper BELOW listView in Z-Order.
+        // SetWindowPos 2nd param = "insert after this hwnd" → wallpaper goes just below listView.
+        // Do NOT call SetWindowPos on listViewHwnd here — that triggers moveEvent/resizeEvent
+        // on ListView which calls syncLinWidgetLayer() → syncWallpaperWindowLayer() infinite loop.
         SetWindowPos(wallpaperHwnd,
                      listViewHwnd,
                      0, 0, w, h,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 #endif
 }

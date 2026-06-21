@@ -78,6 +78,9 @@ public:
     bool isWidgetAt(const QPoint& clientPos) const;
     bool isWallpaperInteractive() const;
 
+    void setWidgetLayerEmbedded(bool embedded);
+    bool isWidgetLayerEmbedded() const;
+
 signals:
     void widgetLaunched(const QString& instanceId);
     void widgetStopped(const QString& instanceId);
@@ -153,6 +156,7 @@ private:
     bool m_stoppingAll = false;
     bool m_showWebViewBounds = false;
     bool m_enabled = true;
+    bool m_widgetLayerEmbedded = true; // true = widget host below ListView; false = HWND_TOP (above)
     LinWallpaperWebViewRuntime* m_activeWallpaper = nullptr;
     QWidget* m_linDesktopParent = nullptr;
     QString m_activeWallpaperId;

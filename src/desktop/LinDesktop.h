@@ -34,7 +34,7 @@ class LinDesktop : public QWidget {
 
 public:
     explicit LinDesktop(QWidget* parent = nullptr);
-    QPointer<SelectArea> selectArea; //选择区域对象
+    QPointer<SelectArea> selectArea; //閫夋嫨鍖哄煙瀵硅薄
 
     //First Floor
     QPointer<ListView> listView;
@@ -49,14 +49,17 @@ public:
     int transitionDuration() const { return m_transitionDuration; }
     void setTransitionDuration(int ms);
 
+    bool showDefaultWallpaper() const;
+    void setShowDefaultWallpaper(bool show);
+
     void onWallpaperChanged();
 
-	//QRect drawingMaskRect;    //拖拽选择框矩�?
+	//QRect drawingMaskRect;    //鎷栨嫿閫夋嫨妗嗙煩褰?
     void loadBackImage();
     void applyLoadedWallpaper(const QString& path, const QImage& image);
     void applyFallbackWallpaper(const QString& path, const QString& reason);
     void rebuildScaledWallpaperPixmaps();
-	// 请求绘制鼠标悬浮效果
+	// 璇锋眰缁樺埗榧犳爣鎮诞鏁堟灉
     void requestHoverEffect();
     void checkFirstLaunchPrompt();
     void initializeTrayIcon();

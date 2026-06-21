@@ -784,6 +784,28 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
     });
     addGeneralCard(new FluentCard(u8"\uE71B", "Persistence", "Save box and icon data", m_persistToggle));
 
+    m_defaultWallpaperToggle = new FluentToggleSwitch();
+    LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
+    m_defaultWallpaperToggle->setChecked(desk ? desk->showDefaultWallpaper() : true, false);
+    connect(m_defaultWallpaperToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+        LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
+        if (desk) {
+            desk->setShowDefaultWallpaper(checked);
+        }
+    });
+    addGeneralCard(new FluentCard(u8"\uE7F4", "Default Wallpaper", "Toggle desktop default wallpaper background", m_defaultWallpaperToggle));
+
+    m_widgetEmbeddedToggle = new FluentToggleSwitch();
+    LinWidget::WidgetManager* wm = linWidgetManager();
+    m_widgetEmbeddedToggle->setChecked(wm ? wm->isWidgetLayerEmbedded() : true, false);
+    connect(m_widgetEmbeddedToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+        LinWidget::WidgetManager* wm = linWidgetManager();
+        if (wm) {
+            wm->setWidgetLayerEmbedded(checked);
+        }
+    });
+    addGeneralCard(new FluentCard(u8"\uE8A7", "Widget Layer Embedded", "Toggle whether widgets are embedded below desktop icons (layered) or independent on top", m_widgetEmbeddedToggle));
+
     QPushButton* exportBtn = createActionButton("Export", false, false);
     connect(exportBtn, &QPushButton::clicked, this, [this]() {
         QString path;
