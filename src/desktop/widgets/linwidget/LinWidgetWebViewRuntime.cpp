@@ -535,7 +535,8 @@ void LinWidgetWebViewRuntime::attachToParentWindow()
     // 1. Modify styles first to prepare the window to become a child window
     LONG_PTR style = GetWindowLongPtr(hostWindow, GWL_STYLE);
     style &= ~WS_POPUP;
-    style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+    style |= WS_CHILD | WS_CLIPSIBLINGS;
+    style &= ~WS_CLIPCHILDREN; // Ensure child window (like ListView) is not clipped out
     SetWindowLongPtr(hostWindow, GWL_STYLE, style);
 
     LONG_PTR exStyle = GetWindowLongPtr(hostWindow, GWL_EXSTYLE);
@@ -2072,7 +2073,7 @@ void LinWidgetWebViewRuntime::updateNativeWindowRegion(void* windowHandle)
         }
     }
 
-    if (m_showWebViewBounds || m_forceShowSharedBackground || hasWallpaper) {
+    if (m_showWebViewBounds || m_forceShowSharedBackground || hasWallpaper || m_compositionController != nullptr || m_embedded) {
         SetWindowRgn(window, nullptr, TRUE);
         return;
     }
