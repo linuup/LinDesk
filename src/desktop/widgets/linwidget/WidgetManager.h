@@ -9,7 +9,14 @@
 #include <QRect>
 #include <QTimer>
 #include <QFileSystemWatcher>
+#include <QMouseEvent>
+#include <QWheelEvent>
 #include <qwindowdefs.h>
+
+namespace LinCef {
+class LinWidgetCanvasWidget;
+class CefOsrBrowserInstance;
+}
 
 namespace LinWidget {
 
@@ -79,8 +86,15 @@ public:
     bool hasActiveWallpaper() const;
     QWidget* activeWallpaperWidget() const;
     bool isWidgetAt(const QPoint& clientPos) const;
+    QString widgetAt(const QPoint& clientPos) const;
     bool isWallpaperInteractive() const;
     class LinWidgetWebViewRuntime* webViewRuntime() const { return m_webViewRuntime; }
+
+    void setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas);
+    ::LinCef::LinWidgetCanvasWidget* canvasWidget() const { return m_canvasWidget; }
+
+    bool forwardMouseEvent(QMouseEvent* event);
+    bool forwardWheelEvent(QWheelEvent* event);
 
     void setWidgetLayerEmbedded(bool embedded);
     bool isWidgetLayerEmbedded() const;
@@ -167,6 +181,8 @@ private:
     QString m_activeWallpaperPackagePath;
     bool m_activeWallpaperIsDevelopment = false;
     bool m_activeWallpaperInteractive = false;
+    ::LinCef::LinWidgetCanvasWidget* m_canvasWidget = nullptr;
+    QHash<QString, ::LinCef::CefOsrBrowserInstance*> m_osrBrowsers;
 };
 
 }

@@ -1,5 +1,6 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
+#include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
 #include "desktop/RenameManager.h"
 #include "box/BoxManager.h"
@@ -130,9 +131,18 @@ LinDesktop::LinDesktop(QWidget* parent)
         setTransitionOpacity(value.toFloat());
     });
     loadBackImage();
+    widgetCanvas = new LinCef::LinWidgetCanvasWidget(this);
+    widgetCanvas->setGeometry(rect());
+    widgetCanvas->show();
+
     listView = ListView::instance(this);
     listView->setGeometry(rect());
     listView->show();
+    widgetCanvas->stackUnder(listView);
+    if (listView && listView->linWidgetManager()) {
+        listView->linWidgetManager()->setCanvasWidget(widgetCanvas);
+    }
+
     selectArea = new SelectArea(listView);
     selectArea->syncToRect(listView->rect());
     selectArea->lower();
@@ -440,6 +450,10 @@ void LinDesktop::handleDpiOrScreenMetricsChanged()
 
     if (m_isEmbedded && geometry() != targetGeometry) {
         setGeometry(targetGeometry);
+    }
+
+    if (widgetCanvas) {
+        widgetCanvas->setGeometry(rect());
     }
 
     if (listView) {

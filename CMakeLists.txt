@@ -104,7 +104,7 @@ else()
     message(WARNING "Win11 menu host subproject will not be added because Visual Studio generator or W11MenuUI project was not found.")
 endif()
 
-# 自动收集 src 下所�?.cpp�?h �?.qrc 文件
+# 自动收集 src 下所?.cpp?h ?.qrc 文件
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/*.h"
@@ -112,13 +112,14 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
+list(FILTER SOURCES EXCLUDE REGEX ".*/subprocess/.*")
 
 file(GLOB_RECURSE LINWIDGET_SHARED_SOURCES CONFIGURE_DEPENDS
     "src/desktop/widgets/linwidget/*.cpp"
     "src/desktop/widgets/linwidget/*.h"
 )
 
-# 添加可执行文件资�?WIN32_RESOURCES)
+# 添加可执行文件资源 (WIN32_RESOURCES)
 if(WIN32)
     list(APPEND WIN32_RESOURCES
         "src/app/LinDesk.rc"
@@ -137,13 +138,58 @@ set_target_properties(LinDesk PROPERTIES
     WIN32_EXECUTABLE "$<$<NOT:$<CONFIG:Debug>>:TRUE>"
 )
 
-
-
 set(LINDESK_WEBVIEW2_ROOT "$ENV{USERPROFILE}/.nuget/packages/microsoft.web.webview2/1.0.3179.45/build/native")
 if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/include/WebView2.h")
     target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_WEBVIEW2)
     target_include_directories(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
     target_link_libraries(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
+endif()
+
+# ==============================================================================
+# CEF (Chromium Embedded Framework) OSR Integration
+# ==============================================================================
+set(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/cef" CACHE PATH "Path to CEF root directory")
+if(DEFINED ENV{CEF_ROOT} AND NOT EXISTS "${CEF_ROOT}/include/cef_app.h")
+    set(CEF_ROOT "$ENV{CEF_ROOT}")
+endif()
+
+set(LINDESK_HAS_CEF OFF)
+if(EXISTS "${CEF_ROOT}/include/cef_app.h")
+    message(STATUS "[CEF] Found Chromium Embedded Framework at: ${CEF_ROOT}")
+    set(LINDESK_HAS_CEF ON)
+    target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_CEF=1)
+    target_include_directories(LinDesk PRIVATE "${CEF_ROOT}")
+
+    target_link_directories(LinDesk PRIVATE
+        "${CEF_ROOT}/Release"
+        "${CEF_ROOT}/Debug"
+        "${CEF_ROOT}/libcef_dll_wrapper/Release"
+        "${CEF_ROOT}/libcef_dll_wrapper/Debug"
+        "${CEF_ROOT}/libcef_dll_wrapper"
+    )
+
+    target_link_libraries(LinDesk PRIVATE
+        libcef
+        libcef_dll_wrapper
+    )
+
+    # 独立子进程目标 LinDeskSubprocess
+    set(SUBPROCESS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/desktop/widgets/cef/subprocess/main.cpp")
+    if(EXISTS "${SUBPROCESS_SRC}")
+        add_executable(LinDeskSubprocess WIN32 "${SUBPROCESS_SRC}")
+        target_include_directories(LinDeskSubprocess PRIVATE "${CEF_ROOT}")
+        target_link_directories(LinDeskSubprocess PRIVATE
+            "${CEF_ROOT}/Release"
+            "${CEF_ROOT}/Debug"
+            "${CEF_ROOT}/libcef_dll_wrapper/Release"
+            "${CEF_ROOT}/libcef_dll_wrapper/Debug"
+            "${CEF_ROOT}/libcef_dll_wrapper"
+        )
+        target_link_libraries(LinDeskSubprocess PRIVATE libcef libcef_dll_wrapper)
+        add_dependencies(LinDesk LinDeskSubprocess)
+    endif()
+else()
+    message(STATUS "[CEF] CEF SDK not found in 3rdparty/cef. Run scripts/download_cef.ps1 to enable CEF OSR.")
 endif()
 
 target_compile_definitions(LinDesk PRIVATE "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRENT_SOURCE_DIR})\"")
@@ -225,7 +271,7 @@ set(TS_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/translations/lindesk_zh_CN.ts
 )
 
-# 复制并配�?ts 文件，替换版本号占位�?
+# 复制并配置 ts 文件，替换版本号占位符
 foreach(TS_FILE ${TS_FILES})
     get_filename_component(TS_NAME ${TS_FILE} NAME)
     set(CONFIGURED_TS_FILE "${CMAKE_BINARY_DIR}/translations/${TS_NAME}")

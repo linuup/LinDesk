@@ -1412,6 +1412,11 @@ void ListView::mousePressEvent(QMouseEvent* event)
 {
     qDebug() << "[LinWidgetInput] mousePressEvent: pos =" << event->pos() << "over widget =" << (m_linWidgetManager ? m_linWidgetManager->isWidgetAt(event->pos()) : false);
     if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (m_linWidgetManager->forwardMouseEvent(event)) {
+            m_forwardingMouseToWidget = true;
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
             qDebug() << "[LinWidgetInput] Forwarding mousePressEvent to runtime";
             m_forwardingMouseToWidget = true;
@@ -1514,12 +1519,20 @@ void ListView::mousePressEvent(QMouseEvent* event)
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
     if (m_forwardingMouseToWidget) {
+        if (m_linWidgetManager && m_linWidgetManager->forwardMouseEvent(event)) {
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager ? m_linWidgetManager->webViewRuntime() : nullptr) {
             QCoreApplication::sendEvent(runtime, event);
             event->accept();
             return;
         }
     } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (m_linWidgetManager->forwardMouseEvent(event)) {
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
             QCoreApplication::sendEvent(runtime, event);
             event->accept();
@@ -1582,12 +1595,20 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
     if (m_forwardingMouseToWidget) {
         m_forwardingMouseToWidget = false;
+        if (m_linWidgetManager && m_linWidgetManager->forwardMouseEvent(event)) {
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager ? m_linWidgetManager->webViewRuntime() : nullptr) {
             QCoreApplication::sendEvent(runtime, event);
             event->accept();
             return;
         }
     } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (m_linWidgetManager->forwardMouseEvent(event)) {
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
             QCoreApplication::sendEvent(runtime, event);
             event->accept();
@@ -1768,6 +1789,10 @@ QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) cons
 void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
     if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (m_linWidgetManager->forwardMouseEvent(event)) {
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
             QCoreApplication::sendEvent(runtime, event);
             event->accept();
@@ -1795,7 +1820,11 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void ListView::wheelEvent(QWheelEvent* event)
 {
-    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && m_linWidgetManager->isWidgetAt(event->pos())) {
+    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (m_linWidgetManager->forwardWheelEvent(event)) {
+            event->accept();
+            return;
+        }
         if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
             QCoreApplication::sendEvent(runtime, event);
             event->accept();

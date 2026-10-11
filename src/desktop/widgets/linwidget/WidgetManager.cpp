@@ -1,4 +1,7 @@
 #include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
+#include "desktop/widgets/cef/CefOsrBrowserInstance.h"
+#include "desktop/widgets/cef/CefManager.h"
 #include "desktop/widgets/linwidget/ConfigManager.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetMessageTypes.h"
@@ -719,8 +722,23 @@ bool WidgetManager::launchWidgetInstance(const WidgetInstance& instance,
     m_instances.insert(instance.instanceId, instance);
     m_runningWidgets.insert(instance.instanceId);
     configureDevelopmentWatcher(instance);
-    sendAddWidgetToSharedHost(instance, layoutState);
-    syncAllWidgetWindowLayers();
+
+    if (LinCef::CefManager::instance()->isCefAvailable() && LinCef::CefManager::instance()->initialize()) {
+        auto* osr = new LinCef::CefOsrBrowserInstance(instance.instanceId, this);
+        connect(osr, &LinCef::CefOsrBrowserInstance::frameReady, this,
+                [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
+                    if (m_canvasWidget) {
+                        m_canvasWidget->updateWidgetFrame(wid, geom, img, dirty);
+                    }
+                });
+        const QString entryPath = QDir(instance.packagePath).filePath(instance.manifest.entry);
+        const QString entryUrl = QUrl::fromLocalFile(entryPath).toString();
+        osr->create(entryUrl, layoutState.geometry);
+        m_osrBrowsers.insert(instance.instanceId, osr);
+    } else {
+        sendAddWidgetToSharedHost(instance, layoutState);
+        syncAllWidgetWindowLayers();
+    }
     if (errorMessage) {
         errorMessage->clear();
     }
@@ -980,6 +998,9 @@ bool WidgetManager::moveWidget(const QString& instanceId, const QPoint& pos)
         instance.geometry = state.geometry;
         m_instances.insert(instanceId, instance);
     }
+    if (auto* osr = m_osrBrowsers.value(instanceId)) {
+        osr->setGeometry(state.geometry);
+    }
     sendGeometryToHost(instanceId, state.geometry);
     scheduleSaveToConfig();
     return true;
@@ -1008,6 +1029,9 @@ bool WidgetManager::resizeWidget(const QString& instanceId, const QSize& size)
         WidgetInstance instance = m_instances.value(instanceId);
         instance.geometry = state.geometry;
         m_instances.insert(instanceId, instance);
+    }
+    if (auto* osr = m_osrBrowsers.value(instanceId)) {
+        osr->setGeometry(state.geometry);
     }
     sendGeometryToHost(instanceId, state.geometry);
     scheduleSaveToConfig();
@@ -1120,8 +1144,24 @@ QWidget* WidgetManager::activeWallpaperWidget() const
     return m_activeWallpaper;
 }
 
+void WidgetManager::setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas)
+{
+    m_canvasWidget = canvas;
+}
+
 bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
 {
+    return !widgetAt(clientPos).isEmpty();
+}
+
+QString WidgetManager::widgetAt(const QPoint& clientPos) const
+{
+    if (m_canvasWidget) {
+        const QString canvasHit = m_canvasWidget->widgetAt(clientPos);
+        if (!canvasHit.isEmpty()) {
+            return canvasHit;
+        }
+    }
     for (const WidgetInstance& instance : m_instances) {
         if (m_layout.contains(instance.instanceId)) {
             WidgetLayoutState state = m_layout.state(instance.instanceId);
@@ -1130,8 +1170,53 @@ bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
             }
         }
         if (instance.geometry.contains(clientPos)) {
-            return true;
+            return instance.instanceId;
         }
+    }
+    return QString();
+}
+
+bool WidgetManager::forwardMouseEvent(QMouseEvent* event)
+{
+    if (!event) {
+        return false;
+    }
+    const QString wid = widgetAt(event->pos());
+    if (wid.isEmpty()) {
+        return false;
+    }
+
+    if (auto* osr = m_osrBrowsers.value(wid)) {
+        const QPoint localPos = event->pos() - osr->geometry().topLeft();
+        if (event->type() == QEvent::MouseMove) {
+            osr->sendMouseMove(localPos.x(), localPos.y());
+        } else if (event->type() == QEvent::MouseButtonPress) {
+            osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), false, 1);
+        } else if (event->type() == QEvent::MouseButtonRelease) {
+            osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), true, 1);
+        } else if (event->type() == QEvent::MouseButtonDblClick) {
+            osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), false, 2);
+        }
+        return true;
+    }
+    return false;
+}
+
+bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
+{
+    if (!event) {
+        return false;
+    }
+    const QString wid = widgetAt(event->pos());
+    if (wid.isEmpty()) {
+        return false;
+    }
+
+    if (auto* osr = m_osrBrowsers.value(wid)) {
+        const QPoint localPos = event->pos() - osr->geometry().topLeft();
+        const QPoint angleDelta = event->angleDelta();
+        osr->sendMouseWheel(localPos.x(), localPos.y(), angleDelta.x(), angleDelta.y());
+        return true;
     }
     return false;
 }
@@ -1466,6 +1551,13 @@ void WidgetManager::stopWidget(const QString& instanceId)
     if (!m_runningWidgets.contains(instanceId)) {
         return;
     }
+    if (auto* osr = m_osrBrowsers.take(instanceId)) {
+        if (m_canvasWidget) {
+            m_canvasWidget->removeWidgetFrame(instanceId);
+        }
+        osr->close();
+        osr->deleteLater();
+    }
     m_runningWidgets.remove(instanceId);
     stopSystemInfoWatchesForInstance(instanceId);
     clearDevelopmentWatcher(instanceId);
@@ -1612,6 +1704,17 @@ void WidgetManager::stopAll(bool includeWallpaper)
             continue;
         }
         stopWidget(id);
+    }
+
+    for (auto* osr : m_osrBrowsers) {
+        if (osr) {
+            osr->close();
+            osr->deleteLater();
+        }
+    }
+    m_osrBrowsers.clear();
+    if (m_canvasWidget) {
+        m_canvasWidget->clearAllFrames();
     }
 
     if (includeWallpaper) {

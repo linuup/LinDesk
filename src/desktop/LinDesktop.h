@@ -28,16 +28,20 @@
 #include <QElapsedTimer>
 #include <windows.h>
 class FluentDialog;
+namespace LinCef { class LinWidgetCanvasWidget; }
+
 class LinDesktop : public QWidget {
     Q_OBJECT
     Q_PROPERTY(float transitionOpacity READ transitionOpacity WRITE setTransitionOpacity)
 
 public:
     explicit LinDesktop(QWidget* parent = nullptr);
-    QPointer<SelectArea> selectArea; //閫夋嫨鍖哄煙瀵硅薄
+    QPointer<SelectArea> selectArea; //选择区域对象
 
     //First Floor
     QPointer<ListView> listView;
+    LinCef::LinWidgetCanvasWidget* widgetCanvas = nullptr;
+    LinCef::LinWidgetCanvasWidget* getWidgetCanvas() const { return widgetCanvas; }
     QPointer<DesktopInfoMonitor> m_monitor;
     ~LinDesktop();
 
