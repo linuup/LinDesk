@@ -133,12 +133,11 @@ LinDesktop::LinDesktop(QWidget* parent)
     loadBackImage();
     widgetCanvas = new LinCef::LinWidgetCanvasWidget(this);
     widgetCanvas->setGeometry(rect());
-    widgetCanvas->show();
+    widgetCanvas->hide(); // OSR 帧数据直接由 ListView::paintEvent 合成渲染，不作为独立的原生分层窗口
 
     listView = ListView::instance(this);
     listView->setGeometry(rect());
     listView->show();
-    widgetCanvas->stackUnder(listView);
     if (listView && listView->linWidgetManager()) {
         listView->linWidgetManager()->setCanvasWidget(widgetCanvas);
     }
@@ -1092,6 +1091,9 @@ void LinDesktop::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     if (listView) {
         listView->setGeometry(rect());
+    }
+    if (widgetCanvas) {
+        widgetCanvas->setGeometry(rect());
     }
     rebuildScaledWallpaperPixmaps();
     if (selectArea) {

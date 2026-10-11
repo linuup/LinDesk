@@ -96,6 +96,10 @@ public:
     bool forwardMouseEvent(QMouseEvent* event);
     bool forwardWheelEvent(QWheelEvent* event);
 
+    bool isCefOsrEnabled() const { return m_cefOsrEnabled; }
+    void setCefOsrEnabled(bool enabled);
+    int cefOsrBrowserCount() const { return m_osrBrowsers.size(); }
+
     void setWidgetLayerEmbedded(bool embedded);
     bool isWidgetLayerEmbedded() const;
 
@@ -183,6 +187,11 @@ private:
     bool m_activeWallpaperInteractive = false;
     ::LinCef::LinWidgetCanvasWidget* m_canvasWidget = nullptr;
     QHash<QString, ::LinCef::CefOsrBrowserInstance*> m_osrBrowsers;
+    ::LinCef::CefOsrBrowserInstance* m_defaultOsrBrowser = nullptr;
+    bool m_cefOsrEnabled = true;
+
+    void updateDefaultCefPage();
+    QString defaultCefPagePath() const;
 };
 
 }

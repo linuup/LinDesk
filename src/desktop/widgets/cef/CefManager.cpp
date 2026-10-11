@@ -12,6 +12,18 @@
 #endif
 
 #ifdef LINDESK_HAS_CEF
+#ifdef GetNextSibling
+#undef GetNextSibling
+#endif
+#ifdef GetPrevSibling
+#undef GetPrevSibling
+#endif
+#ifdef GetFirstChild
+#undef GetFirstChild
+#endif
+#ifdef GetLastChild
+#undef GetLastChild
+#endif
 #include <include/cef_app.h>
 #endif
 
@@ -93,13 +105,35 @@ bool CefManager::initialize(QString* errorMessage)
 
     QDir().mkpath(cachePath);
 
+#ifdef LINDESK_HAS_CEF
+class LinCefApp : public CefApp, public CefBrowserProcessHandler {
+public:
+    LinCefApp() = default;
+
+    CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
+        return this;
+    }
+
+    void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
+        Q_UNUSED(process_type);
+        // OSR 离屏渲染关键开关：禁用 GPU 合成，使 Chromium 走软件渲染管线将帧数据回调到 OnPaint
+        command_line->AppendSwitch("disable-gpu");
+        command_line->AppendSwitch("disable-gpu-compositing");
+        command_line->AppendSwitch("enable-begin-frame-scheduling");
+        command_line->AppendSwitch("allow-file-access-from-files");
+    }
+
+    IMPLEMENT_REFCOUNTING(LinCefApp);
+};
+#endif
+
     CefMainArgs mainArgs(GetModuleHandleW(nullptr));
     CefSettings settings;
 
     settings.windowless_rendering_enabled = 1;
     settings.multi_threaded_message_loop = 0; // Single UI thread cooperative loop
     settings.no_sandbox = 1;
-    settings.command_line_args_disabled = 1;
+    settings.command_line_args_disabled = 0;
     settings.background_color = 0x00000000; // Transparent default ARGB
 
     const std::wstring subProcessW = QDir::toNativeSeparators(subProcessPath).toStdWString();
@@ -118,7 +152,8 @@ bool CefManager::initialize(QString* errorMessage)
             << "subProcess=" << subProcessPath
             << "cache=" << cachePath;
 
-    const bool success = CefInitialize(mainArgs, settings, nullptr, nullptr);
+    CefRefPtr<LinCefApp> app = new LinCefApp();
+    const bool success = CefInitialize(mainArgs, settings, app, nullptr);
     if (!success) {
         const QString err = tr("CefInitialize failed.");
         if (errorMessage) {

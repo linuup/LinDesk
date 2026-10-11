@@ -7,6 +7,18 @@
 #include <QString>
 
 #ifdef LINDESK_HAS_CEF
+#ifdef GetNextSibling
+#undef GetNextSibling
+#endif
+#ifdef GetPrevSibling
+#undef GetPrevSibling
+#endif
+#ifdef GetFirstChild
+#undef GetFirstChild
+#endif
+#ifdef GetLastChild
+#undef GetLastChild
+#endif
 #include <include/cef_render_handler.h>
 #endif
 
@@ -22,6 +34,7 @@ public:
     void resize(int width, int height);
 
     // CefRenderHandler interface
+    bool GetScreenInfo(CefRefPtr<CefBrowser> browser, CefScreenInfo& screen_info) override;
     void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect) override;
     void OnPaint(CefRefPtr<CefBrowser> browser,
                  PaintElementType type,

@@ -502,7 +502,6 @@ void ListViewDebugPanel::initUI() {
     m_tabBar->addTab("AI");
     m_tabBar->addTab("Layout Settings");
     m_tabBar->addTab("Text Diagnostics");
-    m_tabBar->addTab("Z-Order Diagnostics");
     m_tabBar->setDrawBase(false);
     m_tabBar->setUsesScrollButtons(true);
     m_tabBar->setExpanding(false);
@@ -515,7 +514,6 @@ void ListViewDebugPanel::initUI() {
     m_contentStack->addWidget(wrapScrollablePage(createAIPage()));
     m_contentStack->addWidget(wrapScrollablePage(createLayoutPage()));
     m_contentStack->addWidget(wrapScrollablePage(createTextDiagnosticsPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createZOrderPage()));
     mainLayout->addWidget(m_contentStack);
 
     connect(m_tabBar, &QTabBar::currentChanged, m_contentStack, &QStackedWidget::setCurrentIndex);
@@ -1786,24 +1784,35 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     };
 
     m_linWidgetEnabledToggle = new FluentToggleSwitch(page);
-    m_linWidgetEnabledToggle->setChecked(settings.value("LinWidgets/Enabled", true).toBool(), false);
+    bool cefOsrInit = false;
+    if (LinWidget::WidgetManager* mgr = linWidgetManager()) {
+        cefOsrInit = mgr->isCefOsrEnabled();
+    } else {
+        cefOsrInit = settings.value("LinWidgets/CefOsrEnabled", true).toBool();
+    }
+    m_linWidgetEnabledToggle->setChecked(cefOsrInit, false);
     connect(m_linWidgetEnabledToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
         QSettings s(debugConfigPath(), QSettings::IniFormat);
-        s.setValue("LinWidgets/Enabled", checked);
+        s.setValue("LinWidgets/CefOsrEnabled", checked);
+        if (checked) {
+            s.setValue("LinWidgets/Enabled", true);
+        }
         s.sync();
 
         if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-            manager->setEnabled(checked);
-            if (checked) {
-                QString errorMessage;
-                manager->restoreFromConfig(QString(), &errorMessage);
-                if (m_linWidgetsPageStatusLabel) {
-                    m_linWidgetsPageStatusLabel->setText(errorMessage.isEmpty()
-                        ? QStringLiteral("LinWidgets runtime enabled.")
-                        : QStringLiteral("LinWidgets runtime enabled, restore warning: %1").arg(errorMessage));
+            if (checked && !manager->isEnabled()) {
+                manager->setEnabled(true);
+            }
+            manager->setCefOsrEnabled(checked);
+            if (m_linWidgetsPageStatusLabel) {
+                if (checked) {
+                    m_linWidgetsPageStatusLabel->setText(
+                        QStringLiteral("CEF OSR 小组件系统已启用 (实例数: %1)。")
+                            .arg(manager->cefOsrBrowserCount()));
+                } else {
+                    m_linWidgetsPageStatusLabel->setText(
+                        QStringLiteral("小组件系统已彻底关闭，CEF OSR 与 WebView2 均已卸载隐藏，仅显示原生桌面图标。"));
                 }
-            } else if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText(QStringLiteral("LinWidgets runtime disabled. WebView runtime and IPC resources released."));
             }
         }
 
@@ -1812,11 +1821,11 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         updateLinWidgetsButtons();
         updateLinWidgetLogViewer();
         if (m_listView) {
-            m_listView->onMenuRefresh();
+            m_listView->update();
         }
     });
-    addCompactSwitch(QStringLiteral("Runtime"),
-                     QStringLiteral("Master switch for the shared WebView runtime. Turning it off unloads widgets and stops the WebView runtime."),
+    addCompactSwitch(QStringLiteral("CEF OSR"),
+                     QStringLiteral("切换组件系统 (CEF OSR 引擎)。开启时加载小组件；关闭时彻底卸载所有小组件与 WebView，仅保留原生桌面。"),
                      m_linWidgetEnabledToggle);
 
     m_linWidgetBoundsToggle = new FluentToggleSwitch(page);
@@ -1830,12 +1839,12 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("LinWidget WebView bounds visualization enabled.")
-                : QStringLiteral("LinWidget WebView bounds visualization disabled."));
+                ? QStringLiteral("小组件边界框可视化已开启 (CEF OSR 模式下将绘制青色虚线边框及 [CEF OSR] 标签)。")
+                : QStringLiteral("小组件边界框可视化已关闭。"));
         }
     });
-    addCompactSwitch(QStringLiteral("WebView Background"),
-                     QStringLiteral("Show the full shared WebView layer for debugging. Empty desktop clicks pass through when this is off."),
+    addCompactSwitch(QStringLiteral("Show Bounds"),
+                     QStringLiteral("显示小组件边界。CEF OSR 开启时会绘制青色边框并标记 [CEF OSR: ID] 以供视觉辨别。"),
                      m_linWidgetBoundsToggle);
 
     m_linWidgetBlockedCellsToggle = new FluentToggleSwitch(page);
@@ -2822,142 +2831,5 @@ void ListViewDebugPanel::applyTextPreviewOptions()
     m_textPreview->setRendererOptions(options);
 }
 
-QWidget* ListViewDebugPanel::createZOrderPage() {
-    auto* page = new QWidget();
-    auto* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(32, 32, 32, 32);
-    layout->setSpacing(20);
-
-    layout->addWidget(createPageTitleLabel("Z-Order Diagnostics & Controls"));
-    layout->addWidget(createPageSubtitleLabel("Manually test and monitor relative window layering between ListView and Webview Wallpaper."));
-
-    QLabel* zInfoLabel = new QLabel("HWND Info: Loading...", page);
-    zInfoLabel->setStyleSheet("font-family: monospace; font-size: 14px; color: #1f2937; background: #f3f4f6; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;");
-    layout->addWidget(zInfoLabel);
-
-    auto updateZInfo = [this, zInfoLabel]() {
-#ifdef Q_OS_WIN
-        ListView* lv = ListView::instance();
-        HWND lvHwnd = lv ? reinterpret_cast<HWND>(lv->winId()) : nullptr;
-        HWND wpHwnd = nullptr;
-        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
-            wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
-        }
-
-        QString text = QString("ListView HWND: %1\nWallpaper HWND: %2\n")
-            .arg(lvHwnd ? QString("0x%1").arg(reinterpret_cast<quintptr>(lvHwnd), 0, 16) : "None")
-            .arg(wpHwnd ? QString("0x%1").arg(reinterpret_cast<quintptr>(wpHwnd), 0, 16) : "None");
-
-        if (lvHwnd) {
-            text += QString("ListView Parent: 0x%1\n").arg(reinterpret_cast<quintptr>(GetParent(lvHwnd)), 0, 16);
-        }
-        if (wpHwnd) {
-            text += QString("Wallpaper Parent: 0x%1\n").arg(reinterpret_cast<quintptr>(GetParent(wpHwnd)), 0, 16);
-        }
-
-        if (lvHwnd && wpHwnd && GetParent(lvHwnd) == GetParent(wpHwnd)) {
-            HWND parent = GetParent(lvHwnd);
-            HWND sibling = GetWindow(parent, GW_CHILD);
-            int lvIdx = -1;
-            int wpIdx = -1;
-            int currentIdx = 0;
-            while (sibling) {
-                if (sibling == lvHwnd) lvIdx = currentIdx;
-                if (sibling == wpHwnd) wpIdx = currentIdx;
-                sibling = GetWindow(sibling, GW_HWNDNEXT);
-                currentIdx++;
-            }
-            if (lvIdx != -1 && wpIdx != -1) {
-                text += QString("Z-Order Index (lower is higher on screen):\n- ListView: %1\n- Wallpaper: %2\n\nStatus: %3")
-                    .arg(lvIdx)
-                    .arg(wpIdx)
-                    .arg(lvIdx < wpIdx ? "ListView is ON TOP of Wallpaper (Correct)" : "Wallpaper is ON TOP of ListView (Error!)");
-            } else {
-                text += "Unable to trace sibling indices.";
-            }
-        } else {
-            text += "Windows are not siblings or one of them is missing.";
-        }
-        zInfoLabel->setText(text);
-#else
-        zInfoLabel->setText("Z-Order debug is only supported on Windows.");
-#endif
-    };
-
-    updateZInfo();
-
-    QHBoxLayout* btnLayout = new QHBoxLayout();
-    btnLayout->setSpacing(10);
-
-    QPushButton* btnBehind = createActionButton("Wallpaper behind ListView", false, false);
-    connect(btnBehind, &QPushButton::clicked, this, [this, updateZInfo]() {
-#ifdef Q_OS_WIN
-        ListView* lv = ListView::instance();
-        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
-            HWND lvHwnd = reinterpret_cast<HWND>(lv->winId());
-            HWND wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
-            SetWindowPos(wpHwnd, lvHwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            updateZInfo();
-        }
-#endif
-    });
-    btnLayout->addWidget(btnBehind);
-
-    QPushButton* btnBottom = createActionButton("Wallpaper to Bottom", false, false);
-    connect(btnBottom, &QPushButton::clicked, this, [this, updateZInfo]() {
-#ifdef Q_OS_WIN
-        ListView* lv = ListView::instance();
-        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
-            HWND wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
-            SetWindowPos(wpHwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            updateZInfo();
-        }
-#endif
-    });
-    btnLayout->addWidget(btnBottom);
-
-    QPushButton* btnTop = createActionButton("Wallpaper to Top", false, false);
-    connect(btnTop, &QPushButton::clicked, this, [this, updateZInfo]() {
-#ifdef Q_OS_WIN
-        ListView* lv = ListView::instance();
-        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
-            HWND wpHwnd = reinterpret_cast<HWND>(lv->linWidgetManager()->activeWallpaperWidget()->winId());
-            SetWindowPos(wpHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            updateZInfo();
-        }
-#endif
-    });
-    btnLayout->addWidget(btnTop);
-
-    QPushButton* btnLvRaise = createActionButton("ListView Raise", false, false);
-    connect(btnLvRaise, &QPushButton::clicked, this, [this, updateZInfo]() {
-        ListView* lv = ListView::instance();
-        if (lv) {
-            lv->raise();
-            updateZInfo();
-        }
-    });
-    btnLayout->addWidget(btnLvRaise);
-
-    QPushButton* btnStackUnder = createActionButton("Wallpaper stackUnder(ListView)", false, false);
-    connect(btnStackUnder, &QPushButton::clicked, this, [this, updateZInfo]() {
-        ListView* lv = ListView::instance();
-        if (lv && lv->linWidgetManager() && lv->linWidgetManager()->activeWallpaperWidget()) {
-            lv->linWidgetManager()->activeWallpaperWidget()->stackUnder(lv);
-            updateZInfo();
-        }
-    });
-    btnLayout->addWidget(btnStackUnder);
-
-    QPushButton* btnRefresh = createActionButton("Refresh Status", true, false);
-    connect(btnRefresh, &QPushButton::clicked, this, [updateZInfo]() {
-        updateZInfo();
-    });
-    btnLayout->addWidget(btnRefresh);
-
-    layout->addLayout(btnLayout);
-    layout->addStretch();
-    return page;
-}
 
 

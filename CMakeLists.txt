@@ -17,14 +17,15 @@ set(LINDESK_OUTPUT_DIR "${CMAKE_BINARY_DIR}/${LINDESK_PACKAGE_CONFIG}")
 set(LINDESK_INSTALLER_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/installer")
 
 # ========== C++ 标准 ==========
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_SUPPRESS_REGENERATION ON)
 
-# 使用 Unicode
-add_definitions(-DUNICODE -D_UNICODE)
+# 使用 Unicode 与 NOMINMAX
+add_definitions(-DUNICODE -D_UNICODE -DNOMINMAX)
 
 if(MSVC)
+    add_compile_options(/Zc:char8_t-)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
@@ -59,6 +60,10 @@ endif()
 # -------------------------
 
 project(LinDesk VERSION "${LINDESK_VERSION}")
+
+if(MSVC)
+    add_compile_options(/Zc:char8_t-)
+endif()
 
 # 配置 Version.h
 configure_file(
@@ -127,6 +132,9 @@ if(WIN32)
 endif()
 
 add_executable(LinDesk ${SOURCES} ${WIN32_RESOURCES})
+if(MSVC)
+    target_compile_options(LinDesk PRIVATE /Zc:char8_t-)
+endif()
 
 add_dependencies(LinDesk LinDeskUpdate)
 if(TARGET Win11MenuIsland)
@@ -160,34 +168,50 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
     target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_CEF=1)
     target_include_directories(LinDesk PRIVATE "${CEF_ROOT}")
 
-    target_link_directories(LinDesk PRIVATE
-        "${CEF_ROOT}/Release"
-        "${CEF_ROOT}/Debug"
-        "${CEF_ROOT}/libcef_dll_wrapper/Release"
-        "${CEF_ROOT}/libcef_dll_wrapper/Debug"
-        "${CEF_ROOT}/libcef_dll_wrapper"
+    set(CEF_WRAPPER_LIB
+        $<$<CONFIG:Debug>:${CEF_ROOT}/libcef_dll_wrapper/Debug/libcef_dll_wrapper.lib>
+        $<$<NOT:$<CONFIG:Debug>>:${CEF_ROOT}/libcef_dll_wrapper/Release/libcef_dll_wrapper.lib>
     )
 
     target_link_libraries(LinDesk PRIVATE
-        libcef
-        libcef_dll_wrapper
+        "${CEF_ROOT}/Release/libcef.lib"
+        ${CEF_WRAPPER_LIB}
     )
 
     # 独立子进程目标 LinDeskSubprocess
     set(SUBPROCESS_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/desktop/widgets/cef/subprocess/main.cpp")
     if(EXISTS "${SUBPROCESS_SRC}")
         add_executable(LinDeskSubprocess WIN32 "${SUBPROCESS_SRC}")
+        if(MSVC)
+            target_compile_options(LinDeskSubprocess PRIVATE /Zc:char8_t-)
+        endif()
+        target_compile_definitions(LinDeskSubprocess PRIVATE LINDESK_HAS_CEF=1)
         target_include_directories(LinDeskSubprocess PRIVATE "${CEF_ROOT}")
-        target_link_directories(LinDeskSubprocess PRIVATE
-            "${CEF_ROOT}/Release"
-            "${CEF_ROOT}/Debug"
-            "${CEF_ROOT}/libcef_dll_wrapper/Release"
-            "${CEF_ROOT}/libcef_dll_wrapper/Debug"
-            "${CEF_ROOT}/libcef_dll_wrapper"
+        target_link_libraries(LinDeskSubprocess PRIVATE
+            "${CEF_ROOT}/Release/libcef.lib"
+            ${CEF_WRAPPER_LIB}
         )
-        target_link_libraries(LinDeskSubprocess PRIVATE libcef libcef_dll_wrapper)
         add_dependencies(LinDesk LinDeskSubprocess)
     endif()
+
+    # 复制 CEF 运行时资源与 DLL 到输出目录
+    add_custom_command(TARGET LinDesk POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CEF_ROOT}/Resources"
+            "$<TARGET_FILE_DIR:LinDesk>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CEF_ROOT}/Release/libcef.dll"
+            "${CEF_ROOT}/Release/chrome_elf.dll"
+            "${CEF_ROOT}/Release/d3dcompiler_47.dll"
+            "${CEF_ROOT}/Release/v8_context_snapshot.bin"
+            "${CEF_ROOT}/Release/vk_swiftshader.dll"
+            "${CEF_ROOT}/Release/vk_swiftshader_icd.json"
+            "${CEF_ROOT}/Release/vulkan-1.dll"
+            "${CEF_ROOT}/Release/dxcompiler.dll"
+            "${CEF_ROOT}/Release/dxil.dll"
+            "$<TARGET_FILE_DIR:LinDesk>"
+        COMMENT "Copying CEF runtime binaries and resources to output directory..."
+    )
 else()
     message(STATUS "[CEF] CEF SDK not found in 3rdparty/cef. Run scripts/download_cef.ps1 to enable CEF OSR.")
 endif()
@@ -328,6 +352,14 @@ if(LINDESK_HAS_W11_MENU_HOST)
         COMMENT "Copying Win11 menu host to output directory..."
     )
 endif()
+
+# 复制应用程序资源到输出目录
+add_custom_command(TARGET LinDesk POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
+        "$<TARGET_FILE_DIR:LinDesk>/resources"
+    COMMENT "Copying app resources to output directory..."
+)
 
 
 

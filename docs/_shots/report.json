@@ -1,0 +1,145 @@
+{
+  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_WebView2_Removal_Guide.html",
+  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_WebView2_Removal_Guide.html",
+  "outdir": "D:\\Desktop\\LinDesk\\docs\\_shots",
+  "include": [
+    "lint",
+    "screenshots",
+    "structure"
+  ],
+  "shots": {
+    "desktop": {
+      "slices": [
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p1of2.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p2of2.jpg"
+      ],
+      "sliceHint": "按顺序 Read slices 里的各分片。",
+      "truncated": false,
+      "structure": {
+        "title": "LinDesk WebView2 方案移除指南",
+        "firstH1": "LinDesk 移除 WebView2 方案 · 改造任务书",
+        "viewport": {
+          "w": 1424,
+          "h": 749
+        },
+        "fullpage": {
+          "w": 1424,
+          "h": 9077
+        },
+        "counts": {
+          "section": 10,
+          "h1": 1,
+          "h2": 10,
+          "img": 0,
+          "canvas": 0,
+          "svg": 0,
+          "links": 0,
+          "buttons": 0
+        }
+      },
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "horizontalOverflow": [],
+      "resourceErrors": [],
+      "reportSource": "cdp"
+    },
+    "mobile": {
+      "slices": [
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p1of4.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p2of4.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p3of4.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p4of4.jpg"
+      ],
+      "sliceHint": "按顺序 Read slices 里的各分片。",
+      "truncated": false,
+      "structure": {
+        "title": "LinDesk WebView2 方案移除指南",
+        "firstH1": "LinDesk 移除 WebView2 方案 · 改造任务书",
+        "viewport": {
+          "w": 500,
+          "h": 693
+        },
+        "fullpage": {
+          "w": 500,
+          "h": 12289
+        },
+        "counts": {
+          "section": 10,
+          "h1": 1,
+          "h2": 10,
+          "img": 0,
+          "canvas": 0,
+          "svg": 0,
+          "links": 0,
+          "buttons": 0
+        }
+      },
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "horizontalOverflow": [],
+      "resourceErrors": [],
+      "reportSource": "cdp"
+    }
+  },
+  "engine": "chrome_cli",
+  "chromiumExec": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "engineDegraded": true,
+  "engineDegradedReason": "playwright 未装",
+  "elapsedSec": 7.96,
+  "schemaVersion": 2,
+  "status": "pass",
+  "engineInfo": {
+    "name": "chrome_cli",
+    "degraded": true,
+    "degradedReasons": [
+      "playwright 未装"
+    ]
+  },
+  "input": {
+    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_WebView2_Removal_Guide.html",
+    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_WebView2_Removal_Guide.html",
+    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_WebView2_Removal_Guide.html",
+    "protocol": "file",
+    "cwd": "D:\\Desktop\\LinDesk",
+    "mediaMode": {
+      "reducedMotion": true
+    }
+  },
+  "artifacts": {
+    "screenshots": [
+      {
+        "viewport": "desktop",
+        "tiles": [
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p1of2.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p2of2.jpg"
+        ],
+        "visualCoverage": {
+          "complete": true,
+          "reason": null
+        }
+      },
+      {
+        "viewport": "mobile",
+        "tiles": [
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p1of4.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p2of4.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p3of4.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p4of4.jpg"
+        ],
+        "visualCoverage": {
+          "complete": true,
+          "reason": null
+        }
+      }
+    ]
+  },
+  "summary": {
+    "blocker": 0,
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "findings": [],
+  "prioritizedActions": [],
+  "reportPath": "D:\\Desktop\\LinDesk\\docs\\_shots\\report.json"
+}

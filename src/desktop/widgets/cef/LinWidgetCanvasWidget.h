@@ -6,6 +6,8 @@
 #include <QRect>
 #include <QString>
 #include <QVector>
+#include <QPainter>
+#include <QRegion>
 
 namespace LinCef {
 
@@ -15,6 +17,9 @@ class LinWidgetCanvasWidget : public QWidget {
 public:
     explicit LinWidgetCanvasWidget(QWidget* parent = nullptr);
     ~LinWidgetCanvasWidget() override;
+
+    // Direct render support for parent canvas / ListView
+    void renderCanvas(QPainter& painter, const QRegion& clipRegion);
 
     // Frame buffer management for active widgets
     void updateWidgetFrame(const QString& widgetId,
@@ -28,6 +33,9 @@ public:
     bool hasWidgetAt(const QPoint& pos) const;
     QString widgetAt(const QPoint& pos) const;
 
+    void setShowBounds(bool show);
+    bool showBounds() const { return m_showBounds; }
+
 protected:
     void paintEvent(QPaintEvent* event) override;
 
@@ -39,6 +47,7 @@ private:
     };
 
     QHash<QString, WidgetRenderBuffer> m_widgetBuffers;
+    bool m_showBounds = false;
 };
 
 } // namespace LinCef

@@ -4,6 +4,133 @@
 
 #include <QDebug>
 
+#ifdef LINDESK_HAS_CEF
+#include <include/cef_life_span_handler.h>
+#include <include/cef_load_handler.h>
+#include <include/cef_context_menu_handler.h>
+
+namespace LinCef {
+
+class CefOsrClientHandler : public CefClient,
+                            public CefLifeSpanHandler,
+                            public CefLoadHandler,
+                            public CefContextMenuHandler
+{
+public:
+    explicit CefOsrClientHandler(CefOsrBrowserInstance* owner, CefRefPtr<CefOsrRenderHandler> renderHandler)
+        : m_owner(owner)
+        , m_renderHandler(renderHandler)
+    {
+    }
+
+    void detach()
+    {
+        m_owner = nullptr;
+    }
+
+    // CefClient interfaces
+    CefRefPtr<CefRenderHandler> GetRenderHandler() override
+    {
+        return m_renderHandler;
+    }
+
+    CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override
+    {
+        return this;
+    }
+
+    CefRefPtr<CefLoadHandler> GetLoadHandler() override
+    {
+        return this;
+    }
+
+    CefRefPtr<CefContextMenuHandler> GetContextMenuHandler() override
+    {
+        return this;
+    }
+
+    // CefContextMenuHandler interfaces
+    void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
+                             CefRefPtr<CefFrame> frame,
+                             CefRefPtr<CefContextMenuParams> params,
+                             CefRefPtr<CefMenuModel> model) override
+    {
+        Q_UNUSED(browser);
+        Q_UNUSED(frame);
+        Q_UNUSED(params);
+        if (model) {
+            model->Clear();
+        }
+    }
+
+    bool RunContextMenu(CefRefPtr<CefBrowser> browser,
+                        CefRefPtr<CefFrame> frame,
+                        CefRefPtr<CefContextMenuParams> params,
+                        CefRefPtr<CefMenuModel> model,
+                        CefRefPtr<CefRunContextMenuCallback> callback) override
+    {
+        Q_UNUSED(browser);
+        Q_UNUSED(frame);
+        Q_UNUSED(params);
+        Q_UNUSED(model);
+        Q_UNUSED(callback);
+        return true;
+    }
+
+    // CefLifeSpanHandler interfaces
+    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
+    {
+        if (m_owner) {
+            m_owner->onBrowserAfterCreated(browser);
+        }
+    }
+
+    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override
+    {
+        if (m_owner) {
+            m_owner->onBrowserBeforeClose(browser);
+        }
+        m_renderHandler = nullptr;
+    }
+
+    // CefLoadHandler interfaces
+    void OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool isLoading, bool canGoBack, bool canGoForward) override
+    {
+        Q_UNUSED(browser);
+        if (m_owner) {
+            m_owner->onBrowserLoadingStateChange(isLoading, canGoBack, canGoForward);
+        }
+    }
+
+    void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override
+    {
+        Q_UNUSED(browser);
+        if (m_owner) {
+            const QString frameUrl = frame ? QString::fromStdWString(frame->GetURL().ToWString()) : QString();
+            m_owner->onBrowserLoadEnd(frameUrl, httpStatusCode);
+        }
+    }
+
+    void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString& errorText, const CefString& failedUrl) override
+    {
+        Q_UNUSED(browser);
+        Q_UNUSED(frame);
+        if (m_owner) {
+            m_owner->onBrowserLoadError(static_cast<int>(errorCode),
+                                        QString::fromStdWString(errorText.ToWString()),
+                                        QString::fromStdWString(failedUrl.ToWString()));
+        }
+    }
+
+private:
+    CefOsrBrowserInstance* m_owner = nullptr;
+    CefRefPtr<CefOsrRenderHandler> m_renderHandler;
+    IMPLEMENT_REFCOUNTING(CefOsrClientHandler);
+};
+
+} // namespace LinCef
+#endif
+
 namespace LinCef {
 
 CefOsrBrowserInstance::CefOsrBrowserInstance(QString widgetId, QObject* parent)
@@ -59,6 +186,8 @@ bool CefOsrBrowserInstance::create(const QString& url, const QRect& geometry)
                 }
             });
 
+    m_clientHandler = new CefOsrClientHandler(this, m_renderHandler);
+
     CefWindowInfo windowInfo;
     windowInfo.SetAsWindowless(nullptr);
     windowInfo.shared_texture_enabled = 0;
@@ -68,9 +197,12 @@ bool CefOsrBrowserInstance::create(const QString& url, const QRect& geometry)
     browserSettings.background_color = 0x00000000; // Transparent background
 
     const std::wstring urlW = url.toStdWString();
-    const bool success = CefBrowserHost::CreateBrowser(windowInfo, this, urlW, browserSettings, nullptr, nullptr);
+    const bool success = CefBrowserHost::CreateBrowser(windowInfo, m_clientHandler, urlW, browserSettings, nullptr, nullptr);
     if (!success) {
         qCritical() << "[CefOsrBrowserInstance] CefBrowserHost::CreateBrowser failed for:" << m_widgetId;
+        m_clientHandler->detach();
+        m_clientHandler = nullptr;
+        m_renderHandler = nullptr;
         return false;
     }
 
@@ -88,16 +220,20 @@ void CefOsrBrowserInstance::close()
     if (!m_created) {
         return;
     }
+    m_created = false;
 
 #ifdef LINDESK_HAS_CEF
+    if (m_clientHandler) {
+        m_clientHandler->detach();
+    }
     if (m_browser && m_browser->GetHost()) {
         m_browser->GetHost()->CloseBrowser(true);
     }
     m_browser = nullptr;
     m_renderHandler = nullptr;
+    m_clientHandler = nullptr;
 #endif
 
-    m_created = false;
     emit browserClosed(m_widgetId);
 }
 
@@ -188,25 +324,48 @@ void CefOsrBrowserInstance::sendMouseWheel(int x, int y, int deltaX, int deltaY)
 }
 
 #ifdef LINDESK_HAS_CEF
-CefRefPtr<CefRenderHandler> CefOsrBrowserInstance::GetRenderHandler()
-{
-    return m_renderHandler;
-}
-
-void CefOsrBrowserInstance::OnAfterCreated(CefRefPtr<CefBrowser> browser)
+void CefOsrBrowserInstance::onBrowserAfterCreated(CefRefPtr<CefBrowser> browser)
 {
     m_browser = browser;
+    if (m_browser && m_browser->GetHost()) {
+        m_browser->GetHost()->SetZoomLevel(0.0);
+        m_browser->GetHost()->WasHidden(!m_visible);
+        m_browser->GetHost()->Invalidate(PET_VIEW);
+    }
     emit browserCreated(m_widgetId);
-    qInfo() << "[CefOsrBrowserInstance] Browser successfully created for:" << m_widgetId;
+    qInfo() << "[CefOsrBrowserInstance] Browser successfully created and invalidated for:" << m_widgetId;
 }
 
-void CefOsrBrowserInstance::OnBeforeClose(CefRefPtr<CefBrowser> browser)
+void CefOsrBrowserInstance::onBrowserBeforeClose(CefRefPtr<CefBrowser> browser)
 {
     Q_UNUSED(browser);
     m_browser = nullptr;
     emit browserClosed(m_widgetId);
-    qInfo() << "[CefOsrBrowserInstance] Browser closed for:" << m_widgetId;
+    qInfo() << "[CefOsrBrowserInstance] Browser closed callback received for:" << m_widgetId;
+}
+
+void CefOsrBrowserInstance::onBrowserLoadingStateChange(bool isLoading, bool canGoBack, bool canGoForward)
+{
+    Q_UNUSED(canGoBack);
+    Q_UNUSED(canGoForward);
+    qInfo() << "[CefOsrBrowserInstance] LoadingStateChange:" << m_widgetId << "isLoading=" << isLoading;
+}
+
+void CefOsrBrowserInstance::onBrowserLoadEnd(const QString& frameUrl, int httpStatusCode)
+{
+    qInfo() << "[CefOsrBrowserInstance] OnLoadEnd:" << m_widgetId << "url=" << frameUrl << "statusCode=" << httpStatusCode;
+    if (m_browser && m_browser->GetHost()) {
+        m_browser->GetHost()->Invalidate(PET_VIEW);
+    }
+}
+
+void CefOsrBrowserInstance::onBrowserLoadError(int errorCode, const QString& errorText, const QString& failedUrl)
+{
+    qCritical() << "[CefOsrBrowserInstance] OnLoadError:" << m_widgetId
+                << "code=" << errorCode
+                << "error=" << errorText
+                << "url=" << failedUrl;
 }
 #endif
 
-} // namespace LinDesk
+} // namespace LinCef

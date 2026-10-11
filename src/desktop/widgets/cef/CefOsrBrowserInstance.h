@@ -7,19 +7,29 @@
 #include <QVector>
 
 #ifdef LINDESK_HAS_CEF
+#ifdef GetNextSibling
+#undef GetNextSibling
+#endif
+#ifdef GetPrevSibling
+#undef GetPrevSibling
+#endif
+#ifdef GetFirstChild
+#undef GetFirstChild
+#endif
+#ifdef GetLastChild
+#undef GetLastChild
+#endif
 #include <include/cef_client.h>
-#include <include/cef_life_span_handler.h>
 #endif
 
 namespace LinCef {
 
 class CefOsrRenderHandler;
+#ifdef LINDESK_HAS_CEF
+class CefOsrClientHandler;
+#endif
 
 class CefOsrBrowserInstance : public QObject
-#ifdef LINDESK_HAS_CEF
-    , public CefClient
-    , public CefLifeSpanHandler
-#endif
 {
     Q_OBJECT
 
@@ -47,13 +57,12 @@ public:
     void sendMouseWheel(int x, int y, int deltaX, int deltaY);
 
 #ifdef LINDESK_HAS_CEF
-    // CefClient interfaces
-    CefRefPtr<CefRenderHandler> GetRenderHandler() override;
-    CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
-
-    // CefLifeSpanHandler interfaces
-    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override;
-    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
+    // Internal callbacks from CefOsrClientHandler
+    void onBrowserAfterCreated(CefRefPtr<CefBrowser> browser);
+    void onBrowserBeforeClose(CefRefPtr<CefBrowser> browser);
+    void onBrowserLoadingStateChange(bool isLoading, bool canGoBack, bool canGoForward);
+    void onBrowserLoadEnd(const QString& frameUrl, int httpStatusCode);
+    void onBrowserLoadError(int errorCode, const QString& errorText, const QString& failedUrl);
 #endif
 
 signals:
@@ -70,7 +79,7 @@ private:
 #ifdef LINDESK_HAS_CEF
     CefRefPtr<CefBrowser> m_browser;
     CefRefPtr<CefOsrRenderHandler> m_renderHandler;
-    IMPLEMENT_REFCOUNTING(CefOsrBrowserInstance);
+    CefRefPtr<CefOsrClientHandler> m_clientHandler;
 #else
     CefOsrRenderHandler* m_renderHandler = nullptr;
 #endif

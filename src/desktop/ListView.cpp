@@ -67,6 +67,7 @@
 #include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
 #include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
+#include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
 
 
 
@@ -553,19 +554,11 @@ void ListView::syncLinWidgetLayer()
 #ifdef Q_OS_WIN
     HWND hwnd = reinterpret_cast<HWND>(winId());
     if (hwnd) {
-        // Strip WS_CLIPSIBLINGS to prevent the OS from clipping sibling windows
-        // (like the WebView widget) that are Z-ordered below ListView.
         LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
         LONG_PTR newStyle = style & ~WS_CLIPSIBLINGS;
 
-        // Remove manual WS_EX_LAYERED handling to avoid interfering with Qt's own
-        // window composition and transparency management.
-        LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-        LONG_PTR newExStyle = exStyle & ~WS_EX_LAYERED;
-
-        if (style != newStyle || exStyle != newExStyle) {
+        if (style != newStyle) {
             SetWindowLongPtr(hwnd, GWL_STYLE, newStyle);
-            SetWindowLongPtr(hwnd, GWL_EXSTYLE, newExStyle);
             SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
     }
@@ -1324,6 +1317,13 @@ void ListView::paintEvent(QPaintEvent* event)
         painter.fillRect(event->rect(), QColor(0, 0, 0, 1));
     }
 
+    const bool widgetsEmbedded = m_linWidgetManager ? m_linWidgetManager->isWidgetLayerEmbedded() : true;
+
+    // 1. 如果处于嵌入模式（小组件在图标下方），优先绘制 CEF OSR 画布
+    if (widgetsEmbedded && m_linWidgetManager && m_linWidgetManager->canvasWidget()) {
+        m_linWidgetManager->canvasWidget()->renderCanvas(painter, dirtyRegion);
+    }
+
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
             return;
@@ -1350,6 +1350,11 @@ void ListView::paintEvent(QPaintEvent* event)
             continue;
         }
         paintDesktopState(state);
+    }
+
+    // 2. 如果处于浮动模式（小组件在图标上方），后置绘制 CEF OSR 画布
+    if (!widgetsEmbedded && m_linWidgetManager && m_linWidgetManager->canvasWidget()) {
+        m_linWidgetManager->canvasWidget()->renderCanvas(painter, dirtyRegion);
     }
 
     const QRect indicatorRect = desktopAutoArrangeInsertionIndicatorRect();

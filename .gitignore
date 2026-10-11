@@ -1,31 +1,43 @@
 # Ignore build artifacts
 .vs/
-
 .vscode/
-# 构建目录
-Build/
-Build/**/*
-build/
-build/**/*
-build/
-build_*/
-build-*/
-*.build/
+.idea/
+
+# 构建与输出目录（包含子模块和插件）
+[Bb]uild/
+[Bb]uild*/**
+**/[Bb]uild/
+**/[Bb]uild*/**
+**/build32/
+**/build32/**
+**/build64/
+**/build64/**
 Debug/
+**/Debug/
 Release/
+**/Release/
 x64/
+**/x64/
 x86/
+**/x86/
 out/
 out/**/*
+bin/
+**/bin/
+obj/
+**/obj/
 vcpkg_installed/
 vcpkg_installed/**/*
+
+# 第三方依赖大文件与 SDK
+3rdparty/
 
 # Qt 生成文件
 *.pro.user
 *.pro.user.*
 *.autosave
 
-# 编译输出
+# 编译与二进制输出
 *.o
 *.obj
 *.exe
@@ -35,40 +47,44 @@ vcpkg_installed/**/*
 *.a
 *.lib
 
-# 调试文件
+# 保留工程自带的特定动态库（如 Openssl）
+!Openssl/*.dll
+
+# 调试与链接文件
 *.pdb
 *.idb
 *.ilk
 *.exp
 *.map
 
-# IDE 文件
-.vscode/
-.idea/
+# IDE 杂项
 *.aps
 *.swp
 *.swo
 *~
 
-# CMake
+# CMake 临时文件
 CMakeCache.txt
 CMakeFiles/
+**/CMakeFiles/
 cmake_install.cmake
+**/cmake_install.cmake
 Makefile
 
-# 安装程序输出
+# 安装程序与包输出
 Output/
+installer/*.exe
 *.msi
-*.exe
 *.dmg
 *.deb
 *.rpm
 
-# 临时文件
+# 临时与日志文件
 *.tmp
 *.temp
 *.log
 /.tmp_build
 
-
+# WebView2 缓存
 /src/resources/LinWidgets/*/.webview2/EBWebView
+**/EBWebView/

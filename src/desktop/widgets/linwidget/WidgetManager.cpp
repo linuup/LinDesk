@@ -416,6 +416,9 @@ WidgetManager::WidgetManager(QObject* parent)
     ensureDevelopmentResources();
 #endif
 
+    QSettings cefSettings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_cefOsrEnabled = cefSettings.value("LinWidgets/CefOsrEnabled", true).toBool();
+
     m_runtimeHealthTimer.setInterval(kRuntimeHealthCheckIntervalMs);
     connect(&m_runtimeHealthTimer, &QTimer::timeout, this, &WidgetManager::checkRuntimeHealth);
 
@@ -714,16 +717,12 @@ bool WidgetManager::launchWidgetInstance(const WidgetInstance& instance,
                                          const WidgetLayoutState& layoutState,
                                          QString* errorMessage)
 {
-    if (!ensureSharedHost(errorMessage)) {
-        return false;
-    }
-
     m_layout.addOrUpdate(layoutState);
     m_instances.insert(instance.instanceId, instance);
     m_runningWidgets.insert(instance.instanceId);
     configureDevelopmentWatcher(instance);
 
-    if (LinCef::CefManager::instance()->isCefAvailable() && LinCef::CefManager::instance()->initialize()) {
+    if (m_cefOsrEnabled && LinCef::CefManager::instance()->isCefAvailable() && LinCef::CefManager::instance()->initialize()) {
         auto* osr = new LinCef::CefOsrBrowserInstance(instance.instanceId, this);
         connect(osr, &LinCef::CefOsrBrowserInstance::frameReady, this,
                 [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
@@ -735,7 +734,11 @@ bool WidgetManager::launchWidgetInstance(const WidgetInstance& instance,
         const QString entryUrl = QUrl::fromLocalFile(entryPath).toString();
         osr->create(entryUrl, layoutState.geometry);
         m_osrBrowsers.insert(instance.instanceId, osr);
+        updateDefaultCefPage();
     } else {
+        if (!ensureSharedHost(errorMessage)) {
+            return false;
+        }
         sendAddWidgetToSharedHost(instance, layoutState);
         syncAllWidgetWindowLayers();
     }
@@ -1076,7 +1079,7 @@ void WidgetManager::setEnabled(bool enabled)
         if (!m_runtimeHealthTimer.isActive()) {
             m_runtimeHealthTimer.start();
         }
-        if (m_desktopLayerWindow != 0 && m_activeWallpaperId.isEmpty()) {
+        if (m_desktopLayerWindow != 0 && !m_cefOsrEnabled && m_activeWallpaperId.isEmpty()) {
             loadWallpaperConfig();
         }
     }
@@ -1109,7 +1112,7 @@ void WidgetManager::setDesktopLayerWindow(WId layerWindow)
         m_linDesktopParent = lv->parentWidget();
     }
 
-    if (m_enabled && m_activeWallpaperId.isEmpty()) {
+    if (m_enabled && !m_cefOsrEnabled && m_activeWallpaperId.isEmpty()) {
         loadWallpaperConfig();
     }
     syncAllWidgetWindowLayers();
@@ -1126,6 +1129,9 @@ void WidgetManager::setShowWebViewBounds(bool enabled)
         return;
     }
     m_showWebViewBounds = enabled;
+    if (m_canvasWidget) {
+        m_canvasWidget->setShowBounds(enabled);
+    }
     sendHostOptionsToSharedHost();
 }
 
@@ -1147,6 +1153,98 @@ QWidget* WidgetManager::activeWallpaperWidget() const
 void WidgetManager::setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas)
 {
     m_canvasWidget = canvas;
+    if (m_canvasWidget) {
+        m_canvasWidget->setShowBounds(m_showWebViewBounds);
+        updateDefaultCefPage();
+    }
+}
+
+void WidgetManager::setCefOsrEnabled(bool enabled)
+{
+    m_cefOsrEnabled = enabled;
+
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue("LinWidgets/CefOsrEnabled", enabled);
+    if (enabled && !m_enabled) {
+        settings.setValue("LinWidgets/Enabled", true);
+    }
+    settings.sync();
+
+    if (enabled && !m_enabled) {
+        setEnabled(true);
+    }
+
+    if (!m_enabled) {
+        return;
+    }
+
+    if (enabled) {
+        // 彻底停止任何残留的动态壁纸，确保使用 CEF OSR 时不受壁纸干扰
+        stopWallpaper(true);
+
+        // 启用 CEF OSR：如果 WebView2 运行时存在，彻底关停并清理，由 CEF OSR 接管
+        if (m_webViewRuntime) {
+            LinWidgetWebViewRuntime* runtime = m_webViewRuntime;
+            m_webViewRuntime = nullptr;
+            ListView* lv = ListView::instance();
+            if (lv && lv->parentWidget() == runtime) {
+                QWidget* baseParent = m_linDesktopParent;
+                lv->setParent(baseParent);
+#ifdef Q_OS_WIN
+                HWND baseHwnd = baseParent ? reinterpret_cast<HWND>(baseParent->winId()) : nullptr;
+                SetParent(reinterpret_cast<HWND>(lv->winId()), baseHwnd);
+#endif
+            }
+            runtime->close();
+            runtime->deleteLater();
+        }
+        m_widgetWindows.remove(QString::fromLatin1(kSharedHostId));
+        m_sharedWebViewWindow = 0;
+        m_sharedWebViewWindowClass.clear();
+
+        // 启动 CEF OSR 浏览器
+        if (LinCef::CefManager::instance()->isCefAvailable() && LinCef::CefManager::instance()->initialize()) {
+            for (const QString& id : m_runningWidgets) {
+                if (m_osrBrowsers.contains(id)) continue;
+                const WidgetInstance inst = m_instances.value(id);
+                const WidgetLayoutState state = m_layout.state(id);
+                auto* osr = new LinCef::CefOsrBrowserInstance(id, this);
+                connect(osr, &LinCef::CefOsrBrowserInstance::frameReady, this,
+                        [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
+                            if (m_canvasWidget) {
+                                m_canvasWidget->updateWidgetFrame(wid, geom, img, dirty);
+                            }
+                        });
+                const QString entryPath = QDir(inst.packagePath).filePath(inst.manifest.entry);
+                const QString entryUrl = QUrl::fromLocalFile(entryPath).toString();
+                osr->create(entryUrl, state.geometry);
+                m_osrBrowsers.insert(id, osr);
+            }
+            updateDefaultCefPage();
+        }
+    } else {
+        // 禁用并卸载全部 CEF OSR 浏览器
+        for (auto* osr : m_osrBrowsers) {
+            if (osr) {
+                osr->close();
+                osr->deleteLater();
+            }
+        }
+        m_osrBrowsers.clear();
+        updateDefaultCefPage();
+
+        if (m_canvasWidget) {
+            m_canvasWidget->clearAllFrames();
+        }
+
+        // 彻底停止任何残留的动态壁纸，确保恢复系统壁纸与原生 ListView
+        stopWallpaper(true);
+
+        // 刷新桌面以擦除残留帧，ListView 原生窗口与内容保持不动
+        if (ListView::instance()) {
+            ListView::instance()->update();
+        }
+    }
 }
 
 bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
@@ -1186,7 +1284,12 @@ bool WidgetManager::forwardMouseEvent(QMouseEvent* event)
         return false;
     }
 
-    if (auto* osr = m_osrBrowsers.value(wid)) {
+    auto* osr = m_osrBrowsers.value(wid, nullptr);
+    if (!osr && wid == QStringLiteral("__default_page__")) {
+        osr = m_defaultOsrBrowser;
+    }
+
+    if (osr) {
         const QPoint localPos = event->pos() - osr->geometry().topLeft();
         if (event->type() == QEvent::MouseMove) {
             osr->sendMouseMove(localPos.x(), localPos.y());
@@ -1212,13 +1315,112 @@ bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
         return false;
     }
 
-    if (auto* osr = m_osrBrowsers.value(wid)) {
+    auto* osr = m_osrBrowsers.value(wid, nullptr);
+    if (!osr && wid == QStringLiteral("__default_page__")) {
+        osr = m_defaultOsrBrowser;
+    }
+
+    if (osr) {
         const QPoint localPos = event->pos() - osr->geometry().topLeft();
         const QPoint angleDelta = event->angleDelta();
         osr->sendMouseWheel(localPos.x(), localPos.y(), angleDelta.x(), angleDelta.y());
         return true;
     }
     return false;
+}
+
+QString WidgetManager::defaultCefPagePath() const
+{
+    const QString relativePath = QStringLiteral("resources/LinWidgetRuntime/default_page.html");
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString entryPath = QDir::cleanPath(QDir(appDir).filePath(relativePath));
+    if (QFileInfo::exists(entryPath)) {
+        return entryPath;
+    }
+#ifdef LINDESK_SOURCE_DIR
+    const QString srcPath = QDir::cleanPath(QDir(QStringLiteral(LINDESK_SOURCE_DIR)).filePath(QStringLiteral("src/") + relativePath));
+    if (QFileInfo::exists(srcPath)) {
+        return srcPath;
+    }
+#endif
+    return entryPath;
+}
+
+void WidgetManager::updateDefaultCefPage()
+{
+    qDebug() << "[WidgetManager] updateDefaultCefPage called. enabled=" << m_enabled
+             << "cefOsrEnabled=" << m_cefOsrEnabled
+             << "runningWidgetsCount=" << m_runningWidgets.size()
+             << "osrBrowsersCount=" << m_osrBrowsers.size();
+
+    if (!m_cefOsrEnabled || !m_enabled) {
+        if (m_defaultOsrBrowser) {
+            qDebug() << "[WidgetManager] Closing default OSR browser...";
+            m_defaultOsrBrowser->close();
+            m_defaultOsrBrowser->deleteLater();
+            m_defaultOsrBrowser = nullptr;
+        }
+        if (m_canvasWidget) {
+            m_canvasWidget->removeWidgetFrame(QStringLiteral("__default_page__"));
+        }
+        return;
+    }
+
+    // 检查是否有真实用户小组件正在运行
+    const bool hasUserWidgets = !m_osrBrowsers.isEmpty();
+    if (hasUserWidgets) {
+        if (m_defaultOsrBrowser) {
+            qDebug() << "[WidgetManager] User widget running, removing default page.";
+            m_defaultOsrBrowser->close();
+            m_defaultOsrBrowser->deleteLater();
+            m_defaultOsrBrowser = nullptr;
+            if (m_canvasWidget) {
+                m_canvasWidget->removeWidgetFrame(QStringLiteral("__default_page__"));
+            }
+        }
+        return;
+    }
+
+    // 无任何组件：启动并加载默认居中页面
+    if (!LinCef::CefManager::instance()->isCefAvailable()) {
+        qWarning() << "[WidgetManager] CEF is not available!";
+        return;
+    }
+    if (!LinCef::CefManager::instance()->initialize()) {
+        qWarning() << "[WidgetManager] Failed to initialize CEF!";
+        return;
+    }
+
+    QRect canvasRect;
+    if (ListView::instance() && ListView::instance()->rect().isValid() && ListView::instance()->rect().width() > 100) {
+        canvasRect = ListView::instance()->rect();
+    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
+        canvasRect = m_canvasWidget->rect();
+    } else {
+        canvasRect = QRect(0, 0, 1920, 1080);
+    }
+
+    if (m_defaultOsrBrowser) {
+        if (m_defaultOsrBrowser->geometry() != canvasRect) {
+            m_defaultOsrBrowser->setGeometry(canvasRect);
+        }
+        return;
+    }
+
+    const QString defaultId = QStringLiteral("__default_page__");
+    m_defaultOsrBrowser = new LinCef::CefOsrBrowserInstance(defaultId, this);
+    connect(m_defaultOsrBrowser, &LinCef::CefOsrBrowserInstance::frameReady, this,
+            [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
+                if (m_canvasWidget) {
+                    m_canvasWidget->updateWidgetFrame(wid, geom, img, dirty);
+                }
+            });
+
+    const QString path = defaultCefPagePath();
+    const bool exists = QFileInfo::exists(path);
+    const QString url = QUrl::fromLocalFile(path).toString();
+    qDebug() << "[WidgetManager] Loading default page. path=" << path << "exists=" << exists << "url=" << url << "geom=" << canvasRect;
+    m_defaultOsrBrowser->create(url, canvasRect);
 }
 
 bool WidgetManager::isWallpaperInteractive() const
@@ -1376,6 +1578,9 @@ void WidgetManager::syncAllWidgetWindowLayers()
 {
     syncWidgetWindowLayer(QString::fromLatin1(kSharedHostId));
     syncWallpaperWindowLayer();
+    if (m_cefOsrEnabled && m_defaultOsrBrowser) {
+        updateDefaultCefPage();
+    }
 }
 
 bool WidgetManager::ensureSharedHost(QString* errorMessage)
@@ -1575,6 +1780,7 @@ void WidgetManager::stopWidget(const QString& instanceId)
     }
     m_widgetWindows.remove(instanceId);
     emit widgetStopped(instanceId);
+    updateDefaultCefPage();
 }
 
 void WidgetManager::configureDevelopmentWatcher(const WidgetInstance& instance)
@@ -1716,6 +1922,7 @@ void WidgetManager::stopAll(bool includeWallpaper)
     if (m_canvasWidget) {
         m_canvasWidget->clearAllFrames();
     }
+    updateDefaultCefPage();
 
     if (includeWallpaper) {
         m_runningWidgets.clear();
@@ -2533,6 +2740,16 @@ void WidgetManager::stopWallpaper(bool clearConfig)
         if (linDesktop) {
             lv->setParent(linDesktop);
             lv->setWindowFlags(Qt::Widget);
+#ifdef Q_OS_WIN
+            HWND linDesktopHwnd = reinterpret_cast<HWND>(linDesktop->winId());
+            HWND lvHwnd = reinterpret_cast<HWND>(lv->winId());
+            SetParent(lvHwnd, linDesktopHwnd);
+            LONG style = GetWindowLong(lvHwnd, GWL_STYLE);
+            style &= ~WS_POPUP;
+            style |= WS_CHILD;
+            SetWindowLong(lvHwnd, GWL_STYLE, style);
+            SetWindowPos(lvHwnd, HWND_TOP, 0, 0, linDesktop->width(), linDesktop->height(), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+#endif
             if (m_webViewRuntime) {
                 m_webViewRuntime->setParent(linDesktop);
                 m_webViewRuntime->setWindowFlags(Qt::Widget);
@@ -2725,6 +2942,10 @@ void WidgetManager::syncWallpaperWindowLayer()
 
 void WidgetManager::loadWallpaperConfig()
 {
+    if (m_cefOsrEnabled) {
+        return;
+    }
+
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
     const bool wallpaperEnabled = settings.value(QStringLiteral("LinWallpapers/Enabled"), false).toBool();
     if (!wallpaperEnabled) {
