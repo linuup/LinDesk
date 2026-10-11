@@ -25,6 +25,7 @@
 #include <QScreen>
 #include <QSet>
 #include <QStringList>
+#include <QSettings>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -474,6 +475,13 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
         return false;
     }
 
+    if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+        if (instanceId) {
+            *instanceId = QStringLiteral("wallpaper:") + manifest.id;
+        }
+        return startWallpaper(packagePath, isDevelopment, false, errorMessage);
+    }
+
     const QString requestedPackageKey = canonicalPackagePath(packagePath);
     const QString requestedIdentityKey = widgetIdentityKey(manifest, packagePath);
     const QString requestedLayoutId = instanceLayoutId(manifest, isDevelopment);
@@ -725,6 +733,19 @@ bool WidgetManager::restartWidget(const QString& instanceId)
         return false;
     }
 
+    if (instanceId.startsWith(QStringLiteral("wallpaper:"))) {
+        const QString packagePath = m_activeWallpaperPackagePath;
+        const bool isDev = m_activeWallpaperIsDevelopment;
+        const bool interactive = m_activeWallpaperInteractive;
+        stopWallpaper(false);
+        QString error;
+        if (!startWallpaper(packagePath, isDev, interactive, &error)) {
+            emit widgetError(instanceId, error);
+            return false;
+        }
+        return true;
+    }
+
     WidgetLayoutState state = m_layout.state(instanceId);
     if (state.instanceId.isEmpty()) {
         return false;
@@ -824,12 +845,6 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
                 }
                 const QString instanceId = instanceLayoutId(manifest, entry.isDevelopment);
                 if (knownInstanceIds.contains(instanceId)) {
-                    for (WidgetLayoutState& state : states) {
-                        if (state.instanceId == instanceId) {
-                            state.visible = true;
-                            break;
-                        }
-                    }
                     continue;
                 }
                 WidgetLayoutState state;
@@ -1033,6 +1048,13 @@ void WidgetManager::setEnabled(bool enabled)
         }
         stopAll();
         m_widgetWindows.clear();
+    } else {
+        if (!m_runtimeHealthTimer.isActive()) {
+            m_runtimeHealthTimer.start();
+        }
+        if (m_desktopLayerWindow != 0 && m_activeWallpaperId.isEmpty()) {
+            loadWallpaperConfig();
+        }
     }
 }
 
@@ -1063,7 +1085,7 @@ void WidgetManager::setDesktopLayerWindow(WId layerWindow)
         m_linDesktopParent = lv->parentWidget();
     }
 
-    if (m_activeWallpaperId.isEmpty()) {
+    if (m_enabled && m_activeWallpaperId.isEmpty()) {
         loadWallpaperConfig();
     }
     syncAllWidgetWindowLayers();
@@ -1101,6 +1123,12 @@ QWidget* WidgetManager::activeWallpaperWidget() const
 bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
 {
     for (const WidgetInstance& instance : m_instances) {
+        if (m_layout.contains(instance.instanceId)) {
+            WidgetLayoutState state = m_layout.state(instance.instanceId);
+            if (!state.visible) {
+                continue;
+            }
+        }
         if (instance.geometry.contains(clientPos)) {
             return true;
         }
@@ -1161,6 +1189,28 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
     POINT pt = { 0, 0 };
     ClientToScreen(layerWindow, &pt);
     HWND parentHwnd = GetParent(layerWindow);
+
+    HWND expectedParent = parentHwnd;
+    if (!m_widgetLayerEmbedded) {
+        ListView* lv = ListView::instance();
+        if (lv) {
+            QWidget* topWidget = lv;
+            while (topWidget->parentWidget()) {
+                topWidget = topWidget->parentWidget();
+            }
+            expectedParent = reinterpret_cast<HWND>(topWidget->winId());
+        }
+    }
+
+    if (expectedParent && GetParent(widgetWindow) != expectedParent) {
+        SetParent(widgetWindow, expectedParent);
+        QWidget* qtExpectedParent = QWidget::find(reinterpret_cast<WId>(expectedParent));
+        if (qtExpectedParent && m_webViewRuntime && m_webViewRuntime->parentWidget() != qtExpectedParent) {
+            m_webViewRuntime->setParent(qtExpectedParent);
+        }
+    }
+
+    parentHwnd = GetParent(layerWindow);
     if (parentHwnd) {
         ScreenToClient(parentHwnd, &pt);
     }
@@ -1175,9 +1225,23 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
         logicalLayerGeometry.moveTopLeft(QPoint(0, 0));
     }
 
-    // If embedded is true, we place the widget host below ListView (layerWindow).
-    // Otherwise, we place it above everything (HWND_TOP) so it is independent.
-    HWND insertAfter = m_widgetLayerEmbedded ? layerWindow : HWND_TOP;
+    // Resolve the true sibling window of widgetWindow that contains layerWindow (ListView)
+    auto getSiblingWindow = [](HWND child, HWND target) -> HWND {
+        HWND parent = GetParent(child);
+        if (!parent) return target;
+        HWND sibling = target;
+        while (sibling) {
+            HWND p = GetParent(sibling);
+            if (p == parent) {
+                return sibling;
+            }
+            sibling = p;
+        }
+        return target;
+    };
+
+    HWND siblingLayerWindow = m_widgetLayerEmbedded ? getSiblingWindow(widgetWindow, layerWindow) : nullptr;
+    HWND insertAfter = m_widgetLayerEmbedded ? siblingLayerWindow : HWND_TOP;
 
     // Check if window is already correctly positioned and Z-ordered to prevent infinite loops
     RECT currentRect = {};
@@ -1193,18 +1257,40 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
                             (currentRect.bottom - currentRect.top) == nativeLayerGeometry.height());
 
     bool zOrderCorrect = false;
-    if (insertAfter == layerWindow) {
-        zOrderCorrect = (GetWindow(widgetWindow, GW_HWNDPREV) == layerWindow);
-    } else if (insertAfter == HWND_TOP) {
-        zOrderCorrect = (GetWindow(widgetWindow, GW_HWNDFIRST) == widgetWindow);
+    if (m_widgetLayerEmbedded) {
+        zOrderCorrect = (GetWindow(widgetWindow, GW_HWNDPREV) == siblingLayerWindow);
+    } else {
+        zOrderCorrect = (GetWindow(widgetWindow, GW_HWNDPREV) == nullptr);
     }
+
+    qDebug() << "[LinWidgetZOrder] widgetWindow=" << widgetWindow 
+             << "layerWindow=" << layerWindow 
+             << "siblingLayerWindow=" << siblingLayerWindow 
+             << "hwndPrev=" << GetWindow(widgetWindow, GW_HWNDPREV)
+             << "insertAfter=" << insertAfter 
+             << "m_widgetLayerEmbedded=" << m_widgetLayerEmbedded
+             << "zOrderCorrect=" << zOrderCorrect 
+             << "geometryCorrect=" << geometryCorrect;
 
     if (geometryCorrect && zOrderCorrect && IsWindowVisible(widgetWindow)) {
         return; // Already in correct position, Z-order, and visible, skip to prevent recursive loop
     }
 
+    if (m_webViewRuntime) {
+        if (m_widgetLayerEmbedded) {
+            QWidget* listViewWidget = QWidget::find(m_desktopLayerWindow);
+            if (listViewWidget) {
+                m_webViewRuntime->stackUnder(listViewWidget);
+            } else {
+                m_webViewRuntime->lower();
+            }
+        } else {
+            m_webViewRuntime->raise();
+        }
+    }
+
     UINT setWindowFlags = SWP_SHOWWINDOW | SWP_FRAMECHANGED | SWP_NOACTIVATE;
-    ShowWindow(widgetWindow, SW_SHOWNOACTIVATE);
+    // Removed redundant ShowWindow call to prevent triggering recursive Qt/Win32 event loops
 
     const BOOL ok = SetWindowPos(widgetWindow,
                                  insertAfter,
@@ -1213,6 +1299,7 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
                                  nativeLayerGeometry.width(),
                                  nativeLayerGeometry.height(),
                                  setWindowFlags);
+    qDebug() << "[LinWidgetZOrder] SetWindowPos returned" << ok << "error=" << GetLastError();
     if (ok) {
         QJsonObject hostGeometryMessage = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::UpdateHostGeometry), QString::fromLatin1(kSharedHostId));
         hostGeometryMessage.insert(QStringLiteral("x"), logicalLayerGeometry.x());
@@ -1273,7 +1360,18 @@ bool WidgetManager::ensureSharedHost(QString* errorMessage)
     WidgetInstance sharedInstance = instance;
     sharedInstance.geometry = QRect(80, 80, manifest.width, manifest.height);
     WId parentWindow = m_desktopLayerWindow != 0 ? m_desktopLayerWindow : m_hostParentWindow;
-    if (m_desktopLayerWindow != 0) {
+    ListView* lv = ListView::instance();
+    QWidget* qtParent = nullptr;
+    if (lv) {
+        QWidget* immediateParent = lv->parentWidget();
+        if (immediateParent) {
+            parentWindow = immediateParent->winId();
+            qtParent = immediateParent;
+        } else {
+            parentWindow = lv->winId();
+            qtParent = lv;
+        }
+    } else if (m_desktopLayerWindow != 0) {
         HWND parentHwnd = GetParent(reinterpret_cast<HWND>(m_desktopLayerWindow));
         if (parentHwnd) {
             parentWindow = reinterpret_cast<WId>(parentHwnd);
@@ -1287,7 +1385,7 @@ bool WidgetManager::ensureSharedHost(QString* errorMessage)
                                                 false,
                                                 false,
                                                 true,
-                                                nullptr);
+                                                qtParent);
     m_webViewRuntime = runtime;
     connect(runtime, &LinWidgetWebViewRuntime::messageToManager,
             this, &WidgetManager::handleRuntimeMessage);
@@ -1384,6 +1482,12 @@ bool WidgetManager::sendAddWidgetToSharedHost(const WidgetInstance& instance, co
 
 void WidgetManager::stopWidget(const QString& instanceId)
 {
+    if (instanceId.startsWith(QStringLiteral("wallpaper:"))) {
+        stopWallpaper(true);
+        emit widgetStopped(instanceId);
+        return;
+    }
+
     if (!m_runningWidgets.contains(instanceId)) {
         return;
     }
@@ -1544,11 +1648,12 @@ void WidgetManager::stopAll(bool includeWallpaper)
             LinWidgetWebViewRuntime* runtime = m_webViewRuntime;
             m_webViewRuntime = nullptr;
             runtime->close();
-            runtime->deleteLater();
+            delete runtime;
         }
         m_widgetWindows.remove(QString::fromLatin1(kSharedHostId));
         m_sharedWebViewWindow = 0;
         m_sharedWebViewWindowClass.clear();
+        stopWallpaper();
     }
     m_stoppingAll = wasStoppingAll;
 }
@@ -2090,7 +2195,29 @@ bool WidgetManager::sharedHostLayerNeedsRecovery() const
                                hostTopLeft.y,
                                qMax(0L, hostWindowRect.right - hostWindowRect.left),
                                qMax(0L, hostWindowRect.bottom - hostWindowRect.top));
-        return actualRect != expectedRect || sharedWebViewMissingForVisibleWidgets();
+        if (actualRect != expectedRect) {
+            return true;
+        }
+        if (m_widgetLayerEmbedded) {
+            auto getSiblingWindow = [](HWND child, HWND target) -> HWND {
+                HWND parent = GetParent(child);
+                if (!parent) return target;
+                HWND sibling = target;
+                while (sibling) {
+                    HWND p = GetParent(sibling);
+                    if (p == parent) {
+                        return sibling;
+                    }
+                    sibling = p;
+                }
+                return target;
+            };
+            HWND siblingLayerWindow = getSiblingWindow(hostWindow, layerWindow);
+            if (GetWindow(hostWindow, GW_HWNDPREV) != siblingLayerWindow) {
+                return true;
+            }
+        }
+        return sharedWebViewMissingForVisibleWidgets();
     }
     const bool layerMismatch = GetWindow(layerWindow, GW_HWNDPREV) != hostWindow;
     return layerMismatch ||
@@ -2134,7 +2261,7 @@ void WidgetManager::saveToDefaultConfig()
     }
 }
 
-bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive, QString* errorMessage)
+bool WidgetManager::startWallpaper(const QString& packagePath, bool isDevelopment, bool interactive, QString* errorMessage)
 {
     if (!m_enabled) {
         if (errorMessage) {
@@ -2159,6 +2286,7 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 
     m_activeWallpaperPackagePath = packagePath;
     m_activeWallpaperId = manifest.id;
+    m_activeWallpaperIsDevelopment = isDevelopment;
     m_activeWallpaperInteractive = interactive;
 
     // Determine the parent window (LinDesktop, parent of ListView)
@@ -2180,8 +2308,62 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
     auto* wallpaper = new LinWallpaperWebViewRuntime(manifest.id, packagePath, parentWidget);
     wallpaper->setInteractive(interactive);
 
+    // Force creation of wallpaper's native handle
+    HWND wallpaperHwnd = reinterpret_cast<HWND>(wallpaper->winId());
+
+    // 1. Reparent ListView to wallpaper natively like WebViewTest overlay
+    if (lv) {
+        lv->setParent(wallpaper);
+        lv->setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+        lv->setAttribute(Qt::WA_TranslucentBackground, true);
+
+#ifdef Q_OS_WIN
+        HWND lvHwnd = reinterpret_cast<HWND>(lv->winId());
+        SetParent(lvHwnd, wallpaperHwnd);
+
+        LONG style = GetWindowLong(lvHwnd, GWL_STYLE);
+        style &= ~WS_POPUP;
+        style |= WS_CHILD;
+        SetWindowLong(lvHwnd, GWL_STYLE, style);
+        SetWindowPos(lvHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+#endif
+    }
+
+    // 2. Reparent m_webViewRuntime to wallpaper natively
+    if (m_webViewRuntime) {
+        m_webViewRuntime->setParent(wallpaper);
+        m_webViewRuntime->setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+        m_webViewRuntime->setAttribute(Qt::WA_TranslucentBackground, true);
+
+#ifdef Q_OS_WIN
+        HWND runtimeHwnd = reinterpret_cast<HWND>(m_webViewRuntime->winId());
+        SetParent(runtimeHwnd, wallpaperHwnd);
+
+        LONG style = GetWindowLong(runtimeHwnd, GWL_STYLE);
+        style &= ~WS_POPUP;
+        style |= WS_CHILD;
+        SetWindowLong(runtimeHwnd, GWL_STYLE, style);
+        SetWindowPos(runtimeHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+#endif
+        m_webViewRuntime->show();
+        m_webViewRuntime->raise();
+    }
+
+    // 3. Now initialize the wallpaper WebView2 runtime!
     QString initError;
     if (!wallpaper->initialize(&initError)) {
+        // Cleanup if initialization failed
+        if (lv) {
+            lv->setParent(parentWidget);
+            lv->setWindowFlags(Qt::Widget);
+            lv->setGeometry(parentWidget ? parentWidget->rect() : QRect());
+            lv->show();
+        }
+        if (m_webViewRuntime) {
+            m_webViewRuntime->setParent(parentWidget);
+            m_webViewRuntime->setWindowFlags(Qt::Widget);
+            m_webViewRuntime->show();
+        }
         delete wallpaper;
         m_activeWallpaperId.clear();
         m_activeWallpaperPackagePath.clear();
@@ -2195,12 +2377,6 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 
     m_activeWallpaper = wallpaper;
 
-    // Reparent ListView to wallpaper so it always renders on top
-    if (lv) {
-        wallpaper->winId(); // Force creation of native handle!
-        lv->setParent(wallpaper);
-    }
-
     syncWallpaperWindowLayer();
 
     if (lv) {
@@ -2210,7 +2386,10 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
         lv->syncLinWidgetLayer();
     }
 
-    saveWallpaperConfig(packagePath, interactive);
+    saveWallpaperConfig(packagePath, isDevelopment, interactive);
+
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("LinWallpapers/Enabled"), true);
 
     // Repaint LinDesktop so the static wallpaper is hidden
     if (parentWidget) {
@@ -2221,8 +2400,14 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool interactive,
 }
 
 
-void WidgetManager::stopWallpaper()
+void WidgetManager::stopWallpaper(bool clearConfig)
 {
+    if (clearConfig) {
+        saveWallpaperConfig(QString(), false, false);
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("LinWallpapers/Enabled"), false);
+    }
+
     ListView* lv = ListView::instance();
     if (lv && m_activeWallpaper && lv->parentWidget() == m_activeWallpaper) {
         QWidget* linDesktop = m_linDesktopParent;
@@ -2234,17 +2419,26 @@ void WidgetManager::stopWallpaper()
         }
         if (linDesktop) {
             lv->setParent(linDesktop);
+            lv->setWindowFlags(Qt::Widget);
+            if (m_webViewRuntime) {
+                m_webViewRuntime->setParent(linDesktop);
+                m_webViewRuntime->setWindowFlags(Qt::Widget);
+            }
             lv->setGeometry(linDesktop->rect());
             lv->show();
             lv->raise();
             lv->setFocus();
+            if (m_webViewRuntime) {
+                m_webViewRuntime->show();
+                m_webViewRuntime->raise();
+            }
             lv->syncLinWidgetLayer();
         }
     }
 
     if (m_activeWallpaper) {
         m_activeWallpaper->hide();
-        m_activeWallpaper->deleteLater();
+        delete m_activeWallpaper;
         m_activeWallpaper = nullptr;
     }
     m_activeWallpaperId.clear();
@@ -2277,7 +2471,14 @@ void WidgetManager::syncWallpaperWindowLayer()
     HWND wallpaperHwnd = reinterpret_cast<HWND>(m_activeWallpaper->winId());
     HWND listViewHwnd = reinterpret_cast<HWND>(m_desktopLayerWindow);
     HWND desktopHwnd = nullptr;
-    if (m_linDesktopParent) {
+    ListView* lv = ListView::instance();
+    if (lv) {
+        QWidget* topWidget = lv;
+        while (topWidget->parentWidget()) {
+            topWidget = topWidget->parentWidget();
+        }
+        desktopHwnd = reinterpret_cast<HWND>(topWidget->winId());
+    } else if (m_linDesktopParent) {
         desktopHwnd = reinterpret_cast<HWND>(m_linDesktopParent->winId());
     } else {
         desktopHwnd = GetParent(listViewHwnd);
@@ -2289,10 +2490,18 @@ void WidgetManager::syncWallpaperWindowLayer()
 
     if (GetParent(wallpaperHwnd) != desktopHwnd) {
         SetParent(wallpaperHwnd, desktopHwnd);
-        LONG_PTR style = GetWindowLongPtr(wallpaperHwnd, GWL_STYLE);
-        style &= ~WS_POPUP;
-        style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
-        SetWindowLongPtr(wallpaperHwnd, GWL_STYLE, style);
+    }
+
+    LONG_PTR style = GetWindowLongPtr(wallpaperHwnd, GWL_STYLE);
+    LONG_PTR newStyle = (style & ~WS_POPUP & ~WS_CLIPCHILDREN) | WS_CHILD | WS_CLIPSIBLINGS;
+    if (style != newStyle) {
+        SetWindowLongPtr(wallpaperHwnd, GWL_STYLE, newStyle);
+    }
+
+    LONG_PTR exStyle = GetWindowLongPtr(wallpaperHwnd, GWL_EXSTYLE);
+    LONG_PTR newExStyle = exStyle & ~WS_EX_NOREDIRECTIONBITMAP;
+    if (exStyle != newExStyle) {
+        SetWindowLongPtr(wallpaperHwnd, GWL_EXSTYLE, newExStyle);
     }
 
     RECT desktopClientRect = {};
@@ -2305,22 +2514,65 @@ void WidgetManager::syncWallpaperWindowLayer()
     }
     m_activeWallpaper->show();
 
-    ListView* lv = ListView::instance();
     if (lv && lv->parentWidget() == m_activeWallpaper) {
-        lv->setGeometry(0, 0, w, h);
-        // Place wallpaper at the bottom.
-        // Do NOT use SWP_FRAMECHANGED to prevent potential infinite event loops on ListView resize/move.
+        if (lv->geometry() != QRect(0, 0, w, h)) {
+            lv->setGeometry(0, 0, w, h);
+        }
+#ifdef Q_OS_WIN
+        HWND lvHwnd = reinterpret_cast<HWND>(lv->winId());
+        bool parentOk = (GetParent(lvHwnd) == wallpaperHwnd);
+        if (!parentOk) {
+            SetParent(lvHwnd, wallpaperHwnd);
+            LONG style = GetWindowLong(lvHwnd, GWL_STYLE);
+            style &= ~WS_POPUP;
+            style |= WS_CHILD;
+            SetWindowLong(lvHwnd, GWL_STYLE, style);
+        }
+        if (!parentOk || GetWindow(lvHwnd, GW_HWNDPREV) != nullptr) {
+            SetWindowPos(lvHwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+#endif
+    }
+    if (m_webViewRuntime && m_webViewRuntime->parentWidget() == m_activeWallpaper) {
+        if (m_webViewRuntime->geometry() != QRect(0, 0, w, h)) {
+            m_webViewRuntime->setGeometry(0, 0, w, h);
+        }
+#ifdef Q_OS_WIN
+        HWND runtimeHwnd = reinterpret_cast<HWND>(m_webViewRuntime->winId());
+        bool parentOk = (GetParent(runtimeHwnd) == wallpaperHwnd);
+        if (!parentOk) {
+            SetParent(runtimeHwnd, wallpaperHwnd);
+            LONG style = GetWindowLong(runtimeHwnd, GWL_STYLE);
+            style &= ~WS_POPUP;
+            style |= WS_CHILD;
+            SetWindowLong(runtimeHwnd, GWL_STYLE, style);
+        }
+        HWND widgetWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_widgetWindows.value(QString::fromLatin1(kSharedHostId), 0)));
+        HWND insertAfter = HWND_TOP;
+        if (m_widgetLayerEmbedded) {
+            if (widgetWindow && IsWindow(widgetWindow) && IsWindowVisible(widgetWindow)) {
+                insertAfter = widgetWindow;
+            } else {
+                insertAfter = listViewHwnd;
+            }
+        }
+        bool zOrderCorrect = (GetWindow(runtimeHwnd, GW_HWNDPREV) == insertAfter);
+        if (!parentOk || !zOrderCorrect) {
+            SetWindowPos(runtimeHwnd, insertAfter, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+#endif
+    }
+    // The wallpaper is the background, so it should always be placed at the bottom (HWND_BOTTOM)
+    // of all sibling windows under LinDesktop. This ensures it stays below the ListView (desktop icons)
+    // and any embedded widgets (LinWidget Shared Runtime).
+    RECT currentWallpaperRect = {};
+    GetWindowRect(wallpaperHwnd, &currentWallpaperRect);
+    bool wallpaperGeometryCorrect = (currentWallpaperRect.right - currentWallpaperRect.left == w &&
+                                     currentWallpaperRect.bottom - currentWallpaperRect.top == h);
+    bool wallpaperZOrderCorrect = (GetWindow(wallpaperHwnd, GW_HWNDNEXT) == nullptr);
+    if (!wallpaperGeometryCorrect || !wallpaperZOrderCorrect) {
         SetWindowPos(wallpaperHwnd,
                      HWND_BOTTOM,
-                     0, 0, w, h,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    } else {
-        // Place wallpaper BELOW listView in Z-Order.
-        // SetWindowPos 2nd param = "insert after this hwnd" → wallpaper goes just below listView.
-        // Do NOT call SetWindowPos on listViewHwnd here — that triggers moveEvent/resizeEvent
-        // on ListView which calls syncLinWidgetLayer() → syncWallpaperWindowLayer() infinite loop.
-        SetWindowPos(wallpaperHwnd,
-                     listViewHwnd,
                      0, 0, w, h,
                      SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
@@ -2329,6 +2581,12 @@ void WidgetManager::syncWallpaperWindowLayer()
 
 void WidgetManager::loadWallpaperConfig()
 {
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    const bool wallpaperEnabled = settings.value(QStringLiteral("LinWallpapers/Enabled"), false).toBool();
+    if (!wallpaperEnabled) {
+        return;
+    }
+
     const QString configPath = AppPaths::wallpaperRegistryFilePath();
     if (!QFileInfo::exists(configPath)) {
         return;
@@ -2346,22 +2604,24 @@ void WidgetManager::loadWallpaperConfig()
 
     const QJsonObject activeObj = doc.object().value(QStringLiteral("activeWallpaper")).toObject();
     const QString packagePath = activeObj.value(QStringLiteral("packagePath")).toString();
+    const bool isDevelopment = activeObj.value(QStringLiteral("isDevelopment")).toBool(false);
     const bool interactive = activeObj.value(QStringLiteral("interactive")).toBool(false);
 
     if (!packagePath.isEmpty() && QFileInfo::exists(packagePath)) {
         QString error;
-        if (!startWallpaper(packagePath, interactive, &error)) {
+        if (!startWallpaper(packagePath, isDevelopment, interactive, &error)) {
             qWarning() << "[WidgetManager] Failed to auto-load wallpaper:" << error;
         }
     }
 }
 
-void WidgetManager::saveWallpaperConfig(const QString& packagePath, bool interactive)
+void WidgetManager::saveWallpaperConfig(const QString& packagePath, bool isDevelopment, bool interactive)
 {
     const QString configPath = AppPaths::wallpaperRegistryFilePath();
     QJsonObject activeObj;
     activeObj.insert(QStringLiteral("id"), m_activeWallpaperId);
     activeObj.insert(QStringLiteral("packagePath"), packagePath);
+    activeObj.insert(QStringLiteral("isDevelopment"), isDevelopment);
     activeObj.insert(QStringLiteral("interactive"), interactive);
 
     QJsonObject rootObj;

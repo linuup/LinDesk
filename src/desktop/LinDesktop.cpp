@@ -16,6 +16,7 @@
 #include <QDebug>
 #include <psapi.h>
 
+
 namespace {
 QPointer<LinDesktop> g_desktopHostWindowMonitorOwner;
 
@@ -118,7 +119,7 @@ LinDesktop::LinDesktop(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     initializeTrayIcon();
 
-    setAttribute(Qt::WA_TranslucentBackground);
+    // setAttribute(Qt::WA_TranslucentBackground);
 
     m_transitionAnimation = new QVariantAnimation(this);
     m_transitionAnimation->setDuration(m_transitionDuration);
@@ -137,7 +138,7 @@ LinDesktop::LinDesktop(QWidget* parent)
     selectArea->lower();
     setFocusProxy(listView);
 
-    //embedToDesktop();
+    embedToDesktop();
     m_shellHookMessage = RegisterWindowMessageW(L"SHELLHOOK");
     m_shellHookRegistered = RegisterShellHookWindow(reinterpret_cast<HWND>(winId())) != FALSE;
     qDebug() << "[LinDesktop] shell hook"
@@ -602,9 +603,17 @@ void LinDesktop::embedToDesktop()
     if (hwnd) {
         logDesktopDpiTrace("embedBefore", this);
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
-        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_TranslucentBackground, false);
         setGeometry(QApplication::primaryScreen()->geometry());
-        SetParent((HWND)this->winId(), hwnd);
+        
+        HWND hostWindow = (HWND)this->winId();
+        SetParent(hostWindow, hwnd);
+
+        // Strip WS_EX_LAYERED to prevent child window rendering issues in Qt
+        LONG_PTR exStyle = GetWindowLongPtr(hostWindow, GWL_EXSTYLE);
+        exStyle &= ~WS_EX_LAYERED;
+        SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
+
         m_isEmbedded = true;
         show();
         logDesktopDpiTrace("embedAfter", this);

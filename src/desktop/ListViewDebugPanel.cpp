@@ -785,10 +785,30 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
     addGeneralCard(new FluentCard(u8"\uE71B", "Persistence", "Save box and icon data", m_persistToggle));
 
     m_defaultWallpaperToggle = new FluentToggleSwitch();
-    LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
+    LinDesktop* desk = nullptr;
+    if (m_listView) {
+        QWidget* p = m_listView;
+        while (p) {
+            if (LinDesktop* d = qobject_cast<LinDesktop*>(p)) {
+                desk = d;
+                break;
+            }
+            p = p->parentWidget();
+        }
+    }
     m_defaultWallpaperToggle->setChecked(desk ? desk->showDefaultWallpaper() : true, false);
     connect(m_defaultWallpaperToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
-        LinDesktop* desk = m_listView ? qobject_cast<LinDesktop*>(m_listView->parentWidget()) : nullptr;
+        LinDesktop* desk = nullptr;
+        if (m_listView) {
+            QWidget* p = m_listView;
+            while (p) {
+                if (LinDesktop* d = qobject_cast<LinDesktop*>(p)) {
+                    desk = d;
+                    break;
+                }
+                p = p->parentWidget();
+            }
+        }
         if (desk) {
             desk->setShowDefaultWallpaper(checked);
         }

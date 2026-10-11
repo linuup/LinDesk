@@ -24,12 +24,15 @@ public:
     ~WidgetManager() override;
 
     bool start();
-    bool startWallpaper(const QString& packagePath, bool interactive = false, QString* errorMessage = nullptr);
-    void stopWallpaper();
+    bool startWallpaper(const QString& packagePath, bool isDevelopment, bool interactive = false, QString* errorMessage = nullptr);
+    void stopWallpaper(bool clearConfig = false);
     LinWallpaperWebViewRuntime* activeWallpaperRuntime() const;
     void syncWallpaperWindowLayer();
     void loadWallpaperConfig();
-    void saveWallpaperConfig(const QString& packagePath, bool interactive);
+    void saveWallpaperConfig(const QString& packagePath, bool isDevelopment, bool interactive);
+    QString activeWallpaperId() const { return m_activeWallpaperId; }
+    QString activeWallpaperPackagePath() const { return m_activeWallpaperPackagePath; }
+    bool activeWallpaperIsDevelopment() const { return m_activeWallpaperIsDevelopment; }
     bool launchWidgetPackage(const QString& packagePath,
                              const QRect& geometry,
                              QString* instanceId = nullptr,
@@ -77,6 +80,7 @@ public:
     QWidget* activeWallpaperWidget() const;
     bool isWidgetAt(const QPoint& clientPos) const;
     bool isWallpaperInteractive() const;
+    class LinWidgetWebViewRuntime* webViewRuntime() const { return m_webViewRuntime; }
 
     void setWidgetLayerEmbedded(bool embedded);
     bool isWidgetLayerEmbedded() const;
@@ -155,12 +159,13 @@ private:
     QHash<QString, WidgetInstance> m_instances;
     bool m_stoppingAll = false;
     bool m_showWebViewBounds = false;
-    bool m_enabled = true;
+    bool m_enabled = false;
     bool m_widgetLayerEmbedded = true; // true = widget host below ListView; false = HWND_TOP (above)
     LinWallpaperWebViewRuntime* m_activeWallpaper = nullptr;
     QWidget* m_linDesktopParent = nullptr;
     QString m_activeWallpaperId;
     QString m_activeWallpaperPackagePath;
+    bool m_activeWallpaperIsDevelopment = false;
     bool m_activeWallpaperInteractive = false;
 };
 

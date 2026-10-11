@@ -689,6 +689,7 @@ private:
 	bool m_isMultiSelection = false;
 	bool m_isDragging = false;
 	bool m_isSelecting = false;
+	bool m_forwardingMouseToWidget = false;
 	bool m_wasSelectedBeforeClick = false;
 	bool m_showHiddenFiles = false;
 	bool m_hideDesktopItemsForRefresh = false;

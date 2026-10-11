@@ -128,6 +128,7 @@ int main(int argc, char *argv[])
     LinDesktop linDesktop;
     LinDeskHoveredItemServer hoveredItemServer;
     launchOptions.apply(&linDesktop);
+    linDesktop.show();
     hoveredItemServer.startListening();
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         PluginManager::shutdown();

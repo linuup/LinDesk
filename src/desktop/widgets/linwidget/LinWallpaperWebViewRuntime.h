@@ -49,7 +49,13 @@ private:
     bool m_suspended = false;
 
     void* m_webViewController = nullptr;
+    void* m_compositionController = nullptr;
     void* m_webView = nullptr;
+    void* m_d3d11Device = nullptr;
+    void* m_dcompDevice = nullptr;
+    void* m_dcompTarget = nullptr;
+    void* m_rootVisual = nullptr;
+    void* m_webViewVisual = nullptr;
     bool m_comInitialized = false;
     bool m_webViewReady = false;
 };

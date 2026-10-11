@@ -38,6 +38,11 @@
 #ifdef LINDESK_HAS_WEBVIEW2
 #include <WebView2.h>
 #include <wrl.h>
+#include <d3d11.h>
+#include <dcomp.h>
+#pragma comment(lib, "dcomp.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
 #endif
 
 namespace LinWidget {
@@ -387,10 +392,35 @@ LinWidgetWebViewRuntime::~LinWidgetWebViewRuntime()
         controller->Release();
         m_webViewController = nullptr;
     }
+    auto* compController = static_cast<ICoreWebView2CompositionController*>(m_compositionController);
+    if (compController) {
+        compController->Release();
+        m_compositionController = nullptr;
+    }
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
     if (webView) {
         webView->Release();
         m_webView = nullptr;
+    }
+    if (m_webViewVisual) {
+        static_cast<IDCompositionVisual*>(m_webViewVisual)->Release();
+        m_webViewVisual = nullptr;
+    }
+    if (m_rootVisual) {
+        static_cast<IDCompositionVisual*>(m_rootVisual)->Release();
+        m_rootVisual = nullptr;
+    }
+    if (m_dcompTarget) {
+        static_cast<IDCompositionTarget*>(m_dcompTarget)->Release();
+        m_dcompTarget = nullptr;
+    }
+    if (m_dcompDevice) {
+        static_cast<IDCompositionDevice*>(m_dcompDevice)->Release();
+        m_dcompDevice = nullptr;
+    }
+    if (m_d3d11Device) {
+        static_cast<ID3D11Device*>(m_d3d11Device)->Release();
+        m_d3d11Device = nullptr;
     }
     if (m_comInitialized) {
         CoUninitialize();
@@ -447,21 +477,25 @@ bool LinWidgetWebViewRuntime::initialize(QString* errorMessage)
 void LinWidgetWebViewRuntime::setupWindow()
 {
     const bool sharedChildRuntime = m_sharedRuntime && m_parentWindowId != 0;
-    if ((!m_sharedRuntime && m_parentWindowId != 0) || sharedChildRuntime) {
-        setWindowFlags(Qt::FramelessWindowHint);
-        setAttribute(Qt::WA_TranslucentBackground, !m_sharedRuntime);
+    if (sharedChildRuntime) {
+        setWindowFlags(Qt::Widget | Qt::FramelessWindowHint);
+    } else if (!m_sharedRuntime && m_parentWindowId != 0) {
+        setWindowFlags(Qt::Widget | Qt::FramelessWindowHint);
     } else if (m_sharedRuntime) {
         setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
         setWindowTitle(QStringLiteral("LinWidget Host"));
-        setAttribute(Qt::WA_TranslucentBackground, false);
     } else {
         setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
-        setAttribute(Qt::WA_TranslucentBackground, true);
     }
+    // Set WA_TranslucentBackground so that Qt does not paint a solid background
+    // for this window. For child windows, we will strip WS_EX_LAYERED in attachToParentWindow()
+    // to prevent conflicts with DirectComposition.
+    setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_ShowWithoutActivating, false);
     setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
     setFocusPolicy(m_sharedRuntime || m_parentWindowId == 0 ? Qt::StrongFocus : Qt::NoFocus);
+    setMouseTracking(true);
 
     const QRect fallbackRect(QPoint(0, 0), QSize(m_manifest.width, m_manifest.height));
     QRect initialGeometry = m_initialGeometry.isEmpty() ? fallbackRect : m_initialGeometry;
@@ -493,11 +527,12 @@ void LinWidgetWebViewRuntime::attachToParentWindow()
 #ifdef Q_OS_WIN
     HWND hostWindow = reinterpret_cast<HWND>(winId());
     HWND parentWindow = reinterpret_cast<HWND>(static_cast<quintptr>(m_parentWindowId));
+    qDebug() << "[LinWidgetAttach] host=" << hostWindow << "parent=" << parentWindow << "IsWindow(parent)=" << IsWindow(parentWindow);
     if (!hostWindow || !parentWindow || !IsWindow(parentWindow)) {
         return;
     }
 
-    SetParent(hostWindow, parentWindow);
+    // 1. Modify styles first to prepare the window to become a child window
     LONG_PTR style = GetWindowLongPtr(hostWindow, GWL_STYLE);
     style &= ~WS_POPUP;
     style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
@@ -506,6 +541,7 @@ void LinWidgetWebViewRuntime::attachToParentWindow()
     LONG_PTR exStyle = GetWindowLongPtr(hostWindow, GWL_EXSTYLE);
     exStyle &= ~WS_EX_TOPMOST;
     exStyle &= ~WS_EX_TRANSPARENT;
+    exStyle &= ~WS_EX_NOREDIRECTIONBITMAP;
     exStyle &= ~WS_EX_LAYERED;
     if (m_sharedRuntime) {
         exStyle &= ~WS_EX_NOACTIVATE;
@@ -514,6 +550,10 @@ void LinWidgetWebViewRuntime::attachToParentWindow()
         exStyle &= ~WS_EX_NOACTIVATE;
     }
     SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
+
+    // 2. Call SetParent
+    HWND oldParent = SetParent(hostWindow, parentWindow);
+    qDebug() << "[LinWidgetAttach] SetParent returned oldParent=" << oldParent << "newParent=" << GetParent(hostWindow) << "error=" << GetLastError();
 
     const QRect logicalGeometry = m_sharedRuntime
         ? QRect(QPoint(0, 0), parentClientLogicalRect(parentWindow).size())
@@ -844,7 +884,10 @@ void LinWidgetWebViewRuntime::paintEvent(QPaintEvent* event)
 {
     Q_UNUSED(event);
 
-    if (m_sharedRuntime) {
+    // In composition hosting mode, DComp handles all rendering.
+    // Skip GDI painting to avoid interference with DComp visuals.
+    // With WS_EX_NOREDIRECTIONBITMAP there is no GDI surface anyway.
+    if (m_sharedRuntime || m_compositionController) {
         return;
     }
 
@@ -853,8 +896,47 @@ void LinWidgetWebViewRuntime::paintEvent(QPaintEvent* event)
 
 }
 
+void LinWidgetWebViewRuntime::forwardMouseInput(QMouseEvent* event, int eventKind)
+{
+#ifdef LINDESK_HAS_WEBVIEW2
+    auto* compController = static_cast<ICoreWebView2CompositionController*>(m_compositionController);
+    if (!compController) {
+        return;
+    }
+
+    int keys = 0;
+    if (event->buttons() & Qt::LeftButton) keys |= 0x0001; // COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON
+    if (event->buttons() & Qt::RightButton) keys |= 0x0002; // COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_RIGHT_BUTTON
+    if (event->buttons() & Qt::MiddleButton) keys |= 0x0010; // COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_MIDDLE_BUTTON
+    if (event->modifiers() & Qt::ShiftModifier) keys |= 0x0004; // COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_SHIFT
+    if (event->modifiers() & Qt::ControlModifier) keys |= 0x0008; // COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_CONTROL
+
+    POINT point = { event->x(), event->y() };
+    UINT32 mouseData = 0;
+
+    compController->SendMouseInput(
+        static_cast<COREWEBVIEW2_MOUSE_EVENT_KIND>(eventKind),
+        static_cast<COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS>(keys),
+        mouseData,
+        point
+    );
+#endif
+}
+
 void LinWidgetWebViewRuntime::mousePressEvent(QMouseEvent* event)
 {
+    if (m_compositionController) {
+        int kind = 0;
+        if (event->button() == Qt::LeftButton) kind = 0x0201; // COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN
+        else if (event->button() == Qt::RightButton) kind = 0x0204; // COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOWN
+        else if (event->button() == Qt::MiddleButton) kind = 0x0207; // COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOWN
+        if (kind != 0) {
+            forwardMouseInput(event, kind);
+        }
+        event->accept();
+        return;
+    }
+
     if (event->button() == Qt::LeftButton) {
         m_dragging = true;
         m_dragMoveStarted = false;
@@ -870,6 +952,12 @@ void LinWidgetWebViewRuntime::mousePressEvent(QMouseEvent* event)
 
 void LinWidgetWebViewRuntime::mouseMoveEvent(QMouseEvent* event)
 {
+    if (m_compositionController) {
+        forwardMouseInput(event, 0x0200); // COREWEBVIEW2_MOUSE_EVENT_KIND_MOUSE_MOVE
+        event->accept();
+        return;
+    }
+
     if (m_dragging && (event->buttons() & Qt::LeftButton)) {
         if (!m_dragMoveStarted) {
             const QPoint totalDelta = event->globalPos() - m_dragStartScreenPos;
@@ -897,6 +985,18 @@ void LinWidgetWebViewRuntime::mouseMoveEvent(QMouseEvent* event)
 
 void LinWidgetWebViewRuntime::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (m_compositionController) {
+        int kind = 0;
+        if (event->button() == Qt::LeftButton) kind = 0x0202; // COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP
+        else if (event->button() == Qt::RightButton) kind = 0x0205; // COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP
+        else if (event->button() == Qt::MiddleButton) kind = 0x0208; // COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_UP
+        if (kind != 0) {
+            forwardMouseInput(event, kind);
+        }
+        event->accept();
+        return;
+    }
+
     if (event->button() == Qt::LeftButton && m_dragging) {
         m_dragging = false;
         m_dragMoveStarted = false;
@@ -904,6 +1004,75 @@ void LinWidgetWebViewRuntime::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     QWidget::mouseReleaseEvent(event);
+}
+
+void LinWidgetWebViewRuntime::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    if (m_compositionController) {
+        int kind = 0;
+        if (event->button() == Qt::LeftButton) kind = 0x0203; // COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOUBLE_CLICK
+        else if (event->button() == Qt::RightButton) kind = 0x0206; // COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOUBLE_CLICK
+        else if (event->button() == Qt::MiddleButton) kind = 0x0209; // COREWEBVIEW2_MOUSE_EVENT_KIND_MIDDLE_BUTTON_DOUBLE_CLICK
+        if (kind != 0) {
+            forwardMouseInput(event, kind);
+        }
+        event->accept();
+        return;
+    }
+    QWidget::mouseDoubleClickEvent(event);
+}
+
+void LinWidgetWebViewRuntime::wheelEvent(QWheelEvent* event)
+{
+    if (m_compositionController) {
+        int kind = event->angleDelta().x() != 0
+            ? 0x020e // COREWEBVIEW2_MOUSE_EVENT_KIND_HORIZONTAL_WHEEL
+            : 0x020a; // COREWEBVIEW2_MOUSE_EVENT_KIND_MOUSE_WHEEL
+
+        int keys = 0;
+        if (event->buttons() & Qt::LeftButton) keys |= 0x0001;
+        if (event->buttons() & Qt::RightButton) keys |= 0x0002;
+        if (event->buttons() & Qt::MiddleButton) keys |= 0x0010;
+        if (event->modifiers() & Qt::ShiftModifier) keys |= 0x0004;
+        if (event->modifiers() & Qt::ControlModifier) keys |= 0x0008;
+
+        QPoint pos = event->pos();
+        POINT point = { pos.x(), pos.y() };
+        int delta = event->angleDelta().y() != 0 ? event->angleDelta().y() : event->angleDelta().x();
+        UINT32 mouseData = static_cast<UINT32>(delta);
+
+#ifdef LINDESK_HAS_WEBVIEW2
+        auto* compController = static_cast<ICoreWebView2CompositionController*>(m_compositionController);
+        compController->SendMouseInput(
+            static_cast<COREWEBVIEW2_MOUSE_EVENT_KIND>(kind),
+            static_cast<COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS>(keys),
+            mouseData,
+            point
+        );
+#endif
+        event->accept();
+        return;
+    }
+    QWidget::wheelEvent(event);
+}
+
+void LinWidgetWebViewRuntime::leaveEvent(QEvent* event)
+{
+    if (m_compositionController) {
+#ifdef LINDESK_HAS_WEBVIEW2
+        auto* compController = static_cast<ICoreWebView2CompositionController*>(m_compositionController);
+        POINT pt = { 0, 0 };
+        compController->SendMouseInput(
+            COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE,
+            COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE,
+            0,
+            pt
+        );
+#endif
+        event->accept();
+        return;
+    }
+    QWidget::leaveEvent(event);
 }
 
 void LinWidgetWebViewRuntime::renderNativePlaceholder()
@@ -955,26 +1124,94 @@ void LinWidgetWebViewRuntime::renderHtmlWidget()
                     return S_OK;
                 }
 
-                environment->CreateCoreWebView2Controller(
+                ComPtr<ICoreWebView2Environment3> env3;
+                if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&env3))) || !env3) {
+                    appendLog(QStringLiteral("error"), QStringLiteral("Failed to get ICoreWebView2Environment3 interface"));
+                    renderHtmlPlaceholder(tr("Failed to initialize WebView2 composition environment."));
+                    return S_OK;
+                }
+
+                env3->CreateCoreWebView2CompositionController(
                     parentWindow,
-                    Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                        [this, entryPath, environment](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                    Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
+                        [this, entryPath, environment, parentWindow](HRESULT controllerResult, ICoreWebView2CompositionController* controller) -> HRESULT {
                             if (FAILED(controllerResult) || !controller) {
-                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to create WebView2 controller"));
+                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to create WebView2 composition controller"));
                                 renderHtmlPlaceholder(tr("Failed to create WebView2 controller."));
                                 return S_OK;
                             }
 
                             controller->AddRef();
-                            m_webViewController = controller;
+                            m_compositionController = controller;
+                            ICoreWebView2Controller* coreController = nullptr;
+                            if (FAILED(controller->QueryInterface(IID_PPV_ARGS(&coreController)))) {
+                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to query ICoreWebView2Controller"));
+                                return S_OK;
+                            }
+                            m_webViewController = coreController;
                             ICoreWebView2* webView = nullptr;
-                            controller->get_CoreWebView2(&webView);
+                            coreController->get_CoreWebView2(&webView);
                             m_webView = webView;
+
+                            // Set up DirectComposition target and visual
+                            ID3D11Device* d3d11Dev = nullptr;
+                            D3D_FEATURE_LEVEL featureLevelSupported;
+                            HRESULT hr = D3D11CreateDevice(
+                                nullptr, 
+                                D3D_DRIVER_TYPE_HARDWARE, 
+                                nullptr, 
+                                D3D11_CREATE_DEVICE_BGRA_SUPPORT, 
+                                nullptr, 
+                                0, 
+                                D3D11_SDK_VERSION, 
+                                &d3d11Dev, 
+                                &featureLevelSupported, 
+                                nullptr
+                            );
+                            if (SUCCEEDED(hr) && d3d11Dev) {
+                                m_d3d11Device = d3d11Dev;
+                                IDXGIDevice* dxgiDev = nullptr;
+                                hr = d3d11Dev->QueryInterface(IID_PPV_ARGS(&dxgiDev));
+                                if (SUCCEEDED(hr) && dxgiDev) {
+                                    IDCompositionDevice* dcompDev = nullptr;
+                                    hr = DCompositionCreateDevice(dxgiDev, __uuidof(IDCompositionDevice), reinterpret_cast<void**>(&dcompDev));
+                                    if (SUCCEEDED(hr) && dcompDev) {
+                                        m_dcompDevice = dcompDev;
+                                        
+                                        IDCompositionTarget* dcompTarget = nullptr;
+                                        hr = dcompDev->CreateTargetForHwnd(parentWindow, TRUE, &dcompTarget);
+                                        if (SUCCEEDED(hr) && dcompTarget) {
+                                            m_dcompTarget = dcompTarget;
+                                            
+                                            IDCompositionVisual* rootVis = nullptr;
+                                            hr = dcompDev->CreateVisual(&rootVis);
+                                            if (SUCCEEDED(hr) && rootVis) {
+                                                m_rootVisual = rootVis;
+                                                dcompTarget->SetRoot(rootVis);
+                                                
+                                                IDCompositionVisual* webViewVis = nullptr;
+                                                hr = dcompDev->CreateVisual(&webViewVis);
+                                                if (SUCCEEDED(hr) && webViewVis) {
+                                                    m_webViewVisual = webViewVis;
+                                                    rootVis->AddVisual(webViewVis, TRUE, nullptr);
+                                                    
+                                                    controller->put_RootVisualTarget(webViewVis);
+                                                    dcompDev->Commit();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    dxgiDev->Release();
+                                }
+                            } else {
+                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to create D3D11 Device: ") + QString::number(hr, 16));
+                            }
+
                             updateWebViewBounds();
                             openDevToolsWhenReady();
 
                             ComPtr<ICoreWebView2Controller2> controller2;
-                            if (SUCCEEDED(controller->QueryInterface(IID_PPV_ARGS(&controller2)))) {
+                            if (SUCCEEDED(coreController->QueryInterface(IID_PPV_ARGS(&controller2)))) {
                                 COREWEBVIEW2_COLOR transparent = { 0, 0, 0, 0 };
                                 controller2->put_DefaultBackgroundColor(transparent);
                             }
@@ -985,7 +1222,7 @@ void LinWidgetWebViewRuntime::renderHtmlWidget()
                                 settings->put_AreDevToolsEnabled(TRUE);
                                 settings->put_IsZoomControlEnabled(FALSE);
                             }
-                            controller->put_ZoomFactor(1.0);
+                            coreController->put_ZoomFactor(1.0);
 
                             if (webView) {
                                 appendLog(QStringLiteral("info"), QStringLiteral("WebView2 initialized"));
@@ -994,7 +1231,7 @@ void LinWidgetWebViewRuntime::renderHtmlWidget()
                                 installWebViewDragBridge();
                                 installWebPermissionGuards();
                                 EventRegistrationToken acceleratorToken = {};
-                                controller->add_AcceleratorKeyPressed(
+                                coreController->add_AcceleratorKeyPressed(
                                     Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
                                         [this](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT {
                                             COREWEBVIEW2_KEY_EVENT_KIND kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
@@ -1067,30 +1304,98 @@ void LinWidgetWebViewRuntime::renderSharedHtmlRuntime()
                     return S_OK;
                 }
 
-                environment->CreateCoreWebView2Controller(
+                ComPtr<ICoreWebView2Environment3> env3;
+                if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&env3))) || !env3) {
+                    appendLog(QStringLiteral("error"), QStringLiteral("Failed to get ICoreWebView2Environment3 interface"));
+                    renderHtmlPlaceholder(tr("Failed to initialize WebView2 composition environment."));
+                    return S_OK;
+                }
+
+                env3->CreateCoreWebView2CompositionController(
                     parentWindow,
-                    Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                        [this, entryPath, environment](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                    Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
+                        [this, entryPath, environment, parentWindow](HRESULT controllerResult, ICoreWebView2CompositionController* controller) -> HRESULT {
                             if (FAILED(controllerResult) || !controller) {
-                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to create shared WebView2 controller"));
+                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to create shared WebView2 composition controller"));
                                 renderHtmlPlaceholder(tr("Failed to create WebView2 controller."));
                                 return S_OK;
                             }
 
                             controller->AddRef();
-                            m_webViewController = controller;
+                            m_compositionController = controller;
+                            ICoreWebView2Controller* coreController = nullptr;
+                            if (FAILED(controller->QueryInterface(IID_PPV_ARGS(&coreController)))) {
+                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to query shared ICoreWebView2Controller"));
+                                return S_OK;
+                            }
+                            m_webViewController = coreController;
                             ICoreWebView2* webView = nullptr;
-                            controller->get_CoreWebView2(&webView);
+                            coreController->get_CoreWebView2(&webView);
                             m_webView = webView;
+
+                            // Set up DirectComposition target and visual
+                            ID3D11Device* d3d11Dev = nullptr;
+                            D3D_FEATURE_LEVEL featureLevelSupported;
+                            HRESULT hr = D3D11CreateDevice(
+                                nullptr, 
+                                D3D_DRIVER_TYPE_HARDWARE, 
+                                nullptr, 
+                                D3D11_CREATE_DEVICE_BGRA_SUPPORT, 
+                                nullptr, 
+                                0, 
+                                D3D11_SDK_VERSION, 
+                                &d3d11Dev, 
+                                &featureLevelSupported, 
+                                nullptr
+                            );
+                            if (SUCCEEDED(hr) && d3d11Dev) {
+                                m_d3d11Device = d3d11Dev;
+                                IDXGIDevice* dxgiDev = nullptr;
+                                hr = d3d11Dev->QueryInterface(IID_PPV_ARGS(&dxgiDev));
+                                if (SUCCEEDED(hr) && dxgiDev) {
+                                    IDCompositionDevice* dcompDev = nullptr;
+                                    hr = DCompositionCreateDevice(dxgiDev, __uuidof(IDCompositionDevice), reinterpret_cast<void**>(&dcompDev));
+                                    if (SUCCEEDED(hr) && dcompDev) {
+                                        m_dcompDevice = dcompDev;
+                                        
+                                        IDCompositionTarget* dcompTarget = nullptr;
+                                        hr = dcompDev->CreateTargetForHwnd(parentWindow, TRUE, &dcompTarget);
+                                        if (SUCCEEDED(hr) && dcompTarget) {
+                                            m_dcompTarget = dcompTarget;
+                                            
+                                            IDCompositionVisual* rootVis = nullptr;
+                                            hr = dcompDev->CreateVisual(&rootVis);
+                                            if (SUCCEEDED(hr) && rootVis) {
+                                                m_rootVisual = rootVis;
+                                                dcompTarget->SetRoot(rootVis);
+                                                
+                                                IDCompositionVisual* webViewVis = nullptr;
+                                                hr = dcompDev->CreateVisual(&webViewVis);
+                                                if (SUCCEEDED(hr) && webViewVis) {
+                                                    m_webViewVisual = webViewVis;
+                                                    rootVis->AddVisual(webViewVis, TRUE, nullptr);
+                                                    
+                                                    controller->put_RootVisualTarget(webViewVis);
+                                                    dcompDev->Commit();
+                                                }
+                                            }
+                                        }
+                                    }
+                                    dxgiDev->Release();
+                                }
+                            } else {
+                                appendLog(QStringLiteral("error"), QStringLiteral("Failed to create D3D11 Device: ") + QString::number(hr, 16));
+                            }
+
                             updateWebViewBounds();
 
                             ComPtr<ICoreWebView2Controller2> controller2;
-                            if (SUCCEEDED(controller->QueryInterface(IID_PPV_ARGS(&controller2)))) {
+                            if (SUCCEEDED(coreController->QueryInterface(IID_PPV_ARGS(&controller2)))) {
                                 COREWEBVIEW2_COLOR transparent = { 0, 0, 0, 0 };
                                 controller2->put_DefaultBackgroundColor(transparent);
                             }
                             ComPtr<ICoreWebView2Controller4> controller4;
-                            if (SUCCEEDED(controller->QueryInterface(IID_PPV_ARGS(&controller4)))) {
+                            if (SUCCEEDED(coreController->QueryInterface(IID_PPV_ARGS(&controller4)))) {
                                 controller4->put_AllowExternalDrop(FALSE);
                             }
 
@@ -1100,7 +1405,7 @@ void LinWidgetWebViewRuntime::renderSharedHtmlRuntime()
                                 settings->put_AreDevToolsEnabled(TRUE);
                                 settings->put_IsZoomControlEnabled(FALSE);
                             }
-                            controller->put_ZoomFactor(1.0);
+                            coreController->put_ZoomFactor(1.0);
 
                             if (webView) {
                                 installWebConsoleLogging();
@@ -1120,7 +1425,7 @@ void LinWidgetWebViewRuntime::renderSharedHtmlRuntime()
                                         }).Get(),
                                     &token);
                                 EventRegistrationToken acceleratorToken = {};
-                                controller->add_AcceleratorKeyPressed(
+                                coreController->add_AcceleratorKeyPressed(
                                     Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>(
                                         [this](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT {
                                             COREWEBVIEW2_KEY_EVENT_KIND kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
@@ -1719,14 +2024,23 @@ void LinWidgetWebViewRuntime::syncSharedRegion(const QString& reason)
     if (hostWindow) {
         EnumChildWindows(hostWindow, findWebViewChildWindow, reinterpret_cast<LPARAM>(&webViewSearch));
     }
-    if (webViewSearch.window) {
-        SetWindowRgn(webViewSearch.window, nullptr, TRUE);
-        const quint64 webViewWindowId = static_cast<quint64>(reinterpret_cast<quintptr>(webViewSearch.window));
+    HWND reportedWindow = webViewSearch.window;
+    QString reportedClassName = webViewSearch.className;
+    if (!reportedWindow && m_compositionController) {
+        reportedWindow = hostWindow;
+        reportedClassName = QStringLiteral("DCompWebViewPlaceholder");
+    }
+
+    if (reportedWindow) {
+        if (webViewSearch.window) {
+            SetWindowRgn(webViewSearch.window, nullptr, TRUE);
+        }
+        const quint64 webViewWindowId = static_cast<quint64>(reinterpret_cast<quintptr>(reportedWindow));
         if (webViewWindowId != m_lastReportedWebViewWindow) {
             m_lastReportedWebViewWindow = webViewWindowId;
             sendManagerMessage(QString::fromLatin1(WidgetMessageType::WebViewWindowReady), {
                 { QStringLiteral("hwnd"), QString::number(webViewWindowId) },
-                { QStringLiteral("className"), webViewSearch.className },
+                { QStringLiteral("className"), reportedClassName },
                 { QStringLiteral("reason"), reason }
             });
         }
@@ -2342,10 +2656,17 @@ void LinWidgetWebViewRuntime::focusWebView(const QString& source)
     if (hostWindow) {
         EnumChildWindows(hostWindow, findWebViewChildWindow, reinterpret_cast<LPARAM>(&webViewSearch));
     }
-    if (webViewSearch.window && GetFocus() == webViewSearch.window) {
+    HWND reportedWindow = webViewSearch.window;
+    QString reportedClassName = webViewSearch.className;
+    if (!reportedWindow && m_compositionController) {
+        reportedWindow = hostWindow;
+        reportedClassName = QStringLiteral("DCompWebViewPlaceholder");
+    }
+
+    if (reportedWindow && GetFocus() == reportedWindow) {
         appendLog(QStringLiteral("focus"), QStringLiteral("source=%1 skipped because WebView already has focus webview=%2 foreground=%3")
             .arg(source.isEmpty() ? QStringLiteral("<native>") : source,
-                 QString::number(reinterpret_cast<quintptr>(webViewSearch.window), 16),
+                 QString::number(reinterpret_cast<quintptr>(reportedWindow), 16),
                  QString::number(reinterpret_cast<quintptr>(GetForegroundWindow()), 16)));
         return;
     }
@@ -2357,14 +2678,14 @@ void LinWidgetWebViewRuntime::focusWebView(const QString& source)
     }
 #endif
 #ifdef Q_OS_WIN
-    if (webViewSearch.window) {
+    if (reportedWindow) {
         if (m_embedded || m_parentWindowId != 0) {
             if (hostWindow) {
                 focusNativeWindow(hostWindow);
             }
-            focusNativeWindow(webViewSearch.window);
+            focusNativeWindow(reportedWindow);
         } else {
-            activateTopLevelAndFocusChild(rootWindow ? rootWindow : hostWindow, webViewSearch.window);
+            activateTopLevelAndFocusChild(rootWindow ? rootWindow : hostWindow, reportedWindow);
         }
     } else if (!m_embedded && rootWindow) {
         activateNativeWindow(rootWindow);

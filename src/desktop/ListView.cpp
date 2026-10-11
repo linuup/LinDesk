@@ -64,6 +64,7 @@
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
 #include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
@@ -318,7 +319,8 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     m_selectedDesktopPaths(m_viewModel->selectedDesktopPaths()),
     m_focusedDesktopPath(m_viewModel->focusedDesktopPath()),
     m_anchorDesktopPath(m_viewModel->anchorDesktopPath()),
-    m_lastRightClickPos(-1, -1)  // 闂備礁鎲＄敮妤冩崲閸岀儑缍栭柟鐗堟緲缁€宀勬煛瀹擃喖鍟伴ˇ锕傛⒒娴ｈ鍎ラ柛鐘冲哺瀹曟垿鏁愭径濠勵槱闁荤姳绀佺壕顓犵矓鐎靛摜纾介柛鎰劤閺嬫瑩鎮归幇顔兼灈鐎殿噮鍣ｉ幃鈺呮惞椤愶絿褰欓梻?
+    m_lastRightClickPos(-1, -1),
+    m_forwardingMouseToWidget(false)
 {
     setAcceptDrops(true);
     // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冾殢濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴姊洪悡搴℃毐闁哄牜鍓欓埢宥呪枎閹惧磭鍊為梺鍛婃寙閸愮偓姣?
@@ -551,27 +553,20 @@ void ListView::syncLinWidgetLayer()
 #ifdef Q_OS_WIN
     HWND hwnd = reinterpret_cast<HWND>(winId());
     if (hwnd) {
+        // Strip WS_CLIPSIBLINGS to prevent the OS from clipping sibling windows
+        // (like the WebView widget) that are Z-ordered below ListView.
+        LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+        LONG_PTR newStyle = style & ~WS_CLIPSIBLINGS;
+
+        // Remove manual WS_EX_LAYERED handling to avoid interfering with Qt's own
+        // window composition and transparency management.
         LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-        // WS_EX_LAYERED is needed whenever ANY WebView content (wallpaper OR widgets)
-        // sits below ListView in Z-order, so the transparent areas of ListView
-        // let the WebView content show through.
-        bool hasWebViewBelow = m_linWidgetManager->hasActiveWallpaper()
-                               || (m_linWidgetManager->desktopLayerWindow() != 0 && m_linWidgetManager->isWidgetLayerEmbedded());
-        if (hasWebViewBelow) {
-            if (!(exStyle & WS_EX_LAYERED)) {
-                exStyle |= WS_EX_LAYERED;
-                SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
-                // Alpha=255: painted areas (icons) stay fully opaque;
-                // unpainted (transparent) areas let the sibling windows below show through.
-                SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
-                SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-            }
-        } else {
-            if (exStyle & WS_EX_LAYERED) {
-                exStyle &= ~WS_EX_LAYERED;
-                SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
-                SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-            }
+        LONG_PTR newExStyle = exStyle & ~WS_EX_LAYERED;
+
+        if (style != newStyle || exStyle != newExStyle) {
+            SetWindowLongPtr(hwnd, GWL_STYLE, newStyle);
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, newExStyle);
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }
     }
 #endif
@@ -683,12 +678,26 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         QPoint clientPos = mapFromGlobal(globalPos);
 
         if (m_linWidgetManager) {
-            // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through
+            // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through,
+            // EXCEPT if we are using composition windowless hosting where ListView needs to forward the input!
             if (m_linWidgetManager->isWidgetAt(clientPos)) {
-                if (result) {
-                    *result = HTTRANSPARENT;
+                bool isComposition = false;
+                if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
+                    if (runtime->isCompositionMode()) {
+                        isComposition = true;
+                    }
                 }
-                return true;
+                if (!isComposition) {
+                    if (result) {
+                        *result = HTTRANSPARENT;
+                    }
+                    return true;
+                } else {
+                    if (result) {
+                        *result = HTCLIENT;
+                    }
+                    return true;
+                }
             }
 
             const bool isWallpaperActive = m_linWidgetManager->hasActiveWallpaper();
@@ -1285,6 +1294,7 @@ void ListView::refreshCheckedItem(QRect rect)
     }
 
     if (!dirtyRegion.isEmpty()) {
+
         update(dirtyRegion);
     }
 
@@ -1400,6 +1410,17 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
+    qDebug() << "[LinWidgetInput] mousePressEvent: pos =" << event->pos() << "over widget =" << (m_linWidgetManager ? m_linWidgetManager->isWidgetAt(event->pos()) : false);
+    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
+            qDebug() << "[LinWidgetInput] Forwarding mousePressEvent to runtime";
+            m_forwardingMouseToWidget = true;
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    }
+
 #ifdef Q_OS_WIN
     if (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) {
         logListViewDpiTrace("mousePress", this, event->pos(), event->globalPos());
@@ -1492,6 +1513,20 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
+    if (m_forwardingMouseToWidget) {
+        if (auto* runtime = m_linWidgetManager ? m_linWidgetManager->webViewRuntime() : nullptr) {
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    }
+
     if (m_linWidgetManager) {
         auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
         if (activeWall && !activeWall->isInteractive()) {
@@ -1545,6 +1580,21 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (m_forwardingMouseToWidget) {
+        m_forwardingMouseToWidget = false;
+        if (auto* runtime = m_linWidgetManager ? m_linWidgetManager->webViewRuntime() : nullptr) {
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    }
+
     if (m_linWidgetManager) {
         auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
         if (activeWall && !activeWall->isInteractive()) {
@@ -1717,6 +1767,14 @@ QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) cons
 
 void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
+    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    }
+
     RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
@@ -1737,6 +1795,14 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void ListView::wheelEvent(QWheelEvent* event)
 {
+    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && m_linWidgetManager->isWidgetAt(event->pos())) {
+        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
+            QCoreApplication::sendEvent(runtime, event);
+            event->accept();
+            return;
+        }
+    }
+
     if (event->modifiers() & Qt::ControlModifier) {
         const QPoint angleDelta = event->angleDelta();
         const int delta = angleDelta.y() != 0 ? angleDelta.y() : angleDelta.x();
@@ -2375,7 +2441,7 @@ bool ListView::addItem(const QString& filePath, bool refresh)
         return false;
     }
 
-    const bool added = !findAnyItemStateByPath(normalizedPath) && addDesktopModelItemFromPath(normalizedPath);
+    const bool added = !findAnyItemStateByPath(normalizedPath) && addDesktopModelItemFromPath(filePath);
     
     // 闂備礁婀遍。浠嬪磻閹剧粯鐓涢柛顐ｇ箥濡插綊鏌＄€ｎ亜鏆炵紒鍌涘浮瀹曞ジ寮撮悙鎻掔闂備礁鎲″缁樻叏閹绢喖鐭?m_items 闂?m_allItems
     if (refresh) {
@@ -2391,7 +2457,7 @@ bool ListView::addItemNoDelete(const QString& filePath)
         return false;
     }
 
-    return addDesktopModelItemFromPath(normalizedPath);
+    return addDesktopModelItemFromPath(filePath);
 }
 
 void ListView::removeItem(const QString& filePath)
@@ -2916,12 +2982,12 @@ bool ListView::refreshFolderItemByPath(const QString& folderPath)
 
     invalidateFolderItemIconCache(normalizedPath);
 
-    if (refreshDesktopModelItemPath(normalizedPath, normalizedPath)) {
+    if (refreshDesktopModelItemPath(normalizedPath, folderPath)) {
         return true;
     }
 
     if (LinBox* box = BoxManager::instance()->findBoxContainingItem(normalizedPath)) {
-        return refreshBoxModelItemPath(box, normalizedPath, normalizedPath);
+        return refreshBoxModelItemPath(box, normalizedPath, folderPath);
     }
 
     return false;
