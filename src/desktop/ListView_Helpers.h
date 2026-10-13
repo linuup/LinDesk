@@ -79,9 +79,13 @@ int iconCellHeightForTwoTextLines(int iconSide)
 
 float normalizedSavedBoxOpacity(const QVariant& value)
 {
+    if (!value.isValid() || value.isNull()) {
+        return 0.0f;
+    }
+
     const double rawOpacity = value.toDouble();
-    if (rawOpacity <= 0.0) {
-        return 0.45f;
+    if (rawOpacity < 0.0) {
+        return 0.0f;
     }
 
     if (rawOpacity > 1.0) {
@@ -263,8 +267,7 @@ bool isNormalBoxDragSource(const QObject* source)
 
 bool shouldSkipLinWidgetResourceEntry(const QString& name)
 {
-    return name == QStringLiteral(".webview2") ||
-        name == QStringLiteral(".git") ||
+    return name == QStringLiteral(".git") ||
         name == QStringLiteral("node_modules") ||
         name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
         name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||

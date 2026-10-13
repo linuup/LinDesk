@@ -1,6 +1,6 @@
 # LinWidget Developer Guide
 
-LinWidget is the LinDesk desktop widget runtime. Widgets are HTML pages rendered by WebView2 and managed by LinDesk through an isolated WidgetHost process.
+LinWidget is the LinDesk desktop widget runtime. Widgets are HTML pages rendered by CEF OSR (Chromium Embedded Framework Off-Screen Rendering) and managed by LinDesk.
 
 ---
 
@@ -233,7 +233,7 @@ desktop.setResizeUiVisible(true);
 desktop.openSettings();
 ```
 
-LinDesk clamps the final size with `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, and the current WebView bounds. Resize calls are ignored when `resizable` is `false`.
+LinDesk clamps the final size with `minWidth`, `minHeight`, `maxWidth`, `maxHeight`, and the current widget bounds. Resize calls are ignored when `resizable` is `false`.
 
 ### Multi Instance
 
@@ -397,7 +397,7 @@ LinWidget has two storage paths:
 1. Browser storage: `localStorage`, `sessionStorage`, and `indexedDB`
 2. LinDesk storage API: `desktop.storage.instance` and `desktop.storage.widget`
 
-Browser storage still follows the WebView origin rules. For multi instance widgets, every instance can have an isolated browser origin. Use the LinDesk storage API when several instances need shared data.
+Browser storage still follows the browser engine origin rules. For multi instance widgets, every instance can have an isolated browser origin. Use the LinDesk storage API when several instances need shared data.
 
 Both storage APIs require the `storage` permission:
 

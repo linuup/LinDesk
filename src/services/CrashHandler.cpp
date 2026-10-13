@@ -1,27 +1,45 @@
 #include "services/CrashHandler.h"
-#include "services/AppPaths.h"
+#include "services/LogManager.h"
+
 #include <windows.h>
 #include <dbghelp.h>
-#include <QDateTime>
-#include <QDir>
-#include <QDebug>
+#include <cstdio>
 
 #pragma comment(lib, "dbghelp.lib")
 
 namespace {
+
 LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionInfo)
 {
-    // 创建崩溃转储目录
-    QString crashDir = AppPaths::userLocalConfigDir() + "/crashes";
-    QDir().mkpath(crashDir);
+    // SEH 回调保持最小安全实现：不使用 Qt 对象、不申请堆内存，纯 Win32 API
+    wchar_t localAppData[MAX_PATH] = {0};
+    DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) {
+        // 兜底回退到当前目录
+        wcscpy_s(localAppData, L".");
+    }
 
-    QString timeStr = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
-    QString dumpPath = crashDir + "/crash_" + timeStr + ".dmp";
+    wchar_t crashDir[MAX_PATH * 2] = {0};
+    swprintf_s(crashDir, L"%s\\LinDesk", localAppData);
+    CreateDirectoryW(crashDir, nullptr);
+    swprintf_s(crashDir, L"%s\\LinDesk\\logs", localAppData);
+    CreateDirectoryW(crashDir, nullptr);
+    swprintf_s(crashDir, L"%s\\LinDesk\\logs\\crash", localAppData);
+    CreateDirectoryW(crashDir, nullptr);
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+
+    wchar_t dumpPath[MAX_PATH * 2] = {0};
+    swprintf_s(dumpPath, L"%s\\%04d%02d%02d-%02d%02d%02d.dmp",
+               crashDir,
+               st.wYear, st.wMonth, st.wDay,
+               st.wHour, st.wMinute, st.wSecond);
 
     HANDLE hFile = CreateFileW(
-        reinterpret_cast<LPCWSTR>(dumpPath.utf16()),
+        dumpPath,
         GENERIC_WRITE,
-        0,
+        FILE_SHARE_READ,
         nullptr,
         CREATE_ALWAYS,
         FILE_ATTRIBUTE_NORMAL,
@@ -34,8 +52,7 @@ LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionInfo)
         dumpInfo.ExceptionPointers = pExceptionInfo;
         dumpInfo.ClientPointers = TRUE;
 
-        // 生成 Minidump 崩溃转储文件
-        BOOL success = MiniDumpWriteDump(
+        MiniDumpWriteDump(
             GetCurrentProcess(),
             GetCurrentProcessId(),
             hFile,
@@ -45,22 +62,21 @@ LONG WINAPI CustomUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptionInfo)
             nullptr
         );
         CloseHandle(hFile);
-        if (success) {
-            qCritical() << "Application crashed! Minidump written to:" << dumpPath;
-        } else {
-            qCritical() << "Failed to write minidump. Error:" << GetLastError();
-        }
-    } else {
-        qCritical() << "Failed to create dump file:" << dumpPath;
     }
+
+    // 崩溃时确保日志缓冲区刷新落盘
+    LogManager::shutdown();
 
     return EXCEPTION_EXECUTE_HANDLER;
 }
+
 } // namespace
 
 namespace CrashHandler {
+
 void initialize()
 {
     SetUnhandledExceptionFilter(CustomUnhandledExceptionFilter);
 }
-}
+
+} // namespace CrashHandler

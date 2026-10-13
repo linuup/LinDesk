@@ -1066,6 +1066,9 @@ void ListView::onMenuRefresh() {
             // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
             for (const auto& box : allBoxes) {
                 if (box) {
+                    if (box->isFolderMapped()) {
+                        loadMappedFolderItemsForBox(box.data());
+                    }
                     box->refreshLayout();
                 }
             }
@@ -1144,7 +1147,6 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         } else {
             loadIconLayer();
             update();
-            repaint();
         }
     };
 
@@ -1178,35 +1180,52 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     case FileSystemEvent::FileCreated:
     case FileSystemEvent::DirectoryCreated:
     {
-        if (newPath.isEmpty()) break;
-        if (findAnyItemStateByPath(newPath)) break;
+        const QString effectivePath = (eventInfo.eventType == FileSystemEvent::DirectoryCreated)
+            ? ListViewFileOpsHelper::normalizeNewFolderCasePath(eventInfo.newPath)
+            : eventInfo.newPath;
+        const QString resolvedNewPath = normalizeDesktopPath(effectivePath);
+        if (resolvedNewPath.isEmpty()) break;
+        if (findAnyItemStateByPath(resolvedNewPath)) break;
         
-        qDebug() << "[onFileSystemChanged] Creating item:" << newPath;
-        QPointer<LinBox> pendingTargetBox = m_pendingCreatedItemBoxes.value(newPath);
+        qDebug() << "[onFileSystemChanged] Creating item:" << resolvedNewPath;
+        QPointer<LinBox> pendingTargetBox = m_pendingCreatedItemBoxes.value(resolvedNewPath);
         if (pendingTargetBox.isNull()) {
             pendingTargetBox = m_pendingShellNewTargetBox;
         }
-        addDesktopModelItemFromPath(eventInfo.newPath);
-
-        auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
-        if (boxIt != m_pendingCreatedItemBoxes.end()) {
-            QPointer<LinBox> targetBox = boxIt.value();
-            m_pendingCreatedItemBoxes.erase(boxIt);
-            const bool hasPendingInsertIndex = m_pendingCreatedItemInsertIndices.contains(newPath);
-            const int insertIndex = hasPendingInsertIndex ? m_pendingCreatedItemInsertIndices.take(newPath) : -1;
-            if (targetBox) {
-                moveItemToBox(eventInfo.newPath, targetBox, false, insertIndex);
-                targetBox->refreshLayout();
-                targetBox->raise();
-                if (m_iconShowRule.autoArrange) {
-                    applyAutoArrangeAfterDesktopMutation(false, false);
-                } else {
-                    update();
+        if (pendingTargetBox) {
+            if (pendingTargetBox->isFolderMapped()) {
+                handlePendingShellCreatedItem(effectivePath);
+            } else {
+                auto boxIt = m_pendingCreatedItemBoxes.find(resolvedNewPath);
+                const int insertIndex = (boxIt != m_pendingCreatedItemBoxes.end() && m_pendingCreatedItemInsertIndices.contains(resolvedNewPath))
+                    ? m_pendingCreatedItemInsertIndices.take(resolvedNewPath) : -1;
+                if (boxIt != m_pendingCreatedItemBoxes.end()) {
+                    m_pendingCreatedItemBoxes.erase(boxIt);
                 }
+                clearPendingShellNewTargetBox();
+
+                const ListItemData data = DesktopItemLoader().loadItem(resolvedNewPath);
+                DesktopRootItemState state;
+                initDesktopRootItemModel(state.model, data, currentDesktopItemInitContext());
+                state.model.layoutMode = DesktopLayoutMode::IconMode;
+                state.model.baseSize = QSize(m_iconWidth, m_iconHeight);
+                state.model.effectiveSize = state.model.baseSize;
+                state.model.boxId = pendingTargetBox->boxId();
+                state.model.visible = true;
+
+                if (insertIndex >= 0) {
+                    pendingTargetBox->insertItemState(state, insertIndex, false);
+                } else {
+                    pendingTargetBox->addItemState(state, false);
+                }
+
+                pendingTargetBox->refreshLayout();
+                pendingTargetBox->raise();
+                pendingTargetBox->update();
+                update();
             }
-        }
-        else {
-            handlePendingShellCreatedItem(eventInfo.newPath);
+        } else {
+            addDesktopModelItemFromPath(resolvedNewPath);
         }
         
         // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣鏌ｉ悩杈╁妽婵犮垺顭囩槐鐐差吋婢跺﹥顥濋梺缁橆殔閻楀﹪鎮楅娴庡綊鎮╅搹顐ｇ€紓鍌氱Т閹虫劗妲?
@@ -1351,17 +1370,42 @@ void ListView::onMenuQuitApp() {
     qApp->quit();
 }
 
-void ListView::onMenuCreateBox()
+static QPoint resolveSafeBoxCreationPos(const QPoint& requestedPos, ListView* view)
 {
+    QPoint targetPos = requestedPos;
+    if (targetPos.isNull() || targetPos == QPoint(-1, -1)) {
+        targetPos = view->lastRightClickPos();
+    }
+    if (targetPos.isNull() || targetPos == QPoint(-1, -1)) {
+        targetPos = view->mapFromGlobal(QCursor::pos());
+    }
+
+    const QRect viewBounds = view->rect();
+    if (!viewBounds.contains(targetPos)) {
+        targetPos = QPoint(qBound(20, targetPos.x(), qMax(20, viewBounds.width() - 320)),
+                           qBound(20, targetPos.y(), qMax(20, viewBounds.height() - 320)));
+    }
+    return targetPos;
+}
+
+void ListView::onMenuCreateBox(const QPoint& pos)
+{
+    const QPoint creationPos = resolveSafeBoxCreationPos(pos, this);
     BoxManager* manager = BoxManager::instance();
-	LinBox* box = manager->createBox(m_lastRightClickPos, this);
+	LinBox* box = manager->createBox(creationPos, this);
     
     // Connect box signals to ListView
     manager->setupConnections(box, this);
+    box->show();
+    box->raise();
+    box->update();
+    this->update(box->geometry().adjusted(-16, -16, 16, 16));
 }
 
-void ListView::onMenuMapFolder()
+void ListView::onMenuMapFolder(const QPoint& pos)
 {
+    const QPoint creationPos = resolveSafeBoxCreationPos(pos, this);
+
     const QString selectedDir = QFileDialog::getExistingDirectory(
         this,
         tr("Select Folder to Map"),
@@ -1379,14 +1423,17 @@ void ListView::onMenuMapFolder()
     }
 
     BoxManager* manager = BoxManager::instance();
-	LinBox* box = manager->createBox(m_lastRightClickPos, this);
+	LinBox* box = manager->createBox(creationPos, this);
     manager->setupConnections(box, this);
 
     box->setBoxTitle(QString());
     box->setMappedFolderPath(normalizedPath);
-    loadMappedFolderItemsForBox(box);
-    box->refreshLayout();
+    manager->applyUnifiedStyleToBox(box);
+    box->show();
     box->raise();
+    box->update();
+    this->update(box->geometry().adjusted(-16, -16, 16, 16));
+    loadMappedFolderItemsForBox(box);
     requestSaveBoxes();
 }
 

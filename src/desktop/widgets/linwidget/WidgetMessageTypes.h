@@ -10,8 +10,6 @@ namespace WidgetMessageType {
     constexpr const char* Ready = "ready";
     constexpr const char* Error = "error";
     constexpr const char* HostWindowReady = "host_window_ready";
-    constexpr const char* WebViewWindowReady = "webview_window_ready";
-    constexpr const char* WebViewWindowLost = "webview_window_lost";
     constexpr const char* AddWidget = "add_widget";
     constexpr const char* RemoveWidget = "remove_widget";
     constexpr const char* UpdateWidgetGeometry = "update_widget_geometry";
@@ -41,6 +39,32 @@ namespace WidgetMessageType {
     constexpr const char* ThemeChanged = "theme_changed";
 }
 
+namespace WidgetErrorCode {
+    constexpr const char* Ok = "ok";
+    constexpr const char* Timeout = "timeout";
+    constexpr const char* NotFound = "not_found";
+    constexpr const char* PermissionDenied = "permission_denied";
+    constexpr const char* Internal = "internal";
+    constexpr const char* NotImplemented = "not_implemented";
+}
+
+struct WidgetEnvelope {
+    QString id;
+    QString type;
+    QString widgetId;
+    QJsonObject payload;
+    QJsonObject error;
+
+    QJsonObject toJson() const;
+    static WidgetEnvelope fromJson(const QJsonObject& obj);
+};
+
 QJsonObject makeWidgetMessage(const QString& type, const QString& widgetId);
+QJsonObject makeWidgetEnvelopeMessage(const QString& type,
+                                      const QString& widgetId,
+                                      const QString& requestId = QString(),
+                                      const QJsonObject& payload = QJsonObject(),
+                                      const QString& errorCode = QString(),
+                                      const QString& errorMessage = QString());
 
 }

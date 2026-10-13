@@ -21,7 +21,6 @@ class QResizeEvent;
 class QSlider;
 class QTimer;
 class ListView;
-class SoftDesktopTextPreview;
 class FluentToggleSwitch;
 namespace LinWidget {
 class WidgetManager;
@@ -43,7 +42,6 @@ private:
     void updateAdaptiveLayout();
     void updateLabels();
     void updateOpenGLStatus();
-    void applyTextPreviewOptions();
     LinWidget::WidgetManager* linWidgetManager();
     void reloadLinWidgetsList();
     void updateLinWidgetsButtons();
@@ -83,7 +81,6 @@ private:
     QWidget* createLinWidgetsPage();
     QWidget* createAIPage();
     QWidget* createLayoutPage();
-    QWidget* createTextDiagnosticsPage();
     QWidget* wrapScrollablePage(QWidget* content);
     void loadAIConfig();
     void saveAIConfig();
@@ -110,6 +107,11 @@ private:
     class QTabBar* m_tabBar = nullptr;
     class QStackedWidget* m_contentStack = nullptr;
     QGridLayout* m_generalGrid = nullptr;
+    struct GeneralSection {
+        QWidget* header = nullptr;
+        QList<QWidget*> cards;
+    };
+    QList<GeneralSection> m_generalSections;
     QList<QWidget*> m_generalCards;
     QHash<QWidget*, bool> m_generalWideCards;
     QGridLayout* m_linWidgetsContentGrid = nullptr;
@@ -141,6 +143,8 @@ private:
     QString m_currentLinWidgetLogPath;
     QListWidget* m_installedLinWidgetsList = nullptr;
     QListWidget* m_developmentLinWidgetsList = nullptr;
+    class QTabBar* m_linWidgetListTabBar = nullptr;
+    class QStackedWidget* m_linWidgetListStack = nullptr;
     QPushButton* m_linWidgetsOpenFolderButton = nullptr;
     QPushButton* m_linWidgetsOpenLogsButton = nullptr;
     QPushButton* m_linWidgetsAddDevButton = nullptr;
@@ -172,23 +176,4 @@ private:
     QList<AI::ChatMessage> m_aiConversationMessages;
     QString m_aiStreamingAssistantText;
     int m_aiCurrentProviderIndex = 0;
-
-    // Text preview
-    SoftDesktopTextPreview* m_textPreview = nullptr;
-    QSlider* m_largeGlowSlider = nullptr;
-    QSlider* m_tightGlowSlider = nullptr;
-    QSlider* m_glowAlphaSlider = nullptr;
-    QSlider* m_innerAlphaSlider = nullptr;
-    QSlider* m_glowOffsetXSlider = nullptr;
-    QSlider* m_glowOffsetYSlider = nullptr;
-    QSlider* m_innerOffsetXSlider = nullptr;
-    QSlider* m_innerOffsetYSlider = nullptr;
-    QLabel* m_largeGlowValueLabel = nullptr;
-    QLabel* m_tightGlowValueLabel = nullptr;
-    QLabel* m_glowAlphaValueLabel = nullptr;
-    QLabel* m_innerAlphaValueLabel = nullptr;
-    QLabel* m_glowOffsetXValueLabel = nullptr;
-    QLabel* m_glowOffsetYValueLabel = nullptr;
-    QLabel* m_innerOffsetXValueLabel = nullptr;
-    QLabel* m_innerOffsetYValueLabel = nullptr;
 };

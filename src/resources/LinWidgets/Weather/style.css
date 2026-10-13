@@ -14,7 +14,7 @@ body {
   color: #ffffff;
 }
 
-/* Hide scrollbar and scrollbar corner (fixes white square issue in WebView2) */
+/* Hide scrollbar and scrollbar corner */
 ::-webkit-scrollbar {
   display: none;
   width: 0;

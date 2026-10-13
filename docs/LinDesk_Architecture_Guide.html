@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinDesk 架构指南</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232b2b2b'/%3E%3Crect x='7' y='9' width='18' height='14' rx='2' fill='none' stroke='%23f5f5f5' stroke-width='2'/%3E%3Ccircle cx='13' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3Ccircle cx='19' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --text:#1f2328;
+    --text-sub:#57606a;
+    --line:#d0d7de;
+    --line-soft:#eaeef2;
+    --bg:#ffffff;
+    --accent:#0969da;
+    --danger:#cf222e;
+    --warn:#9a6700;
+    --ok:#1a7f37;
+    --code-bg:#f6f8fa;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    font-size:15px;line-height:1.75;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 20px 64px;}
+  header.doc-head{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:26px;margin:0 0 8px;font-weight:700;}
+  .meta{color:var(--text-sub);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 16px;}
+  h2{font-size:20px;margin:40px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line-soft);}
+  h3{font-size:16px;margin:26px 0 10px;}
+  h4{font-size:15px;margin:20px 0 8px;}
+  p{margin:10px 0;}
+  ul,ol{margin:10px 0;padding-left:24px;}
+  li{margin:4px 0;}
+  code{
+    font-family:Consolas,"Courier New",monospace;
+    font-size:13px;background:var(--code-bg);
+    border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px;
+  }
+  pre{
+    background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;
+    padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.6;
+  }
+  pre code{background:none;border:none;padding:0;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--code-bg);font-weight:600;white-space:nowrap;}
+  .tbl-scroll{overflow-x:auto;}
+  .note{
+    background:var(--code-bg);border:1px solid var(--line-soft);
+    border-left:3px solid var(--accent);padding:10px 14px;margin:14px 0;font-size:14px;
+  }
+  .note.danger{border-left-color:var(--danger);background:#fff5f5;}
+  .note.warn{border-left-color:var(--warn);background:#fff8e5;}
+  .tag{
+    display:inline-block;font-size:12px;border-radius:10px;padding:1px 8px;
+    margin-left:6px;vertical-align:1px;white-space:nowrap;
+  }
+  .tag.rm{background:#ffebe9;color:#cf222e;border:1px solid #ff8182;}
+  .tag.keep{background:#dafbe1;color:#1a7f37;border:1px solid #4ac26b;}
+  .tag.check{background:#fff8c5;color:#9a6700;border:1px solid #d4a72c;}
+  footer.doc-foot{margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;}
+  @media (max-width:560px){
+    body{font-size:14px;}
+    h1{font-size:22px;}
+    h2{font-size:18px;}
+    .wrap{padding:24px 14px 48px;}
+  }
+</style>
+<style>
+  .doc-nav{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 24px;padding:10px 12px;background:#f6f8fa;border:1px solid #eaeef2;border-radius:4px;}
+  .doc-nav a{font-size:13px;color:#57606a;text-decoration:none;padding:2px 10px;border-radius:3px;white-space:nowrap;}
+  .doc-nav a:hover{background:#eaeef2;color:#1f2328;}
+  .doc-nav a.active{background:#0969da;color:#fff;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="doc-nav">
+    <a href="LinDesk_Docs_Index.html">文档中心</a>
+    <a href="LinDesk_Product_Intro.html">产品介绍</a>
+    <a href="LinDesk_Module_Guide.html">模块介绍</a>
+    <a href="LinDesk_Architecture_Guide.html" class="active">架构指南</a>
+    <a href="LinDesk_Todo.html">任务清单</a>
+    <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
+    <a href="LinDesk_Persistence_Plan.html">持久化方案</a>
+</nav>
+
+<header class="doc-head">
+  <h1>LinDesk 架构指南</h1>
+  <div class="meta">
+    <span>版本：CEF OSR 版（替代旧 WebView2 架构指南）</span>
+    <span>依据：src 源码只读盘点 + 改造任务书</span>
+    <span>更新：2026-10-12</span>
+  </div>
+</header>
+
+<section>
+  <h2>1. 系统总体定位与技术栈</h2>
+  <p>LinDesk 是一款面向 Windows 平台的桌面整理与小组件增强软件：在系统桌面上叠加一层自绘桌面（图标管理、收纳盒 LinBox），并以 HTML 组件系统（LinWidget）在桌面直接渲染信息小组件。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:22%"><col style="width:38%"><col style="width:40%"></colgroup>
+    <tr><th>层次</th><th>技术 / 库</th><th>职责</th></tr>
+    <tr><td>宿主核心</td><td>C++ / Qt Widgets、CMake、vcpkg</td><td>进程生命周期、桌面宿主嵌入（WorkerW）、事件调度、设置与更新。</td></tr>
+    <tr><td>桌面交互</td><td>Qt Widgets、GDI/D2D</td><td>全屏自绘画布、图标网格布局、框选、右键菜单、LinBox 收纳盒。</td></tr>
+    <tr><td>组件渲染</td><td>CEF（Chromium）离屏渲染 OSR</td><td>LinWidget 组件像素帧离屏渲染，统一绘制管线合成到桌面。</td></tr>
+    <tr><td>旧渲染栈</td><td>WebView2（Edge）<span class="tag rm">移除中</span></td><td>旧组件渲染与动态壁纸实现；见改造任务书。</td></tr>
+    <tr><td>组件生态</td><td>HTML5 / CSS / JS（组件包）</td><td>10 个内置组件（时钟、监控、天气、便签、待办等）。</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>2. 桌面底座与统一绘制架构</h2>
+
+  <h3>2.1 桌面挂载（WorkerW）</h3>
+  <p>LinDesktop 通过 Win32 挂载到系统桌面：向 <code>Progman</code> 发送 <code>0x052C</code> 消息拆分 <code>WorkerW</code>，找到 <code>SHELLDLL_DefView</code> 下方的 WorkerW 句柄，<code>SetParent(linDesktopHwnd, workerWHwnd)</code> 嵌入，与系统桌面同生共灭。</p>
+
+  <h3>2.2 三层统一绘制管线</h3>
+  <p>桌面呈现采用<strong>单条 QPainter 绘制管线</strong>（不再依赖原生子窗口 HWND 层级，避免遮挡与 <code>UpdateLayeredWindowIndirect</code> 报错）：</p>
+  <pre>
++-------------------------------------------------------+
+|  1. 静态系统壁纸（LinDesktop 背景绘制）                  |
++-------------------------------------------------------+
+                           |
++-------------------------------------------------------+
+|  2. CEF OSR 小组件画布（LinWidgetCanvasWidget）         |
+|     - renderCanvas(painter, dirtyRegion)              |
+|     - 无组件时：default_page.html 毛玻璃引导卡片        |
+|     - 有组件时：各组件 OSR 帧按图层合成                 |
++-------------------------------------------------------+
+                           |
++-------------------------------------------------------+
+|  3. 桌面图标与收纳盒（ListView / LinBox）               |
+|     - 图标渲染数据缓存、框选、重命名、高亮              |
++-------------------------------------------------------+
+  </pre>
+  <p><code>ListView::paintEvent</code> 按嵌入/浮动模式调整组件画布与图标层的先后：<strong>嵌入模式</strong>组件画布先画（组件在图标下方），<strong>浮动模式</strong>后画（组件在图标上方）。</p>
+
+  <h3>2.3 防抢占与自愈</h3>
+  <ul>
+    <li>桌面宿主窗口监听（<code>startDesktopHostWindowMonitor</code>）：监测 <code>EVENT_OBJECT_CREATE / DESTROY</code>。</li>
+    <li>层级脱落时触发恢复（<code>scheduleLinWidgetLayerRecovery</code> / <code>syncLinWidgetLayer</code>）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>3. LinWidget 组件系统（核心维护重点）</h2>
+
+  <h3>3.1 承载方式：每组件一个独立 CEF OSR 实例</h3>
+  <p>与旧 WebView2"单实例共享宿主"（所有组件塞进一个 <code>host.html</code>）不同，当前 CEF OSR 架构下每个运行的小组件拥有<strong>独立 <code>CefOsrBrowserInstance</code></strong>：</p>
+  <ul>
+    <li>启动分流：<code>WidgetManager::launchWidgetInstance</code> 在 <code>m_cefOsrEnabled && CefManager::isCefAvailable()</code> 时 <code>new CefOsrBrowserInstance(instanceId)</code> → <code>create(entryUrl, geometry)</code>，存入 <code>m_osrBrowsers</code>。</li>
+    <li>帧合成：<code>frameReady(wid, geom, img, dirty)</code> → <code>LinWidgetCanvasWidget::updateWidgetFrame</code> → <code>ListView::paintEvent</code> 的 <code>renderCanvas</code>。</li>
+    <li>占位页：<code>m_defaultOsrBrowser</code>（<code>__default_page__</code>）加载 <code>default_page.html</code>，仅在无组件运行时显示。</li>
+    <li>输入路由：鼠标/滚轮按 widgetId 查 <code>m_osrBrowsers</code> 转发（键盘/IME 为 P0 缺口，见任务书第 10 节）。</li>
+  </ul>
+  <p class="note warn"><strong>备选方向（已讨论未采用）：</strong>单宿主页 + 每组件一个 <code>&lt;iframe&gt;</code> 可省渲染进程数，但引入单点故障；当前路线按独立实例推进。</p>
+
+  <h3>3.2 C++ 后端核心模块</h3>
+  <p>代码位于 <code>src/desktop/widgets/linwidget/</code>（引擎无关部分删除 WebView2 后仍原样工作）：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>模块</th><th>职责</th></tr>
+    <tr><td><code>WidgetManager</code></td><td>组件调度总控：启动/停止/重启/多实例、布局/配置持久化、系统信息与存储消息处理、开发模式热重载、健康巡检定时器（WebView2 时代遗留，CEF 崩溃检测为 P0）。</td></tr>
+    <tr><td><code>WidgetPackage</code></td><td>组件包规范解析（<code>manifest.json</code>、entry 定位）。</td></tr>
+    <tr><td><code>LayoutManager</code></td><td>实例布局状态（位置/尺寸/zOrder/可见性）。</td></tr>
+    <tr><td><code>PermissionManager</code></td><td>权限门控（network / storage / desktop）。</td></tr>
+    <tr><td><code>WidgetRegistryManager</code></td><td>注册表：内置/安装组件与开发项目、启用状态、授权。</td></tr>
+    <tr><td><code>ConfigManager</code></td><td>布局配置读写（路径见第 5 节）。</td></tr>
+    <tr><td><code>WidgetSettingsDialog</code></td><td>组件设置对话框（仅含待清理的 WebView2 鼠标转发块）。</td></tr>
+    <tr><td><code>LinWidgetWebViewRuntime</code> / <code>LinWallpaperWebViewRuntime</code></td><td><span class="tag rm">待移除</span> WebView2 组件运行时与动态壁纸（壁纸无 CEF 替代，待决策）。</td></tr>
+  </table>
+  </div>
+
+  <h3>3.3 CEF 渲染层</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>模块</th><th>职责</th></tr>
+    <tr><td><code>CefManager</code></td><td>CEF 全局初始化/关闭（单例）、100Hz 消息泵（QTimer cooperative dispatch）、子进程路径与缓存路径。</td></tr>
+    <tr><td><code>CefOsrBrowserInstance</code></td><td>OSR 浏览器实例：<code>create</code>/<code>loadUrl</code>/<code>resize</code>/鼠标事件；<code>frameReady</code> 输出帧；预留桥接口 <code>sendMessageToWeb</code> / <code>onWebMessageReceived</code> / <code>injectBridgeScript</code>。</td></tr>
+    <tr><td><code>CefOsrRenderHandler</code></td><td>离屏渲染回调（OnPaint / GetViewRect）。</td></tr>
+    <tr><td><code>LinWidgetCanvasWidget</code></td><td>帧缓冲画布：按 widgetId 管理帧、命中测试、<code>renderCanvas</code> 合成。</td></tr>
+    <tr><td><code>subprocess/main.cpp</code></td><td>CEF 子进程目标 <code>LinDeskSubprocess</code>。</td></tr>
+  </table>
+  </div>
+
+  <h3>3.4 内置组件包（10 个）</h3>
+  <p>位于 <code>src/resources/LinWidgets/</code>，遵循标准组件包规范（<code>manifest.json</code> + entry 页面）。组件 ID：Clock、SysMonitor、Weather、Notes、Timer、Todo、NewsFeed、WaterTracker、CyberFan、ApiTester。尺寸与权限声明以各组件 <code>manifest.json</code> 为准。</p>
+</section>
+
+<section>
+  <h2>4. 消息协议与桥接</h2>
+
+  <h3>4.1 消息协议（WidgetMessageTypes）</h3>
+  <p><code>src/desktop/widgets/linwidget/WidgetMessageTypes.h</code> 定义字符串枚举 + <code>makeWidgetMessage(type, widgetId)</code>：<code>launch / ready / error</code>、组件几何（<code>add_widget / update_widget_geometry / widget_geometry_changed / move / resize / close</code>）、系统信息（<code>system_info_request/response/update</code>）、存储（<code>storage_request/response</code>）、实例管理（<code>create/list/close/remove_widget_instance_*</code>）、设置（<code>open_widget_settings / theme_changed</code>）。<span class="tag check">待规范化</span>：无 requestId / 超时 / 错误码。</p>
+
+  <h3>4.2 组件侧 API 目标形态（window.desktop）</h3>
+  <p>组件加载后目标注入 <code>window.desktop</code> 桥对象（WebView2 时代由宿主脚本注入，CEF 时代经 <code>injectBridgeScript</code> 待实现）：</p>
+  <ul>
+    <li>身份与就绪：<code>instanceId / widgetId / widgetName</code>、<code>await window.desktop.ready</code>。</li>
+    <li>几何控制：<code>resizeWidget / setWidgetGeometry / setResizeUiVisible / openSettings</code>。</li>
+    <li>存储：<code>storage.instance.set/get/remove/clear/all</code>、<code>storage.widget.*</code>（跨实例共享）。</li>
+    <li>系统信息（需 desktop 权限）：<code>systemInfo.getSnapshot()</code>、<code>systemInfo.watch(cb, interval)</code>。</li>
+    <li>实例管理：<code>instances.create/list</code>、<code>instance.close/remove</code>。</li>
+  </ul>
+
+  <h3>4.3 传输层现状 <span class="tag danger">缺桥</span></h3>
+  <ul>
+    <li>WebView2 时代：组件 JS → <code>chrome.webview.postMessage</code> → <code>LinWidgetWebViewRuntime::handleWebMessageJson</code> → <code>WidgetManager::handleRuntimeMessage</code>。</li>
+    <li>CEF 现状：全库检索 <code>OnProcessMessageReceived | CefMessageRouter | RunJavaScript | executeJavaScript | OnQuery | V8Handler | GetV8Context</code> = <strong>0 匹配</strong>，桥未实现；Notes 组件仍在用 <code>chrome.webview</code>。</li>
+    <li>结论：先补 CEF 消息桥（CefMessageRouterBrowserSide / V8 注入），再删 WebView2。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>5. 数据持久化与存储拓扑</h2>
+  <p>运行时配置位于用户配置目录（<code>AppPaths</code> 定义，<code>%APPDATA%/LinDesk/</code> 下）：</p>
+  <pre>
+%APPDATA%/LinDesk/
+  ├── LinWidgets/
+  │     └── registry.json        # 组件注册表 + 布局配置（AppPaths::linWidgetRegistryFilePath）
+  ├── LinWidgetsData/            # 各组件数据仓储（AppPaths::linWidgetDataDir）
+  └── LinWallpapers/             # 壁纸数据（AppPaths::userWallpapersDir）
+  </pre>
+  <p>组件布局（位置/尺寸/zOrder/可见性）经 <code>ConfigManager</code> 持久化，启动时 <code>restoreFromConfig</code> 恢复。</p>
+</section>
+
+<section>
+  <h2>6. 调试面板与开发者热更新</h2>
+  <ul>
+    <li><strong>调试面板</strong>（<code>ListViewDebugPanel.cpp</code>）：组件/图层调试、网格间距调试、快捷入口；文案中"CEF OSR 与 WebView2 均已卸载隐藏…"待清理。</li>
+    <li><strong>开发模式热重载</strong>：<code>QFileSystemWatcher</code> 监听开发组件目录，变更自动重载（<code>configureDevelopmentWatcher</code>）——引擎无关，CEF 下保留可用。</li>
+    <li><strong>缺口</strong>：CEF 渲染进程崩溃检测（<code>OnRenderProcessTerminated</code>）未实现，自动恢复为 P0。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>7. 当前状态与演进路线</h2>
+  <ol>
+    <li><strong>已完成：</strong>CEF OSR 帧渲染与统一绘制管线（组件显示在桌面图标层之下/之上）；组件管理逻辑（包/布局/权限/注册表/持久化/热重载）与引擎解耦。</li>
+    <li><strong>进行中：</strong>WebView2 移除改造（先补消息桥 → 验证功能矩阵 → 清理 WebView2 代码）。</li>
+    <li><strong>待办（P0 迁移补强）：</strong>键盘与 IME、崩溃检测与自动恢复、消息协议规范化、输入焦点管理（任务书第 10 节）。</li>
+    <li><strong>待办（产品能力）：</strong>天气组件失败重试、便签实例管理、OpenGL 渲染加速、剪贴板增强等——见<a href="LinDesk_Todo.html">任务清单</a>。</li>
+  </ol>
+  <p class="note"><strong>历史说明：</strong>旧架构指南描述"单 WebView2 共享宿主 + iframe 组件沙箱"方案，已被本 CEF OSR 版替代；原文档已归档删除。</p>
+</section>
+
+<footer class="doc-foot">
+  本文档由只读信息搜集生成，未修改任何代码；如与源码有出入，以源码为准。
+</footer>
+
+</div>
+</body>
+</html>

@@ -579,7 +579,7 @@ void ListViewSelectionController::updateBackgroundSelectionCandidateCache(ListVi
         for (const QRect& addedRect : addedRects) {
             const QVector<DesktopRootItemState*> queryStates = view.m_spatialIndex->query(addedRect);
             for (DesktopRootItemState* state : queryStates) {
-                if (!state || view.m_backgroundSelectionCandidateSet.contains(state)) {
+                if (!state || !state->model.boxId.isEmpty() || view.m_backgroundSelectionCandidateSet.contains(state)) {
                     continue;
                 }
                 if (!uncoveredSelectionRegion.intersects(state->model.renderData.selectionContentRect)) {

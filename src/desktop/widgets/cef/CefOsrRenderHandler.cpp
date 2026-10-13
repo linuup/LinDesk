@@ -65,7 +65,14 @@ void CefOsrRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
                        width * 4,
                        QImage::Format_ARGB32_Premultiplied);
 
-    const QImage clonedFrame = frame.copy();
+    QImage clonedFrame = frame.copy();
+    float dpr = 1.0f;
+    if (QScreen* screen = QGuiApplication::primaryScreen()) {
+        dpr = static_cast<float>(screen->devicePixelRatio());
+    }
+    if (dpr > 0.0f) {
+        clonedFrame.setDevicePixelRatio(dpr);
+    }
 
     QVector<QRect> qtDirtyRects;
     qtDirtyRects.reserve(static_cast<int>(dirtyRects.size()));
@@ -74,6 +81,22 @@ void CefOsrRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
     }
 
     emit frameReady(m_widgetId, clonedFrame, qtDirtyRects);
+}
+
+void CefOsrRenderHandler::OnImeCompositionRangeChanged(CefRefPtr<CefBrowser> browser,
+                                                      const CefRange& selected_range,
+                                                      const RectList& character_bounds)
+{
+    Q_UNUSED(browser);
+    Q_UNUSED(selected_range);
+    if (character_bounds.empty()) {
+        emit imeCompositionRangeChanged(m_widgetId, QRect());
+        return;
+    }
+
+    const auto& lastBound = character_bounds.back();
+    const QRect cursorRect(lastBound.x, lastBound.y, lastBound.width, lastBound.height);
+    emit imeCompositionRangeChanged(m_widgetId, cursorRect);
 }
 
 #endif

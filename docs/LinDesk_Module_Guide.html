@@ -80,9 +80,24 @@
     .map-row{flex-wrap:wrap;}
   }
 </style>
+<style>
+  .doc-nav{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 24px;padding:10px 12px;background:#f6f8fa;border:1px solid #eaeef2;border-radius:4px;}
+  .doc-nav a{font-size:13px;color:#57606a;text-decoration:none;padding:2px 10px;border-radius:3px;white-space:nowrap;}
+  .doc-nav a:hover{background:#eaeef2;color:#1f2328;}
+  .doc-nav a.active{background:#0969da;color:#fff;font-weight:600;}
+</style>
 </head>
 <body>
 <div class="wrap">
+<nav class="doc-nav">
+    <a href="LinDesk_Docs_Index.html">文档中心</a>
+    <a href="LinDesk_Product_Intro.html">产品介绍</a>
+    <a href="LinDesk_Module_Guide.html" class="active">模块介绍</a>
+    <a href="LinDesk_Architecture_Guide.html">架构指南</a>
+    <a href="LinDesk_Todo.html">任务清单</a>
+    <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
+    <a href="LinDesk_Persistence_Plan.html">持久化方案</a>
+</nav>
 
 <header class="doc-head">
   <h1>LinDesk 模块介绍文档</h1>
@@ -146,7 +161,7 @@
   </div>
 
   <h3>3.2 desktop —— 桌面画布与图标管理（核心模块）</h3>
-  <p>桌面整理的核心：负责图标列表渲染、框选、拖拽、重命名、右键菜单等交互。分层结构与 <code>Readme.md</code> 描述一致：<code>ListView</code>（图标项）→ <code>SelectArea</code>（框选层）→ <code>LinDesktop</code>（控制层）。</p>
+  <p>桌面整理的核心：负责图标列表渲染、框选、拖拽、重命名、右键菜单等交互。分层结构与 <code>Readme.md</code> 描述一致：<code>ListView</code>（图标项）→ <code>SelectArea</code>（框选层）→ <code>LinDesktop</code>（控制层）。组件渲染走统一绘制管线（壁纸 → CEF OSR 组件画布 → 图标层），详见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>。</p>
   <div class="tbl-scroll">
   <table>
     <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
@@ -170,14 +185,14 @@
   </div>
 
   <h4>3.2.1 desktop/widgets/linwidget —— LinWidget 桌面小组件系统</h4>
-  <p>桌面小组件（Widget）与动态壁纸的运行时：组件包加载、WebView 运行时、配置/布局/权限管理。</p>
+  <p>桌面小组件（Widget）与动态壁纸的运行时：组件包加载、组件运行时（当前主渲染为 CEF OSR，WebView2 运行时待移除）、配置/布局/权限管理。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>。</p>
   <div class="tbl-scroll">
   <table>
     <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
     <tr><th>关键类</th><th>职责</th></tr>
     <tr><td><code>WidgetManager</code></td><td>组件总控：启动组件、动态壁纸（startWallpaper）、配置读写、层级同步</td></tr>
-    <tr><td><code>LinWidgetWebViewRuntime</code></td><td>小组件的 WebView 运行时</td></tr>
-    <tr><td><code>LinWallpaperWebViewRuntime</code></td><td>动态壁纸的 WebView 运行时</td></tr>
+    <tr><td><code>LinWidgetWebViewRuntime</code></td><td>小组件的 WebView 运行时（待移除，当前主渲染为 CEF）</td></tr>
+    <tr><td><code>LinWallpaperWebViewRuntime</code></td><td>动态壁纸的 WebView 运行时（CEF 无替代，去留待决策）</td></tr>
     <tr><td><code>WidgetPackage</code></td><td>组件包（描述、资源）</td></tr>
     <tr><td><code>ConfigManager</code> / <code>LayoutManager</code> / <code>PermissionManager</code></td><td>组件配置、布局与权限管理</td></tr>
     <tr><td><code>WidgetRegistryManager</code></td><td>组件注册表管理</td></tr>
@@ -294,7 +309,7 @@
     <tr><th>关键类 / 子目录</th><th>职责</th></tr>
     <tr><td><code>Fluent/</code></td><td>Fluent 风格控件库：<code>FluentBaseWidget</code>、<code>FluentBaseDialog</code>、<code>FluentDialog</code>、<code>FluentButton</code>、<code>FluentCard</code>、<code>FluentCheckBox</code>、<code>FluentColorWheel</code>、<code>FluentComboBox</code>、<code>FluentDragTip</code>、<code>FluentInfoTip</code>、<code>FluentInput</code>、<code>FluentResultView</code>、<code>FluentToggleSwitch</code>、<code>FluentWidget</code></td></tr>
     <tr><td><code>SettingUI</code></td><td>设置主界面：常规设置、盒子/组件配置、更新检查与下载等入口</td></tr>
-    <tr><td><code>SoftDesktopTextPreview</code> / <code>SoftDesktopTextRenderer</code></td><td>桌面文字预览与渲染</td></tr>
+    <tr><td><code>SoftDesktopTextRenderer</code></td><td>桌面文字渲染与描边/发光效果</td></tr>
     <tr><td><code>QmlTestWindow</code></td><td>QML 测试窗口</td></tr>
   </table>
   </div>
@@ -340,6 +355,7 @@
 
 <footer class="doc-foot">
   本文档依据 <code>src/</code> 源码结构与 <code>CMakeLists.txt</code> 整理，仅作模块介绍，不涉及代码修改。如模块划分或类职责有误，以源码为准。
+  相关文档：<a href="LinDesk_Docs_Index.html">文档中心</a> / <a href="LinDesk_Architecture_Guide.html">架构指南</a> / <a href="LinDesk_Todo.html">任务清单</a>
 </footer>
 
 </div>

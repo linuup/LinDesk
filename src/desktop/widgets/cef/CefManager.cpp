@@ -106,12 +106,21 @@ bool CefManager::initialize(QString* errorMessage)
     QDir().mkpath(cachePath);
 
 #ifdef LINDESK_HAS_CEF
+#include <include/cef_scheme.h>
 class LinCefApp : public CefApp, public CefBrowserProcessHandler {
 public:
     LinCefApp() = default;
 
     CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
         return this;
+    }
+
+    void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {
+        registrar->AddCustomScheme("linwidget",
+            CEF_SCHEME_OPTION_STANDARD |
+            CEF_SCHEME_OPTION_SECURE |
+            CEF_SCHEME_OPTION_CORS_ENABLED |
+            CEF_SCHEME_OPTION_FETCH_ENABLED);
     }
 
     void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
@@ -121,6 +130,10 @@ public:
         command_line->AppendSwitch("disable-gpu-compositing");
         command_line->AppendSwitch("enable-begin-frame-scheduling");
         command_line->AppendSwitch("allow-file-access-from-files");
+
+        // 统一配置 CEF 崩溃转储目录
+        const QString crashDumpsDir = AppPaths::userCrashDumpsDir();
+        command_line->AppendSwitchWithValue("crash-dumps-dir", QDir::toNativeSeparators(crashDumpsDir).toStdString());
     }
 
     IMPLEMENT_REFCOUNTING(LinCefApp);
@@ -135,6 +148,17 @@ public:
     settings.no_sandbox = 1;
     settings.command_line_args_disabled = 0;
     settings.background_color = 0x00000000; // Transparent default ARGB
+
+    // 独立日志文件 logs/cef.log 与日志级别
+    const QString cefLogPath = QDir(AppPaths::userLogsDir()).filePath(QStringLiteral("cef.log"));
+    const std::wstring cefLogW = QDir::toNativeSeparators(cefLogPath).toStdWString();
+    CefString(&settings.log_file).FromWString(cefLogW);
+
+#ifdef QT_DEBUG
+    settings.log_severity = LOGSEVERITY_DEFAULT;
+#else
+    settings.log_severity = LOGSEVERITY_WARNING;
+#endif
 
     const std::wstring subProcessW = QDir::toNativeSeparators(subProcessPath).toStdWString();
     if (QFileInfo::exists(subProcessPath)) {
@@ -181,6 +205,10 @@ void CefManager::shutdown()
 
 #ifdef LINDESK_HAS_CEF
     qInfo() << "[CefManager] Shutting down CEF OSR runtime...";
+    // Flush pending message loop work so browser cleanup tasks complete before shutdown
+    for (int i = 0; i < 10; ++i) {
+        CefDoMessageLoopWork();
+    }
     CefShutdown();
 #endif
 
@@ -211,4 +239,4 @@ void CefManager::stopMessageLoopPump()
     }
 }
 
-} // namespace LinDesk
+} // namespace LinCef

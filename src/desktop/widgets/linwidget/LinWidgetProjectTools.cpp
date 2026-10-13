@@ -38,7 +38,6 @@ bool writeTextFile(const QString& path, const QString& text, QString* errorMessa
 bool shouldSkipPackageEntry(const QString& name)
 {
     return name == QStringLiteral(".git") ||
-        name == QStringLiteral(".webview2") ||
         name == QStringLiteral("node_modules") ||
         name.endsWith(QStringLiteral(".zip"), Qt::CaseInsensitive) ||
         name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||

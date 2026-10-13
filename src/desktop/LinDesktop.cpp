@@ -130,6 +130,12 @@ LinDesktop::LinDesktop(QWidget* parent)
     connect(m_transitionAnimation, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
         setTransitionOpacity(value.toFloat());
     });
+    connect(m_transitionAnimation, &QVariantAnimation::finished, this, [this]() {
+        m_prevScaledBackImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
+        m_transitionOpacity = 1.0f;
+        update();
+    });
     loadBackImage();
     widgetCanvas = new LinCef::LinWidgetCanvasWidget(this);
     widgetCanvas->setGeometry(rect());
@@ -309,8 +315,7 @@ void LinDesktop::applyLoadedWallpaper(const QString& path, const QImage& image)
     m_currentWallpaperPath = path;
     m_fallbackWallpaperPath.clear();
 
-    if (!m_backImagePixmap.isNull()) {
-        m_prevBackImagePixmap = m_backImagePixmap;
+    if (!m_scaledBackImagePixmap.isNull()) {
         m_prevScaledBackImagePixmap = m_scaledBackImagePixmap;
     }
 
@@ -321,6 +326,8 @@ void LinDesktop::applyLoadedWallpaper(const QString& path, const QImage& image)
         m_transitionAnimation->stop();
         m_transitionAnimation->start();
     } else {
+        m_prevScaledBackImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
         m_transitionOpacity = 1.0f;
         update();
     }
@@ -329,14 +336,13 @@ void LinDesktop::applyLoadedWallpaper(const QString& path, const QImage& image)
 void LinDesktop::applyFallbackWallpaper(const QString& path, const QString& reason)
 {
     const QString fallbackKey = path.isEmpty() ? QStringLiteral("__black_wallpaper__") : path;
-    if (m_fallbackWallpaperPath == fallbackKey && !m_backImagePixmap.isNull()) {
+    if (m_fallbackWallpaperPath == fallbackKey && !m_scaledBackImagePixmap.isNull()) {
         return;
     }
 
     qDebug() << "[LinDesktop] Using generated black wallpaper fallback:" << reason << "path=" << path;
 
-    if (!m_backImagePixmap.isNull()) {
-        m_prevBackImagePixmap = m_backImagePixmap;
+    if (!m_scaledBackImagePixmap.isNull()) {
         m_prevScaledBackImagePixmap = m_scaledBackImagePixmap;
     }
 
@@ -351,6 +357,8 @@ void LinDesktop::applyFallbackWallpaper(const QString& path, const QString& reas
         m_transitionAnimation->stop();
         m_transitionAnimation->start();
     } else {
+        m_prevScaledBackImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
         m_transitionOpacity = 1.0f;
         update();
     }
@@ -362,7 +370,28 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
     if (!targetSize.isValid()) {
         m_scaledBackImagePixmap = QPixmap();
         m_prevScaledBackImagePixmap = QPixmap();
+        m_backImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
         return;
+    }
+
+    // 若当前尺寸已匹配且已经生成过 scaled pixmap，无需重复重构
+    if (!m_scaledBackImagePixmap.isNull() && m_scaledBackImagePixmap.size() == targetSize && m_backImagePixmap.isNull()) {
+        return;
+    }
+
+    // 若原图已释放但窗口发生 resize，从当前壁纸路径重新按需读取原图
+    if (m_backImagePixmap.isNull() && !m_currentWallpaperPath.isEmpty()) {
+        if (m_fallbackWallpaperPath == m_currentWallpaperPath) {
+            QPixmap fallback(1, 1);
+            fallback.fill(Qt::black);
+            m_backImagePixmap = fallback;
+        } else {
+            QImage img;
+            if (img.load(m_currentWallpaperPath)) {
+                m_backImagePixmap = QPixmap::fromImage(img);
+            }
+        }
     }
 
     const auto buildFittedPixmap = [targetSize](const QPixmap& source) {
@@ -388,9 +417,11 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
         return fitted;
     };
 
-    m_scaledBackImagePixmap = buildFittedPixmap(m_backImagePixmap);
-    if (!m_prevBackImagePixmap.isNull()) {
-        m_prevScaledBackImagePixmap = buildFittedPixmap(m_prevBackImagePixmap);
+    if (!m_backImagePixmap.isNull()) {
+        m_scaledBackImagePixmap = buildFittedPixmap(m_backImagePixmap);
+        // 生成 m_scaledBackImagePixmap 之后释放 m_backImagePixmap 原图，避免常驻占用多份显存/内存
+        m_backImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
     }
 }
 

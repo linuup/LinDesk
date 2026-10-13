@@ -11,6 +11,8 @@
 #include <QFileSystemWatcher>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QKeyEvent>
+#include <QInputMethodEvent>
 #include <qwindowdefs.h>
 
 namespace LinCef {
@@ -19,9 +21,6 @@ class CefOsrBrowserInstance;
 }
 
 namespace LinWidget {
-
-class LinWidgetWebViewRuntime;
-class LinWallpaperWebViewRuntime;
 
 class WidgetManager : public QObject {
     Q_OBJECT
@@ -33,7 +32,6 @@ public:
     bool start();
     bool startWallpaper(const QString& packagePath, bool isDevelopment, bool interactive = false, QString* errorMessage = nullptr);
     void stopWallpaper(bool clearConfig = false);
-    LinWallpaperWebViewRuntime* activeWallpaperRuntime() const;
     void syncWallpaperWindowLayer();
     void loadWallpaperConfig();
     void saveWallpaperConfig(const QString& packagePath, bool isDevelopment, bool interactive);
@@ -74,8 +72,8 @@ public:
     WId hostParentWindow() const;
     void setDesktopLayerWindow(WId layerWindow);
     WId desktopLayerWindow() const;
-    void setShowWebViewBounds(bool enabled);
-    bool showWebViewBounds() const;
+    void setShowWidgetBounds(bool enabled);
+    bool showWidgetBounds() const;
     void syncWidgetWindowLayer(const QString& instanceId);
     void syncAllWidgetWindowLayers();
     void stopWidget(const QString& instanceId);
@@ -83,18 +81,24 @@ public:
     WidgetInstance widgetInstance(const QString& instanceId) const;
     void broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message);
 
-    bool hasActiveWallpaper() const;
-    QWidget* activeWallpaperWidget() const;
+    bool hasActiveWallpaper() const { return false; }
+    QWidget* activeWallpaperWidget() const { return nullptr; }
     bool isWidgetAt(const QPoint& clientPos) const;
     QString widgetAt(const QPoint& clientPos) const;
-    bool isWallpaperInteractive() const;
-    class LinWidgetWebViewRuntime* webViewRuntime() const { return m_webViewRuntime; }
+    bool isWallpaperInteractive() const { return false; }
 
     void setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas);
     ::LinCef::LinWidgetCanvasWidget* canvasWidget() const { return m_canvasWidget; }
 
+    void setFocusedWidget(const QString& instanceId);
+    void clearWidgetFocus();
+    QString focusedWidget() const { return m_focusedInstanceId; }
+    QRect focusedWidgetCursorRect() const { return m_imeCursorRect; }
+
     bool forwardMouseEvent(QMouseEvent* event);
     bool forwardWheelEvent(QWheelEvent* event);
+    bool forwardKeyEvent(QKeyEvent* event);
+    bool forwardInputMethodEvent(QInputMethodEvent* event);
 
     bool isCefOsrEnabled() const { return m_cefOsrEnabled; }
     void setCefOsrEnabled(bool enabled);
@@ -108,6 +112,8 @@ signals:
     void widgetStopped(const QString& instanceId);
     void widgetError(const QString& instanceId, const QString& errorMessage);
     void widgetSettingsRequested(const QString& instanceId);
+    void focusedWidgetChanged(const QString& instanceId);
+    void imeCursorRectChanged(const QRect& cursorRect);
 
 private:
     QString makeInstanceId(const WidgetManifest& manifest) const;
@@ -118,10 +124,6 @@ private:
                                                 const QString& parentInstanceId,
                                                 QString* newInstanceId,
                                                 QString* errorMessage);
-    bool ensureSharedHost(QString* errorMessage = nullptr);
-    void restartSharedHost();
-    void sendHostOptionsToSharedHost();
-    bool sendAddWidgetToSharedHost(const WidgetInstance& instance, const WidgetLayoutState& layoutState);
     bool launchWidgetInstance(const WidgetInstance& instance,
                               const WidgetLayoutState& layoutState,
                               QString* errorMessage = nullptr);
@@ -143,12 +145,7 @@ private:
                              const QJsonValue& value = QJsonValue(),
                              const QString& errorMessage = QString());
     void stopSystemInfoWatchesForInstance(const QString& instanceId);
-    int visibleWidgetCount() const;
-    bool sharedWebViewMissingForVisibleWidgets() const;
-    void sendGeometryToHost(const QString& instanceId, const QRect& geometry);
-    bool sendMessageToSharedRuntime(const QJsonObject& message);
-    void resendVisibleWidgetsToSharedHost();
-    bool sharedHostLayerNeedsRecovery() const;
+    bool sendMessageToWidget(const QString& instanceId, const QJsonObject& message);
     void checkRuntimeHealth();
     void scheduleSaveToConfig();
     void saveToDefaultConfig();
@@ -163,9 +160,6 @@ private:
     PermissionManager m_permissions;
     WId m_hostParentWindow = 0;
     WId m_desktopLayerWindow = 0;
-    WId m_sharedWebViewWindow = 0;
-    QString m_sharedWebViewWindowClass;
-    QHash<QString, WId> m_widgetWindows;
     QSet<QString> m_runningWidgets;
     QTimer m_runtimeHealthTimer;
     QTimer m_saveTimer;
@@ -173,13 +167,11 @@ private:
     QHash<QString, QTimer*> m_developmentReloadTimers;
     QHash<QString, QTimer*> m_systemInfoWatchTimers;
     SystemInfo::SystemInfoService m_systemInfoService;
-    LinWidgetWebViewRuntime* m_webViewRuntime = nullptr;
     QHash<QString, WidgetInstance> m_instances;
     bool m_stoppingAll = false;
-    bool m_showWebViewBounds = false;
+    bool m_showWidgetBounds = false;
     bool m_enabled = false;
     bool m_widgetLayerEmbedded = true; // true = widget host below ListView; false = HWND_TOP (above)
-    LinWallpaperWebViewRuntime* m_activeWallpaper = nullptr;
     QWidget* m_linDesktopParent = nullptr;
     QString m_activeWallpaperId;
     QString m_activeWallpaperPackagePath;
@@ -189,7 +181,11 @@ private:
     QHash<QString, ::LinCef::CefOsrBrowserInstance*> m_osrBrowsers;
     ::LinCef::CefOsrBrowserInstance* m_defaultOsrBrowser = nullptr;
     bool m_cefOsrEnabled = true;
+    QString m_focusedInstanceId;
+    QRect m_imeCursorRect;
+    QMap<QString, QVector<qint64>> m_crashTimestamps;
 
+    void handleBrowserCrashed(const QString& widgetId, int status, int errorCode, const QString& errorString);
     void updateDefaultCefPage();
     QString defaultCefPagePath() const;
 };

@@ -348,60 +348,119 @@ QImage SysInfoUtil::autoCropImage(const QImage& source, bool* wasCropped)
 	return cropped.scaled(source.size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
-namespace {
-bool isNearWhiteOpaque(QRgb pixel) {
-    return qAlpha(pixel) >= 245 && qRed(pixel) >= 235 && qGreen(pixel) >= 235 && qBlue(pixel) >= 235;
-}
-bool isCloseToMatteColor(QRgb pixel, const QColor& matteColor, int tolerance) {
-    if (qAlpha(pixel) < 245) return false;
-    return qAbs(qRed(pixel) - matteColor.red()) <= tolerance &&
-           qAbs(qGreen(pixel) - matteColor.green()) <= tolerance &&
-           qAbs(qBlue(pixel) - matteColor.blue()) <= tolerance;
-}
-}
-
 QPixmap SysInfoUtil::sanitizeFolderPreviewMatte(const QPixmap& source)
 {
     if (source.isNull()) return source;
     QImage image = source.toImage().convertToFormat(QImage::Format_ARGB32);
     if (image.isNull() || image.width() < 8 || image.height() < 8) return source;
 
-    const QRgb topLeft = image.pixel(0, 0);
-    const QRgb topRight = image.pixel(image.width() - 1, 0);
-    const QRgb bottomLeft = image.pixel(0, image.height() - 1);
-    const QRgb bottomRight = image.pixel(image.width() - 1, image.height() - 1);
-    if (!isNearWhiteOpaque(topLeft) || !isNearWhiteOpaque(topRight) ||
-        !isNearWhiteOpaque(bottomLeft) || !isNearWhiteOpaque(bottomRight)) return source;
+    const int width = image.width();
+    const int height = image.height();
 
-    const QColor matteColor = QColor::fromRgb(topLeft);
-    const int tolerance = 16;
+    const QRgb corners[4] = {
+        image.pixel(0, 0),
+        image.pixel(width - 1, 0),
+        image.pixel(0, height - 1),
+        image.pixel(width - 1, height - 1)
+    };
+
+    // 如果四角已全部接近完全透明，说明已经过抠图或本身就是透明底，直接返回
+    int transparentCorners = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (qAlpha(corners[i]) <= 15) {
+            ++transparentCorners;
+        }
+    }
+    if (transparentCorners >= 3) {
+        return source;
+    }
+
+    // 检查四角不透明度：底色背景应接近完全不透明 (alpha >= 220)
+    for (int i = 0; i < 4; ++i) {
+        if (qAlpha(corners[i]) < 220) {
+            // S4: 四角透明度异常，无法可靠判定纯色背景，fallback
+            return QPixmap();
+        }
+    }
+
+    // S2.a: 采样四角颜色，求众数/一致性色，支持白/黑/灰等任意纯色底
+    const int cornerTolerance = 24;
+    auto colorDist = [](QRgb a, QRgb b) -> int {
+        const int dr = qAbs(qRed(a) - qRed(b));
+        const int dg = qAbs(qGreen(a) - qGreen(b));
+        const int db = qAbs(qBlue(a) - qBlue(b));
+        return qMax(dr, qMax(dg, db));
+    };
+
+    int bestCorner = 0;
+    int maxMatches = 0;
+    for (int i = 0; i < 4; ++i) {
+        int matches = 0;
+        for (int j = 0; j < 4; ++j) {
+            if (colorDist(corners[i], corners[j]) <= cornerTolerance) {
+                ++matches;
+            }
+        }
+        if (matches > maxMatches) {
+            maxMatches = matches;
+            bestCorner = i;
+        }
+    }
+
+    // S4 防御：若四角颜色不一致（至少 3 角吻合），无法可靠判定 matte，fallback 文件夹图标
+    if (maxMatches < 3) {
+        return QPixmap();
+    }
+
+    // 计算吻合角的平均色作为 matteColor
+    int sumR = 0, sumG = 0, sumB = 0, count = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (colorDist(corners[bestCorner], corners[i]) <= cornerTolerance) {
+            sumR += qRed(corners[i]);
+            sumG += qGreen(corners[i]);
+            sumB += qBlue(corners[i]);
+            ++count;
+        }
+    }
+    const QColor matteColor(sumR / count, sumG / count, sumB / count);
+
+    const int floodTolerance = 20;
     QImage result = image;
-    QVector<uchar> visited(image.width() * image.height(), 0);
+    QVector<uchar> visited(width * height, 0);
     QQueue<QPoint> queue;
 
+    auto isMattePixel = [&](QRgb pix) {
+        if (qAlpha(pix) < 220) return false;
+        return qAbs(qRed(pix) - matteColor.red()) <= floodTolerance &&
+               qAbs(qGreen(pix) - matteColor.green()) <= floodTolerance &&
+               qAbs(qBlue(pix) - matteColor.blue()) <= floodTolerance;
+    };
+
     auto enqueue = [&](int x, int y) {
-        if (x < 0 || y < 0 || x >= image.width() || y >= image.height()) return;
-        const int index = y * image.width() + x;
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        const int index = y * width + x;
         if (visited[index]) return;
-        if (!isCloseToMatteColor(result.pixel(x, y), matteColor, tolerance)) return;
+        if (!isMattePixel(result.pixel(x, y))) return;
         visited[index] = 1;
         queue.enqueue(QPoint(x, y));
     };
 
-    for (int x = 0; x < image.width(); ++x) { enqueue(x, 0); enqueue(x, image.height() - 1); }
-    for (int y = 0; y < image.height(); ++y) { enqueue(0, y); enqueue(image.width() - 1, y); }
+    for (int x = 0; x < width; ++x) { enqueue(x, 0); enqueue(x, height - 1); }
+    for (int y = 0; y < height; ++y) { enqueue(0, y); enqueue(width - 1, y); }
 
     int clearedPixels = 0;
     while (!queue.isEmpty()) {
         const QPoint point = queue.dequeue();
-        result.setPixel(point.x(), point.y(), qRgba(qRed(result.pixel(point.x(), point.y())),
-            qGreen(result.pixel(point.x(), point.y())), qBlue(result.pixel(point.x(), point.y())), 0));
+        result.setPixel(point.x(), point.y(), qRgba(0, 0, 0, 0));
         ++clearedPixels;
-        enqueue(point.x() - 1, point.y()); enqueue(point.x() + 1, point.y());
-        enqueue(point.x(), point.y() - 1); enqueue(point.x(), point.y() + 1);
+        enqueue(point.x() - 1, point.y());
+        enqueue(point.x() + 1, point.y());
+        enqueue(point.x(), point.y() - 1);
+        enqueue(point.x(), point.y() + 1);
     }
     if (clearedPixels == 0) return source;
 
+    // S2.b: 全图对 alpha∈(0,255) 像素做反算去污染（取消 3x3 邻接限制，全图应用）
     auto decontaminateChannel = [](int channel, int matteChannel, int alpha) -> int {
         if (alpha <= 0) return 0;
         const double a = alpha / 255.0;
@@ -409,31 +468,38 @@ QPixmap SysInfoUtil::sanitizeFolderPreviewMatte(const QPixmap& source)
         return qBound(0, qRound(corrected), 255);
     };
 
-    for (int y = 0; y < result.height(); ++y) {
-        for (int x = 0; x < result.width(); ++x) {
-            const int idx = y * result.width() + x;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const int idx = y * width + x;
             if (visited[idx]) continue;
             const QRgb pixel = result.pixel(x, y);
             const int alpha = qAlpha(pixel);
             if (alpha <= 0 || alpha >= 255) continue;
 
-            bool touchesClearedMatte = false;
-            for (int dy = -1; dy <= 1 && !touchesClearedMatte; ++dy) {
-                for (int dx = -1; dx <= 1; ++dx) {
-                    if (dx == 0 && dy == 0) continue;
-                    int nx = x + dx, ny = y + dy;
-                    if (nx >= 0 && ny >= 0 && nx < result.width() && ny < result.height() && visited[ny * result.width() + nx]) {
-                        touchesClearedMatte = true; break;
-                    }
-                }
+            const int dr = qAbs(qRed(pixel) - matteColor.red());
+            const int dg = qAbs(qGreen(pixel) - matteColor.green());
+            const int db = qAbs(qBlue(pixel) - matteColor.blue());
+
+            // 低 alpha 且接近 matte 的残留边缘杂色置零
+            if (alpha <= 24 && dr <= floodTolerance && dg <= floodTolerance && db <= floodTolerance) {
+                result.setPixel(x, y, qRgba(0, 0, 0, 0));
+                continue;
             }
-            if (!touchesClearedMatte) continue;
 
             result.setPixel(x, y, qRgba(
                 decontaminateChannel(qRed(pixel), matteColor.red(), alpha),
                 decontaminateChannel(qGreen(pixel), matteColor.green(), alpha),
-                decontaminateChannel(qBlue(pixel), matteColor.blue(), alpha), alpha));
+                decontaminateChannel(qBlue(pixel), matteColor.blue(), alpha),
+                alpha));
         }
     }
+
+    // S2.c: 抠除后 autoCrop 再跑一次
+    bool wasCropped = false;
+    const QImage cropped = autoCropImage(result, &wasCropped);
+    if (wasCropped && !cropped.isNull()) {
+        result = cropped;
+    }
+
     return QPixmap::fromImage(result);
 }

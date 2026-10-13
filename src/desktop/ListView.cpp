@@ -64,8 +64,6 @@
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
-#include "desktop/widgets/linwidget/LinWidgetWebViewRuntime.h"
-#include "desktop/widgets/linwidget/LinWallpaperWebViewRuntime.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
 
@@ -311,7 +309,7 @@ QMap<QString, QPoint> ListView::resolveDesktopDragFinalPositions(const QStringLi
 
 // 闂傚倸鍊搁悧濠囨偡閿曞倸鐒垫い鎴ｆ硶閸斿秹鏌涢妸锕€鍝虹€规洏鍔岃灒闁告繂瀚禒瀛樼節濞堝灝鏋涙い鎴濇噽閳?
 ListView* ListView::m_instance = nullptr;
-int ListItemData::s_targetIconSize = ListView::kMediumIconW;
+int ListItemData::s_targetIconSize = ListItemData::calculateIconSourceTier(ListView::kMediumIconW);
 
 ListView::ListView(QWidget* parent) : QWidget(parent),
     m_viewModel(new ListViewModel(this)),
@@ -394,7 +392,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     setFocusPolicy(Qt::StrongFocus);
     m_pendingShellNewTargetTimer = new QTimer(this);
     m_pendingShellNewTargetTimer->setSingleShot(true);
-    m_pendingShellNewTargetTimer->setInterval(15000);
+    m_pendingShellNewTargetTimer->setInterval(30000);
     connect(m_pendingShellNewTargetTimer, &QTimer::timeout, this, &ListView::clearPendingShellNewTargetBox);
     m_backgroundSelectionThrottleTimer = new QTimer(this);
     m_backgroundSelectionThrottleTimer->setSingleShot(true);
@@ -436,9 +434,14 @@ LinWidget::WidgetManager* ListView::linWidgetManager()
 {
     if (!m_linWidgetManager) {
         m_linWidgetManager = new LinWidget::WidgetManager(this);
+        setAttribute(Qt::WA_InputMethodEnabled, true);
         m_linWidgetManager->setDesktopLayerWindow(winId());
         connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetSettingsRequested,
                 this, &ListView::openLinWidgetSettings);
+        connect(m_linWidgetManager, &LinWidget::WidgetManager::imeCursorRectChanged,
+                this, [this](const QRect&) {
+                    updateMicroFocus();
+                });
     } else if (m_linWidgetManager->desktopLayerWindow() != winId()) {
         m_linWidgetManager->setDesktopLayerWindow(winId());
     }
@@ -525,8 +528,9 @@ void ListView::initializeLinWidgets()
     LinWidget::WidgetManager* manager = linWidgetManager();
     const bool linWidgetsEnabled = settings.value("LinWidgets/Enabled", true).toBool();
     manager->setEnabled(linWidgetsEnabled);
-    manager->setShowWebViewBounds(settings.value("LinWidgets/ShowWebViewBounds", false).toBool());
+    manager->setShowWidgetBounds(settings.value("LinWidgets/ShowWidgetBounds", false).toBool());
     setShowLinWidgetBlockedCells(settings.value("LinWidgets/ShowBlockedCells", false).toBool());
+    setAttribute(Qt::WA_InputMethodEnabled, true);
 
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
@@ -626,7 +630,6 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
     rebuildSpatialIndex();
     loadIconLayer();
     update();
-    repaint();
     return;
 }
 
@@ -674,23 +677,10 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
             // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through,
             // EXCEPT if we are using composition windowless hosting where ListView needs to forward the input!
             if (m_linWidgetManager->isWidgetAt(clientPos)) {
-                bool isComposition = false;
-                if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
-                    if (runtime->isCompositionMode()) {
-                        isComposition = true;
-                    }
+                if (result) {
+                    *result = HTCLIENT;
                 }
-                if (!isComposition) {
-                    if (result) {
-                        *result = HTTRANSPARENT;
-                    }
-                    return true;
-                } else {
-                    if (result) {
-                        *result = HTCLIENT;
-                    }
-                    return true;
-                }
+                return true;
             }
 
             const bool isWallpaperActive = m_linWidgetManager->hasActiveWallpaper();
@@ -1116,32 +1106,66 @@ QString ListView::draggedItemPath() const
     return QString();
 }
 
+QStringList ListView::draggedItemPaths() const
+{
+    if (!m_draggedBoxPaths.isEmpty()) {
+        return m_draggedBoxPaths;
+    }
+    if (!m_draggedDesktopPaths.isEmpty()) {
+        return m_draggedDesktopPaths;
+    }
+    if (!m_draggedBoxPath.isEmpty()) {
+        return { m_draggedBoxPath };
+    }
+    if (!m_draggedDesktopPath.isEmpty()) {
+        return { m_draggedDesktopPath };
+    }
+    return {};
+}
+
 void ListView::setDraggedItemPath(const QString& filePath, bool fromBox)
 {
     const QString normalizedPath = normalizeDesktopItemPath(filePath);
-    if (fromBox) {
-        m_draggedBoxPath = normalizedPath;
-        if (m_draggedDesktopPath == normalizedPath) {
-            m_draggedDesktopPath.clear();
+    setDraggedItemPaths(normalizedPath.isEmpty() ? QStringList() : QStringList{ normalizedPath }, fromBox);
+}
+
+void ListView::setDraggedItemPaths(const QStringList& filePaths, bool fromBox)
+{
+    QStringList normalized;
+    normalized.reserve(filePaths.size());
+    for (const QString& path : filePaths) {
+        const QString norm = normalizeDesktopItemPath(path);
+        if (!norm.isEmpty()) {
+            normalized.append(norm);
         }
+    }
+
+    if (fromBox) {
+        m_draggedBoxPaths = normalized;
+        m_draggedBoxPath = normalized.isEmpty() ? QString() : normalized.first();
+        m_draggedDesktopPaths.clear();
+        m_draggedDesktopPath.clear();
         return;
     }
 
-    m_draggedDesktopPath = normalizedPath;
-    if (m_draggedBoxPath == normalizedPath) {
-        m_draggedBoxPath.clear();
-    }
+    m_draggedDesktopPaths = normalized;
+    m_draggedDesktopPath = normalized.isEmpty() ? QString() : normalized.first();
+    m_draggedBoxPaths.clear();
+    m_draggedBoxPath.clear();
 }
 
 void ListView::clearDraggedItemPath(bool fromBoxOnly)
 {
     if (fromBoxOnly) {
         m_draggedBoxPath.clear();
+        m_draggedBoxPaths.clear();
         return;
     }
 
     m_draggedDesktopPath.clear();
     m_draggedBoxPath.clear();
+    m_draggedDesktopPaths.clear();
+    m_draggedBoxPaths.clear();
 }
 
 void ListView::restoreSelectionStateByPaths(const QStringList& selectedPaths, const QString& focusedPath, const QString& anchorPath, bool expandSingle)
@@ -1309,9 +1333,6 @@ void ListView::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::SmoothPixmapTransform, !reducePaintCostForSelection);
     painter.setRenderHint(QPainter::TextAntialiasing);
 
-    if (m_hideDesktopItemsForRefresh) {
-        return;
-    }
 
     if (m_linWidgetManager && m_linWidgetManager->hasActiveWallpaper() && !m_linWidgetManager->isWallpaperInteractive()) {
         painter.fillRect(event->rect(), QColor(0, 0, 0, 1));
@@ -1322,6 +1343,10 @@ void ListView::paintEvent(QPaintEvent* event)
     // 1. 如果处于嵌入模式（小组件在图标下方），优先绘制 CEF OSR 画布
     if (widgetsEmbedded && m_linWidgetManager && m_linWidgetManager->canvasWidget()) {
         m_linWidgetManager->canvasWidget()->renderCanvas(painter, dirtyRegion);
+    }
+
+    if (m_hideDesktopItemsForRefresh) {
+        return;
     }
 
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
@@ -1416,18 +1441,15 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 void ListView::mousePressEvent(QMouseEvent* event)
 {
     qDebug() << "[LinWidgetInput] mousePressEvent: pos =" << event->pos() << "over widget =" << (m_linWidgetManager ? m_linWidgetManager->isWidgetAt(event->pos()) : false);
-    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
-        if (m_linWidgetManager->forwardMouseEvent(event)) {
-            m_forwardingMouseToWidget = true;
-            event->accept();
-            return;
-        }
-        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
-            qDebug() << "[LinWidgetInput] Forwarding mousePressEvent to runtime";
-            m_forwardingMouseToWidget = true;
-            QCoreApplication::sendEvent(runtime, event);
-            event->accept();
-            return;
+    if (m_linWidgetManager) {
+        if (m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
+            if (m_linWidgetManager->forwardMouseEvent(event)) {
+                m_forwardingMouseToWidget = true;
+                event->accept();
+                return;
+            }
+        } else {
+            m_linWidgetManager->clearWidgetFocus();
         }
     }
 
@@ -1436,15 +1458,6 @@ void ListView::mousePressEvent(QMouseEvent* event)
         logListViewDpiTrace("mousePress", this, event->pos(), event->globalPos());
     }
 #endif
-    if (m_linWidgetManager) {
-        auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
-        if (activeWall && !activeWall->isInteractive()) {
-            QString buttonStr = event->button() == Qt::LeftButton ? QStringLiteral("left") :
-                                event->button() == Qt::RightButton ? QStringLiteral("right") :
-                                QStringLiteral("middle");
-            activeWall->mirrorMouseDown(event->x(), event->y(), buttonStr);
-        }
-    }
     RenameManager::instance()->cancelRename();
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
@@ -1528,27 +1541,10 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
             event->accept();
             return;
         }
-        if (auto* runtime = m_linWidgetManager ? m_linWidgetManager->webViewRuntime() : nullptr) {
-            QCoreApplication::sendEvent(runtime, event);
-            event->accept();
-            return;
-        }
     } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
         if (m_linWidgetManager->forwardMouseEvent(event)) {
             event->accept();
             return;
-        }
-        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
-            QCoreApplication::sendEvent(runtime, event);
-            event->accept();
-            return;
-        }
-    }
-
-    if (m_linWidgetManager) {
-        auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
-        if (activeWall && !activeWall->isInteractive()) {
-            activeWall->mirrorMouseMove(event->x(), event->y());
         }
     }
     // handle multi-dragging
@@ -1604,30 +1600,10 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
             event->accept();
             return;
         }
-        if (auto* runtime = m_linWidgetManager ? m_linWidgetManager->webViewRuntime() : nullptr) {
-            QCoreApplication::sendEvent(runtime, event);
-            event->accept();
-            return;
-        }
     } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
         if (m_linWidgetManager->forwardMouseEvent(event)) {
             event->accept();
             return;
-        }
-        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
-            QCoreApplication::sendEvent(runtime, event);
-            event->accept();
-            return;
-        }
-    }
-
-    if (m_linWidgetManager) {
-        auto* activeWall = m_linWidgetManager->activeWallpaperRuntime();
-        if (activeWall && !activeWall->isInteractive()) {
-            QString buttonStr = event->button() == Qt::LeftButton ? QStringLiteral("left") :
-                                event->button() == Qt::RightButton ? QStringLiteral("right") :
-                                QStringLiteral("middle");
-            activeWall->mirrorMouseUp(event->x(), event->y(), buttonStr);
         }
     }
     // No-op for Item-based drags, as QDropEvent now handles them
@@ -1711,6 +1687,7 @@ void ListView::markDesktopRenderDataDirty(DesktopRootItemState* state)
     }
 
     state->renderDataDirty = true;
+    m_spatialIndexDirty = true;
 }
 
 void ListView::markAllDesktopRenderDataDirty()
@@ -1718,6 +1695,7 @@ void ListView::markAllDesktopRenderDataDirty()
     for (auto& state : m_itemStates) {
         state.renderDataDirty = true;
     }
+    m_spatialIndexDirty = true;
 }
 
 void ListView::markDesktopStateIndexDirty()
@@ -1744,17 +1722,33 @@ void ListView::rebuildDesktopStateIndex()
 
 void ListView::rebuildSpatialIndex()
 {
-    if (!m_spatialIndex) {
-        m_spatialIndex = std::make_unique<DesktopQuadTree>(rect());
-    }
-
     const QRect currentBounds = rect();
-    if (!m_spatialIndexDirty && m_spatialIndexBounds == currentBounds) {
-        return;
+    if (!m_spatialIndex) {
+        m_spatialIndex = std::make_unique<DesktopQuadTree>(currentBounds);
+    } else {
+        m_spatialIndex->setBounds(currentBounds);
     }
 
-    m_spatialIndex->setBounds(currentBounds);
-    m_spatialIndex->rebuild(collectAutoArrangeStates());
+    QVector<DesktopRootItemState*> states;
+    states.reserve(m_itemStates.size() + 64);
+    for (auto& state : m_itemStates) {
+        if (state.model.visible) {
+            states.append(&state);
+        }
+    }
+    if (BoxManager* bm = BoxManager::instance()) {
+        for (const auto& boxPtr : bm->allBoxes()) {
+            if (LinBox* box = boxPtr.data()) {
+                for (auto& state : const_cast<QVector<DesktopRootItemState>&>(box->itemStates())) {
+                    if (state.model.visible) {
+                        states.append(&state);
+                    }
+                }
+            }
+        }
+    }
+
+    m_spatialIndex->rebuild(states);
     m_spatialIndexBounds = currentBounds;
     m_spatialIndexDirty = false;
 }
@@ -1762,28 +1756,23 @@ void ListView::rebuildSpatialIndex()
 QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) const
 {
     QVector<DesktopRootItemState> results;
-
-    for (const DesktopRootItemState& state : m_itemStates) {
-        if (!shouldPaintDesktopModelState(state)) {
-            continue;
-        }
-        if (state.model.renderData.itemRect.intersects(rect)) {
-            results.push_back(state);
-        }
+    if (rect.isEmpty()) {
+        return results;
     }
 
-    for (const QPointer<LinBox>& boxPtr : BoxManager::instance()->allBoxes()) {
-        LinBox* box = boxPtr.data();
-        if (!box) {
-            continue;
-        }
-        for (const DesktopRootItemState& state : box->itemStates()) {
-            if (state.model.renderData.itemRect.intersects(rect)) {
-                results.push_back(state);
+    if (m_spatialIndexDirty || !m_spatialIndex || m_spatialIndexBounds != this->rect()) {
+        const_cast<ListView*>(this)->rebuildSpatialIndex();
+    }
+
+    if (m_spatialIndex) {
+        const QVector<DesktopRootItemState*> candidates = m_spatialIndex->query(rect);
+        results.reserve(candidates.size());
+        for (DesktopRootItemState* state : candidates) {
+            if (state && state->model.renderData.itemRect.intersects(rect)) {
+                results.push_back(*state);
             }
         }
     }
-
     return results;
 }
 
@@ -1795,11 +1784,6 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
     if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
         if (m_linWidgetManager->forwardMouseEvent(event)) {
-            event->accept();
-            return;
-        }
-        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
-            QCoreApplication::sendEvent(runtime, event);
             event->accept();
             return;
         }
@@ -1830,11 +1814,6 @@ void ListView::wheelEvent(QWheelEvent* event)
             event->accept();
             return;
         }
-        if (auto* runtime = m_linWidgetManager->webViewRuntime()) {
-            QCoreApplication::sendEvent(runtime, event);
-            event->accept();
-            return;
-        }
     }
 
     if (event->modifiers() & Qt::ControlModifier) {
@@ -1852,6 +1831,10 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+    if (m_linWidgetManager && m_linWidgetManager->forwardKeyEvent(event)) {
+        event->accept();
+        return;
+    }
     // 闂佸吋鍎抽崲鑼躲亹閸モ斁鍋撻崷顓炰沪婵＄偛鍊块幆鍐礋椤栨稒娈梺鐑╂櫆椤洦鎱ㄩ幖浣哥畱?
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
@@ -2043,6 +2026,35 @@ void ListView::keyPressEvent(QKeyEvent* event)
     }
     
     QWidget::keyPressEvent(event);
+}
+
+void ListView::keyReleaseEvent(QKeyEvent* event)
+{
+    if (m_linWidgetManager && m_linWidgetManager->forwardKeyEvent(event)) {
+        event->accept();
+        return;
+    }
+    QWidget::keyReleaseEvent(event);
+}
+
+void ListView::inputMethodEvent(QInputMethodEvent* event)
+{
+    if (m_linWidgetManager && m_linWidgetManager->forwardInputMethodEvent(event)) {
+        event->accept();
+        return;
+    }
+    QWidget::inputMethodEvent(event);
+}
+
+QVariant ListView::inputMethodQuery(Qt::InputMethodQuery query) const
+{
+    if (query == Qt::ImCursorRectangle && m_linWidgetManager && !m_linWidgetManager->focusedWidget().isEmpty()) {
+        const QRect rect = m_linWidgetManager->focusedWidgetCursorRect();
+        if (rect.isValid()) {
+            return rect;
+        }
+    }
+    return QWidget::inputMethodQuery(query);
 }
 
 void ListView::enterEvent(QEvent* event)
@@ -2605,6 +2617,7 @@ bool ListView::takeReservedCreatedItemPosition(const QString& filePath, QPoint& 
 
 bool ListView::handlePendingShellCreatedItem(const QString& newPath)
 {
+    const QString effectivePath = ListViewFileOpsHelper::normalizeNewFolderCasePath(newPath);
     if (!m_pendingShellNewTargetBox) {
         return false;
     }
@@ -2618,14 +2631,23 @@ bool ListView::handlePendingShellCreatedItem(const QString& newPath)
     if (targetBox->isFolderMapped()) {
         const QString mappedFolderPath = targetBox->mappedFolderPath();
         if (mappedFolderPath.isEmpty() || targetBox->mappedFolderState() != LinBox::MappedFolderState::Normal) {
+            removeDesktopStateByPath(effectivePath);
+            removeDesktopStateByPath(newPath);
+            update();
             return false;
         }
 
-        const QString destinationPath = ListViewFileOpsHelper::uniquePasteDestinationPath(newPath, mappedFolderPath);
-        if (!ListViewFileOpsHelper::movePathToExactDestination(newPath, destinationPath)) {
+        const QString destinationPath = ListViewFileOpsHelper::uniquePasteDestinationPath(effectivePath, mappedFolderPath);
+        if (!ListViewFileOpsHelper::movePathToExactDestination(effectivePath, destinationPath)) {
+            qWarning() << "[handlePendingShellCreatedItem] Move to mapped folder failed:"
+                       << effectivePath << "->" << destinationPath;
+            removeDesktopStateByPath(effectivePath);
+            removeDesktopStateByPath(newPath);
+            update();
             return false;
         }
 
+        removeDesktopStateByPath(effectivePath);
         removeDesktopStateByPath(newPath);
 
         loadMappedFolderItemsForBox(targetBox);
@@ -2635,7 +2657,19 @@ bool ListView::handlePendingShellCreatedItem(const QString& newPath)
         return true;
     }
 
-    moveItemToBox(newPath, targetBox, false, -1);
+    if (!findDesktopStateByPath(effectivePath)) {
+        const ListItemData data = DesktopItemLoader().loadItem(effectivePath);
+        DesktopRootItemState state;
+        initDesktopRootItemModel(state.model, data, currentDesktopItemInitContext());
+        state.model.layoutMode = DesktopLayoutMode::IconMode;
+        state.model.baseSize = QSize(m_iconWidth, m_iconHeight);
+        state.model.effectiveSize = state.model.baseSize;
+        state.model.boxId = targetBox->boxId();
+        state.model.visible = true;
+        targetBox->addItemState(state, false);
+    } else {
+        moveItemToBox(effectivePath, targetBox, false, -1);
+    }
     targetBox->refreshLayout();
     targetBox->raise();
     update();
@@ -2759,13 +2793,11 @@ void ListView::syncViewModeSizes() {
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             m_rowSpacing = scalePx(kLargeRowSpacing);
             m_colSpacing = scalePx(kLargeColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             break;
         case ViewMode::LargeIcon:
             m_iconWidth  = scalePx(kLargeIconW);
             m_rowSpacing = scalePx(kLargeRowSpacing);
             m_colSpacing = scalePx(kLargeColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             if (rightMenu) rightMenu->setLargeIconsChecked(true);
             break;
@@ -2774,14 +2806,12 @@ void ListView::syncViewModeSizes() {
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             m_rowSpacing = scalePx(kMediumRowSpacing);
             m_colSpacing = scalePx(kMediumColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             break;
         case ViewMode::MediumIcon:
             m_iconWidth  = scalePx(kMediumIconW);
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             m_rowSpacing = scalePx(kMediumRowSpacing);
             m_colSpacing = scalePx(kMediumColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setMediumIconsChecked(true);
             break;
         case ViewMode::SmallMediumIcon:
@@ -2789,14 +2819,12 @@ void ListView::syncViewModeSizes() {
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             m_rowSpacing = scalePx(kSmallRowSpacing);
             m_colSpacing = scalePx(kSmallColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             break;
         case ViewMode::SmallIcon:
             m_iconWidth = scalePx(kSmallIconW);
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             m_rowSpacing = scalePx(kSmallRowSpacing);
             m_colSpacing = scalePx(kSmallColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setSmallIconsChecked(true);
             break;
         default:
@@ -2805,10 +2833,16 @@ void ListView::syncViewModeSizes() {
             m_iconHeight = iconCellHeightForTwoTextLines(m_iconWidth - scalePx(4));
             m_rowSpacing = scalePx(kMediumRowSpacing);
             m_colSpacing = scalePx(kMediumColSpacing);
-            ListItemData::s_targetIconSize = m_iconWidth;
             if (rightMenu) rightMenu->setMediumIconsChecked(true);
             break;
     }
+
+    const int newTier = ListItemData::calculateIconSourceTier(m_iconWidth);
+    if (ListItemData::s_targetIconSize != newTier) {
+        ListItemData::s_targetIconSize = newTier;
+        IconCacheManager::instance().invalidateIconsByPrefix(QStringLiteral(""));
+    }
+    IconCacheManager::instance().invalidatePixmapsByPrefix(QStringLiteral(""));
 
     markAllDesktopRenderDataDirty();
 }
@@ -2952,8 +2986,7 @@ void ListView::invalidateFolderItemIconCache(const QString& folderPath)
     }
 
     const QString iconKey = QString("dir:v3:%1").arg(normalizedPath);
-    IconCacheManager::instance().invalidateIcon(
-        QString("%1|base|%2").arg(iconKey).arg(ListItemData::s_targetIconSize));
+    IconCacheManager::instance().invalidateIconsByPrefix(QString("%1|base|").arg(iconKey));
     IconCacheManager::instance().invalidatePixmapsByPrefix(QString("%1|render|").arg(iconKey));
 }
 
@@ -3029,9 +3062,16 @@ bool ListView::refreshFolderItemByPath(const QString& folderPath)
 
 DesktopRootItemState* ListView::findDesktopStateAt(const QPoint& pos)
 {
-    for (auto it = m_itemStates.rbegin(); it != m_itemStates.rend(); ++it) {
-        if (shouldPaintDesktopModelState(*it) && it->model.renderData.itemRect.contains(pos)) {
-            return &(*it);
+    if (m_spatialIndexDirty || !m_spatialIndex || m_spatialIndexBounds != rect()) {
+        rebuildSpatialIndex();
+    }
+
+    if (m_spatialIndex) {
+        const QVector<DesktopRootItemState*> candidates = m_spatialIndex->queryPoint(pos);
+        for (DesktopRootItemState* state : candidates) {
+            if (state && shouldPaintDesktopModelState(*state) && state->model.renderData.itemRect.contains(pos)) {
+                return state;
+            }
         }
     }
     return nullptr;
@@ -3039,15 +3079,10 @@ DesktopRootItemState* ListView::findDesktopStateAt(const QPoint& pos)
 
 const DesktopRootItemState* ListView::findDesktopStateAt(const QPoint& pos) const
 {
-    for (auto it = m_itemStates.crbegin(); it != m_itemStates.crend(); ++it) {
-        if (shouldPaintDesktopModelState(*it) && it->model.renderData.itemRect.contains(pos)) {
-            return &(*it);
-        }
-    }
-    return nullptr;
+    return const_cast<ListView*>(this)->findDesktopStateAt(pos);
 }
 
-QString ListView::normalizeDesktopItemPath(const QString& filePath) const
+QString ListView::normalizeDesktopItemPath(const QString& filePath)
 {
     if (filePath.isEmpty()) {
         return QString();
@@ -3243,7 +3278,6 @@ void ListView::removeItemPathsBatch(const QStringList& paths, bool refresh)
         } else {
             rebuildSpatialIndex();
             update();
-            repaint();
         }
     }
 }
@@ -3513,6 +3547,9 @@ QVector<DesktopSnakeGameIcon> ListView::desktopSnakeIcons() const
 
     auto appendIcon = [&icons](const DesktopRootItemState& state) {
         QPixmap pixmap = state.model.renderData.iconPixmap;
+        if (pixmap.isNull() && !state.model.renderData.iconImage.isNull()) {
+            pixmap = QPixmap::fromImage(state.model.renderData.iconImage);
+        }
         if (pixmap.isNull() && !state.model.sourceIcon.isNull()) {
             pixmap = state.model.sourceIcon.pixmap(QSize(64, 64));
         }

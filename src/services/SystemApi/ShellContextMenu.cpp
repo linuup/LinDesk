@@ -7,67 +7,16 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <Shlwapi.h>
 #include <ShlObj.h>
 #include <shellapi.h>
+#include <QDebug>
+#include <QElapsedTimer>
+#include <mutex>
 
 namespace {
 constexpr wchar_t kShellMenuExclusionSection[] = L"ShellMenuExclusions";
-
-std::filesystem::path GetDesktopLogPath()
-{
-    PWSTR localAppDataPath = nullptr;
-    const HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataPath);
-    if (FAILED(hr) || !localAppDataPath) {
-        return {};
-    }
-
-    std::filesystem::path logPath(localAppDataPath);
-    CoTaskMemFree(localAppDataPath);
-    logPath /= L"LinDesk";
-    logPath /= L"desktop.log";
-    return logPath;
-}
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) {
-        return {};
-    }
-
-    const int requiredSize = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    if (requiredSize <= 0) {
-        return {};
-    }
-
-    std::string utf8(requiredSize, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), utf8.data(), requiredSize, nullptr, nullptr);
-    return utf8;
-}
-
-void AppendDesktopLogLine(const std::wstring& line)
-{
-    const std::filesystem::path logPath = GetDesktopLogPath();
-    if (logPath.empty()) {
-        return;
-    }
-
-    std::error_code ec;
-    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
-    if (!logFileExists) {
-        return;
-    }
-
-    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
-    if (!logFile.is_open()) {
-        return;
-    }
-
-    const std::string utf8Line = WideToUtf8(line);
-    if (!utf8Line.empty()) {
-        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
-    }
-}
 
 HBITMAP CopyMenuBitmap(HBITMAP source)
 {
@@ -572,12 +521,38 @@ HBITMAP ResolveFallbackMenuBitmap(IContextMenu3* contextMenu,
     const std::wstring& menuText,
     const std::vector<std::wstring>& registryShellRoots)
 {
-    if (registryShellRoots.empty()) {
+    if (registryShellRoots.empty() || menuText.empty()) {
         return nullptr;
     }
 
     const std::wstring verb = CommandVerbForMenuItem(contextMenu, commandId);
-    return BitmapFromRegistryShellRoots(registryShellRoots, menuText, verb);
+    std::wstring cacheKey = registryShellRoots.front() + L"|" + menuText + L"|" + verb;
+
+    static std::unordered_map<std::wstring, HBITMAP> s_cachedBitmaps;
+    static std::unordered_set<std::wstring> s_negativeCache;
+    static std::mutex s_cacheMutex;
+
+    {
+        std::lock_guard<std::mutex> lock(s_cacheMutex);
+        if (s_negativeCache.find(cacheKey) != s_negativeCache.end()) {
+            return nullptr;
+        }
+        auto it = s_cachedBitmaps.find(cacheKey);
+        if (it != s_cachedBitmaps.end()) {
+            return CopyMenuBitmap(it->second);
+        }
+    }
+
+    HBITMAP rawBitmap = BitmapFromRegistryShellRoots(registryShellRoots, menuText, verb);
+    {
+        std::lock_guard<std::mutex> lock(s_cacheMutex);
+        if (rawBitmap) {
+            s_cachedBitmaps[cacheKey] = CopyMenuBitmap(rawBitmap);
+        } else {
+            s_negativeCache.insert(cacheKey);
+        }
+    }
+    return rawBitmap;
 }
 
 void ResetSnapshotBitmap(ShellMenuSnapshotItem& item)
@@ -629,16 +604,19 @@ void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
         return;
     }
 
-    const std::wstring line = BuildTimestamp() + L"-" + (moduleName ? moduleName : L"Menu") + L"-" + info + L"\n";
-    OutputDebugStringW(line.c_str());
+    qDebug().noquote() << QString::fromWCharArray(moduleName ? moduleName : L"Menu")
+                       << QString::fromStdWString(info);
 }
 
 void EmitDesktopShellMenuListLine(const wchar_t* tag, const std::wstring& info)
 {
-    const std::wstring line = BuildTimestamp() + L" [DesktopShellMenuList] "
-        + (tag ? tag : L"Desktop") + L" " + info + L"\n";
-    OutputDebugStringW(line.c_str());
-    AppendDesktopLogLine(line);
+    if (!IsBoxMenuDebugEnabled()) {
+        return;
+    }
+
+    qDebug().noquote() << QStringLiteral("[DesktopShellMenuList]")
+                       << QString::fromWCharArray(tag ? tag : L"Desktop")
+                       << QString::fromStdWString(info);
 }
 
 std::wstring MenuStateToText(UINT state)
@@ -652,7 +630,7 @@ std::wstring MenuStateToText(UINT state)
 
 void DebugLogMenuTree(HMENU menu, IContextMenu3* contextMenu, const wchar_t* tag, int depth = 0)
 {
-    if (!menu || depth > 8) {
+    if (!menu || depth > 8 || !IsBoxMenuDebugEnabled()) {
         return;
     }
 
@@ -1539,6 +1517,14 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
         L"个性化",
         L"Organize Desktop",
         L"Desktop organizer",
+        L"Give access to",
+        L"授予访问权限",
+        L"Properties",
+        L"属性",
+        L"Customize this folder...",
+        L"自定义此文件夹...",
+        L"Customize this folder",
+        L"自定义此文件夹",
     };
 
     for (int i = GetMenuItemCount(menu) - 1; i >= 0; --i) {
@@ -1549,7 +1535,7 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
 
         bool shouldDelete = false;
         for (const auto* candidate : exactCandidates) {
-            if (normalizedText == normalizeMenuText(candidate)) {
+            if (_wcsicmp(normalizedText.c_str(), normalizeMenuText(candidate).c_str()) == 0) {
                 shouldDelete = true;
                 break;
             }
@@ -1996,10 +1982,25 @@ void ShellContextMenu::DisplayDesktopContextMenu()
     }
 }
 
-void ShellContextMenu::DisplayBoxBackgroundContextMenu()
+void ShellContextMenu::DisplayBoxBackgroundContextMenu(const std::wstring& folderPath)
 {
     m_contextMenu = nullptr;
     operationType = OperationType::boxBackground;
+    if (!folderPath.empty() && PathFileExistsW(folderPath.c_str())) {
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        HRESULT hr = SHParseDisplayName(folderPath.c_str(), NULL, &pidl, 0, NULL);
+        if (SUCCEEDED(hr) && pidl) {
+            m_pidlParent.reset(pidl);
+            setFilesystemDirectory(Tool::WstrToStr(folderPath.c_str()));
+            return;
+        }
+        pidl = ILCreateFromPathW(folderPath.c_str());
+        if (pidl) {
+            m_pidlParent.reset(pidl);
+            setFilesystemDirectory(Tool::WstrToStr(folderPath.c_str()));
+            return;
+        }
+    }
     if (FAILED(SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent)))) {
         m_pidlParent.reset();
     }

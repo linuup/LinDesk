@@ -102,9 +102,12 @@ QString LinWidgetCanvasWidget::widgetAt(const QPoint& pos) const
         // 针对普通小组件，如果点击位置的像素 Alpha 接近 0，则允许事件穿透给底层图标
         if (!buf.imageBuffer.isNull()) {
             const QPoint localPos = pos - buf.geometry.topLeft();
-            if (localPos.x() >= 0 && localPos.x() < buf.imageBuffer.width() &&
-                localPos.y() >= 0 && localPos.y() < buf.imageBuffer.height()) {
-                if (qAlpha(buf.imageBuffer.pixel(localPos)) < 10) {
+            const qreal dpr = buf.imageBuffer.devicePixelRatio();
+            const int px = static_cast<int>(localPos.x() * (dpr > 0.0 ? dpr : 1.0));
+            const int py = static_cast<int>(localPos.y() * (dpr > 0.0 ? dpr : 1.0));
+            if (px >= 0 && px < buf.imageBuffer.width() &&
+                py >= 0 && py < buf.imageBuffer.height()) {
+                if (qAlpha(buf.imageBuffer.pixel(px, py)) < 10) {
                     continue; // 透明像素穿透
                 }
             }
@@ -143,7 +146,7 @@ void LinWidgetCanvasWidget::renderCanvas(QPainter& painter, const QRegion& clipR
         }
 
         if (clipBoundingRect.isNull() || buffer.geometry.intersects(clipBoundingRect)) {
-            painter.drawImage(buffer.geometry.topLeft(), buffer.imageBuffer);
+            painter.drawImage(buffer.geometry, buffer.imageBuffer);
 
             if (m_showBounds) {
                 painter.save();

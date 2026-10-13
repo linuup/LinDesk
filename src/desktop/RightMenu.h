@@ -102,8 +102,8 @@ signals:
     void refreshTriggered();
     void pasteTriggered();
     void pasteShortcutTriggered();
-    void createBoxTriggered();
-    void mapFolderTriggered();
+    void createBoxTriggered(const QPoint& pos = QPoint());
+    void mapFolderTriggered(const QPoint& pos = QPoint());
     void organizeDesktopTriggered();
     void quitAppTriggered();
     void linDeskTriggered();
@@ -126,7 +126,9 @@ public slots:
     void onPaste();
     void onPasteShortcut();
     void onCreateBox();
+    void onCreateBox(const QPoint& pos);
     void onMapFolder();
+    void onMapFolder(const QPoint& pos);
     void onQuitApp();
     void onLinDesk();
 
@@ -135,6 +137,26 @@ private:
         std::vector<ShellContextMenu::CustomMenuItem> items;
         std::vector<HBITMAP> bitmaps;
         bool valid = false;
+    };
+
+    struct CachedFilteredCustomMenuData {
+        std::vector<ShellContextMenu::CustomMenuItem> items;
+        bool valid = false;
+    };
+
+    struct CachedWin11DesktopMenu {
+        QJsonArray items;
+        qint64 timestamp = 0;
+        bool valid = false;
+        bool largeChecked = false;
+        bool mediumChecked = false;
+        bool smallChecked = false;
+        bool autoArrangeChecked = false;
+        bool alignGridChecked = false;
+        bool showDesktopChecked = false;
+        bool doubleClickHideChecked = false;
+        bool pasteEnabled = false;
+        bool pasteShortcutEnabled = false;
     };
 
     RightMenu()
@@ -188,10 +210,17 @@ private:
     QAction* pasteShortcutAction = nullptr;
     QAction* m_embedToDesktopAction = nullptr;
     QActionGroup* m_sortByActionGroup = nullptr;
+    void updateCachedPasteActionItem(CachedCustomMenuData& cache) const;
+    void updateCachedPasteActionItem(CachedFilteredCustomMenuData& cache) const;
+
     mutable CachedCustomMenuData m_cachedDesktopMenuData;
     mutable CachedCustomMenuData m_cachedSharedBoxMenuData;
+    mutable CachedFilteredCustomMenuData m_cachedFilteredDesktopMenuData;
+    mutable CachedFilteredCustomMenuData m_cachedFilteredSharedBoxMenuData;
+    mutable CachedWin11DesktopMenu m_cachedWin11Menu;
     mutable bool m_cachedPasteEnabled = false;
     mutable bool m_cachedPasteShortcutEnabled = false;
     mutable bool m_pasteStateRefreshPending = false;
     bool m_clipboardRefreshConnected = false;
+    mutable QPoint m_lastMenuGlobalPos;
 };

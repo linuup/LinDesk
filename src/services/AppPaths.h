@@ -46,6 +46,20 @@ inline QString userLocalConfigDir()
     return dirPath;
 }
 
+inline QString userLogsDir()
+{
+    const QString dirPath = QDir(userLocalConfigDir()).filePath(QStringLiteral("logs"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
+inline QString userCrashDumpsDir()
+{
+    const QString dirPath = QDir(userLogsDir()).filePath(QStringLiteral("crash"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
 inline QString userLinWidgetsDir()
 {
     const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("LinWidgets"));
@@ -79,7 +93,7 @@ inline QString runtimeWallpapersDir()
 
 inline QString linWidgetLogsDir()
 {
-    const QString dirPath = userLocalConfigDir();
+    const QString dirPath = userLogsDir();
     QDir().mkpath(dirPath);
     return dirPath;
 }

@@ -2,20 +2,16 @@
 
 #include "Version.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaType>
 #include <QNetworkRequest>
+#include <QRegularExpression>
 #include <QUrl>
 
 namespace {
-constexpr const char* kUpdateJsonUrl = "https://github.com/linuup/LinDesk_Update/releases/latest/download/update.json";
-
-QString requiredString(const QJsonObject& object, const char* key)
-{
-    const QJsonValue value = object.value(QString::fromLatin1(key));
-    return value.isString() ? value.toString().trimmed() : QString();
-}
+constexpr const char* kUpdateJsonUrl = "https://api.github.com/repos/linuup/LinDesk_Update/releases/latest";
 }
 
 UpdateChecker::UpdateChecker(QObject* parent)
@@ -38,7 +34,8 @@ void UpdateChecker::checkForUpdates()
     QNetworkRequest request(QUrl(QString::fromLatin1(kUpdateJsonUrl)));
     request.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral("LinDesk/%1").arg(QStringLiteral(LINDESK_VERSION_STRING)));
-    request.setRawHeader("Accept", "application/json");
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
 
     m_reply = m_network.get(request);
@@ -51,14 +48,27 @@ void UpdateChecker::checkForUpdates()
         }
 
         reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            emit checkFailed(reply->errorString());
+        const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray responseData = reply->readAll();
+
+        if (reply->error() != QNetworkReply::NoError || (statusCode != 0 && statusCode != 200)) {
+            QString errorMsg;
+            if (!responseData.isEmpty()) {
+                QJsonDocument errDoc = QJsonDocument::fromJson(responseData);
+                if (errDoc.isObject() && errDoc.object().contains(QStringLiteral("message"))) {
+                    errorMsg = errDoc.object().value(QStringLiteral("message")).toString();
+                }
+            }
+            if (errorMsg.isEmpty()) {
+                errorMsg = reply->errorString();
+            }
+            emit checkFailed(errorMsg);
             return;
         }
 
         UpdateInfo info;
         QString errorMessage;
-        if (!parseUpdateInfo(reply->readAll(), info, errorMessage)) {
+        if (!parseUpdateInfo(responseData, info, errorMessage)) {
             emit checkFailed(errorMessage);
             return;
         }
@@ -106,17 +116,71 @@ bool UpdateChecker::parseUpdateInfo(const QByteArray& data, UpdateInfo& info, QS
     }
 
     const QJsonObject object = document.object();
-    info.version = requiredString(object, "version");
-    info.channel = requiredString(object, "channel");
-    info.url = requiredString(object, "url");
-    info.sha256 = requiredString(object, "sha256").toLower();
-    info.notes = requiredString(object, "notes");
-    info.publishedAt = requiredString(object, "publishedAt");
-    info.minSupportedVersion = requiredString(object, "minSupportedVersion");
+
+    const bool isDraft = object.value(QStringLiteral("draft")).toBool(false);
+    if (isDraft) {
+        errorMessage = tr("Draft release cannot be used for update.");
+        return false;
+    }
+
+    QString tagName = object.value(QStringLiteral("tag_name")).toString().trimmed();
+    if (tagName.startsWith('v', Qt::CaseInsensitive)) {
+        tagName.remove(0, 1);
+    }
+    info.version = tagName;
+
+    const bool isPrerelease = object.value(QStringLiteral("prerelease")).toBool(false);
+    info.channel = isPrerelease ? QStringLiteral("prerelease") : QStringLiteral("stable");
+
+    info.notes = object.value(QStringLiteral("body")).toString();
+    info.publishedAt = object.value(QStringLiteral("published_at")).toString();
+
+    static const QRegularExpression minVerRegex(
+        QStringLiteral(R"(min(?:SupportedVersion)?[:\s=]+v?([0-9]+\.[0-9]+(?:\.[0-9]+)?))"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto matchMin = minVerRegex.match(info.notes);
+    if (matchMin.hasMatch()) {
+        info.minSupportedVersion = matchMin.captured(1);
+    } else {
+        info.minSupportedVersion.clear();
+    }
+
+    const QJsonArray assets = object.value(QStringLiteral("assets")).toArray();
+    QJsonObject setupAsset;
+    for (const QJsonValue& val : assets) {
+        if (!val.isObject()) continue;
+        const QJsonObject assetObj = val.toObject();
+        const QString assetName = assetObj.value(QStringLiteral("name")).toString();
+        if (assetName.startsWith(QStringLiteral("LinDesk_Setup_"), Qt::CaseInsensitive) &&
+            assetName.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)) {
+            setupAsset = assetObj;
+            break;
+        }
+    }
+
+    if (setupAsset.isEmpty()) {
+        errorMessage = tr("Release asset is missing.");
+        return false;
+    }
+
+    info.url = setupAsset.value(QStringLiteral("browser_download_url")).toString();
+
+    QString digest = setupAsset.value(QStringLiteral("digest")).toString().trimmed();
+    if (digest.startsWith(QStringLiteral("sha256:"), Qt::CaseInsensitive)) {
+        digest = digest.mid(7);
+    }
+    info.sha256 = digest.toLower();
+
+    if (info.sha256.isEmpty()) {
+        static const QRegularExpression shaRegex(QStringLiteral(R"(\b([a-fA-F0-9]{64})\b)"));
+        const auto matchSha = shaRegex.match(info.notes);
+        if (matchSha.hasMatch()) {
+            info.sha256 = matchSha.captured(1).toLower();
+        }
+    }
 
     if (info.version.isEmpty() || info.channel.isEmpty() || info.url.isEmpty() ||
-        info.sha256.isEmpty() || info.notes.isEmpty() ||
-        info.publishedAt.isEmpty() || info.minSupportedVersion.isEmpty()) {
+        info.notes.isEmpty() || info.publishedAt.isEmpty()) {
         errorMessage = tr("Update metadata is missing required fields.");
         return false;
     }

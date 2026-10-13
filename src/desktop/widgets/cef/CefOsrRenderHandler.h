@@ -42,9 +42,13 @@ public:
                  const void* buffer,
                  int width,
                  int height) override;
+    void OnImeCompositionRangeChanged(CefRefPtr<CefBrowser> browser,
+                                      const CefRange& selected_range,
+                                      const RectList& character_bounds) override;
 
 signals:
     void frameReady(const QString& widgetId, const QImage& image, const QVector<QRect>& dirtyRects);
+    void imeCompositionRangeChanged(const QString& widgetId, const QRect& cursorRect);
 
 private:
     QString m_widgetId;

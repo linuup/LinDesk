@@ -8,8 +8,6 @@
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 #include "ui/QmlTestWindow.h"
-#include "ui/SoftDesktopTextPreview.h"
-#include "ui/SoftDesktopTextRenderer.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 #include "ui/Fluent/FluentCard.h"
 #include "services/AppPaths.h"
@@ -65,27 +63,171 @@ namespace {
 QString debugPanelStyleSheet()
 {
     return QStringLiteral(
-        "QWidget { background: #f5f7fb; }"
-        "QScrollArea { background: transparent; border: none; }"
-        "QScrollBar:vertical { background: transparent; width: 10px; margin: 4px; }"
-        "QScrollBar::handle:vertical { background: rgba(31, 41, 55, 0.18); border-radius: 5px; min-height: 36px; }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; height: 0px; }"
-        "QTabBar::tab {"
-        "   height: 40px; min-width: 128px;"
-        "   padding: 0 18px; margin-right: 10px;"
-        "   background: transparent; border: none;"
-        "   font-family: 'Microsoft YaHei UI'; font-size: 14px; font-weight: 500; color: #6b7280;"
-        "}"
-        "QTabBar::tab:hover { color: #111827; }"
-        "QTabBar::tab:selected { color: #0f6cbd; border-bottom: 3px solid #0f6cbd; font-weight: 600; }"
-        "QToolTip {"
-        "   color: #111827;"
-        "   background-color: #ffffff;"
-        "   border: 1px solid rgba(15, 23, 42, 0.16);"
-        "   padding: 6px 8px;"
-        "   border-radius: 6px;"
-        "}");
+        "QWidget { "
+        "  background: #f8fafc; "
+        "  font-family: %1; "
+        "} "
+        "QScrollArea { background: transparent; border: none; } "
+        "QScrollBar:vertical { "
+        "  background: transparent; "
+        "  width: 8px; "
+        "  margin: 2px; "
+        "} "
+        "QScrollBar::handle:vertical { "
+        "  background: rgba(100, 116, 139, 0.28); "
+        "  border-radius: 4px; "
+        "  min-height: 36px; "
+        "} "
+        "QScrollBar::handle:vertical:hover { "
+        "  background: rgba(100, 116, 139, 0.48); "
+        "} "
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, "
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { "
+        "  background: transparent; height: 0px; "
+        "} "
+        "QScrollBar:horizontal { "
+        "  background: transparent; "
+        "  height: 8px; "
+        "  margin: 2px; "
+        "} "
+        "QScrollBar::handle:horizontal { "
+        "  background: rgba(100, 116, 139, 0.28); "
+        "  border-radius: 4px; "
+        "  min-width: 36px; "
+        "} "
+        "QScrollBar::handle:horizontal:hover { "
+        "  background: rgba(100, 116, 139, 0.48); "
+        "} "
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal, "
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { "
+        "  background: transparent; width: 0px; "
+        "} "
+        "QTabBar#debugSegmentedTabBar { "
+        "  background: #f1f5f9; "
+        "  border: 1px solid rgba(15, 23, 42, 0.08); "
+        "  border-radius: 9px; "
+        "  padding: 3px; "
+        "} "
+        "QTabBar#debugSegmentedTabBar::tab { "
+        "  height: 30px; "
+        "  min-width: 96px; "
+        "  padding: 0 14px; "
+        "  margin: 0 2px; "
+        "  background: transparent; "
+        "  border: none; "
+        "  border-radius: 6px; "
+        "  font-family: %1; "
+        "  font-size: 12px; "
+        "  font-weight: 500; "
+        "  color: #475569; "
+        "} "
+        "QTabBar#debugSegmentedTabBar::tab:hover { "
+        "  background: rgba(255, 255, 255, 0.70); "
+        "  color: #0f172a; "
+        "} "
+        "QTabBar#debugSegmentedTabBar::tab:selected { "
+        "  background: #ffffff; "
+        "  color: #0f6cbd; "
+        "  font-weight: 600; "
+        "  border: 1px solid rgba(15, 23, 42, 0.08); "
+        "} "
+        "QTabBar#linWidgetSubTabBar { "
+        "  background: #f1f5f9; "
+        "  border: 1px solid rgba(15, 23, 42, 0.08); "
+        "  border-radius: 8px; "
+        "  padding: 2px; "
+        "} "
+        "QTabBar#linWidgetSubTabBar::tab { "
+        "  height: 26px; "
+        "  min-width: 80px; "
+        "  padding: 0 12px; "
+        "  margin: 0 2px; "
+        "  background: transparent; "
+        "  border: none; "
+        "  border-radius: 5px; "
+        "  font-family: %1; "
+        "  font-size: 11px; "
+        "  font-weight: 500; "
+        "  color: #475569; "
+        "} "
+        "QTabBar#linWidgetSubTabBar::tab:hover { "
+        "  background: rgba(255, 255, 255, 0.70); "
+        "  color: #0f172a; "
+        "} "
+        "QTabBar#linWidgetSubTabBar::tab:selected { "
+        "  background: #ffffff; "
+        "  color: #0f6cbd; "
+        "  font-weight: 600; "
+        "  border: 1px solid rgba(15, 23, 42, 0.06); "
+        "} "
+        "QSlider::groove:horizontal { "
+        "  height: 4px; "
+        "  background: #e2e8f0; "
+        "  border-radius: 2px; "
+        "} "
+        "QSlider::sub-page:horizontal { "
+        "  background: #0f6cbd; "
+        "  border-radius: 2px; "
+        "} "
+        "QSlider::handle:horizontal { "
+        "  background: #ffffff; "
+        "  border: 2px solid #0f6cbd; "
+        "  width: 14px; "
+        "  height: 14px; "
+        "  margin: -5px 0; "
+        "  border-radius: 7px; "
+        "} "
+        "QSlider::handle:horizontal:hover { "
+        "  background: #0f6cbd; "
+        "  border: 2px solid #ffffff; "
+        "} "
+        "QLineEdit, QComboBox, QPlainTextEdit { "
+        "  background: #ffffff; "
+        "  border: 1px solid rgba(15, 23, 42, 0.12); "
+        "  border-radius: 8px; "
+        "  padding: 7px 10px; "
+        "  font-family: %1; "
+        "  font-size: 12px; "
+        "  color: #0f172a; "
+        "} "
+        "QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus { "
+        "  border: 1px solid #0f6cbd; "
+        "  background: #ffffff; "
+        "} "
+        "QComboBox::drop-down { "
+        "  width: 24px; "
+        "  border: none; "
+        "} "
+        "QCheckBox { "
+        "  font-family: %1; "
+        "  font-size: 12px; "
+        "  color: #334155; "
+        "  spacing: 8px; "
+        "} "
+        "QCheckBox::indicator { "
+        "  width: 16px; "
+        "  height: 16px; "
+        "  border: 1px solid rgba(15, 23, 42, 0.22); "
+        "  border-radius: 4px; "
+        "  background: #ffffff; "
+        "} "
+        "QCheckBox::indicator:hover { "
+        "  border-color: #0f6cbd; "
+        "} "
+        "QCheckBox::indicator:checked { "
+        "  background: #0f6cbd; "
+        "  border-color: #0f6cbd; "
+        "} "
+        "QToolTip { "
+        "  color: #0f172a; "
+        "  background-color: #ffffff; "
+        "  border: 1px solid rgba(15, 23, 42, 0.14); "
+        "  padding: 6px 10px; "
+        "  border-radius: 7px; "
+        "  font-family: %1; "
+        "  font-size: 12px; "
+        "} "
+    ).arg(AppFonts::uiCssFamily());
 }
 
 QString debugConfigPath()
@@ -264,8 +406,7 @@ constexpr int LinWidgetManifestErrorRole = Qt::UserRole + 15;
 
 bool shouldSkipLinWidgetInstallEntry(const QString& name)
 {
-    return name == QStringLiteral(".webview2") ||
-        name == QStringLiteral(".git") ||
+    return name == QStringLiteral(".git") ||
         name == QStringLiteral("node_modules") ||
         name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
         name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
@@ -458,6 +599,41 @@ void removeLinWidgetLayoutState(const QString& instanceId, const QString& packag
     }
     LinWidget::ConfigManager::saveLayout(LinWidget::ConfigManager::defaultConfigPath(), keptStates, nullptr);
 }
+QWidget* createSectionHeaderWidget(const QString& iconChar, const QString& titleText, const QString& descText)
+{
+    auto* header = new QWidget();
+    auto* layout = new QHBoxLayout(header);
+    layout->setContentsMargins(2, 6, 2, 2);
+    layout->setSpacing(8);
+
+    auto* iconLabel = new QLabel(iconChar, header);
+    iconLabel->setStyleSheet(QStringLiteral(
+        "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+        "font-size: 15px; color: #0f6cbd; background: transparent;"
+    ));
+    layout->addWidget(iconLabel);
+
+    auto* titleLabel = new QLabel(titleText, header);
+    titleLabel->setStyleSheet(QStringLiteral(
+        "font-family: %1; font-size: 13px; font-weight: 700; color: #1e293b; background: transparent;"
+    ).arg(AppFonts::uiCssFamily()));
+    layout->addWidget(titleLabel);
+
+    if (!descText.isEmpty()) {
+        auto* dotLabel = new QLabel(QStringLiteral("·"), header);
+        dotLabel->setStyleSheet(QStringLiteral("color: #94a3b8; font-weight: bold; background: transparent;"));
+        layout->addWidget(dotLabel);
+
+        auto* descLabel = new QLabel(descText, header);
+        descLabel->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 12px; color: #64748b; background: transparent;"
+        ).arg(AppFonts::uiCssFamily()));
+        layout->addWidget(descLabel);
+    }
+
+    layout->addStretch();
+    return header;
+}
 }
 
 ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
@@ -469,8 +645,8 @@ ListViewDebugPanel::ListViewDebugPanel(ListView* listView, QWidget* parent)
 void ListViewDebugPanel::initUI() {
     setWindowTitle("ListView Debug Console");
     setAttribute(Qt::WA_DeleteOnClose, false);
-    setMinimumSize(520, 520);
-    resize(960, 800);
+    setMinimumSize(680, 560);
+    resize(1020, 820);
     setStyleSheet(debugPanelStyleSheet());
 
     auto* mainLayout = new QVBoxLayout(this);
@@ -478,34 +654,68 @@ void ListViewDebugPanel::initUI() {
     mainLayout->setSpacing(0);
 
     auto* headerContainer = new QWidget(this);
-    headerContainer->setMinimumHeight(126);
-    headerContainer->setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #e5e7eb;");
-    auto* headerLayout = new QVBoxLayout(headerContainer);
-    headerLayout->setContentsMargins(32, 22, 32, 12);
-    headerLayout->setSpacing(8);
+    headerContainer->setObjectName(QStringLiteral("debugHeaderContainer"));
+    headerContainer->setFixedHeight(66);
+    headerContainer->setStyleSheet(QStringLiteral(
+        "QWidget#debugHeaderContainer {"
+        "  background: #ffffff;"
+        "  border-bottom: 1px solid rgba(15, 23, 42, 0.08);"
+        "}"));
+    auto* headerLayout = new QHBoxLayout(headerContainer);
+    headerLayout->setContentsMargins(24, 12, 24, 12);
+    headerLayout->setSpacing(16);
 
-    auto* titleLabel = new QLabel("Debug Console", headerContainer);
+    auto* titleContainer = new QWidget(headerContainer);
+    auto* titleLayout = new QHBoxLayout(titleContainer);
+    titleLayout->setContentsMargins(0, 0, 0, 0);
+    titleLayout->setSpacing(10);
+
+    auto* iconBadge = new QLabel(titleContainer);
+    iconBadge->setFixedSize(36, 36);
+    iconBadge->setAlignment(Qt::AlignCenter);
+    iconBadge->setText(QString::fromUtf8(u8"\uEBE8"));
+    iconBadge->setStyleSheet(QStringLiteral(
+        "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0f6cbd, stop:1 #115ea3);"
+        "color: #ffffff;"
+        "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+        "font-size: 18px;"
+        "border-radius: 9px;"
+    ));
+    titleLayout->addWidget(iconBadge);
+
+    auto* textContainer = new QWidget(titleContainer);
+    auto* textLayout = new QVBoxLayout(textContainer);
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(1);
+
+    auto* titleLabel = new QLabel(QStringLiteral("Debug Console"), textContainer);
     titleLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 28px; font-weight: 600; color: #111827;")
+        "font-family: %1; font-size: 16px; font-weight: 700; color: #0f172a;")
         .arg(AppFonts::uiCssFamily()));
-    headerLayout->addWidget(titleLabel);
+    textLayout->addWidget(titleLabel);
 
-    auto* subtitleLabel = new QLabel("Inspect desktop behavior, tune layout values, and jump to app settings.", headerContainer);
+    auto* subtitleLabel = new QLabel(QStringLiteral("LinDesk Developer & Diagnostics"), textContainer);
     subtitleLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 13px; color: #6b7280;")
+        "font-family: %1; font-size: 11px; color: #64748b;")
         .arg(AppFonts::uiCssFamily()));
-    headerLayout->addWidget(subtitleLabel);
+    textLayout->addWidget(subtitleLabel);
+
+    titleLayout->addWidget(textContainer);
+    headerLayout->addWidget(titleContainer);
+
+    headerLayout->addStretch(1);
 
     m_tabBar = new QTabBar(headerContainer);
-    m_tabBar->addTab("General Tools");
-    m_tabBar->addTab("LinWidgets");
-    m_tabBar->addTab("AI");
-    m_tabBar->addTab("Layout Settings");
-    m_tabBar->addTab("Text Diagnostics");
+    m_tabBar->setObjectName(QStringLiteral("debugSegmentedTabBar"));
+    m_tabBar->addTab(QString::fromUtf8(u8"\uE777  General"));
+    m_tabBar->addTab(QString::fromUtf8(u8"\uE74C  LinWidgets"));
+    m_tabBar->addTab(QString::fromUtf8(u8"\uE945  AI Studio"));
+    m_tabBar->addTab(QString::fromUtf8(u8"\uE7F4  Layout"));
     m_tabBar->setDrawBase(false);
     m_tabBar->setUsesScrollButtons(true);
     m_tabBar->setExpanding(false);
-    headerLayout->addWidget(m_tabBar);
+    headerLayout->addWidget(m_tabBar, 0, Qt::AlignVCenter);
+
     mainLayout->addWidget(headerContainer);
 
     m_contentStack = new QStackedWidget(this);
@@ -513,8 +723,7 @@ void ListViewDebugPanel::initUI() {
     m_contentStack->addWidget(wrapScrollablePage(createLinWidgetsPage()));
     m_contentStack->addWidget(wrapScrollablePage(createAIPage()));
     m_contentStack->addWidget(wrapScrollablePage(createLayoutPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createTextDiagnosticsPage()));
-    mainLayout->addWidget(m_contentStack);
+    mainLayout->addWidget(m_contentStack, 1);
 
     connect(m_tabBar, &QTabBar::currentChanged, m_contentStack, &QStackedWidget::setCurrentIndex);
     m_tabBar->setCurrentIndex(0);
@@ -525,17 +734,8 @@ void ListViewDebugPanel::initUI() {
         m_rowSlider->setValue(m_listView->rowSpacing());
         m_colSlider->setValue(m_listView->colSpacing());
     }
-    m_largeGlowSlider->setValue(6);
-    m_tightGlowSlider->setValue(2);
-    m_glowAlphaSlider->setValue(210);
-    m_innerAlphaSlider->setValue(155);
-    m_glowOffsetXSlider->setValue(0);
-    m_glowOffsetYSlider->setValue(1);
-    m_innerOffsetXSlider->setValue(0);
-    m_innerOffsetYSlider->setValue(1);
     
     updateLabels();
-    applyTextPreviewOptions();
 }
 
 void ListViewDebugPanel::resizeEvent(QResizeEvent* event)
@@ -549,46 +749,51 @@ void ListViewDebugPanel::updateAdaptiveLayout()
     if (m_generalGrid) {
         const int availableWidth = width();
         const int columnCount = availableWidth < 760 ? 1 : 2;
-        for (QWidget* card : m_generalCards) {
-            m_generalGrid->removeWidget(card);
+
+        for (const GeneralSection& sec : m_generalSections) {
+            if (sec.header) {
+                m_generalGrid->removeWidget(sec.header);
+            }
+            for (QWidget* card : sec.cards) {
+                m_generalGrid->removeWidget(card);
+            }
         }
+
         int row = 0;
-        int column = 0;
-        for (QWidget* card : m_generalCards) {
-            if (m_generalWideCards.value(card, false)) {
-                if (column != 0) {
+        for (const GeneralSection& sec : m_generalSections) {
+            if (sec.header) {
+                m_generalGrid->addWidget(sec.header, row, 0, 1, columnCount);
+                ++row;
+            }
+            int column = 0;
+            for (QWidget* card : sec.cards) {
+                if (m_generalWideCards.value(card, false)) {
+                    if (column != 0) {
+                        ++row;
+                        column = 0;
+                    }
+                    m_generalGrid->addWidget(card, row, 0, 1, columnCount);
                     ++row;
                     column = 0;
+                    continue;
                 }
-                m_generalGrid->addWidget(card, row, 0, 1, columnCount);
-                ++row;
-                column = 0;
-                continue;
+                m_generalGrid->addWidget(card, row, column);
+                ++column;
+                if (column >= columnCount) {
+                    column = 0;
+                    ++row;
+                }
             }
-            m_generalGrid->addWidget(card, row, column);
-            ++column;
-            if (column >= columnCount) {
-                column = 0;
+            if (column != 0) {
                 ++row;
             }
-        }
-    }
-
-    if (m_linWidgetsActionGroupsGrid) {
-        const int columnCount = width() < 760 ? 1 : width() < 1080 ? 2 : 4;
-        for (QWidget* group : m_linWidgetActionGroups) {
-            m_linWidgetsActionGroupsGrid->removeWidget(group);
-        }
-        for (int i = 0; i < m_linWidgetActionGroups.size(); ++i) {
-            QWidget* group = m_linWidgetActionGroups.at(i);
-            m_linWidgetsActionGroupsGrid->addWidget(group, i / columnCount, i % columnCount);
         }
     }
 
     if (m_linWidgetsContentGrid && m_linWidgetsListsPanel && m_linWidgetsLogPanel) {
         m_linWidgetsContentGrid->removeWidget(m_linWidgetsListsPanel);
         m_linWidgetsContentGrid->removeWidget(m_linWidgetsLogPanel);
-        if (width() < 820) {
+        if (width() < 860) {
             m_linWidgetsContentGrid->addWidget(m_linWidgetsListsPanel, 0, 0);
             m_linWidgetsContentGrid->addWidget(m_linWidgetsLogPanel, 1, 0);
             m_linWidgetsContentGrid->setColumnStretch(0, 1);
@@ -596,8 +801,8 @@ void ListViewDebugPanel::updateAdaptiveLayout()
         } else {
             m_linWidgetsContentGrid->addWidget(m_linWidgetsListsPanel, 0, 0);
             m_linWidgetsContentGrid->addWidget(m_linWidgetsLogPanel, 0, 1);
-            m_linWidgetsContentGrid->setColumnStretch(0, 1);
-            m_linWidgetsContentGrid->setColumnStretch(1, 1);
+            m_linWidgetsContentGrid->setColumnStretch(0, 4);
+            m_linWidgetsContentGrid->setColumnStretch(1, 5);
         }
     }
 
@@ -618,33 +823,35 @@ void ListViewDebugPanel::updateAdaptiveLayout()
 QPushButton* ListViewDebugPanel::createActionButton(const QString& text, bool accent, bool destructive) const
 {
     auto* button = new QPushButton(text);
-    button->setFixedHeight(34);
-    button->setMinimumWidth(88);
+    button->setFixedHeight(32);
+    button->setMinimumWidth(80);
+    button->setCursor(Qt::PointingHandCursor);
 
     QString background = QStringLiteral("#ffffff");
-    QString foreground = QStringLiteral("#1f2937");
+    QString foreground = QStringLiteral("#1e293b");
     QString border = QStringLiteral("rgba(15, 23, 42, 0.14)");
-    QString hover = QStringLiteral("#f3f4f6");
+    QString hover = QStringLiteral("#f8fafc");
     if (accent) {
         background = QStringLiteral("#0f6cbd");
         foreground = QStringLiteral("#ffffff");
         border = QStringLiteral("#0f6cbd");
         hover = QStringLiteral("#115ea3");
     } else if (destructive) {
-        background = QStringLiteral("#d92d20");
-        foreground = QStringLiteral("#ffffff");
-        border = QStringLiteral("#d92d20");
-        hover = QStringLiteral("#b42318");
+        background = QStringLiteral("#fee2e2");
+        foreground = QStringLiteral("#dc2626");
+        border = QStringLiteral("rgba(220, 38, 38, 0.2)");
+        hover = QStringLiteral("#fecaca");
     }
 
     button->setStyleSheet(QStringLiteral(
         "QPushButton {"
-        "  min-width: 88px; padding: 0 14px; border-radius: 8px;"
+        "  padding: 0 14px; border-radius: 7px;"
         "  border: 1px solid %1; background: %2; color: %3;"
-        "  font-family: %4; font-size: 13px; font-weight: 600;"
+        "  font-family: %4; font-size: 12px; font-weight: 600;"
         "}"
         "QPushButton:hover { background: %5; }"
-        "QPushButton:pressed { padding-top: 1px; }")
+        "QPushButton:pressed { padding-top: 1px; }"
+        "QPushButton:disabled { color: #94a3b8; background: #f1f5f9; border-color: rgba(15, 23, 42, 0.08); }")
         .arg(border, background, foreground, AppFonts::uiCssFamily(), hover));
     return button;
 }
@@ -658,31 +865,32 @@ QWidget* ListViewDebugPanel::createSliderSettingRow(const QString& labelText,
     auto* container = new QWidget();
     auto* layout = new QVBoxLayout(container);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(8);
+    layout->setSpacing(6);
+
+    auto* topRow = new QHBoxLayout();
+    topRow->setContentsMargins(0, 0, 0, 0);
+    topRow->setSpacing(8);
 
     auto* label = new QLabel(labelText, container);
     label->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 13px; font-weight: 600; color: #111827;")
+        "font-family: %1; font-size: 13px; font-weight: 600; color: #1e293b;")
         .arg(AppFonts::uiCssFamily()));
-    layout->addWidget(label);
+    topRow->addWidget(label);
+    topRow->addStretch();
 
-    auto* row = new QHBoxLayout();
-    row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(12);
+    valueLabel = new QLabel("0", container);
+    valueLabel->setAlignment(Qt::AlignCenter);
+    valueLabel->setStyleSheet(QStringLiteral(
+        "font-family: %1; font-size: 12px; font-weight: 600; color: #0f6cbd;"
+        "background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 1px 8px;")
+        .arg(AppFonts::uiCssFamily()));
+    topRow->addWidget(valueLabel);
+    layout->addLayout(topRow);
 
     slider = new QSlider(Qt::Horizontal, container);
     slider->setRange(minValue, maxValue);
-    row->addWidget(slider, 1);
+    layout->addWidget(slider);
 
-    valueLabel = new QLabel("0", container);
-    valueLabel->setFixedWidth(36);
-    valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    valueLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 12px; color: #6b7280;")
-        .arg(AppFonts::uiCssFamily()));
-    row->addWidget(valueLabel);
-
-    layout->addLayout(row);
     return container;
 }
 
@@ -690,7 +898,7 @@ QLabel* ListViewDebugPanel::createPageTitleLabel(const QString& text) const
 {
     auto* label = new QLabel(text);
     label->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 24px; font-weight: 600; color: #111827;")
+        "font-family: %1; font-size: 20px; font-weight: 700; color: #0f172a;")
         .arg(AppFonts::uiCssFamily()));
     return label;
 }
@@ -700,7 +908,7 @@ QLabel* ListViewDebugPanel::createPageSubtitleLabel(const QString& text) const
     auto* label = new QLabel(text);
     label->setWordWrap(true);
     label->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 13px; color: #6b7280;")
+        "font-family: %1; font-size: 13px; color: #64748b; line-height: 1.4;")
         .arg(AppFonts::uiCssFamily()));
     return label;
 }
@@ -717,85 +925,76 @@ QWidget* ListViewDebugPanel::wrapScrollablePage(QWidget* content) {
 QWidget* ListViewDebugPanel::createGeneralPage() {
     auto* page = new QWidget();
     auto* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(32, 32, 32, 32);
+    layout->setContentsMargins(28, 24, 28, 28);
     layout->setSpacing(20);
 
     layout->addWidget(createPageTitleLabel("General Tools"));
-    layout->addWidget(createPageSubtitleLabel("Common debug actions and quick entry points for desktop diagnostics."));
+    layout->addWidget(createPageSubtitleLabel("Common debug actions, runtime toggles, storage directories, and crash diagnostics."));
 
     m_generalGrid = new QGridLayout();
-    m_generalGrid->setHorizontalSpacing(14);
-    m_generalGrid->setVerticalSpacing(14);
+    m_generalGrid->setHorizontalSpacing(12);
+    m_generalGrid->setVerticalSpacing(10);
     m_generalGrid->setColumnStretch(0, 1);
     m_generalGrid->setColumnStretch(1, 1);
-    auto addGeneralCard = [this](QWidget* card, bool wide = false) {
+
+    m_generalSections.clear();
+    m_generalCards.clear();
+    m_generalWideCards.clear();
+
+    auto registerCard = [this](QWidget* card, bool wide = false) {
         m_generalCards.append(card);
         m_generalWideCards.insert(card, wide);
+        return card;
     };
 
-    QPushButton* restartBtn = createActionButton("Restart", false, true);
-    connect(restartBtn, &QPushButton::clicked, this, []() {
-        QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments(), QCoreApplication::applicationDirPath());
-        QCoreApplication::quit();
-    });
-    addGeneralCard(new FluentCard(u8"\uE777", "Restart", "Relaunch the application", restartBtn));
+    // Section 1: Quick Actions
+    {
+        GeneralSection s1;
+        s1.header = createSectionHeaderWidget(QString::fromUtf8(u8"\uE777"), QStringLiteral("Quick Actions"), QStringLiteral("Restart, refresh, and core settings"));
 
-    QPushButton* crashBtn = createActionButton("Trigger Crash", false, true);
-    connect(crashBtn, &QPushButton::clicked, this, []() {
-        // Dereference a null pointer to force an active crash
-        volatile int* p = nullptr;
-        *p = 42;
-    });
-    addGeneralCard(new FluentCard(u8"\uE7BA", "Trigger Crash", "Instantly trigger an active application crash (Minidump test)", crashBtn));
+        QPushButton* refreshBtn = createActionButton("Refresh", false, false);
+        connect(refreshBtn, &QPushButton::clicked, this, [this](){
+            if (m_listView) m_listView->onMenuRefresh();
+        });
+        s1.cards.append(registerCard(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render desktop", refreshBtn)));
 
-    QPushButton* settingsBtn = createActionButton("Open", true, false);
-    connect(settingsBtn, &QPushButton::clicked, this, [this]() {
-        if (m_listView) {
-            m_listView->showSettings(nullptr);
-        }
-    });
-    addGeneralCard(new FluentCard(u8"\uE713", "Settings", "Open the main settings window", settingsBtn));
+        QPushButton* restartBtn = createActionButton("Restart", false, true);
+        connect(restartBtn, &QPushButton::clicked, this, []() {
+            QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments(), QCoreApplication::applicationDirPath());
+            QCoreApplication::quit();
+        });
+        s1.cards.append(registerCard(new FluentCard(u8"\uE777", "Restart", "Relaunch the LinDesk application", restartBtn)));
 
-    QPushButton* deskIconBtn = createActionButton("Open", false, false);
-    connect(deskIconBtn, &QPushButton::clicked, this, []() {
-        QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,0");
-    });
-    addGeneralCard(new FluentCard(u8"\uE71D", "Desktop Icons", "Native OS icon settings", deskIconBtn));
-
-    QPushButton* qmlTestBtn = createActionButton("Verify", false, false);
-    connect(qmlTestBtn, &QPushButton::clicked, this, []() {
-        auto* w = new QmlTestWindow();
-        w->show(); w->raise(); w->activateWindow();
-    });
-    addGeneralCard(new FluentCard(u8"\uE943", "QML Test", "Verify Qt Quick availability", qmlTestBtn));
-
-    QPushButton* refreshBtn = createActionButton("Refresh", false, false);
-    connect(refreshBtn, &QPushButton::clicked, this, [this](){
-        if (m_listView) m_listView->onMenuRefresh();
-    });
-    addGeneralCard(new FluentCard(u8"\uE72C", "Refresh Layer", "Resort icons and re-render", refreshBtn));
-
-    m_persistToggle = new FluentToggleSwitch();
-    m_persistToggle->setChecked(m_listView ? m_listView->persistenceEnabled() : true, false);
-    connect(m_persistToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
-        if (m_listView) m_listView->setPersistenceEnabled(checked);
-    });
-    addGeneralCard(new FluentCard(u8"\uE71B", "Persistence", "Save box and icon data", m_persistToggle));
-
-    m_defaultWallpaperToggle = new FluentToggleSwitch();
-    LinDesktop* desk = nullptr;
-    if (m_listView) {
-        QWidget* p = m_listView;
-        while (p) {
-            if (LinDesktop* d = qobject_cast<LinDesktop*>(p)) {
-                desk = d;
-                break;
+        QPushButton* settingsBtn = createActionButton("Open", true, false);
+        connect(settingsBtn, &QPushButton::clicked, this, [this]() {
+            if (m_listView) {
+                m_listView->showSettings(nullptr);
             }
-            p = p->parentWidget();
-        }
+        });
+        s1.cards.append(registerCard(new FluentCard(u8"\uE713", "Settings", "Open the main settings dialog", settingsBtn)));
+
+        QPushButton* deskIconBtn = createActionButton("Open", false, false);
+        connect(deskIconBtn, &QPushButton::clicked, this, []() {
+            QProcess::startDetached("rundll32.exe", QStringList() << "shell32.dll,Control_RunDLL" << "desk.cpl,,0");
+        });
+        s1.cards.append(registerCard(new FluentCard(u8"\uE71D", "Desktop Icons", "Native OS icon settings", deskIconBtn)));
+
+        m_generalSections.append(s1);
     }
-    m_defaultWallpaperToggle->setChecked(desk ? desk->showDefaultWallpaper() : true, false);
-    connect(m_defaultWallpaperToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+
+    // Section 2: Runtime & Graphics
+    {
+        GeneralSection s2;
+        s2.header = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7F4"), QStringLiteral("Desktop Runtime & Rendering"), QStringLiteral("Graphics path, persistence, and embedding"));
+
+        m_persistToggle = new FluentToggleSwitch();
+        m_persistToggle->setChecked(m_listView ? m_listView->persistenceEnabled() : true, false);
+        connect(m_persistToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+            if (m_listView) m_listView->setPersistenceEnabled(checked);
+        });
+        s2.cards.append(registerCard(new FluentCard(u8"\uE71B", "Persistence", "Save box and icon layout data", m_persistToggle)));
+
+        m_defaultWallpaperToggle = new FluentToggleSwitch();
         LinDesktop* desk = nullptr;
         if (m_listView) {
             QWidget* p = m_listView;
@@ -807,56 +1006,110 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
                 p = p->parentWidget();
             }
         }
-        if (desk) {
-            desk->setShowDefaultWallpaper(checked);
-        }
-    });
-    addGeneralCard(new FluentCard(u8"\uE7F4", "Default Wallpaper", "Toggle desktop default wallpaper background", m_defaultWallpaperToggle));
+        m_defaultWallpaperToggle->setChecked(desk ? desk->showDefaultWallpaper() : true, false);
+        connect(m_defaultWallpaperToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+            LinDesktop* desk = nullptr;
+            if (m_listView) {
+                QWidget* p = m_listView;
+                while (p) {
+                    if (LinDesktop* d = qobject_cast<LinDesktop*>(p)) {
+                        desk = d;
+                        break;
+                    }
+                    p = p->parentWidget();
+                }
+            }
+            if (desk) {
+                desk->setShowDefaultWallpaper(checked);
+            }
+        });
+        s2.cards.append(registerCard(new FluentCard(u8"\uE7F4", "Default Wallpaper", "Toggle desktop default wallpaper background", m_defaultWallpaperToggle)));
 
-    m_widgetEmbeddedToggle = new FluentToggleSwitch();
-    LinWidget::WidgetManager* wm = linWidgetManager();
-    m_widgetEmbeddedToggle->setChecked(wm ? wm->isWidgetLayerEmbedded() : true, false);
-    connect(m_widgetEmbeddedToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+        m_widgetEmbeddedToggle = new FluentToggleSwitch();
         LinWidget::WidgetManager* wm = linWidgetManager();
-        if (wm) {
-            wm->setWidgetLayerEmbedded(checked);
-        }
-    });
-    addGeneralCard(new FluentCard(u8"\uE8A7", "Widget Layer Embedded", "Toggle whether widgets are embedded below desktop icons (layered) or independent on top", m_widgetEmbeddedToggle));
+        m_widgetEmbeddedToggle->setChecked(wm ? wm->isWidgetLayerEmbedded() : true, false);
+        connect(m_widgetEmbeddedToggle, &FluentToggleSwitch::toggled, this, [this](bool checked){
+            LinWidget::WidgetManager* wm = linWidgetManager();
+            if (wm) {
+                wm->setWidgetLayerEmbedded(checked);
+            }
+        });
+        s2.cards.append(registerCard(new FluentCard(u8"\uE8A7", "Widget Layer Embedded", "Layer widgets below desktop icons or float on top", m_widgetEmbeddedToggle)));
 
-    QPushButton* exportBtn = createActionButton("Export", false, false);
-    connect(exportBtn, &QPushButton::clicked, this, [this]() {
-        QString path;
-        if (DebugInfoExporter::exportToApplicationDir(m_listView, &path))
-            QMessageBox::information(this, "Export", "Exported to " + path);
-    });
-    addGeneralCard(new FluentCard(u8"\uE8AB", "Export Debug", "Dump state to debug.json", exportBtn), true);
+        m_openGLStatusLabel = new QLabel(page);
+        m_openGLStatusLabel->setWordWrap(true);
+        m_openGLStatusLabel->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 12px; font-weight: 500; color: #0f6cbd;"
+            "background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 10px;"
+        ).arg(AppFonts::uiCssFamily()));
+        updateOpenGLStatus();
+        s2.cards.append(registerCard(new FluentCard(u8"\uE7F8", "OpenGL Acceleration", "Shows GPU startup acceleration status and active Qt rendering path", m_openGLStatusLabel), true));
 
-    m_openGLStatusLabel = new QLabel(page);
-    m_openGLStatusLabel->setWordWrap(true);
-    m_openGLStatusLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 13px; color: #374151; line-height: 1.5;")
-        .arg(AppFonts::uiCssFamily()));
-    updateOpenGLStatus();
-    addGeneralCard(new FluentCard(
-        u8"\uE7F8",
-        "OpenGL Status",
-        "Shows the saved setting and whether this launch is using the OpenGL startup path.",
-        m_openGLStatusLabel), true);
+        m_generalSections.append(s2);
+    }
 
-    QPushButton* openRoamingBtn = createActionButton("Open Roaming", false, false);
-    connect(openRoamingBtn, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userConfigDir()));
-    });
-    addGeneralCard(new FluentCard(u8"\uE838", "Roaming Configs", "Open LinDesk AppData directory", openRoamingBtn));
+    // Section 3: Storage & Logs
+    {
+        GeneralSection s3;
+        s3.header = createSectionHeaderWidget(QString::fromUtf8(u8"\uE8B7"), QStringLiteral("Storage & Log Paths"), QStringLiteral("Direct access to logs, dumps, and app data"));
 
-    QPushButton* openLocalBtn = createActionButton("Open Local", false, false);
-    connect(openLocalBtn, &QPushButton::clicked, this, []() {
-        QString localPath = qEnvironmentVariable("LOCALAPPDATA") + "/LinDesk";
-        QDir().mkpath(localPath);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(localPath));
-    });
-    addGeneralCard(new FluentCard(u8"\uE8A7", "Local Logs", "Open LinDesk LocalAppData directory", openLocalBtn));
+        QPushButton* openLogsBtn = createActionButton("Open Logs", false, false);
+        connect(openLogsBtn, &QPushButton::clicked, this, []() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLogsDir()));
+        });
+        s3.cards.append(registerCard(new FluentCard(u8"\uE8A7", "Application Logs", "Open logs directory (%LOCALAPPDATA%/LinDesk/logs)", openLogsBtn)));
+
+        QPushButton* openCrashesBtn = createActionButton("Open Dumps", false, false);
+        connect(openCrashesBtn, &QPushButton::clicked, this, []() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userCrashDumpsDir()));
+        });
+        s3.cards.append(registerCard(new FluentCard(u8"\uE7BA", "Crash Dumps", "Open crash minidump directory (%LOCALAPPDATA%/LinDesk/logs/crash)", openCrashesBtn)));
+
+        QPushButton* openRoamingBtn = createActionButton("Open Roaming", false, false);
+        connect(openRoamingBtn, &QPushButton::clicked, this, []() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userConfigDir()));
+        });
+        s3.cards.append(registerCard(new FluentCard(u8"\uE838", "Roaming Configs", "Open LinDesk AppData roaming directory", openRoamingBtn)));
+
+        QPushButton* openLocalBtn = createActionButton("Open Local", false, false);
+        connect(openLocalBtn, &QPushButton::clicked, this, []() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLocalConfigDir()));
+        });
+        s3.cards.append(registerCard(new FluentCard(u8"\uE8B7", "Local Data", "Open LinDesk LocalAppData directory", openLocalBtn)));
+
+        QPushButton* exportBtn = createActionButton("Export", false, false);
+        connect(exportBtn, &QPushButton::clicked, this, [this]() {
+            QString path;
+            if (DebugInfoExporter::exportToApplicationDir(m_listView, &path))
+                QMessageBox::information(this, "Export", "Exported to " + path);
+        });
+        s3.cards.append(registerCard(new FluentCard(u8"\uE8AB", "Export Debug Snapshot", "Dump full desktop state to debug.json", exportBtn), true));
+
+        m_generalSections.append(s3);
+    }
+
+    // Section 4: Diagnostics & Tests
+    {
+        GeneralSection s4;
+        s4.header = createSectionHeaderWidget(QString::fromUtf8(u8"\uE943"), QStringLiteral("Diagnostics & Crash Testing"), QStringLiteral("Qt Quick verification and minidump generation"));
+
+        QPushButton* qmlTestBtn = createActionButton("Verify", false, false);
+        connect(qmlTestBtn, &QPushButton::clicked, this, []() {
+            auto* w = new QmlTestWindow();
+            w->show(); w->raise(); w->activateWindow();
+        });
+        s4.cards.append(registerCard(new FluentCard(u8"\uE943", "QML Test", "Verify Qt Quick engine availability", qmlTestBtn)));
+
+        QPushButton* crashBtn = createActionButton("Trigger Crash", false, true);
+        connect(crashBtn, &QPushButton::clicked, this, []() {
+            // Dereference a null pointer to force an active crash
+            volatile int* p = nullptr;
+            *p = 42;
+        });
+        s4.cards.append(registerCard(new FluentCard(u8"\uE7BA", "Trigger Crash", "Instantly trigger an active application crash (Minidump test)", crashBtn)));
+
+        m_generalSections.append(s4);
+    }
 
     layout->addLayout(m_generalGrid);
     updateAdaptiveLayout();
@@ -876,7 +1129,7 @@ LinWidget::WidgetManager* ListViewDebugPanel::linWidgetManager()
         refreshLinWidgetRunningMaps();
         connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetLaunched, this, [this](const QString& instanceId) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText("Widget loaded into WebView: " + instanceId);
+                m_linWidgetsPageStatusLabel->setText("Widget loaded (CEF OSR): " + instanceId);
             }
             linWidgetManager()->syncWidgetWindowLayer(instanceId);
             refreshLinWidgetRunningMaps();
@@ -885,7 +1138,7 @@ LinWidget::WidgetManager* ListViewDebugPanel::linWidgetManager()
         });
         connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetStopped, this, [this](const QString& instanceId) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText("Widget unloaded from WebView: " + instanceId);
+                m_linWidgetsPageStatusLabel->setText("Widget unloaded: " + instanceId);
             }
             refreshLinWidgetRunningMaps();
             updateSelectedLinWidgetItemText();
@@ -1281,40 +1534,10 @@ void ListViewDebugPanel::updateAllLinWidgetItemWidgets()
         for (int i = 0; i < list->count(); ++i) {
             QListWidgetItem* item = list->item(i);
             updateLinWidgetItemText(item);
-            QWidget* widget = list->itemWidget(item);
-            if (!widget) {
-                list->setItemWidget(item, createLinWidgetItemWidget(item));
-                continue;
+            if (QWidget* oldWidget = list->itemWidget(item)) {
+                oldWidget->deleteLater();
             }
-            const QString id = item->data(LinWidgetRegistryIdRole).toString();
-            const bool isDevelopment = item->data(LinWidgetDevelopmentRole).toBool();
-            const QString packagePath = item->data(LinWidgetPackagePathRole).toString();
-            const bool manifestValid = item->data(LinWidgetManifestValidRole).toBool();
-            const bool running = m_linWidgetInstancesById.contains(linWidgetRegistryKey(id, isDevelopment)) ||
-                m_linWidgetInstancesByPackage.contains(linWidgetPackageKey(packagePath));
-            const bool runtimeEnabled = !m_linWidgetManager || m_linWidgetManager->isEnabled();
-            if (QToolButton* button = widget->findChild<QToolButton*>(QStringLiteral("linWidgetItemAction"))) {
-                button->setText(running ? QStringLiteral("Unload") : QStringLiteral("Load"));
-                button->setEnabled(runtimeEnabled && (manifestValid || running));
-                button->setToolTip(item->toolTip());
-            }
-            if (QToolButton* reloadButton = widget->findChild<QToolButton*>(QStringLiteral("linWidgetItemReload"))) {
-                reloadButton->setEnabled(runtimeEnabled && running && manifestValid);
-                reloadButton->setToolTip(QStringLiteral("Reload this widget"));
-            }
-            if (QToolButton* settingsButton = widget->findChild<QToolButton*>(QStringLiteral("linWidgetItemSettings"))) {
-                const QString settingsPath = item->data(LinWidgetSettingsRole).toString().trimmed();
-                const bool hasSettings = !settingsPath.isEmpty() && QFileInfo::exists(QDir(packagePath).filePath(settingsPath));
-                settingsButton->setVisible(!settingsPath.isEmpty());
-                settingsButton->setEnabled(hasSettings);
-                settingsButton->setToolTip(hasSettings ? QStringLiteral("Open widget settings") : QStringLiteral("Settings page is missing"));
-            }
-            widget->setToolTip(item->toolTip());
-            const QList<QLabel*> labels = widget->findChildren<QLabel*>();
-            for (QLabel* label : labels) {
-                label->setText(item->data(LinWidgetDisplayTextRole).toString());
-                label->setToolTip(item->toolTip());
-            }
+            list->setItemWidget(item, createLinWidgetItemWidget(item));
         }
     };
     updateList(m_installedLinWidgetsList);
@@ -1335,7 +1558,7 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
     QString errorMessage;
     if (!LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, &errorMessage)) {
         if (m_linWidgetsPageStatusLabel) {
-            m_linWidgetsPageStatusLabel->setText("Load to WebView failed: " + errorMessage);
+            m_linWidgetsPageStatusLabel->setText("Load failed: " + errorMessage);
         }
         return false;
     }
@@ -1343,7 +1566,7 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
     LinWidget::WidgetManager* manager = linWidgetManager();
     if (!manager) {
         if (m_linWidgetsPageStatusLabel) {
-            m_linWidgetsPageStatusLabel->setText("Load to WebView failed: no widget manager");
+            m_linWidgetsPageStatusLabel->setText("Load failed: no widget manager");
         }
         return false;
     }
@@ -1377,7 +1600,7 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
         const QRect geometry(260, 220, manifest.width, manifest.height);
         if (!manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &launchError)) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText("Load to WebView failed: " + launchError);
+                m_linWidgetsPageStatusLabel->setText("Load failed: " + launchError);
             }
             return false;
         }
@@ -1397,8 +1620,8 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
     if (m_linWidgetsPageStatusLabel) {
         m_linWidgetsPageStatusLabel->setText(
             restoredIds.size() > 1
-                ? QStringLiteral("Loaded %1 instance(s) of %2 into WebView").arg(restoredIds.size()).arg(manifest.name)
-                : QStringLiteral("Loaded %1 into WebView. Instance: %2").arg(manifest.name, instanceId));
+                ? QStringLiteral("Loaded %1 instance(s) of %2 (CEF OSR)").arg(restoredIds.size()).arg(manifest.name)
+                : QStringLiteral("Loaded %1 (CEF OSR). Instance: %2").arg(manifest.name, instanceId));
     }
     updateSelectedLinWidgetItemText();
     updateLinWidgetsButtons();
@@ -1460,7 +1683,7 @@ bool ListViewDebugPanel::unloadSelectedLinWidget()
         m_linWidgetsPageStatusLabel->setText(
             stoppedIds.size() > 1
                 ? QStringLiteral("Unloaded %1 instance(s) of widget: %2").arg(stoppedIds.size()).arg(registryId)
-                : QStringLiteral("Unloaded widget from WebView: %1").arg(stoppedIds.value(0, primaryInstanceId)));
+                : QStringLiteral("Unloaded widget: %1").arg(stoppedIds.value(0, primaryInstanceId)));
     }
     updateSelectedLinWidgetItemText();
     updateLinWidgetsButtons();
@@ -1472,62 +1695,151 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
 {
     auto* row = new QWidget();
     row->setToolTip(item ? item->toolTip() : QString());
-    auto* layout = new QHBoxLayout(row);
-    layout->setContentsMargins(10, 8, 10, 8);
-    layout->setSpacing(10);
+    auto* layout = new QVBoxLayout(row);
+    layout->setContentsMargins(12, 10, 12, 10);
+    layout->setSpacing(6);
 
-    auto* textLabel = new QLabel(item ? item->data(LinWidgetDisplayTextRole).toString() : QString(), row);
-    textLabel->setWordWrap(true);
-    textLabel->setToolTip(row->toolTip());
-    textLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1;"
-        "font-size: 12px;"
-        "font-weight: 500;"
-        "color: #111827;"
-        "background: transparent;")
-        .arg(AppFonts::uiCssFamily()));
-    layout->addWidget(textLabel, 1);
+    const QString id = item ? item->data(LinWidgetRegistryIdRole).toString() : QString();
+    const bool isDevelopment = item && item->data(LinWidgetDevelopmentRole).toBool();
+    const QString registryKey = linWidgetRegistryKey(id, isDevelopment);
+    const QString packagePath = item ? item->data(LinWidgetPackagePathRole).toString() : QString();
+    const bool running = m_linWidgetInstancesById.contains(registryKey) ||
+        m_linWidgetInstancesByPackage.contains(linWidgetPackageKey(packagePath));
+    const QString name = item ? item->data(LinWidgetNameRole).toString() : QString();
+    const QString version = item ? item->data(LinWidgetVersionRole).toString() : QString();
+    const QString runtimeType = item ? item->data(LinWidgetRuntimeTypeRole).toString() : QString();
+    const QSize defaultSize = item ? item->data(LinWidgetDefaultSizeRole).toSize() : QSize();
+    const bool isValid = item && item->data(LinWidgetManifestValidRole).toBool();
+    const QString manifestError = item ? item->data(LinWidgetManifestErrorRole).toString() : QString();
 
+    // Top row: Name + Version chip + Status pill + Action buttons
+    auto* topRow = new QHBoxLayout();
+    topRow->setContentsMargins(0, 0, 0, 0);
+    topRow->setSpacing(8);
+
+    auto* nameLabel = new QLabel(name.isEmpty() ? id : name, row);
+    nameLabel->setStyleSheet(QStringLiteral(
+        "font-family: %1; font-size: 13px; font-weight: 700; color: #0f172a; background: transparent;"
+    ).arg(AppFonts::uiCssFamily()));
+    topRow->addWidget(nameLabel);
+
+    if (!version.isEmpty()) {
+        auto* verLabel = new QLabel(QStringLiteral("v%1").arg(version), row);
+        verLabel->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 11px; font-weight: 600; color: #475569;"
+            "background: #f1f5f9; border-radius: 4px; padding: 1px 6px;"
+        ).arg(AppFonts::uiCssFamily()));
+        topRow->addWidget(verLabel);
+    }
+
+    if (isDevelopment) {
+        auto* devBadge = new QLabel(QStringLiteral("DEV"), row);
+        devBadge->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 10px; font-weight: 700; color: #7c3aed;"
+            "background: #ede9fe; border-radius: 4px; padding: 1px 6px;"
+        ).arg(AppFonts::uiCssFamily()));
+        topRow->addWidget(devBadge);
+    }
+
+    auto* statusBadge = new QLabel(row);
+    if (!isValid) {
+        statusBadge->setText(QStringLiteral("⚠️ Invalid"));
+        statusBadge->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 11px; font-weight: 600; color: #dc2626;"
+            "background: #fee2e2; border-radius: 4px; padding: 1px 6px;"
+        ).arg(AppFonts::uiCssFamily()));
+    } else if (running) {
+        statusBadge->setText(QStringLiteral("● Running"));
+        statusBadge->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 11px; font-weight: 600; color: #15803d;"
+            "background: #dcfce7; border-radius: 4px; padding: 1px 6px;"
+        ).arg(AppFonts::uiCssFamily()));
+    } else {
+        statusBadge->setText(QStringLiteral("○ Stopped"));
+        statusBadge->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 11px; font-weight: 500; color: #64748b;"
+            "background: #f1f5f9; border-radius: 4px; padding: 1px 6px;"
+        ).arg(AppFonts::uiCssFamily()));
+    }
+    topRow->addWidget(statusBadge);
+
+    topRow->addStretch(1);
+
+    // Trailing buttons: [Load/Unload], [Reload], [Settings]
     auto* actionButton = new QToolButton(row);
     actionButton->setObjectName(QStringLiteral("linWidgetItemAction"));
     actionButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     actionButton->setCursor(Qt::PointingHandCursor);
-    actionButton->setToolTip(row->toolTip());
+    actionButton->setText(running ? QStringLiteral("Unload") : QStringLiteral("Load"));
     actionButton->setStyleSheet(QStringLiteral(
         "QToolButton {"
-        "  min-width: 68px;"
-        "  height: 28px;"
-        "  padding: 0 10px;"
-        "  border-radius: 7px;"
-        "  border: 1px solid rgba(15, 23, 42, 0.14);"
-        "  background: #ffffff;"
-        "  color: #0f6cbd;"
-        "  font-family: %1;"
-        "  font-size: 12px;"
-        "  font-weight: 700;"
+        "  min-width: 60px; height: 26px; padding: 0 10px; border-radius: 6px;"
+        "  font-family: %1; font-size: 11px; font-weight: 700;"
+        "  background: %2; color: %3; border: 1px solid %4;"
         "}"
-        "QToolButton:hover { background: #eef6ff; }"
-        "QToolButton:disabled { color: #9ca3af; background: #f3f4f6; }")
-        .arg(AppFonts::uiCssFamily()));
-    layout->addWidget(actionButton, 0, Qt::AlignVCenter);
+        "QToolButton:hover { background: %5; }"
+        "QToolButton:disabled { background: #f1f5f9; color: #94a3b8; border-color: rgba(15, 23, 42, 0.08); }")
+        .arg(AppFonts::uiCssFamily(),
+             running ? QStringLiteral("#f8fafc") : QStringLiteral("#0f6cbd"),
+             running ? QStringLiteral("#475569") : QStringLiteral("#ffffff"),
+             running ? QStringLiteral("rgba(15, 23, 42, 0.14)") : QStringLiteral("#0f6cbd"),
+             running ? QStringLiteral("#f1f5f9") : QStringLiteral("#115ea3")));
+    topRow->addWidget(actionButton);
 
     auto* reloadButton = new QToolButton(row);
     reloadButton->setObjectName(QStringLiteral("linWidgetItemReload"));
     reloadButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     reloadButton->setCursor(Qt::PointingHandCursor);
     reloadButton->setText(QStringLiteral("Reload"));
-    reloadButton->setToolTip(QStringLiteral("Reload this widget"));
-    reloadButton->setStyleSheet(actionButton->styleSheet());
-    layout->addWidget(reloadButton, 0, Qt::AlignVCenter);
+    reloadButton->setEnabled(running);
+    reloadButton->setStyleSheet(QStringLiteral(
+        "QToolButton {"
+        "  min-width: 52px; height: 26px; padding: 0 8px; border-radius: 6px;"
+        "  font-family: %1; font-size: 11px; font-weight: 600;"
+        "  background: #ffffff; color: #1e293b; border: 1px solid rgba(15, 23, 42, 0.14);"
+        "}"
+        "QToolButton:hover { background: #f1f5f9; }"
+        "QToolButton:disabled { background: #f8fafc; color: #cbd5e1; border-color: rgba(15, 23, 42, 0.06); }")
+        .arg(AppFonts::uiCssFamily()));
+    topRow->addWidget(reloadButton);
 
     auto* settingsButton = new QToolButton(row);
     settingsButton->setObjectName(QStringLiteral("linWidgetItemSettings"));
     settingsButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     settingsButton->setCursor(Qt::PointingHandCursor);
     settingsButton->setText(QStringLiteral("Settings"));
-    settingsButton->setToolTip(QStringLiteral("Open widget settings"));
-    settingsButton->setStyleSheet(actionButton->styleSheet());
-    layout->addWidget(settingsButton, 0, Qt::AlignVCenter);
+    const QString settingsPath = item ? item->data(LinWidgetSettingsRole).toString().trimmed() : QString();
+    const bool hasSettings = item && !settingsPath.isEmpty() && QFileInfo::exists(QDir(packagePath).filePath(settingsPath));
+    settingsButton->setVisible(!settingsPath.isEmpty());
+    settingsButton->setEnabled(hasSettings);
+    settingsButton->setToolTip(hasSettings ? QStringLiteral("Open widget settings") : QStringLiteral("Settings page is missing"));
+    settingsButton->setStyleSheet(reloadButton->styleSheet());
+    topRow->addWidget(settingsButton);
+
+    layout->addLayout(topRow);
+
+    // Bottom row: ID · Runtime · Grid Size · Path
+    auto* bottomRow = new QHBoxLayout();
+    bottomRow->setContentsMargins(0, 0, 0, 0);
+    bottomRow->setSpacing(6);
+
+    auto* metaLabel = new QLabel(row);
+    if (!isValid) {
+        metaLabel->setText(QStringLiteral("Error: %1").arg(manifestError));
+        metaLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #dc2626; font-weight: 500;"));
+    } else {
+        QString sizeStr = (defaultSize.width() > 0 && defaultSize.height() > 0)
+            ? QStringLiteral("%1x%2").arg(defaultSize.width()).arg(defaultSize.height())
+            : QStringLiteral("adaptive");
+        metaLabel->setText(QStringLiteral("%1  ·  %2  ·  %3")
+            .arg(id)
+            .arg(runtimeType.isEmpty() ? QStringLiteral("CEF OSR") : runtimeType.toUpper())
+            .arg(sizeStr));
+        metaLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #64748b; font-weight: 500;"));
+    }
+    bottomRow->addWidget(metaLabel);
+    bottomRow->addStretch(1);
+    layout->addLayout(bottomRow);
 
     auto selectItem = [this, item]() {
         if (!item) {
@@ -1554,7 +1866,7 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         }
         if (item && !item->data(LinWidgetManifestValidRole).toBool()) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText(QStringLiteral("Load to WebView blocked: %1")
+                m_linWidgetsPageStatusLabel->setText(QStringLiteral("Load blocked: %1")
                     .arg(item->data(LinWidgetManifestErrorRole).toString()));
             }
             updateLinWidgetsButtons();
@@ -1627,20 +1939,9 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         }
     });
 
-    const QString id = item ? item->data(LinWidgetRegistryIdRole).toString() : QString();
-    const bool isDevelopment = item && item->data(LinWidgetDevelopmentRole).toBool();
-    const QString packagePath = item ? item->data(LinWidgetPackagePathRole).toString() : QString();
-    const bool running = m_linWidgetInstancesById.contains(linWidgetRegistryKey(id, isDevelopment)) ||
-        m_linWidgetInstancesByPackage.contains(linWidgetPackageKey(packagePath));
     const bool runtimeEnabled = !m_linWidgetManager || m_linWidgetManager->isEnabled();
-    actionButton->setText(running ? QStringLiteral("Unload") : QStringLiteral("Load"));
     actionButton->setEnabled(runtimeEnabled);
     reloadButton->setEnabled(runtimeEnabled && running);
-    const QString settingsPath = item ? item->data(LinWidgetSettingsRole).toString().trimmed() : QString();
-    const bool hasSettings = item && !settingsPath.isEmpty() && QFileInfo::exists(QDir(packagePath).filePath(settingsPath));
-    settingsButton->setVisible(!settingsPath.isEmpty());
-    settingsButton->setEnabled(hasSettings);
-    settingsButton->setToolTip(hasSettings ? QStringLiteral("Open widget settings") : QStringLiteral("Settings page is missing"));
 
     return row;
 }
@@ -1739,48 +2040,58 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
 {
     auto* page = new QWidget();
     auto* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(32, 32, 32, 32);
-    layout->setSpacing(18);
+    layout->setContentsMargins(28, 24, 28, 28);
+    layout->setSpacing(16);
 
     layout->addWidget(createPageTitleLabel("LinWidgets"));
-    layout->addWidget(createPageSubtitleLabel("Manage installed widgets and development projects. Development projects run directly from their source folders with hot reload."));
+    layout->addWidget(createPageSubtitleLabel("Manage installed widgets and development projects. Development projects run directly from their source folders with live reload."));
+
+    m_linWidgetsPageStatusLabel = new QLabel(page);
+    m_linWidgetsPageStatusLabel->setWordWrap(true);
+    m_linWidgetsPageStatusLabel->setText(QStringLiteral("CEF OSR 小组件引擎已就绪。所有小组件均运行在安全隔离沙箱中，支持多实例与热重载。"));
+    m_linWidgetsPageStatusLabel->setStyleSheet(QStringLiteral(
+        "background: #eff6ff;"
+        "border: 1px solid #bfdbfe;"
+        "border-radius: 8px;"
+        "padding: 10px 14px;"
+        "font-family: %1;"
+        "font-size: 12px;"
+        "font-weight: 500;"
+        "color: #1e40af;"
+    ).arg(AppFonts::uiCssFamily()));
+    layout->addWidget(m_linWidgetsPageStatusLabel);
 
     QSettings settings(debugConfigPath(), QSettings::IniFormat);
-    auto* compactSwitchPanel = new QWidget(page);
-    compactSwitchPanel->setObjectName(QStringLiteral("linWidgetCompactSwitchPanel"));
-    compactSwitchPanel->setAttribute(Qt::WA_StyledBackground, true);
-    compactSwitchPanel->setStyleSheet(QStringLiteral(
-        "QWidget#linWidgetCompactSwitchPanel {"
+
+    // Top Control Toolbar Card
+    auto* controlBar = new QWidget(page);
+    controlBar->setObjectName(QStringLiteral("linWidgetControlBar"));
+    controlBar->setStyleSheet(QStringLiteral(
+        "QWidget#linWidgetControlBar {"
         "  background: #ffffff;"
-        "  border: 1px solid rgba(15, 23, 42, 0.10);"
+        "  border: 1px solid rgba(15, 23, 42, 0.08);"
         "  border-radius: 10px;"
         "}"));
-    m_linWidgetsCompactSwitchGrid = new QGridLayout(compactSwitchPanel);
-    m_linWidgetsCompactSwitchGrid->setContentsMargins(12, 8, 12, 8);
-    m_linWidgetsCompactSwitchGrid->setHorizontalSpacing(16);
-    m_linWidgetsCompactSwitchGrid->setVerticalSpacing(8);
-    auto addCompactSwitch = [this, compactSwitchPanel](const QString& name,
-                                                       const QString& tooltip,
-                                                       FluentToggleSwitch* toggle) {
-        auto* item = new QWidget(compactSwitchPanel);
-        item->setToolTip(tooltip);
-        item->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        auto* itemLayout = new QHBoxLayout(item);
-        itemLayout->setContentsMargins(0, 0, 0, 0);
-        itemLayout->setSpacing(6);
+    auto* controlBarLayout = new QHBoxLayout(controlBar);
+    controlBarLayout->setContentsMargins(14, 10, 14, 10);
+    controlBarLayout->setSpacing(18);
 
+    auto addToggleRow = [controlBar](const QString& name, const QString& tooltip, FluentToggleSwitch* toggle) -> QWidget* {
+        auto* item = new QWidget(controlBar);
+        item->setToolTip(tooltip);
+        auto* iLayout = new QHBoxLayout(item);
+        iLayout->setContentsMargins(0, 0, 0, 0);
+        iLayout->setSpacing(6);
         auto* label = new QLabel(name, item);
         label->setToolTip(tooltip);
         label->setStyleSheet(QStringLiteral(
-            "font-family: %1; font-size: 12px; font-weight: 600; color: #374151;")
-            .arg(AppFonts::uiCssFamily()));
-
+            "font-family: %1; font-size: 12px; font-weight: 600; color: #334155; background: transparent;"
+        ).arg(AppFonts::uiCssFamily()));
         toggle->setParent(item);
         toggle->setToolTip(tooltip);
-        itemLayout->addWidget(label, 0, Qt::AlignVCenter);
-        itemLayout->addWidget(toggle, 0, Qt::AlignVCenter);
-        itemLayout->addStretch();
-        m_linWidgetsCompactSwitchItems.append(item);
+        iLayout->addWidget(label, 0, Qt::AlignVCenter);
+        iLayout->addWidget(toggle, 0, Qt::AlignVCenter);
+        return item;
     };
 
     m_linWidgetEnabledToggle = new FluentToggleSwitch(page);
@@ -1811,7 +2122,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
                             .arg(manager->cefOsrBrowserCount()));
                 } else {
                     m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("小组件系统已彻底关闭，CEF OSR 与 WebView2 均已卸载隐藏，仅显示原生桌面图标。"));
+                        QStringLiteral("小组件系统已彻底关闭，CEF OSR 已卸载隐藏，仅显示原生桌面图标。"));
                 }
             }
         }
@@ -1824,28 +2135,23 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             m_listView->update();
         }
     });
-    addCompactSwitch(QStringLiteral("CEF OSR"),
-                     QStringLiteral("切换组件系统 (CEF OSR 引擎)。开启时加载小组件；关闭时彻底卸载所有小组件与 WebView，仅保留原生桌面。"),
-                     m_linWidgetEnabledToggle);
 
     m_linWidgetBoundsToggle = new FluentToggleSwitch(page);
-    m_linWidgetBoundsToggle->setChecked(settings.value("LinWidgets/ShowWebViewBounds", false).toBool(), false);
+    m_linWidgetBoundsToggle->setChecked(settings.value("LinWidgets/ShowWidgetBounds", false).toBool(), false);
     connect(m_linWidgetBoundsToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
         QSettings s(debugConfigPath(), QSettings::IniFormat);
-        s.setValue("LinWidgets/ShowWebViewBounds", checked);
+        s.setValue("LinWidgets/ShowWidgetBounds", checked);
+        s.remove("LinWidgets/ShowWebViewBounds");
         s.sync();
         if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-            manager->setShowWebViewBounds(checked);
+            manager->setShowWidgetBounds(checked);
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("小组件边界框可视化已开启 (CEF OSR 模式下将绘制青色虚线边框及 [CEF OSR] 标签)。")
+                ? QStringLiteral("小组件边界框可视化已开启 (青色边框及 [CEF OSR] 标签)。")
                 : QStringLiteral("小组件边界框可视化已关闭。"));
         }
     });
-    addCompactSwitch(QStringLiteral("Show Bounds"),
-                     QStringLiteral("显示小组件边界。CEF OSR 开启时会绘制青色边框并标记 [CEF OSR: ID] 以供视觉辨别。"),
-                     m_linWidgetBoundsToggle);
 
     m_linWidgetBlockedCellsToggle = new FluentToggleSwitch(page);
     m_linWidgetBlockedCellsToggle->setChecked(settings.value("LinWidgets/ShowBlockedCells", false).toBool(), false);
@@ -1858,32 +2164,52 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("LinWidget blocked grid cells overlay enabled.")
-                : QStringLiteral("LinWidget blocked grid cells overlay disabled."));
+                ? QStringLiteral("桌面占用网格高亮已开启。")
+                : QStringLiteral("桌面占用网格高亮已关闭。"));
         }
     });
-    addCompactSwitch(QStringLiteral("Occupied Cells"),
-                     QStringLiteral("Draw the desktop grid cells reserved by visible WebView widgets."),
-                     m_linWidgetBlockedCellsToggle);
-    layout->addWidget(compactSwitchPanel);
-    updateAdaptiveLayout();
 
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("CEF OSR"), QStringLiteral("切换小组件引擎"), m_linWidgetEnabledToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Show Bounds"), QStringLiteral("绘制小组件外边框"), m_linWidgetBoundsToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Occupied Cells"), QStringLiteral("绘制占用网格单元格"), m_linWidgetBlockedCellsToggle));
+    controlBarLayout->addStretch(1);
+
+    auto* refreshButton = createActionButton(QStringLiteral("Refresh"), false, false);
+    m_linWidgetsAddDevButton = createActionButton(QStringLiteral("+ Add Dev"), true, false);
+    m_linWidgetsOpenFolderButton = createActionButton(QStringLiteral("Folder"), false, false);
+    m_linWidgetsOpenLogsButton = createActionButton(QStringLiteral("Logs"), false, false);
+    m_linWidgetsPackageButton = createActionButton(QStringLiteral("Package"), false, false);
+    m_linWidgetsResetBundledButton = createActionButton(QStringLiteral("Reset Defaults"), false, false);
+    m_linWidgetsRemoveDevButton = createActionButton(QStringLiteral("Remove Dev"), false, true);
+    m_linWidgetsDeleteButton = createActionButton(QStringLiteral("Delete"), false, true);
+
+    controlBarLayout->addWidget(m_linWidgetsAddDevButton);
+    controlBarLayout->addWidget(refreshButton);
+    controlBarLayout->addWidget(m_linWidgetsResetBundledButton);
+    controlBarLayout->addWidget(m_linWidgetsOpenFolderButton);
+    controlBarLayout->addWidget(m_linWidgetsOpenLogsButton);
+
+    layout->addWidget(controlBar);
+
+    // Two-Column Split Content
     const QString listStyle = QStringLiteral(
         "QListWidget {"
         "  background: #ffffff;"
-        "  border: 1px solid rgba(15, 23, 42, 0.10);"
+        "  border: 1px solid rgba(15, 23, 42, 0.08);"
         "  border-radius: 10px;"
-        "  padding: 8px;"
+        "  padding: 6px;"
         "  font-family: %1;"
-        "  color: #111827;"
+        "  color: #0f172a;"
         "}"
         "QListWidget::item {"
-        "  min-height: 74px;"
-        "  padding: 4px;"
+        "  min-height: 68px;"
+        "  margin: 2px 0px;"
         "  border-radius: 8px;"
+        "  background: #f8fafc;"
+        "  border: 1px solid rgba(15, 23, 42, 0.05);"
         "}"
-        "QListWidget::item:hover { background: #f3f7fb; }"
-        "QListWidget::item:selected { background: #dbeafe; color: #0f172a; }")
+        "QListWidget::item:hover { background: #f1f5f9; border-color: rgba(15, 23, 42, 0.12); }"
+        "QListWidget::item:selected { background: #eff6ff; border: 1px solid #bfdbfe; }")
         .arg(AppFonts::uiCssFamily());
 
     m_linWidgetsContentGrid = new QGridLayout();
@@ -1891,86 +2217,136 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     m_linWidgetsContentGrid->setHorizontalSpacing(16);
     m_linWidgetsContentGrid->setVerticalSpacing(16);
 
+    // Left Column: Widget Lists Panel
     m_linWidgetsListsPanel = new QWidget(page);
     auto* listsLayout = new QVBoxLayout(m_linWidgetsListsPanel);
     listsLayout->setContentsMargins(0, 0, 0, 0);
-    listsLayout->setSpacing(12);
+    listsLayout->setSpacing(8);
 
-    auto* installedHeader = new QWidget(m_linWidgetsListsPanel);
-    auto* installedHeaderLayout = new QHBoxLayout(installedHeader);
-    installedHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    installedHeaderLayout->setSpacing(8);
-    installedHeaderLayout->addWidget(createPageSubtitleLabel("Installed Widgets"), 1);
-    auto* installedRefreshButton = createActionButton("Refresh", false, false);
-    installedRefreshButton->setFixedWidth(82);
-    installedHeaderLayout->addWidget(installedRefreshButton, 0, Qt::AlignRight);
-    listsLayout->addWidget(installedHeader);
-    m_installedLinWidgetsList = new QListWidget(page);
-    m_installedLinWidgetsList->setMinimumHeight(220);
+    m_linWidgetListTabBar = new QTabBar(m_linWidgetsListsPanel);
+    m_linWidgetListTabBar->setObjectName(QStringLiteral("linWidgetSubTabBar"));
+    m_linWidgetListTabBar->addTab(QString::fromUtf8(u8"\uE74C  Installed"));
+    m_linWidgetListTabBar->addTab(QString::fromUtf8(u8"\uE7B5  Development"));
+    m_linWidgetListTabBar->setDrawBase(false);
+    m_linWidgetListTabBar->setExpanding(false);
+    listsLayout->addWidget(m_linWidgetListTabBar, 0, Qt::AlignLeft);
+
+    m_linWidgetListStack = new QStackedWidget(m_linWidgetsListsPanel);
+
+    m_installedLinWidgetsList = new QListWidget(m_linWidgetListStack);
+    m_installedLinWidgetsList->setMinimumHeight(440);
     m_installedLinWidgetsList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_installedLinWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_installedLinWidgetsList->setMouseTracking(true);
     m_installedLinWidgetsList->setStyleSheet(listStyle);
-    listsLayout->addWidget(m_installedLinWidgetsList, 1);
+    m_linWidgetListStack->addWidget(m_installedLinWidgetsList);
 
-    auto* devHeader = new QWidget(m_linWidgetsListsPanel);
-    auto* devHeaderLayout = new QHBoxLayout(devHeader);
-    devHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    devHeaderLayout->setSpacing(8);
-    devHeaderLayout->addWidget(createPageSubtitleLabel("Development Projects"), 1);
-    auto* devRefreshButton = createActionButton("Refresh", false, false);
-    devRefreshButton->setFixedWidth(82);
-    devHeaderLayout->addWidget(devRefreshButton, 0, Qt::AlignRight);
-    listsLayout->addWidget(devHeader);
-    m_developmentLinWidgetsList = new QListWidget(page);
-    m_developmentLinWidgetsList->setMinimumHeight(220);
+    m_developmentLinWidgetsList = new QListWidget(m_linWidgetListStack);
+    m_developmentLinWidgetsList->setMinimumHeight(440);
     m_developmentLinWidgetsList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_developmentLinWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_developmentLinWidgetsList->setMouseTracking(true);
     m_developmentLinWidgetsList->setStyleSheet(listStyle);
-    listsLayout->addWidget(m_developmentLinWidgetsList, 1);
+    m_linWidgetListStack->addWidget(m_developmentLinWidgetsList);
 
+    listsLayout->addWidget(m_linWidgetListStack, 1);
+
+    connect(m_linWidgetListTabBar, &QTabBar::currentChanged, m_linWidgetListStack, &QStackedWidget::setCurrentIndex);
+
+    // Right Column: Inspector & Live Console Log
     m_linWidgetsLogPanel = new QWidget(page);
-    auto* logLayout = new QVBoxLayout(m_linWidgetsLogPanel);
-    logLayout->setContentsMargins(0, 0, 0, 0);
-    logLayout->setSpacing(10);
-    m_linWidgetsLogTitleLabel = createPageSubtitleLabel("Live Log");
-    logLayout->addWidget(m_linWidgetsLogTitleLabel);
-    m_linWidgetsLogView = new QPlainTextEdit(page);
+    auto* rightColLayout = new QVBoxLayout(m_linWidgetsLogPanel);
+    rightColLayout->setContentsMargins(0, 0, 0, 0);
+    rightColLayout->setSpacing(12);
+
+    // Inspector Card
+    auto* inspectorCard = new QWidget(m_linWidgetsLogPanel);
+    inspectorCard->setObjectName(QStringLiteral("linWidgetInspectorCard"));
+    inspectorCard->setStyleSheet(QStringLiteral(
+        "QWidget#linWidgetInspectorCard {"
+        "  background: #ffffff;"
+        "  border: 1px solid rgba(15, 23, 42, 0.08);"
+        "  border-radius: 10px;"
+        "}"));
+    auto* inspectorLayout = new QVBoxLayout(inspectorCard);
+    inspectorLayout->setContentsMargins(14, 12, 14, 12);
+    inspectorLayout->setSpacing(8);
+
+    auto* inspectorHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7B5"), QStringLiteral("Widget Inspector & Permissions"), QStringLiteral("Selected widget details"));
+    inspectorLayout->addWidget(inspectorHeader);
+
+    m_linWidgetPermissionsLabel = new QLabel(inspectorCard);
+    m_linWidgetPermissionsLabel->setWordWrap(true);
+    m_linWidgetPermissionsLabel->setStyleSheet(QStringLiteral(
+        "font-family: %1; font-size: 11px; color: #475569;"
+    ).arg(AppFonts::uiCssFamily()));
+    inspectorLayout->addWidget(m_linWidgetPermissionsLabel);
+
+    auto* permissionRow = new QHBoxLayout();
+    permissionRow->setContentsMargins(0, 0, 0, 0);
+    permissionRow->setSpacing(12);
+    m_linWidgetNetworkPermissionCheck = new QCheckBox(QStringLiteral("network"), inspectorCard);
+    m_linWidgetStoragePermissionCheck = new QCheckBox(QStringLiteral("storage"), inspectorCard);
+    m_linWidgetDesktopPermissionCheck = new QCheckBox(QStringLiteral("desktop"), inspectorCard);
+    permissionRow->addWidget(m_linWidgetNetworkPermissionCheck);
+    permissionRow->addWidget(m_linWidgetStoragePermissionCheck);
+    permissionRow->addWidget(m_linWidgetDesktopPermissionCheck);
+    permissionRow->addStretch(1);
+
+    permissionRow->addWidget(m_linWidgetsPackageButton);
+    permissionRow->addWidget(m_linWidgetsRemoveDevButton);
+    permissionRow->addWidget(m_linWidgetsDeleteButton);
+    inspectorLayout->addLayout(permissionRow);
+
+    rightColLayout->addWidget(inspectorCard);
+
+    // Live Console Log Card
+    auto* logCard = new QWidget(m_linWidgetsLogPanel);
+    logCard->setObjectName(QStringLiteral("linWidgetLogCard"));
+    logCard->setStyleSheet(QStringLiteral(
+        "QWidget#linWidgetLogCard {"
+        "  background: #ffffff;"
+        "  border: 1px solid rgba(15, 23, 42, 0.08);"
+        "  border-radius: 10px;"
+        "}"));
+    auto* logCardLayout = new QVBoxLayout(logCard);
+    logCardLayout->setContentsMargins(14, 12, 14, 12);
+    logCardLayout->setSpacing(8);
+
+    auto* logHeaderRow = new QHBoxLayout();
+    logHeaderRow->setContentsMargins(0, 0, 0, 0);
+    logHeaderRow->setSpacing(8);
+    m_linWidgetsLogTitleLabel = createPageSubtitleLabel("Live Console Log");
+    logHeaderRow->addWidget(m_linWidgetsLogTitleLabel);
+    logHeaderRow->addStretch(1);
+
+    auto* clearLogBtn = createActionButton(QStringLiteral("Clear View"), false, false);
+    clearLogBtn->setFixedHeight(26);
+    clearLogBtn->setMinimumWidth(72);
+    connect(clearLogBtn, &QPushButton::clicked, this, [this]() {
+        if (m_linWidgetsLogView) {
+            m_linWidgetsLogView->clear();
+        }
+    });
+    logHeaderRow->addWidget(clearLogBtn);
+    logCardLayout->addLayout(logHeaderRow);
+
+    m_linWidgetsLogView = new QPlainTextEdit(logCard);
     m_linWidgetsLogView->setReadOnly(true);
-    m_linWidgetsLogView->setMinimumWidth(260);
-    m_linWidgetsLogView->setMinimumHeight(320);
+    m_linWidgetsLogView->setMinimumHeight(280);
     m_linWidgetsLogView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_linWidgetsLogView->setStyleSheet(QStringLiteral(
         "QPlainTextEdit {"
         "  background: #0f172a;"
-        "  color: #dbeafe;"
-        "  border: 1px solid rgba(15, 23, 42, 0.16);"
-        "  border-radius: 10px;"
+        "  color: #e2e8f0;"
+        "  border: 1px solid rgba(15, 23, 42, 0.20);"
+        "  border-radius: 8px;"
         "  padding: 10px;"
         "  font-family: Consolas, 'Cascadia Mono', monospace;"
         "  font-size: 12px;"
         "}"));
-    logLayout->addWidget(m_linWidgetsLogView, 1);
-
-    m_linWidgetPermissionsLabel = new QLabel(page);
-    m_linWidgetPermissionsLabel->setWordWrap(true);
-    m_linWidgetPermissionsLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 12px; color: #374151;")
-        .arg(AppFonts::uiCssFamily()));
-    logLayout->addWidget(m_linWidgetPermissionsLabel);
-
-    auto* permissionRow = new QHBoxLayout();
-    permissionRow->setContentsMargins(0, 0, 0, 0);
-    permissionRow->setSpacing(10);
-    m_linWidgetNetworkPermissionCheck = new QCheckBox(QStringLiteral("network"), page);
-    m_linWidgetStoragePermissionCheck = new QCheckBox(QStringLiteral("storage"), page);
-    m_linWidgetDesktopPermissionCheck = new QCheckBox(QStringLiteral("desktop"), page);
-    permissionRow->addWidget(m_linWidgetNetworkPermissionCheck);
-    permissionRow->addWidget(m_linWidgetStoragePermissionCheck);
-    permissionRow->addWidget(m_linWidgetDesktopPermissionCheck);
-    permissionRow->addStretch();
-    logLayout->addLayout(permissionRow);
+    logCardLayout->addWidget(m_linWidgetsLogView, 1);
+    rightColLayout->addWidget(logCard, 1);
 
     layout->addLayout(m_linWidgetsContentGrid, 1);
 
@@ -1996,74 +2372,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     connect(m_linWidgetDesktopPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
         setSelectedLinWidgetGrantedPermission(QStringLiteral("desktop"), checked);
     });
-    m_linWidgetsActionGroupsGrid = new QGridLayout();
-    m_linWidgetsActionGroupsGrid->setContentsMargins(0, 0, 0, 0);
-    m_linWidgetsActionGroupsGrid->setHorizontalSpacing(12);
-    m_linWidgetsActionGroupsGrid->setVerticalSpacing(12);
 
-    auto* refreshButton = createActionButton("Refresh List", false, false);
-    m_linWidgetsAddDevButton = createActionButton("Add Dev Project", false, false);
-    m_linWidgetsOpenFolderButton = createActionButton("Open Folder", false, false);
-    m_linWidgetsOpenLogsButton = createActionButton("Open Logs", false, false);
-    m_linWidgetsPackageButton = createActionButton("Package to Roaming", false, false);
-    m_linWidgetsResetBundledButton = createActionButton("Reset Bundled", false, true);
-    m_linWidgetsRemoveDevButton = createActionButton("Remove Dev", false, true);
-    m_linWidgetsDeleteButton = createActionButton("Delete Widget", false, true);
-
-    auto createActionGroup = [this, page](const QString& title, const QList<QPushButton*>& buttons) {
-        auto* group = new QWidget(page);
-        group->setObjectName(QStringLiteral("linWidgetActionGroup"));
-        group->setAttribute(Qt::WA_StyledBackground, true);
-        group->setStyleSheet(QStringLiteral(
-            "QWidget#linWidgetActionGroup {"
-            "  background: #ffffff;"
-            "  border: 1px solid rgba(15, 23, 42, 0.10);"
-            "  border-radius: 10px;"
-            "}"));
-
-        auto* groupLayout = new QVBoxLayout(group);
-        groupLayout->setContentsMargins(12, 10, 12, 12);
-        groupLayout->setSpacing(8);
-
-        auto* titleLabel = new QLabel(title, group);
-        titleLabel->setStyleSheet(QStringLiteral(
-            "font-family: %1; font-size: 12px; font-weight: 700; color: #4b5563;")
-            .arg(AppFonts::uiCssFamily()));
-        groupLayout->addWidget(titleLabel);
-
-        auto* buttonGrid = new QGridLayout();
-        buttonGrid->setContentsMargins(0, 0, 0, 0);
-        buttonGrid->setHorizontalSpacing(8);
-        buttonGrid->setVerticalSpacing(8);
-        for (int i = 0; i < buttons.size(); ++i) {
-            QPushButton* button = buttons.at(i);
-            button->setParent(group);
-            button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-            buttonGrid->addWidget(button, i / 2, i % 2);
-        }
-        groupLayout->addLayout(buttonGrid);
-        groupLayout->addStretch();
-        group->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        return group;
-    };
-
-    m_linWidgetActionGroups = {
-        createActionGroup(QStringLiteral("List"), { refreshButton, m_linWidgetsAddDevButton }),
-        createActionGroup(QStringLiteral("Files"), { m_linWidgetsOpenFolderButton, m_linWidgetsOpenLogsButton, m_linWidgetsPackageButton }),
-        createActionGroup(QStringLiteral("Remove / Reset"), { m_linWidgetsRemoveDevButton, m_linWidgetsResetBundledButton, m_linWidgetsDeleteButton })
-    };
-    layout->addLayout(m_linWidgetsActionGroupsGrid);
-    updateAdaptiveLayout();
-
-    m_linWidgetsPageStatusLabel = new QLabel(page);
-    m_linWidgetsPageStatusLabel->setWordWrap(true);
-    m_linWidgetsPageStatusLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 13px; color: #374151;")
-        .arg(AppFonts::uiCssFamily()));
-    layout->addWidget(m_linWidgetsPageStatusLabel);
-
-    connect(installedRefreshButton, &QPushButton::clicked, this, &ListViewDebugPanel::reloadLinWidgetsList);
-    connect(devRefreshButton, &QPushButton::clicked, this, &ListViewDebugPanel::reloadLinWidgetsList);
     connect(refreshButton, &QPushButton::clicked, this, &ListViewDebugPanel::reloadLinWidgetsList);
     connect(m_installedLinWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* current) {
         if (current && m_developmentLinWidgetsList) {
@@ -2170,7 +2479,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             registryKey,
             m_linWidgetInstancesByPackage.value(linWidgetPackageKey(packagePath)));
         if (!runningInstanceId.isEmpty()) {
-            m_linWidgetsPageStatusLabel->setText("Unload the widget from WebView before deleting it.");
+            m_linWidgetsPageStatusLabel->setText("Unload the widget before deleting it.");
             updateLinWidgetsButtons();
             return;
         }
@@ -2195,6 +2504,8 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         m_linWidgetsPageStatusLabel->setText("Deleted widget: " + registryId + ". Folder: " + packagePath);
         reloadLinWidgetsList();
     });
+
+    updateAdaptiveLayout();
     reloadLinWidgetsList();
     updateLinWidgetLogViewer();
     return page;
@@ -2711,44 +3022,6 @@ QWidget* ListViewDebugPanel::createLayoutPage() {
     return page;
 }
 
-QWidget* ListViewDebugPanel::createTextDiagnosticsPage() {
-    auto* page = new QWidget();
-    auto* layout = new QVBoxLayout(page);
-    layout->setContentsMargins(32, 32, 32, 32);
-    layout->setSpacing(16);
-
-    layout->addWidget(createPageTitleLabel("Text Rendering Diagnostics"));
-    layout->addWidget(createPageSubtitleLabel("Preview the desktop text renderer and tune glow and shadow parameters."));
-
-    m_textPreview = new SoftDesktopTextPreview();
-    QFont previewFont("Segoe UI");
-    previewFont.setPixelSize(36);
-    m_textPreview->setPreviewFont(previewFont);
-    m_textPreview->setText("New Text Document.txt");
-    m_textPreview->setMinimumHeight(100);
-    layout->addWidget(m_textPreview);
-
-    auto addSlider = [&](const QString& label, int min, int max, QSlider*& slider, QLabel*& val) {
-        layout->addWidget(createSliderSettingRow(label, min, max, slider, val));
-        connect(slider, &QSlider::valueChanged, this, [this](int){ 
-            updateLabels(); 
-            applyTextPreviewOptions(); 
-        });
-    };
-
-    addSlider("Large Glow Radius", 0, 16, m_largeGlowSlider, m_largeGlowValueLabel);
-    addSlider("Tight Glow Radius", 0, 12, m_tightGlowSlider, m_tightGlowValueLabel);
-    addSlider("Glow Alpha", 0, 255, m_glowAlphaSlider, m_glowAlphaValueLabel);
-    addSlider("Inner Shadow Alpha", 0, 255, m_innerAlphaSlider, m_innerAlphaValueLabel);
-    addSlider("Glow Offset X", -8, 8, m_glowOffsetXSlider, m_glowOffsetXValueLabel);
-    addSlider("Glow Offset Y", -8, 8, m_glowOffsetYSlider, m_glowOffsetYValueLabel);
-    addSlider("Inner Offset X", -8, 8, m_innerOffsetXSlider, m_innerOffsetXValueLabel);
-    addSlider("Inner Offset Y", -8, 8, m_innerOffsetYSlider, m_innerOffsetYValueLabel);
-
-    layout->addStretch();
-    return page;
-}
-
 void ListViewDebugPanel::updateLabels()
 {
     updateOpenGLStatus();
@@ -2758,30 +3031,6 @@ void ListViewDebugPanel::updateLabels()
     }
     if (m_colValueLabel) {
         m_colValueLabel->setText(QString::number(m_colSlider ? m_colSlider->value() : 0));
-    }
-    if (m_largeGlowValueLabel) {
-        m_largeGlowValueLabel->setText(QString::number(m_largeGlowSlider ? m_largeGlowSlider->value() : 0));
-    }
-    if (m_tightGlowValueLabel) {
-        m_tightGlowValueLabel->setText(QString::number(m_tightGlowSlider ? m_tightGlowSlider->value() : 0));
-    }
-    if (m_glowAlphaValueLabel) {
-        m_glowAlphaValueLabel->setText(QString::number(m_glowAlphaSlider ? m_glowAlphaSlider->value() : 0));
-    }
-    if (m_innerAlphaValueLabel) {
-        m_innerAlphaValueLabel->setText(QString::number(m_innerAlphaSlider ? m_innerAlphaSlider->value() : 0));
-    }
-    if (m_glowOffsetXValueLabel) {
-        m_glowOffsetXValueLabel->setText(QString::number(m_glowOffsetXSlider ? m_glowOffsetXSlider->value() : 0));
-    }
-    if (m_glowOffsetYValueLabel) {
-        m_glowOffsetYValueLabel->setText(QString::number(m_glowOffsetYSlider ? m_glowOffsetYSlider->value() : 0));
-    }
-    if (m_innerOffsetXValueLabel) {
-        m_innerOffsetXValueLabel->setText(QString::number(m_innerOffsetXSlider ? m_innerOffsetXSlider->value() : 0));
-    }
-    if (m_innerOffsetYValueLabel) {
-        m_innerOffsetYValueLabel->setText(QString::number(m_innerOffsetYSlider ? m_innerOffsetYSlider->value() : 0));
     }
 }
 
@@ -2808,27 +3057,6 @@ void ListViewDebugPanel::updateOpenGLStatus()
     }
 
     m_openGLStatusLabel->setText(lines.join("\n"));
-}
-
-void ListViewDebugPanel::applyTextPreviewOptions()
-{
-    if (!m_textPreview) {
-        return;
-    }
-
-    SoftDesktopTextRenderer::Options options = m_textPreview->rendererOptions();
-    options.textColor = QColor(255, 255, 255);
-    options.glowColor = QColor(0, 0, 0, m_glowAlphaSlider ? m_glowAlphaSlider->value() : 210);
-    options.innerShadowColor = QColor(0, 0, 0, m_innerAlphaSlider ? m_innerAlphaSlider->value() : 155);
-    options.largeGlowRadius = m_largeGlowSlider ? m_largeGlowSlider->value() : 6;
-    options.tightGlowRadius = m_tightGlowSlider ? m_tightGlowSlider->value() : 2;
-    options.glowOffset = QPoint(m_glowOffsetXSlider ? m_glowOffsetXSlider->value() : 0,
-                                m_glowOffsetYSlider ? m_glowOffsetYSlider->value() : 1);
-    options.innerShadowOffset = QPoint(m_innerOffsetXSlider ? m_innerOffsetXSlider->value() : 0,
-                                       m_innerOffsetYSlider ? m_innerOffsetYSlider->value() : 1);
-    options.lineSpacingAdjust = -2;
-    options.alignment = Qt::AlignHCenter | Qt::AlignVCenter;
-    m_textPreview->setRendererOptions(options);
 }
 
 

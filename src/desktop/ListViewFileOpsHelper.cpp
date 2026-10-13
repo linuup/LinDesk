@@ -2,6 +2,8 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QRegularExpression>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -1303,6 +1305,66 @@ QString ListViewFileOpsHelper::uniqueNewFolderPath(const QString& targetDir, con
     } while (CSystemApi::GetPathType(candidate) != PathType::InvalidPath);
 
     return QDir::toNativeSeparators(candidate);
+}
+
+QString ListViewFileOpsHelper::normalizeNewFolderCasePath(const QString& path)
+{
+    return QDir::toNativeSeparators(path);
+#if 0
+
+    QFileInfo fi(path);
+    if (!fi.exists() || !fi.isDir()) {
+        return path;
+    }
+
+    const QString oldName = fi.fileName();
+    QString targetName;
+
+    if (oldName.compare(QStringLiteral("New folder"), Qt::CaseInsensitive) == 0 && oldName != QStringLiteral("New Folder")) {
+        targetName = QStringLiteral("New Folder");
+    } else {
+        static const QRegularExpression re(QStringLiteral("^New folder \\((\\d+)\\)$"), QRegularExpression::CaseInsensitiveOption);
+        const auto match = re.match(oldName);
+        if (match.hasMatch()) {
+            const QString expectedName = QStringLiteral("New Folder (%1)").arg(match.captured(1));
+            if (oldName != expectedName) {
+                targetName = expectedName;
+            }
+        }
+    }
+
+    if (targetName.isEmpty()) {
+        return QDir::toNativeSeparators(path);
+    }
+
+    const QString targetPath = fi.dir().filePath(targetName);
+    const QString nativeTarget = QDir::toNativeSeparators(targetPath);
+    const QString nativeSource = QDir::toNativeSeparators(path);
+
+    // Try direct MoveFileEx with MOVEFILE_REPLACE_EXISTING
+    if (MoveFileExW(reinterpret_cast<LPCWSTR>(nativeSource.utf16()),
+                    reinterpret_cast<LPCWSTR>(nativeTarget.utf16()),
+                    MOVEFILE_REPLACE_EXISTING)) {
+        return nativeTarget;
+    }
+
+    // Fallback: intermediate rename
+    const QString tempPath = fi.dir().filePath(QStringLiteral("_lindesk_tmp_nf_%1").arg(QDateTime::currentMSecsSinceEpoch()));
+    const QString nativeTemp = QDir::toNativeSeparators(tempPath);
+    if (MoveFileExW(reinterpret_cast<LPCWSTR>(nativeSource.utf16()),
+                    reinterpret_cast<LPCWSTR>(nativeTemp.utf16()),
+                    0)) {
+        if (MoveFileExW(reinterpret_cast<LPCWSTR>(nativeTemp.utf16()),
+                        reinterpret_cast<LPCWSTR>(nativeTarget.utf16()),
+                        0)) {
+            return nativeTarget;
+        }
+        MoveFileExW(reinterpret_cast<LPCWSTR>(nativeTemp.utf16()),
+                    reinterpret_cast<LPCWSTR>(nativeSource.utf16()),
+                    0);
+    }
+
+#endif
 }
 
 QString ListViewFileOpsHelper::uniqueShortcutPathForTarget(const QString& sourcePath, const QString& targetDir)

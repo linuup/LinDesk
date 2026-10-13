@@ -9,6 +9,9 @@
 #include <QPointer>
 #include <QVariant>
 
+#include <QFuture>
+#include <QHash>
+
 class LinBox;
 class ListView;
 
@@ -38,12 +41,13 @@ public:
     
     // 数据持久化
     void saveAll();
-    void saveAll(const QString& persistencePath, bool enablePersistence,
-                 const QMap<QString, QMap<QString, QVariant>>& iconPositions,
-                 int viewMode, int sortType, int preAutoSort, int iconPosMode,
-                 bool autoArrange, bool gridAlignment,
-                 bool showDesktopIcons, bool doubleClickHideIcons,
-                 bool showShortCutArrow);
+    QFuture<bool> saveAll(const QString& persistencePath, bool enablePersistence,
+                          const QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                          int viewMode, int sortType, int preAutoSort, int iconPosMode,
+                          bool autoArrange, bool gridAlignment,
+                          bool showDesktopIcons, bool doubleClickHideIcons,
+                          bool showShortCutArrow,
+                          bool async = true);
     void loadAll(bool autoUpdateState = true);
     void loadAll(const QString& persistencePath, bool autoUpdateState,
                  bool& enablePersistence, QMap<QString, QString>& iconShowRules,
@@ -52,10 +56,16 @@ public:
                  bool& showDesktopIcons, bool& doubleClickHideIcons,
                  bool& showShortCutArrow,
                  QVector<QMap<QString, QVariant>>& boxData,
-                 QMap<QString, QMap<QString, QVariant>>& iconPositions);
+                 QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                 int* droppedCount = nullptr);
     void requestSave();
+    void requestImmediateSave();
     void setPersistencePath(const QString& path);
     QString persistencePath() const { return m_persistencePath; }
+
+    // 条目级校验与净化辅助
+    static bool validateBoxData(const QJsonObject& obj, QSet<QString>& seenBoxIds, QMap<QString, QVariant>& outData, int& droppedCount);
+    static bool validateIconPosition(const QJsonObject& obj, const QSet<QString>& validBoxIds, QString& outPath, QMap<QString, QVariant>& outPos, int& droppedCount);
     
     // 文件归属查询
     QString getBoxIdForItem(const QString& filePath) const;
@@ -68,12 +78,20 @@ public:
     void setAllBoxesGlassEffect(bool enabled);
     void setAllBoxesBackgroundColor(const QColor& color);
     void setAllBoxesBackgroundOpacity(float opacity);
+    void applyUnifiedStyleToBox(LinBox* box);
+    QColor unifiedBackgroundColor() const { return m_unifiedBackgroundColor; }
+    float unifiedBackgroundOpacity() const { return m_unifiedBackgroundOpacity; }
+    bool unifiedGlassEffect() const { return m_unifiedGlassEffect; }
+    void setUnifiedBackgroundColor(const QColor& color) { m_unifiedBackgroundColor = color; }
+    void setUnifiedBackgroundOpacity(float opacity) { m_unifiedBackgroundOpacity = opacity; }
+    void setUnifiedGlassEffect(bool enabled) { m_unifiedGlassEffect = enabled; }
 
 signals:
     void boxCreated(LinBox* box);
     void boxDestroyed(LinBox* box);
     void boxDataChanged();
     void saveRequested();
+    void saveFinished(bool success);
 
 private:
     explicit BoxManager(QObject* parent = nullptr);
@@ -83,10 +101,16 @@ private:
     
     static BoxManager* m_instance;
     QVector<QPointer<LinBox>> m_boxes;
+    QHash<QString, QPointer<LinBox>> m_boxIdIndex;
     QTimer* m_saveTimer;
     
     // 持久化路径
     QString m_persistencePath;
+    
+    // 统一盒子外观设置
+    QColor m_unifiedBackgroundColor = QColor("#63A8F5");
+    float m_unifiedBackgroundOpacity = 0.28f;
+    bool m_unifiedGlassEffect = false;
     
     // 禁止拷贝
     Q_DISABLE_COPY(BoxManager)

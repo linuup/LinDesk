@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinDesk 组件系统独立进程方案</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232b2b2b'/%3E%3Crect x='7' y='9' width='18' height='14' rx='2' fill='none' stroke='%23f5f5f5' stroke-width='2'/%3E%3Ccircle cx='13' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3Ccircle cx='19' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --text:#1f2328;
+    --text-sub:#57606a;
+    --line:#d0d7de;
+    --line-soft:#eaeef2;
+    --bg:#ffffff;
+    --accent:#0969da;
+    --warn:#9a6700;
+    --ok:#1a7f37;
+    --code-bg:#f6f8fa;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    font-size:15px;line-height:1.75;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 20px 64px;}
+  header.doc-head{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:26px;margin:0 0 8px;font-weight:700;}
+  .meta{color:var(--text-sub);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 16px;}
+  h2{font-size:20px;margin:40px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line-soft);}
+  h3{font-size:16px;margin:26px 0 10px;}
+  p{margin:10px 0;}
+  ul,ol{margin:10px 0;padding-left:24px;}
+  li{margin:4px 0;}
+  code{
+    font-family:Consolas,"Courier New",monospace;
+    font-size:13px;background:var(--code-bg);
+    border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px;
+    overflow-wrap:anywhere;
+  }
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;table-layout:fixed;}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--code-bg);font-weight:600;white-space:nowrap;}
+  .tbl-scroll{overflow-x:auto;}
+  .note{
+    background:var(--code-bg);border:1px solid var(--line-soft);
+    border-left:3px solid var(--accent);padding:10px 14px;margin:14px 0;font-size:14px;
+  }
+  .note.warn{border-left-color:var(--warn);background:#fff8e5;}
+  .tag{
+    display:inline-block;font-size:12px;border-radius:10px;padding:1px 8px;
+    margin-left:6px;vertical-align:1px;white-space:nowrap;
+  }
+  .tag.p0{background:#fff1f0;color:#cf222e;border:1px solid #ff8182;}
+  .tag.p1{background:#fff8c5;color:#7d4e00;border:1px solid #d4a72c;}
+  .tag.p2{background:#ddf4ff;color:#0969da;border:1px solid #54aeff;}
+  @media (max-width:560px){
+    body{font-size:14px;}
+    h1{font-size:22px;}
+    h2{font-size:18px;}
+    .wrap{padding:24px 14px 48px;}
+  }
+</style>
+<style>
+  .doc-nav{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 24px;padding:10px 12px;background:#f6f8fa;border:1px solid #eaeef2;border-radius:4px;}
+  .doc-nav a{font-size:13px;color:#57606a;text-decoration:none;padding:2px 10px;border-radius:3px;white-space:nowrap;}
+  .doc-nav a:hover{background:#eaeef2;color:#1f2328;}
+  .doc-nav a.active{background:#0969da;color:#fff;font-weight:600;}
+  .arch{display:flex;flex-direction:column;gap:8px;margin:14px 0;}
+  .arch-row{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;}
+  .arch-box{border:1px solid var(--line);border-radius:4px;padding:8px 12px;background:var(--code-bg);font-size:13px;min-width:120px;}
+  .arch-box b{display:block;font-size:13px;}
+  .arch-box span{color:var(--text-sub);font-size:12px;}
+  .arch-arrow{color:var(--text-sub);font-size:13px;align-self:center;white-space:nowrap;}
+  .arch-note{font-size:12px;color:var(--text-sub);margin-top:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="doc-nav">
+    <a href="LinDesk_Docs_Index.html">文档中心</a>
+    <a href="LinDesk_Product_Intro.html">产品介绍</a>
+    <a href="LinDesk_Module_Guide.html">模块介绍</a>
+    <a href="LinDesk_Architecture_Guide.html">架构指南</a>
+    <a href="LinDesk_Todo.html">任务清单</a>
+    <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
+    <a href="LinDesk_Persistence_Plan.html">持久化方案</a>
+    <a href="LinDesk_Widget_Host_Plan.html" class="active">组件独立进程</a>
+</nav>
+
+<header class="doc-head">
+  <h1>LinDesk 组件系统独立进程方案</h1>
+  <div class="meta">
+    <span>读者：antigravity / 开发者</span>
+    <span>性质：架构改造任务书</span>
+    <span>范围：组件系统（linwidget + CEF OSR）从主程序分离为独立进程</span>
+    <span>更新：2026-10-13</span>
+  </div>
+</header>
+
+<section>
+  <h2>1. 背景与目标</h2>
+  <p>组件系统（HTML 小组件 + 壁纸）当前编译进主程序 <code>LinDesk.exe</code>，CEF（Chromium Embedded Framework）随主包分发。目标：<strong>组件系统独立为单独进程 <code>LinWidgetHost.exe</code>，用户按需下载组件包启用</strong>，主程序默认不携带 CEF 与组件代码。</p>
+  <ul>
+    <li><strong>主程序瘦身</strong>：安装包不含 CEF（libcef.dll + Resources + 子进程约 150MB+），启动更轻、升级更快；</li>
+    <li><strong>按需启用</strong>：用户下载组件包 → 放入指定目录 → 主程序自动拉起 Host；未安装则组件入口隐藏、主程序功能完整；</li>
+    <li><strong>崩溃隔离</strong>：组件/CEF 崩溃只影响 Host 进程，主程序检测后自动重启 Host，桌面不崩；</li>
+    <li><strong>独立演进</strong>：组件系统独立仓库、独立版本、独立发布节奏，与主程序仅通过 IPC 协议通信（无 ABI 耦合）。</li>
+    <li><strong>主程序可脱离组件独立运行</strong>：组件为可选叠加层，未安装/停用时主程序桌面功能完整，安装与移除对主程序零影响。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>2. 现状盘点（已核实的耦合事实）</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:22%"><col style="width:46%"><col style="width:32%"></colgroup>
+    <tr><th>耦合点</th><th>现状</th><th>分离方式</th></tr>
+    <tr><td>构建</td><td>组件代码 <code>src/desktop/widgets/linwidget/</code> + <code>cef/</code> 全部编译进 <code>LinDesk.exe</code>（CMakeLists:117-138 glob 收源；CEF 条件编译 + POST_BUILD 拷资源 :157-215）</td><td>移入独立工程 <code>LinWidgetHost</code>，主程序删源删 CEF</td></tr>
+    <tr><td>渲染合成</td><td>CEF OSR 帧 → <code>frameReady(QImage)</code> → <code>LinWidgetCanvasWidget::updateWidgetFrame</code> 缓存 → ListView::paintEvent 调 <code>renderCanvas(painter, dirtyRegion)</code> 合成进桌面画布（ListView.cpp:1344-1345/:1381-1382）</td><td>渲染与显示全在 Host 进程内完成（组件=透明窗口贴 OSR 帧），主程序删除 canvas 合成调用</td></tr>
+    <tr><td>输入转发</td><td>ListView 捕获鼠标/滚轮/键盘/IME 后逐事件转发给 <code>WidgetManager::forward*Event</code>（ListView.cpp:1446/1540-1604/1786/1813/1834/2033/2042 等 10+ 处）</td><td>组件窗口为独立 HWND 直接接收 Windows 消息，主程序转发点全部删除</td></tr>
+    <tr><td>生命周期</td><td>CEF 由 <code>WidgetManager</code> 懒初始化（WidgetManager.cpp:722/1180/1481 <code>CefManager::initialize()</code>）；main.cpp:140 <code>CefManager::shutdown()</code></td><td>CEF 初始化/关闭整体迁入 Host 进程（内部逻辑不变）</td></tr>
+    <tr><td>业务调用</td><td><code>WidgetManager</code> 被主程序 89 处直接调用（SettingUI 组件页 ~15 处、ListView 交互、LinBox 组件右键、DebugPanel）</td><td>改为 <code>WidgetHostClient</code>（IPC 客户端）封装；设置 UI 迁 Host</td></tr>
+    <tr><td>数据/配置</td><td>组件注册表 <code>LinWidgets/registry.json</code>、存储 <code>LinWidgetsData/</code>、壁纸 <code>LinWallpapers/</code>（AppPaths，用户数据目录）</td><td>归 Host 进程读写（两进程同用户，路径规则复制），主程序不再接触</td></tr>
+    <tr><td>壁纸</td><td><code>startWallpaper</code> 为 stub（"not yet supported"，WidgetManager.cpp:2169-2178）</td><td>无存量迁移负担，直接按新架构设计（Host 全屏窗口）</td></tr>
+  </table>
+  </div>
+  <p class="note"><strong>关键利好</strong>：CEF 生命周期完全在组件系统内部（WidgetManager 懒初始化、无主程序强依赖）；渲染合成仅 2 处调用；输入转发全部集中在 ListView 一处文件——分离成本集中在「接口收敛 + 设置 UI 迁移」，渲染与生命周期是自然搬迁。</p>
+</section>
+
+<section>
+  <h2>3. 目标架构</h2>
+  <div class="arch">
+    <div class="arch-row">
+      <div class="arch-box"><b>LinDesk.exe</b><span>桌面/图标/格子/菜单/设置<br>WidgetHostClient（IPC+进程管理）<br>无 CEF、无组件代码</span></div>
+      <div class="arch-arrow">◄── QLocalSocket IPC ──►</div>
+      <div class="arch-box"><b>LinWidgetHost.exe</b><span>CEF 初始化/子进程<br>WidgetManager 全部逻辑<br>组件透明窗口（贴 OSR 帧）<br>壁纸全屏窗口</span></div>
+      <div class="arch-arrow">└── 拉起/监控/崩溃重启 ──┘</div>
+    </div>
+    <div class="arch-note">主程序零渲染、零输入转发；组件/壁纸窗口为 Host 进程的独立 HWND，插入桌面层级。</div>
+  </div>
+
+  <h3>3.1 核心设计决策：渲染与显示全在 Host 内</h3>
+  <p>现有渲染链「OSR 帧 → 主程序 canvas 缓存 → ListView paintEvent 合成」中，帧缓冲只在主进程内流转。独立进程后若继续「OSR 帧 → 跨进程共享内存 → 主程序合成」，需要新写帧传输协议（共享内存 + dirty rect + 帧版本 + 同步），复杂度与性能损耗都高。</p>
+  <p><strong>决策：不跨进程传帧。</strong>Host 进程内完成「CEF OSR 渲染 → 帧贴到自己的透明窗口」：</p>
+  <ul>
+    <li>组件 = Host 进程创建的<strong>透明无边框窗口</strong>（<code>WS_EX_LAYERED</code> 或普通透明 QWidget），<code>frameReady</code> 的 QImage 同进程直接 <code>setPixmap/update</code>（改动小：现有 <code>frameReady</code> → canvas 缓存 → paintEvent 的链路，改为 frameReady → 窗口缓冲区 → 窗口 paintEvent）；</li>
+    <li>壁纸 = Host 进程<strong>全屏窗口</strong>（桌面底层 Z 序，图标之下），CEF 可直接窗口模式或 OSR 贴帧；</li>
+    <li>主程序不参与渲染：删除 ListView canvas 合成调用（:1344/:1381）、<code>LinWidgetCanvasWidget</code> 迁入 Host。</li>
+  </ul>
+
+  <h3>3.2 窗口层级模型</h3>
+  <ul>
+    <li><strong>子窗口化</strong>：Host 的组件窗口 <code>SetParent</code> 到主程序桌面窗口（ListView 的 HWND，通过 IPC 下发 <code>desktopLayerWindow</code>），继承现有「组件在桌面画布内」的视觉语义（跟随移动/裁剪、Z 序由父窗口统一管）；</li>
+    <li><strong>穿透</strong>：组件窗口透明区域命中返回 <code>HTTRANSPARENT</code>（或手动命中测试转发），保证点击穿透到桌面图标层；</li>
+    <li><strong>壁纸层级</strong>：全屏窗口置于桌面图标层之下（与现有 <code>desktopLayerWindow</code> 语义对齐），非交互。</li>
+  </ul>
+
+  <h3>3.3 主程序无组件独立运行（硬保证）</h3>
+  <p>「主程序在没有任何组件运行时的情况下完整可用」是架构约束，不是降级路径。三层保证：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:16%"><col style="width:84%"></colgroup>
+    <tr><th>层面</th><th>保证</th></tr>
+    <tr><td>编译期</td><td><code>linwidget/</code> 与 <code>cef/</code> 不进主程序源列表；主程序不链接 CEF、不引用 <code>WidgetManager</code> 类型。主程序二进制<strong>不含任何组件代码</strong>，不存在「带组件的降级路径」——天生独立。</td></tr>
+    <tr><td>运行期</td><td>启动时仅做一次 manifest 探测（<code>&lt;userDataDir&gt;/runtime/linwidget/manifest.json</code>），不存在 → 不拉起 Host、不建管道、不耗资源；组件相关 UI 入口（右键菜单项、设置页组件区）按 Host 在线状态动态显示。</td></tr>
+    <tr><td>行为期</td><td>桌面/图标/格子/菜单/搜索/多显示器等核心功能零依赖组件系统；组件只是叠加层。移除组件包后主程序行为与安装前完全一致。</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>4. 通信协议（QLocalSocket 控制通道）</h2>
+  <p>控制通道用 <code>QLocalSocket</code>（Windows 命名管道，进程内 Qt 直连，无网络栈）。<strong>不传输渲染帧、不逐事件转发输入</strong>，仅低频控制消息。</p>
+
+  <h3>4.1 消息类型（JSON 信封）</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:18%"><col style="width:52%"><col style="width:30%"></colgroup>
+    <tr><th>方向</th><th>消息</th><th>载荷</th></tr>
+    <tr><td>主 → Host</td><td><code>handshake</code></td><td>协议版本、主程序版本、桌面窗口 HWND（<code>desktopLayerWindow</code>）</td></tr>
+    <tr><td>主 → Host</td><td><code>sync_layout</code></td><td>组件几何/实例启停请求（<code>launchWidgetPackage / stopWidget / move / resize</code> 等价语义）</td></tr>
+    <tr><td>主 → Host</td><td><code>open_settings</code></td><td>请求 Host 弹出组件管理/设置窗口</td></tr>
+    <tr><td>主 → Host</td><td><code>ping</code></td><td>心跳（周期 5s），Host 回 <code>pong</code>；连续 3 次未回应 → 判死重启</td></tr>
+    <tr><td>Host → 主</td><td><code>status</code></td><td>CEF 就绪/组件加载状态/错误（替代原 <code>widgetError</code> 信号）</td></tr>
+    <tr><td>Host → 主</td><td><code>settings_requested</code></td><td>组件请求打开设置（替代原 <code>widgetSettingsRequested</code> 信号）</td></tr>
+    <tr><td>Host → 主</td><td><code>instance_event</code></td><td>组件启停/崩溃事件（替代原 <code>widgetLaunched/widgetStopped</code>）</td></tr>
+  </table>
+  </div>
+  <p class="note"><strong>无 ABI 耦合</strong>：两进程不共享 Qt 对象、不跨进程传 <code>QWidget*</code>/信号槽，只交换 JSON + HWND 数值——主程序与 Host 可不同 Qt 版本、不同编译器、独立升级。</p>
+</section>
+
+<section>
+  <h2>5. 生命周期管理</h2>
+  <ul>
+    <li><strong>启动</strong>：主程序启动延迟 100ms（沿用现有节奏）→ 检查组件包 manifest（<code>runtime/linwidget/manifest.json</code>）→ 存在则拉起 <code>LinWidgetHost.exe --parent &lt;pid&gt;</code> → 等待握手（超时 5s）→ 下发 <code>desktopLayerWindow</code> → 同步组件布局（<code>registry.json</code> 由 Host 自读，主程序只发"桌面就绪"通知）；</li>
+    <li><strong>CEF 初始化</strong>：Host 进程内 WidgetManager 懒初始化逻辑保留（100ms 延迟策略不变），初始化完成后 <code>status</code> 上报；</li>
+    <li><strong>退出</strong>：主程序 aboutToQuit → 发 <code>shutdown</code> → 等 Host 优雅退出（2s 超时强杀）；Host 检测父进程退出（<code>--parent</code> PID 消失）自行退出（兜底）；</li>
+    <li><strong>崩溃重启</strong>：主程序监听 Host 进程退出 + 管道断开 → 区分正常退出/崩溃 → 自动重启 Host（<strong>5 分钟内最多 3 次</strong>，超限降级为「组件停用 + 提示」，避免崩溃风暴）；</li>
+    <li><strong>未安装</strong>：无 manifest → 不拉起、组件入口隐藏（右键菜单组件项、设置页组件区显示「下载组件运行时」）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>6. 数据与配置归属</h2>
+  <ul>
+    <li>组件注册表 <code>LinWidgets/registry.json</code>、组件存储 <code>LinWidgetsData/</code>、壁纸 <code>LinWallpapers/</code>、配置 <code>config.ini</code> 中 <code>LinWallpapers</code> 段——<strong>全部由 Host 进程读写</strong>（同用户、路径规则复制到 Host 的 AppPaths 等价实现）；</li>
+    <li>主程序不再读写组件数据，消除双进程并发写同一文件的隐患；</li>
+    <li><strong>权限隔离</strong>：Host 进程内 PermissionManager 继续按组件 manifest 控制网络/存储访问；Host 崩溃重启后权限状态从 <code>registry.json</code> 恢复。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>7. 构建拆分清单</h2>
+  <h3>7.1 新工程 LinWidgetHost（独立仓库 / 独立 CMake）</h3>
+  <ol>
+    <li><strong>迁移源文件</strong>：<code>src/desktop/widgets/linwidget/*</code>（业务层 13 个文件）+ <code>src/desktop/widgets/cef/*</code>（渲染层 5 个文件 + <code>subprocess/main.cpp</code>）；</li>
+    <li><strong>目标</strong>：<code>add_executable(LinWidgetHost WIN32 main.cpp ...)</code>（Host 主程序：QLocalSocket 服务端 + WidgetManager 装配）+ <code>add_executable(LinWidgetSubprocess WIN32 ...)</code>（CEF 子进程，原 LinDeskSubprocess 更名迁入）；</li>
+    <li><strong>CEF 依赖</strong>：CEF 根目录/链接/资源拷贝逻辑从主工程搬入（原 CMakeLists:157-215 照搬）；</li>
+    <li><strong>Qt 依赖</strong>：Widgets/Core/Network/OpenGL/Svg/QuickWidgets/Concurrent（Host 不需要 WinExtras/Qml 全量）；</li>
+    <li><strong>组件包产物</strong>：<code>LinWidgetHost.exe + LinWidgetSubprocess.exe + cef/（libcef.dll、chrome_elf.dll、Resources 等全量）+ manifest.json</code> → 打包 <code>LinWidgetRuntime-vX.Y.Z.zip</code> 发布 GitHub Releases。</li>
+  </ol>
+
+  <h3>7.2 主程序瘦身</h3>
+  <ol>
+    <li><strong>删源</strong>：从 <code>SOURCES</code> 排除 <code>linwidget/</code> + <code>cef/</code>（CMakeLists:117-138 加 FILTER 或改 glob 目录）；</li>
+    <li><strong>删 CEF</strong>：CEF 条件编译块（:157-215）、CEF 链接、POST_BUILD 资源拷贝全部移除；</li>
+    <li><strong>删渲染合成</strong>：ListView.cpp:1344-1345/:1381-1382 的 <code>renderCanvas</code> 调用删除（组件窗口由 Host 自行显示）；</li>
+    <li><strong>删输入转发</strong>：ListView.cpp 中 <code>forwardMouseEvent/forwardWheelEvent/forwardKeyEvent/forwardInputMethodEvent</code> 调用点（10+ 处）删除，命中测试 <code>isWidgetAt/widgetAt</code> 改为基于 Host 上报的组件几何表（IPC <code>instance_event</code> 维护）；</li>
+    <li><strong>删 CefManager</strong>：main.cpp:140 <code>CefManager::shutdown()</code> 移除；</li>
+    <li><strong>新增 WidgetHostClient</strong>：QLocalSocket 客户端 + 进程拉起/监控/心跳 + 崩溃重启策略 + IPC 消息封装（替代 89 处 WidgetManager 直接调用中的交互类调用）。</li>
+  </ol>
+</section>
+
+<section>
+  <h2>8. 设置 UI 与用户启用流程</h2>
+  <h3>8.1 设置与 UI 迁移</h3>
+  <ul>
+    <li><strong>组件设置页（WidgetSettingsDialog + 开发工具）</strong>：整体迁入 Host 进程——组件管理窗口由 Host 自建（<code>open_settings</code> 触发），主程序设置页「组件」区只保留：状态/版本展示 + 「打开组件管理」按钮 + 「下载/安装组件运行时」引导；</li>
+    <li><strong>开发模式</strong>：DebugPanel 的组件开发入口（加载开发项目/重启）改由 Host 提供（同为 <code>open_settings</code> 通道下的独立窗口）；</li>
+    <li><strong>右键菜单</strong>：组件相关项（组件设置等）按「Host 是否在线」动态显示，命令经 IPC 转发。</li>
+  </ul>
+
+  <h3>8.2 下载方案</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:22%"><col style="width:78%"></colgroup>
+    <tr><th>项</th><th>设计</th></tr>
+    <tr><td>发布渠道</td><td>GitHub Releases，资产 <code>LinWidgetRuntime-vX.Y.Z.zip</code>（组件系统独立仓库，与主程序发布节奏解耦）。</td></tr>
+    <tr><td>包结构</td><td><code>LinWidgetRuntime/</code>：<code>LinWidgetHost.exe</code>、<code>LinWidgetSubprocess.exe</code>、<code>cef/</code>（libcef.dll、chrome_elf.dll、icudtl.dat、Resources/、locales/、snapshot_blob.bin、v8_context_snapshot.bin 等 CEF 全量）、<code>manifest.json</code>（version、protocolVersion、qtVersion、abi、releaseNotes）。</td></tr>
+    <tr><td>安装位置</td><td><code>&lt;userDataDir&gt;/runtime/linwidget/</code>（与主程序探测点一致，同用户无权限问题）。</td></tr>
+    <tr><td>版本校验</td><td>握手时校验 <code>protocolVersion</code>：不兼容 → 主程序提示「请更新组件运行时」并停用组件（不影响主程序本身）；<code>manifest.version</code> 展示在设置页。</td></tr>
+    <tr><td>更新方式</td><td>设置页 [检查更新] → 打开 Releases → 下载新版 zip → 主程序通知 Host 退出 → 覆盖安装 <code>runtime/linwidget/</code> → 重启 Host（或重启主程序后自动拉起）。</td></tr>
+  </table>
+  </div>
+
+  <h3>8.3 启用 / 停用 / 卸载（用户操作）</h3>
+  <p>设置页新增「组件运行时」区，按安装状态展示：</p>
+  <ul>
+    <li><strong>未安装</strong>：显示「未安装组件运行时」+ [下载] 按钮（打开 GitHub Releases 页）+ 说明：<em>下载 zip 后解压到组件目录，重启 LinDesk 即自动启用</em>；</li>
+    <li><strong>已安装</strong>：显示版本号 + [启用/停用] 开关（停用 = 写 <code>enable=false</code> 到运行时配置，之后不再拉起 Host、组件入口隐藏）+ [打开组件管理]（经 IPC 触发 Host 弹出组件管理窗口）+ [检查更新] + [卸载]（先停用，再删除 <code>runtime/linwidget/</code> 目录）；</li>
+    <li><strong>默认行为</strong>：检测到 manifest 即自动启用，用户无需手动开启；</li>
+    <li><strong>手动兜底</strong>：不经设置页也可直接下载 zip 解压到组件目录 → 重启主程序即生效；删除目录 → 主程序不再拉起（即卸载）。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>9. 落地路线（给 antigravity 执行）</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:6%"><col style="width:40%"><col style="width:40%"><col style="width:14%"></colgroup>
+    <tr><th>阶段</th><th>内容</th><th>验收</th><th>级别</th></tr>
+    <tr><td>P0-1</td><td>主程序瘦身：排源、去 CEF、删 canvas 合成与输入转发、删 CefManager</td><td>主程序无组件代码可编译运行；桌面/图标/格子/菜单回归通过</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td>P0-2</td><td>Host 骨架：独立工程、CEF 初始化迁移、<code>LinWidgetHost.exe</code> 可启动并初始化 CEF</td><td>Host 进程独立启动，CEF 就绪，主程序可拉起并握手</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td>P1-1</td><td>窗口化显示：组件透明窗口贴 OSR 帧 + 子窗口化（SetParent 到桌面窗口）+ 穿透</td><td>组件完整显示在桌面正确层级；点击穿透正常；拖拽/缩放可用</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>P1-2</td><td>IPC 完整化：布局同步、启停控制、状态/事件上报、心跳、崩溃重启</td><td>主程序可启停/移动组件；Host 被杀后 3s 内自动重启且组件恢复</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>P2-1</td><td>设置 UI 迁移：组件管理窗口入 Host；主程序设置页改引导</td><td>组件设置/开发入口在 Host 窗口完成；主程序页只剩状态与引导</td><td><span class="tag p2">P2</span></td></tr>
+    <tr><td>P2-2</td><td>发布包：组件包 zip + manifest + GitHub Releases + 安装引导</td><td>全新机器：装主程序（无组件）→ 下载组件包 → 启用；卸载组件包 → 入口隐藏</td><td><span class="tag p2">P2</span></td></tr>
+  </table>
+  </div>
+  <p class="note">依赖顺序：P0-1 与 P0-2 可并行（两工程独立构建）；P1-1 依赖 P0-2（Host 有窗口能力）；P1-2 依赖 P1-1（先能显示再谈控制）。P0 期间可保留一份「组件功能关闭」开关（<code>LINDESK_BUILD_WIDGET_HOST</code> 编译选项）以便随时回退。</p>
+</section>
+
+<section>
+  <h2>10. 风险与对策</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:38%"><col style="width:36%"></colgroup>
+    <tr><th>风险</th><th>说明</th><th>对策</th></tr>
+    <tr><td>窗口化穿透细节</td><td>组件窗口透明区域点击穿透到图标层需命中测试协作</td><td>HTTRANSPARENT + Host 上报组件几何表；先做「组件区域可交互、区域外穿透」基线</td></tr>
+    <tr><td>IME 输入法</td><td>输入法组合窗口依赖焦点窗口 HWND</td><td>组件窗口为独立 HWND，IME 消息直达窗口（比跨进程转发更简单）；回归测试中文输入</td></tr>
+    <tr><td>设置 UI 迁移面</td><td>SettingUI 组件页 ~15 处直接调用 WidgetManager</td><td>设置逻辑整体随 UI 迁 Host（主程序侧删除而非改造）；主程序只留 IPC 触发</td></tr>
+    <tr><td>双进程数据一致性</td><td>主程序退出时 Host 正在写 registry.json</td><td>退出时序：主程序先发 shutdown 等 Host 收尾（2s 超时强杀），文件写入用现有原子写</td></tr>
+    <tr><td>崩溃风暴</td><td>Host 反复崩溃</td><td>5 分钟 3 次熔断 + 用户提示；CEF crash-dumps-dir 日志辅助定位</td></tr>
+    <tr><td>组件包版本不匹配</td><td>协议版本演进</td><td>handshake 携带协议版本；不兼容 → 主程序提示「请更新组件运行时」</td></tr>
+    <tr><td>下载渠道可用性</td><td>组件包依赖 GitHub Releases 网络可达</td><td>设置页提供 Releases 直链与下载引导；网络失败仅组件不可用，主程序功能不受影响，可重试</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>11. 边界（本次不做）</h2>
+  <ul>
+    <li><strong>壁纸组件实现</strong>：本方案只定架构（Host 全屏窗口），壁纸功能本体（视频/图片背景）仍按组件平台方案另立项；</li>
+    <li><strong>不引入第三方 IPC 库</strong>：QLocalSocket 足够，不引入 ZeroMQ/gRPC；</li>
+    <li><strong>不做跨进程拖拽共享</strong>：组件内拖拽在 Host 内完成；组件与桌面图标的跨区拖拽（如拖文件进组件）留待后续（需 drag&drop OLE 跨进程，成本高）；</li>
+    <li><strong>主程序不保留降级渲染路径</strong>：既然独立，主程序不再保留 canvas 合成代码（删除而非条件编译保留）。</li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>

@@ -117,7 +117,8 @@ bool LayoutPersistenceService::load(const QString& persistencePath,
         state.doubleClickHideIcons,
         state.showShortCutArrow,
         state.boxData,
-        state.iconPositions
+        state.iconPositions,
+        &state.droppedCount
     );
 
     return !state.boxData.isEmpty() ||

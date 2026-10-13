@@ -343,24 +343,7 @@ bool areAllPathsDirectChildrenOfFolder(const QStringList& paths, const QString& 
 
 QString normalizeBoxItemPath(const QString& filePath)
 {
-    QString normalized = QDir::cleanPath(QDir::fromNativeSeparators(filePath));
-    while (normalized.endsWith('/') || normalized.endsWith('\\')) {
-        normalized.chop(1);
-    }
-    int colonColonIndex = normalized.indexOf(QStringLiteral("::"));
-    if (colonColonIndex > 0) {
-        bool allSlashes = true;
-        for (int i = 0; i < colonColonIndex; ++i) {
-            if (normalized[i] != '\\' && normalized[i] != '/') {
-                allSlashes = false;
-                break;
-            }
-        }
-        if (allSlashes) {
-            normalized = normalized.mid(colonColonIndex);
-        }
-    }
-    return normalized.toLower();
+    return ListView::normalizeDesktopItemPath(filePath);
 }
 
 DesktopRenderParams buildBoxRenderParams(const LinBox* box, LinBox::BoxShowType showType, int itemWidth, int itemHeight)
@@ -646,12 +629,8 @@ QIcon buildWhiteSvgIcon(const QString& resourcePath, const QSize& iconSize)
 }
 
 }
-
 LinBox::LinBox(QWidget* parent) : QWidget(parent) {
-    // 濠电偠鎻紞鈧繛澶嬫礋瀵偊藟缁?:SubWindow濠电偠鎻徊鍧楀棘缁涚磯闂備胶鎳撻悺銊╁礉閹烘梹瀚婚柣鎴犵亣stView闂備焦鐪归崝宀€鈧凹鍠栭敃銏ゅ灳閹颁焦妗ㄩ梺鎸庣箓閹虫劙骞楀鍥╃＜闁归偊鍙庡▓鏃傛喐閻楀牏娲撮柡浣哥Ф娴狅箓鎳栭埡鍐╁枓濠电偞娼欓崥瀣┍濞差亗鈧懘顢曢敂钘夊壆闂佸搫璇為崘銊х炕濠电偛顕慨鐢告偋閻愮儤瀚冮悗锝庡亞椤?
-    setWindowFlags(Qt::FramelessWindowHint | Qt::SubWindow);
-    setAttribute(Qt::WA_TranslucentBackground);
-    setAttribute(Qt::WA_OpaquePaintEvent, false);
+    setWindowFlags(Qt::Widget);
     setFocusPolicy(Qt::StrongFocus);
     setStyleSheet("LinBox { background: transparent; }");
     setMouseTracking(true);
@@ -838,9 +817,15 @@ void LinBox::showEvent(QShowEvent* event) {
     updateDpiMetrics();
     raise();
     refreshLayout();
+    if (QWidget* parent = parentWidget()) {
+        parent->update(geometry().adjusted(-16, -16, 16, 16));
+    }
     QTimer::singleShot(0, this, [this]() {
         m_lastLayoutContentWidth = -1;
         refreshLayout();
+        if (QWidget* parent = parentWidget()) {
+            parent->update(geometry().adjusted(-16, -16, 16, 16));
+        }
     });
     if (!m_isCapturingBackground) {
         scheduleBlurRefresh();
@@ -1028,6 +1013,7 @@ void LinBox::rebuildItemRenderData(DesktopRootItemState& state, const DesktopRen
 
 void LinBox::refreshLayout() {
     if (m_isRefreshingLayout) return;
+    if (m_isMappedFolderLoading) return;
     const int itemW = scaledPx(this, kBaseItemWidth);
     const int itemH = scaledPx(this, kBaseItemHeight);
     const int colSpacing = scaledPx(this, kBaseItemGap);
@@ -1218,10 +1204,30 @@ QRect LinBox::globalRenameEditorRectForPath(const QString& filePath) const
 
 void LinBox::moveEvent(QMoveEvent* event) {
     if (QWidget* parent = parentWidget()) {
-        const QRect oldRect(event->oldPos(), size());
-        const QRect newRect(pos(), size());
-        const QRect dirty = oldRect.united(newRect).adjusted(-12, -12, 12, 12);
-        parent->update(dirty);
+        if (!event->oldPos().isNull() && event->oldPos() != event->pos()) {
+            const QRect oldRect(event->oldPos(), size());
+            const QRect newRect(pos(), size());
+            const QRect dirty = oldRect.united(newRect).adjusted(-12, -12, 12, 12);
+            parent->update(dirty);
+            parent->repaint(dirty);
+
+            // 追加：移动停止后强制同步刷新父窗口，消除半透明残影
+            if (!m_moveRefreshTimer) {
+                m_moveRefreshTimer = new QTimer(this);
+                m_moveRefreshTimer->setSingleShot(true);
+                m_moveRefreshTimer->setInterval(30);   // 30ms 无移动后再刷
+                connect(m_moveRefreshTimer, &QTimer::timeout, this, [this]() {
+                    if (QWidget* p = parentWidget()) {
+                        const QRect d = geometry().adjusted(-16, -16, 16, 16);
+                        p->update(d);
+                        p->repaint(d);   // 同步重绘，立即刷新合成缓冲
+                    }
+                    update();
+                    repaint();
+                });
+            }
+            m_moveRefreshTimer->start();
+        }
     }
 
     raise();
@@ -1320,6 +1326,21 @@ void LinBox::clearMappedFolderPath()
 void LinBox::setMappedFolderMonitor(LinDirectoryMonitor* monitor)
 {
     m_mappedFolderMonitor.reset(monitor);
+}
+
+void LinBox::setMappedFolderLoading(bool loading)
+{
+    if (m_isMappedFolderLoading == loading) {
+        return;
+    }
+    m_isMappedFolderLoading = loading;
+    if (m_titleEdit) {
+        m_titleEdit->setText(displayTitleText());
+    }
+    if (m_titleBar) {
+        m_titleBar->update();
+    }
+    update();
 }
 
 void LinBox::refreshSelectionOverlayColor()
@@ -1723,9 +1744,10 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                     return true;
                 }
 
-                if (watched == m_contentArea) {
-                    if (!hitItemStateAt(mappedPos) && m_resizeDir == None) {
-                        beginItemSelection(mouseEvent->pos());
+                if (watched == m_contentArea || watched == m_scrollArea || (m_scrollArea && watched == m_scrollArea->viewport()) || watched == this) {
+                    if (!hitItemStateAt(mappedPos) && m_resizeDir == None && !isDragArea(mappedPos)) {
+                        const QPoint contentPos = m_contentArea ? m_contentArea->mapFrom(this, mappedPos) : mappedPos;
+                        beginItemSelection(contentPos);
                         return true;
                     }
                 }
@@ -1840,6 +1862,11 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
             m_dragStartPos = event->globalPos();
             m_dragStartGeometry = geometry();
             m_geometryChangedDuringInteraction = false;
+        } else if (!isDragArea(event->pos()) && !hitItemStateAt(event->pos())) {
+            const QPoint contentPos = m_contentArea ? m_contentArea->mapFrom(this, event->pos()) : event->pos();
+            beginItemSelection(contentPos);
+            event->accept();
+            return;
         }
     } else if (event->button() == Qt::RightButton) {
         if (handleItemContextMenu(event->globalPos(), event->pos())) {
@@ -1918,7 +1945,11 @@ void LinBox::mouseReleaseEvent(QMouseEvent* event) {
     m_isMoving = false;
     m_geometryChangedDuringInteraction = false;
     if (shouldRefreshBlur) {
-        scheduleBlurRefresh();
+        updateBlurCache();
+        if (QWidget* p = parentWidget()) {
+            p->repaint(geometry().adjusted(-16, -16, 16, 16));
+        }
+        repaint();
     }
     updateCursorShape(event->pos());
 }
@@ -1943,7 +1974,8 @@ bool LinBox::handleItemMousePress(QMouseEvent* event, const QPoint& boxPos)
 
     const QString itemPath = hitState->model.filePath;
     const Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
-    const bool wasAlreadySelected = lv->selectedItemPaths().contains(itemPath);
+    const QString normalizedItemPath = normalizeBoxItemPath(itemPath);
+    const bool wasAlreadySelected = lv->selectedItemPaths().contains(normalizedItemPath);
     activateForKeyboardFocus();
 
     if (modifiers & Qt::ControlModifier) {
@@ -1951,8 +1983,7 @@ bool LinBox::handleItemMousePress(QMouseEvent* event, const QPoint& boxPos)
     } else if (modifiers & Qt::ShiftModifier) {
         lv->selectRangeToPath(itemPath, this);
     } else if (wasAlreadySelected) {
-        lv->setFocusedItemPath(itemPath);
-        lv->setItemFullNameExpanded(itemPath, true);
+        // Keep selection set unchanged so user can drag any selected item directly
     } else {
         lv->setSelectedItemPaths({ itemPath }, itemPath, true);
     }
@@ -1977,7 +2008,8 @@ bool LinBox::startItemDrag(const QPoint& boxPos)
     }
 
     QStringList dragPaths = lv->selectedItemPaths();
-    if (!dragPaths.contains(m_pressedItemPath)) {
+    const QString normalizedPressedPath = normalizeBoxItemPath(m_pressedItemPath);
+    if (!dragPaths.contains(normalizedPressedPath)) {
         dragPaths.clear();
         dragPaths.append(m_pressedItemPath);
         lv->setSelectedItemPaths(dragPaths, m_pressedItemPath, true);
@@ -1997,31 +2029,35 @@ bool LinBox::startItemDrag(const QPoint& boxPos)
     mimeData->setUrls(urls);
     mimeData->setDropDescriptionForAction(Qt::MoveAction, boxTitle());
 
-    lv->setDraggedItemPath(m_pressedItemPath, true);
+    lv->setDraggedItemPaths(dragPaths, true);
     QDrag drag(this);
     drag.setMimeData(mimeData);
 
-    QSet<QString> dragPathSet;
-    for (const QString& path : dragPaths) {
-        dragPathSet.insert(normalizeBoxItemPath(path));
-    }
-
     QVector<DesktopRootItemRenderData> ghostItems;
     QRect ghostBounds;
-    for (const DesktopRootItemState& state : m_itemStates) {
-        if (!dragPathSet.contains(normalizeBoxItemPath(state.model.filePath))) {
-            continue;
+    for (const QString& path : dragPaths) {
+        DesktopRootItemRenderData renderData;
+        const DesktopRootItemState* state = findItemStateByPath(path);
+        if (state && !state->model.renderData.itemRect.isNull() && state->model.renderData.itemRect.size().isValid()) {
+            renderData = state->model.renderData;
+        } else if (LinBox* otherBox = BoxManager::instance()->findBoxContainingItem(path)) {
+            const DesktopRootItemState* otherState = otherBox->findItemStateByPath(path);
+            if (otherState && !otherState->model.renderData.itemRect.isNull() && otherState->model.renderData.itemRect.size().isValid()) {
+                renderData = otherState->model.renderData;
+            }
+        } else {
+            DesktopRootItemModel model;
+            if (lv->resolveItemModelByPath(path, model) && !model.renderData.itemRect.isNull() && model.renderData.itemRect.size().isValid()) {
+                renderData = model.renderData;
+            }
         }
 
-        const DesktopRootItemRenderData& renderData = state.model.renderData;
-        if (renderData.itemRect.isNull() || !renderData.itemRect.size().isValid()) {
-            continue;
+        if (!renderData.itemRect.isNull() && renderData.itemRect.size().isValid()) {
+            ghostItems.append(renderData);
+            ghostBounds = ghostBounds.isNull()
+                ? renderData.itemRect
+                : ghostBounds.united(renderData.itemRect);
         }
-
-        ghostItems.append(renderData);
-        ghostBounds = ghostBounds.isNull()
-            ? renderData.itemRect
-            : ghostBounds.united(renderData.itemRect);
     }
 
     if (ghostItems.isEmpty()) {
@@ -2133,12 +2169,14 @@ bool LinBox::handleItemContextMenu(const QPoint& globalPos, const QPoint& boxPos
     }
 
     const QString itemPath = hitState->model.filePath;
-    if (!lv->selectedItemPaths().contains(itemPath)) {
+    const QString normalizedItemPath = normalizeBoxItemPath(itemPath);
+    if (!lv->selectedItemPaths().contains(normalizedItemPath)) {
         lv->setSelectedItemPaths({ itemPath }, itemPath, true);
     } else {
         lv->setFocusedItemPath(itemPath);
     }
 
+    lv->setLastRightClickPos(lv->mapFromGlobal(globalPos));
     lv->requestSystemRightMenu(hitState->model.objectType, globalPos, lv->selectedItemPaths());
     return true;
 }
@@ -2150,7 +2188,16 @@ void LinBox::paintEvent(QPaintEvent* event) {
 
     const QRect contentRect = rect().adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth);
 
-    if (m_glassEffect && !m_blurCache.isNull()) {
+    if (isFolderMapped() && isMappedFolderLoading() && m_itemStates.isEmpty()) {
+        const int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
+        const int a = qBound(0, (int)(m_bgOpacity * 255), 255);
+        if (a > 0) {
+            p.fillRect(contentRect, QColor(r, g, b, a));
+        }
+        p.setPen(QPen(QColor(255, 255, 255, 50), 1.0));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+    } else if (m_glassEffect && !m_blurCache.isNull()) {
         p.drawPixmap(contentRect.topLeft(), m_blurCache);
         p.fillRect(contentRect, QColor(255, 255, 255, 8));
         p.setPen(QPen(QColor(255, 255, 255, 110), 1.0));
@@ -2161,10 +2208,11 @@ void LinBox::paintEvent(QPaintEvent* event) {
         opt.init(this);
         style()->drawPrimitive(QStyle::PE_Widget, &opt, &p, this);
 
-        int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
-        int a = (int)(m_bgOpacity * 255);
-        if (a < 5) a = 20;
-        p.fillRect(contentRect, QColor(r, g, b, a));
+        const int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
+        const int a = qBound(0, (int)(m_bgOpacity * 255), 255);
+        if (a > 0) {
+            p.fillRect(contentRect, QColor(r, g, b, a));
+        }
         p.setPen(QPen(QColor(255, 255, 255, 50), 1));
         p.setBrush(Qt::NoBrush);
         p.drawRect(contentRect.adjusted(0, 0, -1, -1));
@@ -2189,13 +2237,25 @@ void LinBox::paintEvent(QPaintEvent* event) {
 
     const QRect placeholderRect = mappedPlaceholderRect();
     if (!placeholderRect.isNull()) {
-        const QString resourcePath = mappedFolderPlaceholderResourcePath(mappedFolderState(), m_itemStates.isEmpty());
+        const bool isEmptyNonLoading = m_itemStates.isEmpty() && !isMappedFolderLoading();
+        const QString resourcePath = mappedFolderPlaceholderResourcePath(mappedFolderState(), isEmptyNonLoading);
         if (!resourcePath.isEmpty()) {
             QSvgRenderer renderer(resourcePath);
             if (renderer.isValid()) {
                 renderer.render(&p, placeholderRect);
             }
         }
+    }
+
+    if (isFolderMapped() && isMappedFolderLoading() && m_itemStates.isEmpty()) {
+        p.save();
+        p.setPen(QColor(255, 255, 255, 190));
+        p.setFont(AppFonts::uiFont(10));
+        const QRect targetRect = !placeholderRect.isNull()
+            ? QRect(placeholderRect.left() - 40, placeholderRect.bottom() + scaledPx(this, 8), placeholderRect.width() + 80, scaledPx(this, 24))
+            : (m_scrollArea ? m_scrollArea->geometry() : rect());
+        p.drawText(targetRect, Qt::AlignCenter, tr("Loading folder items..."));
+        p.restore();
     }
 
     if (m_contentArea && m_scrollArea && m_scrollArea->viewport()) {
@@ -2296,6 +2356,12 @@ void LinBox::finishItemSelection()
 {
     m_isSelectingItems = false;
     clearSelectionOverlay();
+    ListView* lv = ListView::instance();
+    if (lv && !lv->selectedItemPaths().isEmpty()) {
+        m_pressedItemPath = lv->selectedItemPaths().first();
+        m_pressedItemBoxPos = m_contentArea ? m_contentArea->mapTo(this, m_selectionStartPos) : m_selectionStartPos;
+        m_itemPressArmed = true;
+    }
 }
 
 void LinBox::updateHoveredItem(const QPoint& boxPos)
@@ -2493,9 +2559,22 @@ const DesktopRootItemState* LinBox::hitItemStateAt(const QPoint& boxPos) const
     const QPoint contentPos = m_contentArea->mapFromGlobal(mapToGlobal(boxPos));
     for (int i = m_itemStates.size() - 1; i >= 0; --i) {
         const DesktopRootItemState& state = m_itemStates[i];
-        if (state.model.renderData.selectionContentRect.contains(contentPos) ||
-            state.model.renderData.itemRect.contains(contentPos)) {
+        const QRect& selRect = state.model.renderData.selectionContentRect;
+        if (!selRect.isNull() && selRect.isValid() && selRect.contains(contentPos)) {
             return &state;
+        }
+        const QRect& staticRect = state.model.renderData.staticContentRect;
+        if (!staticRect.isNull() && staticRect.isValid() && staticRect.contains(contentPos)) {
+            return &state;
+        }
+        const QRect& itemRect = state.model.renderData.itemRect;
+        if (!itemRect.isNull() && itemRect.isValid()) {
+            const int insetX = qMax(4, itemRect.width() / 8);
+            const int insetY = qMax(4, itemRect.height() / 8);
+            const QRect coreRect = itemRect.adjusted(insetX, insetY, -insetX, -insetY);
+            if (coreRect.contains(contentPos)) {
+                return &state;
+            }
         }
     }
     return nullptr;
@@ -3015,8 +3094,14 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
         const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
         const bool isInternalSameFolderMove = isInternalDrag && !isCtrl && !preferShortcutForDrop && areAllPathsDirectChildrenOfFolder(paths, targetFolder);
         if (isInternalSameFolderMove) {
+            lv->resetRenameClickState();
+            m_reorderDragPaths = paths;
+            m_reorderInsertIndex = insertionIndexForPos(event->pos(), paths, &m_reorderIndicatorAfterPrev);
             if (m_dragTip) m_dragTip->hide();
-            event->ignore();
+            event->setDropAction(Qt::MoveAction);
+            ListViewFileOpsHelper::updateInternalDragDescription(event->mimeData(), event->dropAction(), dropTargetText);
+            event->accept();
+            update();
             return;
         }
         event->setDropAction(preferShortcutForDrop ? Qt::LinkAction : (isCtrl ? Qt::CopyAction : Qt::MoveAction));
@@ -3106,9 +3191,12 @@ void LinBox::previewGhostDropAt(const QPoint& boxPos, const QStringList& dragged
             !preferShortcutForDrop &&
             areAllPathsDirectChildrenOfFolder(draggedPaths, targetFolder);
         if (isInternalSameFolderMove) {
+            m_reorderDragPaths = draggedPaths;
+            m_reorderInsertIndex = insertionIndexForPos(boxPos, draggedPaths, &m_reorderIndicatorAfterPrev);
             if (m_dragTip) {
                 m_dragTip->hide();
             }
+            update();
             return;
         }
         updateDragTip(boxPos, isCtrl, preferShortcutForDrop);
@@ -3324,12 +3412,29 @@ void LinBox::dropEvent(QDropEvent* event) {
             : (copyMode ? QStringLiteral("copy") : QStringLiteral("move"));
         const bool isInternalSameFolderMove = isInternalDrag && !copyMode && !preferShortcutForDrop && areAllPathsDirectChildrenOfFolder(paths, targetFolder);
         if (isInternalSameFolderMove) {
-            qDebug() << "[MappedBoxDrop] target background"
-                     << "sources=" << operationPaths
-                     << "target=" << targetFolder
-                     << "type=background"
-                     << "operation=noop"
-                     << "result=same mapped root";
+            const int insertIndex = insertionIndexForPos(event->pos(), paths, &m_reorderIndicatorAfterPrev);
+            clearReorderPreview();
+            QSet<QString> draggedPathSet;
+            QVector<DesktopRootItemState> draggedStates;
+            for (const QString& path : operationPaths) {
+                draggedPathSet.insert(normalizeBoxItemPath(path));
+            }
+            for (int i = 0; i < m_itemStates.size();) {
+                if (draggedPathSet.contains(normalizeBoxItemPath(m_itemStates[i].model.filePath))) {
+                    draggedStates.append(m_itemStates.takeAt(i));
+                } else {
+                    ++i;
+                }
+            }
+            const int clampedIndex = qBound(0, insertIndex, m_itemStates.size());
+            for (int i = 0; i < draggedStates.size(); ++i) {
+                m_itemStates.insert(clampedIndex + i, draggedStates[i]);
+            }
+            m_lastLayoutItemCount = -1;
+            refreshLayout();
+            raise();
+            lv->requestSaveBoxes();
+            event->setDropAction(Qt::MoveAction);
             event->accept();
             return;
         }
@@ -3694,18 +3799,6 @@ bool LinBox::isDragArea(const QPoint& pos) {
         return true;
     }
     
-    // 2. Content area can also initiate drag if background clicked
-    if (m_scrollArea->geometry().contains(pos)) {
-        QPoint scrollPos = m_scrollArea->mapFrom(this, pos);
-        QWidget* child = m_scrollArea->childAt(scrollPos);
-        // Drag allowed if click is on scrollarea but NOT on scrollbar or an icon
-        if (child == m_scrollArea->verticalScrollBar()) return false;
-        
-        if (!hitItemStateAt(pos)) {
-            return true;
-        }
-    }
-    
     return false;
 }
 
@@ -3780,8 +3873,6 @@ void LinBox::setGlassEffect(bool enabled) {
 }
 
 void LinBox::refreshStyles() {
-    // Ensure the window is transparent to show the DWM blur effect
-    this->setAttribute(Qt::WA_TranslucentBackground);
     this->setStyleSheet("background: transparent; border: none;");
 
     // Let LinBox::paintEvent render one unified background for the full box.
@@ -3789,6 +3880,9 @@ void LinBox::refreshStyles() {
     m_titleBar->setStyleSheet("QWidget#titleBar { background: transparent; border-radius: 0px; }");
     m_contentArea->setStyleSheet("QWidget#contentArea { background: transparent; border-radius: 0px; }");
     update();
+    if (QWidget* parent = parentWidget()) {
+        parent->update(geometry().adjusted(-16, -16, 16, 16));
+    }
 }
 
 void LinBox::scheduleBlurRefresh()
@@ -3796,10 +3890,54 @@ void LinBox::scheduleBlurRefresh()
     if (m_isCapturingBackground || !m_glassEffect || !isVisible() || width() <= 0 || height() <= 0) {
         return;
     }
-    if (m_blurRefreshTimer) {
+    if (m_blurRefreshTimer && !m_blurRefreshTimer->isActive()) {
         m_blurRefreshTimer->start();
     }
 }
+
+namespace {
+
+bool isPixmapEffectivelyTransparent(const QPixmap& pixmap, int alphaThreshold = 10)
+{
+    if (pixmap.isNull()) {
+        return true;
+    }
+    const QImage img = pixmap.toImage();
+    if (img.isNull()) {
+        return true;
+    }
+    if (!img.hasAlphaChannel()) {
+        return false;
+    }
+
+    const int w = img.width();
+    const int h = img.height();
+    if (w <= 0 || h <= 0) {
+        return true;
+    }
+
+    int transparentCount = 0;
+    int totalSamples = 0;
+    const int stepX = qMax(1, w / 8);
+    const int stepY = qMax(1, h / 8);
+
+    for (int y = 0; y < h; y += stepY) {
+        for (int x = 0; x < w; x += stepX) {
+            totalSamples++;
+            if (qAlpha(img.pixel(x, y)) <= alphaThreshold) {
+                transparentCount++;
+            }
+        }
+    }
+
+    if (totalSamples == 0) {
+        return true;
+    }
+
+    return (transparentCount * 100 / totalSamples) >= 80;
+}
+
+} // namespace
 
 QPixmap LinBox::captureBackgroundPixmap() const
 {
@@ -3846,7 +3984,14 @@ QPixmap LinBox::captureBackgroundPixmap() const
         }
 
         self->m_isCapturingBackground = false;
-        return background;
+
+        // When parentWidget (ListView) has WA_TranslucentBackground, the wallpaper is
+        // rendered underneath ListView by CEF/canvas layer, so sourceParent->render
+        // yields transparent/near-transparent content.
+        // Fall back to screen capture if the result is effectively transparent.
+        if (!isPixmapEffectivelyTransparent(background, 10)) {
+            return background;
+        }
     }
 
     const QRect globalRect(mapToGlobal(QPoint(0, 0)), size());
@@ -3866,22 +4011,28 @@ void LinBox::updateBlurCache()
 
     const QPixmap captured = captureBackgroundPixmap();
     if (captured.isNull()) {
+        m_blurCache = QPixmap();
         return;
     }
 
     const QRect contentRect = rect().adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth);
     if (contentRect.width() <= 0 || contentRect.height() <= 0) {
+        m_blurCache = QPixmap();
         return;
     }
 
     const QPixmap contentCapture = captured.copy(contentRect);
     m_blurCache = buildBlurredGlass(contentCapture, m_bgColor, m_bgOpacity);
+    if (isPixmapEffectivelyTransparent(m_blurCache, 40)) {
+        m_blurCache = QPixmap();
+    }
     update();
 }
 
 void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) {
     if (ListView* lv = ListView::instance()) {
         lv->armPendingShellNewTargetBox(this);
+        lv->setLastRightClickPos(lv->mapFromGlobal(globalPos));
     }
 
     ShellContextMenu scm;
@@ -3889,15 +4040,19 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
     const QPoint nativeGlobalPos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this, globalPos);
     POINT p = { nativeGlobalPos.x(), nativeGlobalPos.y() };
     const POINT* position = &p;
-    HWND ownerHwnd = (HWND)this->winId();
+    HWND ownerHwnd = parentWidget() ? (HWND)parentWidget()->winId() : (HWND)this->winId();
 
     RightMenu::getInstance()->preparePasteActionsForMenu();
-    scm.DisplayBoxBackgroundContextMenu();
-    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::boxBackground, nullptr);
-    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
     const QString contextPath = isFolderMapped()
         ? normalizeMappedFolderPath(mappedFolderPath())
         : defaultDesktopPath();
+    if (isFolderMapped() && !contextPath.isEmpty()) {
+        scm.DisplayBoxBackgroundContextMenu(contextPath.toStdWString());
+    } else {
+        scm.DisplayBoxBackgroundContextMenu();
+    }
+    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::boxBackground, nullptr);
+    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
     if (!contextPath.isEmpty()) {
         scm.setFilesystemDirectory(contextPath.toStdString());
     }

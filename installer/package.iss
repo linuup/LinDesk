@@ -1,5 +1,5 @@
 #define AppName "LinDesk"
-#define AppVersion "1.0.8"
+#define AppVersion "1.1.0"
 #define AppExeName "LinDesk.exe"
 #define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
 #define PackageOutputDir "D:/Desktop/LinDesk/installer"
@@ -44,7 +44,7 @@ zh.closeFailed=无法关闭 {#AppName}。请手动关闭后重试。
 
 [Files]
 Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini,resources,resources\*"
-Source: "..\src\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs; Excludes: "LinWidgets\ApiTester,LinWidgets\ApiTester\*,*.git,*.webview2,*node_modules*,*cache*,*tmp*,*temp*"
+Source: "..\src\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs; Excludes: "LinWidgets\ApiTester,LinWidgets\ApiTester\*,*.git,*node_modules*,*cache*,*tmp*,*temp*"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:desktopIcon}"; GroupDescription: "{cm:shortcutGroup}"

@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.31)
 # ========== 版本定义，单一来源 ==========
 # 修改版本号只需要改这里
 set(LINDESK_VERSION_MAJOR 1)
-set(LINDESK_VERSION_MINOR 0)
-set(LINDESK_VERSION_PATCH 8)
+set(LINDESK_VERSION_MINOR 1)
+set(LINDESK_VERSION_PATCH 0)
 set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 # 生成完整版本字符串set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
@@ -88,15 +88,19 @@ configure_file(
 add_compile_options("/utf-8" "/FS")
 
 # Find Qt5
-find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools Concurrent REQUIRED)
 find_package(GTest CONFIG REQUIRED)
+
+# 引入 spdlog (通过 vcpkg manifest 模式提供)
+# 若找不到请先 vcpkg install spdlog / 重新 configure 由 manifest 自动安装
+find_package(spdlog CONFIG REQUIRED)
 
 # 启用 Qt MOC、RCC、UIC 自动生成
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-enable_testing()
+include(CTest)          # 内部自动 enable_testing()，并定义 BUILD_TESTING（默认 ON）
 
 add_subdirectory("LinDeskUpdate")
 
@@ -146,12 +150,6 @@ set_target_properties(LinDesk PROPERTIES
     WIN32_EXECUTABLE "$<$<NOT:$<CONFIG:Debug>>:TRUE>"
 )
 
-set(LINDESK_WEBVIEW2_ROOT "$ENV{USERPROFILE}/.nuget/packages/microsoft.web.webview2/1.0.3179.45/build/native")
-if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/include/WebView2.h")
-    target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_WEBVIEW2)
-    target_include_directories(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/include")
-    target_link_libraries(LinDesk PRIVATE "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2LoaderStatic.lib")
-endif()
 
 # ==============================================================================
 # CEF (Chromium Embedded Framework) OSR Integration
@@ -216,7 +214,7 @@ else()
     message(STATUS "[CEF] CEF SDK not found in 3rdparty/cef. Run scripts/download_cef.ps1 to enable CEF OSR.")
 endif()
 
-target_compile_definitions(LinDesk PRIVATE "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRENT_SOURCE_DIR})\"")
+target_compile_definitions(LinDesk PRIVATE "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRENT_SOURCE_DIR})\"" SPDLOG_ENABLE_SOURCE_LOC)
 
 target_link_libraries(LinDesk
     PRIVATE
@@ -229,11 +227,13 @@ target_link_libraries(LinDesk
         Comctl32
         dwmapi
         Winmm
+        Dbghelp
 
         Iphlpapi
         Dxgi
 
         Pdh
+        spdlog::spdlog_header_only
         Qt5::Widgets
         Qt5::Core
         Qt5::Network
@@ -243,6 +243,7 @@ target_link_libraries(LinDesk
         Qt5::Qml
         Qt5::Quick
         Qt5::QuickWidgets
+        Qt5::Concurrent
 )
 
 target_include_directories(LinDesk
@@ -263,6 +264,7 @@ target_include_directories(LinDesk
         ${CMAKE_CURRENT_SOURCE_DIR}/src/plugins
 )
 
+if(BUILD_TESTING)
 add_executable(LinDeskSystemInfoTests
     tests/SystemInfoServiceTests.cpp
     src/services/SystemInfo/SystemInfoService.cpp
@@ -285,6 +287,92 @@ target_include_directories(LinDeskSystemInfoTests
 )
 
 add_test(NAME LinDeskSystemInfoTests COMMAND LinDeskSystemInfoTests)
+
+add_executable(LinDeskWidgetEnvelopeTests
+    tests/WidgetMessageEnvelopeTests.cpp
+    src/desktop/widgets/linwidget/WidgetMessageTypes.cpp
+    src/desktop/widgets/linwidget/WidgetMessageTypes.h
+)
+
+target_link_libraries(LinDeskWidgetEnvelopeTests
+    PRIVATE
+        Qt5::Core
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskWidgetEnvelopeTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_test(NAME LinDeskWidgetEnvelopeTests COMMAND LinDeskWidgetEnvelopeTests)
+
+add_executable(LinDeskLogManagerTests
+    tests/LogManagerTests.cpp
+    src/services/LogManager.cpp
+    src/services/LogManager.h
+)
+
+target_link_libraries(LinDeskLogManagerTests
+    PRIVATE
+        Qt5::Core
+        spdlog::spdlog
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskLogManagerTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_test(NAME LinDeskLogManagerTests COMMAND LinDeskLogManagerTests)
+
+add_executable(LinDeskPersistenceTests
+    tests/PersistenceTests.cpp
+    src/box/BoxManager.cpp
+    src/box/BoxManager.h
+    src/box/LinBox.h
+    src/monitor/IListenerInterface.h
+    src/monitor/IDirectoryMonitorInterface.h
+    src/monitor/LinDirectoryMonitor.h
+)
+
+target_link_libraries(LinDeskPersistenceTests
+    PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        Qt5::Concurrent
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskPersistenceTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/box
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/models
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/models/data
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services/SystemApi
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/monitor
+)
+
+add_test(NAME LinDeskPersistenceTests COMMAND LinDeskPersistenceTests)
+endif(BUILD_TESTING)
+
+# ---- 解决方案文件夹分组 ----
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set_property(TARGET LinDesk LinDeskSubprocess Win11MenuIsland PROPERTY FOLDER "Apps")
+set_property(TARGET LinDeskUpdate PROPERTY FOLDER "Tools")
+if(BUILD_TESTING)
+    set_property(TARGET LinDeskSystemInfoTests LinDeskWidgetEnvelopeTests
+        LinDeskLogManagerTests LinDeskPersistenceTests PROPERTY FOLDER "Tests")
+endif()
+
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)
 if(LINDESK_BUILD_OCR_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/OCRModule/CMakeLists.txt")
     add_subdirectory("Plugins/OCRModule")
@@ -332,14 +420,6 @@ add_custom_command(TARGET LinDesk POST_BUILD
     COMMENT "Copying OpenSSL DLLs to output directory..."
 )
 
-if(EXISTS "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2Loader.dll")
-    add_custom_command(TARGET LinDesk POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${LINDESK_WEBVIEW2_ROOT}/x64/WebView2Loader.dll"
-            $<TARGET_FILE_DIR:LinDesk>
-        COMMENT "Copying WebView2Loader to output directory..."
-    )
-endif()
 
 if(LINDESK_HAS_W11_MENU_HOST)
     add_custom_command(TARGET LinDesk POST_BUILD

@@ -17,12 +17,14 @@ public:
     void clear();
     void rebuild(const QVector<DesktopRootItemState*>& states);
     QVector<DesktopRootItemState*> query(const QRect& area) const;
+    QVector<DesktopRootItemState*> queryPoint(const QPoint& pos) const;
 
 private:
     struct Entry
     {
         DesktopRootItemState* state = nullptr;
         QRect rect;
+        int zOrder = 0;
     };
 
     struct Node
@@ -44,6 +46,7 @@ private:
 
     QRect childBounds(const QRect& parent, int index) const;
     int childIndexForRect(const QRect& rect, const QRect& parent) const;
+    int childIndexForPoint(const QPoint& pos, const QRect& parent) const;
     void subdivide(Node* node);
     void insert(Node* node, const Entry& entry, int depth);
     void query(const Node* node, const QRect& area, QVector<DesktopRootItemState*>& results, QHash<DesktopRootItemState*, bool>& seen) const;

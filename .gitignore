@@ -3,6 +3,10 @@
 .vscode/
 .idea/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # 构建与输出目录（包含子模块和插件）
 [Bb]uild/
 [Bb]uild*/**
@@ -36,6 +40,7 @@ vcpkg_installed/**/*
 *.pro.user
 *.pro.user.*
 *.autosave
+*.qm
 
 # 编译与二进制输出
 *.o

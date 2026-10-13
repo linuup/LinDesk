@@ -2541,9 +2541,11 @@ QWidget* SettingUI::createGridPage() {
     styleLayout->addWidget(m_boxColorSectionTitle);
     styleLayout->addSpacing(12);
 
-    QColor initialBoxColor = QColor(40, 40, 40);
+    QColor initialBoxColor = QColor("#63A8F5");
     if (LinBox* sourceBox = controlSourceBox()) {
         initialBoxColor = sourceBox->backgroundColor();
+    } else if (BoxManager* bm = BoxManager::instance()) {
+        initialBoxColor = bm->unifiedBackgroundColor();
     }
 
     QWidget* presetsRow = new QWidget(stylePanel);
@@ -2576,6 +2578,9 @@ QWidget* SettingUI::createGridPage() {
             if (LinBox* box = boxPtr.data()) {
                 box->setBackgroundColor(color);
             }
+        }
+        if (BoxManager* bm = BoxManager::instance()) {
+            bm->setAllBoxesBackgroundColor(color);
         }
         if (m_boxColorValueEdit) {
             m_boxColorValueEdit->setText(color.name().toUpper());
@@ -2710,6 +2715,9 @@ QWidget* SettingUI::createGridPage() {
                 box->setBackgroundOpacity(v / 100.0f);
             }
         }
+        if (BoxManager* bm = BoxManager::instance()) {
+            bm->setAllBoxesBackgroundOpacity(v / 100.0f);
+        }
         m_opacityLabelValue->setText(QString("%1%").arg(v));
         m_previewOpacity = v / 100.0f;  // Sync preview opacity
         updatePreviewStyle();
@@ -2723,19 +2731,30 @@ QWidget* SettingUI::createGridPage() {
     int initialOpacity = qRound(m_previewOpacity * 100.0f);
     if (LinBox* sourceBox = controlSourceBox()) {
         initialOpacity = qRound(sourceBox->backgroundOpacity() * 100.0f);
+    } else if (BoxManager* bm = BoxManager::instance()) {
+        initialOpacity = qRound(bm->unifiedBackgroundOpacity() * 100.0f);
     }
     initialOpacity = qBound(m_opacitySlider->minimum(), initialOpacity, m_opacitySlider->maximum());
     m_opacitySlider->setValue(initialOpacity);
     m_opacityLabelValue->setText(QString("%1%").arg(initialOpacity));
 
     m_glassToggle = new FluentToggleSwitch(page);
-    if (LinBox* sourceBox = controlSourceBox()) m_glassToggle->setChecked(sourceBox->glassEffect(), false);
+    bool initialGlass = false;
+    if (LinBox* sourceBox = controlSourceBox()) {
+        initialGlass = sourceBox->glassEffect();
+    } else if (BoxManager* bm = BoxManager::instance()) {
+        initialGlass = bm->unifiedGlassEffect();
+    }
+    m_glassToggle->setChecked(initialGlass, false);
     
     connect(m_glassToggle, &FluentToggleSwitch::toggled, this, [this](bool v){ 
         for (const QPointer<LinBox>& boxPtr : m_allBoxes) {
             if (LinBox* box = boxPtr.data()) {
                 box->setGlassEffect(v);
             }
+        }
+        if (BoxManager* bm = BoxManager::instance()) {
+            bm->setAllBoxesGlassEffect(v);
         }
         m_previewGlass = v;  // Sync preview glass
         updatePreviewStyle();
@@ -2784,7 +2803,6 @@ QString safeLinWidgetFileName(QString id)
 bool settingsSkipLinWidgetCopyEntry(const QString& name)
 {
     return name == QStringLiteral(".git") ||
-        name == QStringLiteral(".webview2") ||
         name == QStringLiteral("node_modules") ||
         name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
         name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
@@ -4439,7 +4457,7 @@ void SettingUI::loadSelectedSettingsLinWidget()
     if (m_linWidgetsStatusLabel) {
         m_linWidgetsStatusLabel->setText(multiInstance
             ? tr("Added widget instance: %1").arg(instanceId)
-            : tr("Loaded into WebView: %1").arg(instanceId));
+            : tr("Loaded widget: %1").arg(instanceId));
     }
     reloadLinWidgetsSettingsPage();
 }
@@ -4464,7 +4482,7 @@ void SettingUI::unloadSelectedSettingsLinWidget()
     registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
     registry.save();
     if (m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(tr("Unloaded from WebView: %1").arg(instanceId));
+        m_linWidgetsStatusLabel->setText(tr("Unloaded widget: %1").arg(instanceId));
     }
     reloadLinWidgetsSettingsPage();
 }
@@ -5752,6 +5770,9 @@ void SettingUI::setupStyles() {
 void SettingUI::setTargetBox(LinBox* target) {
     m_targetBox = target;
     updateControlsFromTarget();
+    if (target && m_sidebar) {
+        m_sidebar->setCurrentRow(3);
+    }
 }
 
 void SettingUI::updateControlsFromTarget() {

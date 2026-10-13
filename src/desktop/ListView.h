@@ -314,7 +314,9 @@ public:
 	QString currentSpaceLookHoveredPath() const;
 	QString anchorItemPath() const;
 	QString draggedItemPath() const;
+	QStringList draggedItemPaths() const;
 	void setDraggedItemPath(const QString& filePath, bool fromBox);
+	void setDraggedItemPaths(const QStringList& filePaths, bool fromBox);
 	void clearDraggedItemPath(bool fromBoxOnly = false);
 
 	// 拖放相关
@@ -398,6 +400,7 @@ public:
 	void setDebugGridSpacing(int rowSpacing, int colSpacing);
 	void createRecentModifiedItemsBox();
 	QStringList selectedItemPaths() const;
+	static QString normalizeDesktopItemPath(const QString& filePath);
 	QVector<DesktopSnakeGameIcon> desktopSnakeIcons() const;
 	void rebuildSpatialIndex();
 	void refreshCheckedItem(QRect rect);
@@ -431,6 +434,9 @@ protected:
 	void mouseDoubleClickEvent(QMouseEvent* event) override;
 	void wheelEvent(QWheelEvent* event) override;
 	void keyPressEvent(QKeyEvent* event) override;
+	void keyReleaseEvent(QKeyEvent* event) override;
+	void inputMethodEvent(QInputMethodEvent* event) override;
+	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
 	void dragMoveEvent(QDragMoveEvent* event) override;
 	void dragLeaveEvent(QDragLeaveEvent* event) override;
@@ -516,7 +522,6 @@ private:
 	void markDesktopStateIndexDirty();
 	void rebuildDesktopStateIndex();
 	bool shouldPaintDesktopModelState(const DesktopRootItemState& state) const;
-	QString normalizeDesktopItemPath(const QString& filePath) const;
 	bool isDesktopPathSelected(const QString& filePath) const;
 	QVector<DesktopRootItemModel> selectedDesktopModels() const;
 	QStringList selectedDesktopPaths() const;
@@ -575,8 +580,10 @@ public slots:
 	void onMenuSortByDate();
 	void onMenuDelete(bool permanently = false);
 	void onMenuRefresh();
-	void onMenuCreateBox();
-	void onMenuMapFolder();
+	void onMenuCreateBox(const QPoint& pos = QPoint());
+	void onMenuMapFolder(const QPoint& pos = QPoint());
+	void setLastRightClickPos(const QPoint& pos) { m_lastRightClickPos = pos; }
+	QPoint lastRightClickPos() const { return m_lastRightClickPos; }
 	void onMenuOrganizeDesktop();
 	void onMenuOrganizeDesktopByNameSort();
 	void onMenuQuitApp();
@@ -675,6 +682,8 @@ private:
 	QString m_lastClickedBoxPath;
 	QString m_draggedDesktopPath;
 	QString m_draggedBoxPath;
+	QStringList m_draggedDesktopPaths;
+	QStringList m_draggedBoxPaths;
 	DesktopInfoMonitor* monitor;
 	LinDirectoryMonitor* m_linMonitor;
 	WindowsConfigMonitor* m_windowsConfigMonitor = nullptr;

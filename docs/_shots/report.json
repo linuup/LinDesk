@@ -1,6 +1,6 @@
 {
-  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_WebView2_Removal_Guide.html",
-  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_WebView2_Removal_Guide.html",
+  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Widget_Platform_Plan.html",
+  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_Widget_Platform_Plan.html",
   "outdir": "D:\\Desktop\\LinDesk\\docs\\_shots",
   "include": [
     "lint",
@@ -10,30 +10,33 @@
   "shots": {
     "desktop": {
       "slices": [
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p1of2.jpg",
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p2of2.jpg"
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p1of5.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p2of5.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p3of5.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p4of5.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p5of5.jpg"
       ],
       "sliceHint": "按顺序 Read slices 里的各分片。",
       "truncated": false,
       "structure": {
-        "title": "LinDesk WebView2 方案移除指南",
-        "firstH1": "LinDesk 移除 WebView2 方案 · 改造任务书",
+        "title": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
+        "firstH1": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
         "viewport": {
           "w": 1424,
           "h": 749
         },
         "fullpage": {
           "w": 1424,
-          "h": 9077
+          "h": 18568
         },
         "counts": {
-          "section": 10,
+          "section": 13,
           "h1": 1,
-          "h2": 10,
+          "h2": 13,
           "img": 0,
           "canvas": 0,
           "svg": 0,
-          "links": 0,
+          "links": 6,
           "buttons": 0
         }
       },
@@ -45,32 +48,37 @@
     },
     "mobile": {
       "slices": [
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p1of4.jpg",
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p2of4.jpg",
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p3of4.jpg",
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p4of4.jpg"
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p1of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p2of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p3of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p4of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p5of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p6of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p7of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p8of9.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p9of9.jpg"
       ],
       "sliceHint": "按顺序 Read slices 里的各分片。",
       "truncated": false,
       "structure": {
-        "title": "LinDesk WebView2 方案移除指南",
-        "firstH1": "LinDesk 移除 WebView2 方案 · 改造任务书",
+        "title": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
+        "firstH1": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
         "viewport": {
           "w": 500,
           "h": 693
         },
         "fullpage": {
           "w": 500,
-          "h": 12289
+          "h": 25879
         },
         "counts": {
-          "section": 10,
+          "section": 13,
           "h1": 1,
-          "h2": 10,
+          "h2": 13,
           "img": 0,
           "canvas": 0,
           "svg": 0,
-          "links": 0,
+          "links": 6,
           "buttons": 0
         }
       },
@@ -85,7 +93,7 @@
   "chromiumExec": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "engineDegraded": true,
   "engineDegradedReason": "playwright 未装",
-  "elapsedSec": 7.96,
+  "elapsedSec": 8.52,
   "schemaVersion": 2,
   "status": "pass",
   "engineInfo": {
@@ -96,9 +104,9 @@
     ]
   },
   "input": {
-    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_WebView2_Removal_Guide.html",
-    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_WebView2_Removal_Guide.html",
-    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_WebView2_Removal_Guide.html",
+    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Widget_Platform_Plan.html",
+    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Widget_Platform_Plan.html",
+    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_Widget_Platform_Plan.html",
     "protocol": "file",
     "cwd": "D:\\Desktop\\LinDesk",
     "mediaMode": {
@@ -110,8 +118,11 @@
       {
         "viewport": "desktop",
         "tiles": [
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p1of2.jpg",
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_desktop_p2of2.jpg"
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p1of5.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p2of5.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p3of5.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p4of5.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p5of5.jpg"
         ],
         "visualCoverage": {
           "complete": true,
@@ -121,10 +132,15 @@
       {
         "viewport": "mobile",
         "tiles": [
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p1of4.jpg",
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p2of4.jpg",
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p3of4.jpg",
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_WebView2_Removal_Guide_mobile_p4of4.jpg"
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p1of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p2of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p3of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p4of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p5of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p6of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p7of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p8of9.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p9of9.jpg"
         ],
         "visualCoverage": {
           "complete": true,
