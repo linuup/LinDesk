@@ -27,16 +27,12 @@
 #include <QSet>
 #include <QStringList>
 #include <QSettings>
+#include <QFileDialog>
 #include <algorithm>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
-
-// Define _LMERRLOG_ and _LMAUDIT_ to prevent lmerrlog.h/lmaudit.h from defining HLOG, which conflicts with PDH_HLOG/HLOG in pdh.h
-#define _LMERRLOG_
-#define _LMAUDIT_
-#include "desktop/ListView.h"
 
 namespace LinWidget {
 namespace {
@@ -406,9 +402,17 @@ void ensureDevelopmentResources()
 #endif
 }
 
+static WidgetManager* s_widgetManagerInstance = nullptr;
+
+WidgetManager* WidgetManager::instance()
+{
+    return s_widgetManagerInstance;
+}
+
 WidgetManager::WidgetManager(QObject* parent)
     : QObject(parent)
 {
+    s_widgetManagerInstance = this;
 #ifdef LINDESK_SOURCE_DIR
     ensureDevelopmentResources();
 #endif
@@ -422,10 +426,15 @@ WidgetManager::WidgetManager(QObject* parent)
     m_saveTimer.setSingleShot(true);
     m_saveTimer.setInterval(350);
     connect(&m_saveTimer, &QTimer::timeout, this, &WidgetManager::saveToDefaultConfig);
+
+    m_canvasWidget = new LinCef::LinWidgetCanvasWidget();
 }
 
 WidgetManager::~WidgetManager()
 {
+    if (s_widgetManagerInstance == this) {
+        s_widgetManagerInstance = nullptr;
+    }
     if (m_saveTimer.isActive()) {
         m_saveTimer.stop();
         saveToDefaultConfig();
@@ -434,6 +443,10 @@ WidgetManager::~WidgetManager()
     m_systemInfoWatchTimers.clear();
     stopAll();
     stopWallpaper();
+    if (m_canvasWidget) {
+        delete m_canvasWidget;
+        m_canvasWidget = nullptr;
+    }
 }
 
 bool WidgetManager::start()
@@ -947,6 +960,7 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
     if (errorMessage && ok) {
         errorMessage->clear();
     }
+    loadWallpaperConfig();
     scheduleSaveToConfig();
     return ok;
 }
@@ -1237,11 +1251,6 @@ void WidgetManager::setCefOsrEnabled(bool enabled)
 
         // 彻底停止任何残留的动态壁纸，确保恢复系统壁纸与原生 ListView
         stopWallpaper(true);
-
-        // 刷新桌面以擦除残留帧，ListView 原生窗口与内容保持不动
-        if (ListView::instance()) {
-            ListView::instance()->update();
-        }
     }
 }
 
@@ -1265,6 +1274,11 @@ QString WidgetManager::widgetAt(const QPoint& clientPos) const
     for (const WidgetInstance& instance : m_instances) {
         if (!m_runningWidgets.contains(instance.instanceId)) {
             continue;
+        }
+        if (instance.instanceId.startsWith(QStringLiteral("wallpaper:"))) {
+            if (!m_activeWallpaperInteractive) {
+                continue; // 点击穿透壁纸
+            }
         }
         if (m_layout.contains(instance.instanceId)) {
             WidgetLayoutState state = m_layout.state(instance.instanceId);
@@ -1491,9 +1505,7 @@ void WidgetManager::updateDefaultCefPage()
     }
 
     QRect canvasRect;
-    if (ListView::instance() && ListView::instance()->rect().isValid() && ListView::instance()->rect().width() > 100) {
-        canvasRect = ListView::instance()->rect();
-    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
+    if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
         canvasRect = m_canvasWidget->rect();
     } else {
         canvasRect = QRect(0, 0, 1920, 1080);
@@ -1527,10 +1539,6 @@ void WidgetManager::setWidgetLayerEmbedded(bool embedded)
     if (m_widgetLayerEmbedded != embedded) {
         m_widgetLayerEmbedded = embedded;
         syncAllWidgetWindowLayers();
-        ListView* lv = ListView::instance();
-        if (lv) {
-            lv->syncLinWidgetLayer();
-        }
     }
 }
 
@@ -2121,6 +2129,43 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
             message.value(QStringLiteral("width")).toInt(instance.geometry.width()),
             message.value(QStringLiteral("height")).toInt(instance.geometry.height()));
         resizeWidget(effectiveInstanceId, size);
+    } else if (type == QStringLiteral("wallpaper_set_source")) {
+        const QString requestId = message.value(QStringLiteral("requestId")).toString();
+        QString selectedPath = message.value(QStringLiteral("filePath")).toString().trimmed();
+        if (selectedPath.isEmpty() && message.value(QStringLiteral("dialog")).toBool(true)) {
+            QWidget* parentWidget = LinCef::LinWidgetCanvasWidget::hostWidget();
+            selectedPath = QFileDialog::getOpenFileName(
+                parentWidget,
+                QStringLiteral("Select Wallpaper Media"),
+                QString(),
+                QStringLiteral("Media Files (*.mp4 *.webm *.png *.jpg *.jpeg *.bmp *.webp *.gif);;All Files (*.*)"));
+        }
+        if (!selectedPath.isEmpty()) {
+            QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+            settings.setValue(QStringLiteral("LinWallpapers/%1/SourcePath").arg(effectiveInstanceId), selectedPath);
+            settings.sync();
+
+            QJsonObject response = makeWidgetMessage(QStringLiteral("wallpaper_source_changed"), effectiveInstanceId);
+            response.insert(QStringLiteral("requestId"), requestId);
+            response.insert(QStringLiteral("ok"), true);
+            response.insert(QStringLiteral("sourcePath"), selectedPath);
+            sendMessageToWidget(effectiveInstanceId, response);
+        } else {
+            QJsonObject response = makeWidgetMessage(QStringLiteral("wallpaper_source_changed"), effectiveInstanceId);
+            response.insert(QStringLiteral("requestId"), requestId);
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("No file selected."));
+            sendMessageToWidget(effectiveInstanceId, response);
+        }
+    } else if (type == QStringLiteral("wallpaper_get_source")) {
+        const QString requestId = message.value(QStringLiteral("requestId")).toString();
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        const QString savedPath = settings.value(QStringLiteral("LinWallpapers/%1/SourcePath").arg(effectiveInstanceId)).toString();
+        QJsonObject response = makeWidgetMessage(QStringLiteral("wallpaper_source_response"), effectiveInstanceId);
+        response.insert(QStringLiteral("requestId"), requestId);
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("sourcePath"), savedPath);
+        sendMessageToWidget(effectiveInstanceId, response);
     }
 }
 
@@ -2175,40 +2220,211 @@ void WidgetManager::saveToDefaultConfig()
 
 bool WidgetManager::startWallpaper(const QString& packagePath, bool isDevelopment, bool interactive, QString* errorMessage)
 {
-    Q_UNUSED(packagePath);
-    Q_UNUSED(isDevelopment);
-    Q_UNUSED(interactive);
-    if (errorMessage) {
-        *errorMessage = QStringLiteral("CEF OSR dynamic wallpaper is not yet supported.");
+    if (!m_enabled) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("LinWidgets runtime is disabled.");
+        }
+        return false;
     }
-    return false;
+
+    if (!LinCef::CefManager::instance()->isCefAvailable() || !LinCef::CefManager::instance()->initialize()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("CEF OSR runtime is not available.");
+        }
+        return false;
+    }
+
+    WidgetManifest manifest;
+    if (!WidgetPackage::loadManifest(packagePath, &manifest, errorMessage)) {
+        return false;
+    }
+
+    if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) != 0) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Package manifest role is not 'wallpaper'.");
+        }
+        return false;
+    }
+
+    // 单例管理：先关闭已有活动壁纸（不重置配置）
+    if (!m_activeWallpaperId.isEmpty()) {
+        stopWallpaper(false);
+    }
+
+    QRect viewportRect;
+    if (LinCef::LinWidgetCanvasWidget::hostWidget() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().isValid()) {
+        viewportRect = LinCef::LinWidgetCanvasWidget::hostWidget()->rect();
+    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
+        viewportRect = m_canvasWidget->rect();
+    } else if (m_desktopLayerWindow) {
+#ifdef Q_OS_WIN
+        viewportRect = windowRect((HWND)m_desktopLayerWindow);
+#endif
+    }
+    if (!viewportRect.isValid() || viewportRect.width() <= 100) {
+        if (QGuiApplication::primaryScreen()) {
+            viewportRect = QGuiApplication::primaryScreen()->geometry();
+        } else {
+            viewportRect = QRect(0, 0, 1920, 1080);
+        }
+    }
+
+    const QString instanceId = QStringLiteral("wallpaper:") + manifest.id;
+    m_activeWallpaperId = instanceId;
+    m_activeWallpaperPackagePath = packagePath;
+    m_activeWallpaperIsDevelopment = isDevelopment;
+    m_activeWallpaperInteractive = interactive;
+
+    WidgetInstance instance;
+    instance.instanceId = instanceId;
+    instance.packagePath = packagePath;
+    instance.manifest = manifest;
+    instance.isDevelopment = isDevelopment;
+    instance.autoReload = isDevelopment;
+    instance.grantedPermissions = grantedPermissionsForManifest(manifest, packagePath, isDevelopment);
+    instance.geometry = viewportRect;
+
+    m_instances.insert(instanceId, instance);
+    m_runningWidgets.insert(instanceId);
+    configureDevelopmentWatcher(instance);
+
+    auto* osr = new LinCef::CefOsrBrowserInstance(instanceId, this);
+    osr->setPackagePath(packagePath);
+    osr->setAllowNetwork(manifest.permissions.contains(QStringLiteral("network")));
+
+    connect(osr, &LinCef::CefOsrBrowserInstance::frameReady, this,
+            [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
+                if (m_canvasWidget) {
+                    m_canvasWidget->updateWidgetFrame(wid, geom, img, dirty);
+                }
+            });
+    connect(osr, &LinCef::CefOsrBrowserInstance::messageReceived, this,
+            &WidgetManager::handleRuntimeMessage);
+    connect(osr, &LinCef::CefOsrBrowserInstance::browserCrashed, this,
+            &WidgetManager::handleBrowserCrashed);
+    connect(osr, &LinCef::CefOsrBrowserInstance::consoleMessageReceived, this,
+            [](const QString& wid, int level, const QString& msg, const QString& src, int line) {
+                qDebug().noquote() << QStringLiteral("[LinWidget Console][%1] %2 (%3:%4)").arg(wid, msg, src).arg(line);
+            });
+
+    const QString entryFile = manifest.entry.isEmpty() ? QStringLiteral("index.html") : manifest.entry;
+    const QString entryUrl = QStringLiteral("linwidget://%1/%2").arg(instanceId, entryFile);
+    osr->create(entryUrl, viewportRect);
+    m_osrBrowsers.insert(instanceId, osr);
+
+    saveWallpaperConfig(packagePath, isDevelopment, interactive);
+    updateDefaultCefPage();
+
+    if (LinCef::LinWidgetCanvasWidget::hostWidget()) {
+        LinCef::LinWidgetCanvasWidget::hostWidget()->update();
+    }
+
+    emit widgetLaunched(instanceId);
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
 }
 
 void WidgetManager::stopWallpaper(bool clearConfig)
 {
-    if (clearConfig) {
-        saveWallpaperConfig(QString(), false, false);
-        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
-        settings.setValue(QStringLiteral("LinWallpapers/Enabled"), false);
+    if (!m_activeWallpaperId.isEmpty()) {
+        const QString oldId = m_activeWallpaperId;
+        if (auto* osr = m_osrBrowsers.take(oldId)) {
+            if (m_canvasWidget) {
+                m_canvasWidget->removeWidgetFrame(oldId);
+            }
+            osr->close();
+            osr->deleteLater();
+        }
+        m_runningWidgets.remove(oldId);
+        stopSystemInfoWatchesForInstance(oldId);
+        clearDevelopmentWatcher(oldId);
+        m_instances.remove(oldId);
+        emit widgetStopped(oldId);
     }
+
     m_activeWallpaperId.clear();
     m_activeWallpaperPackagePath.clear();
+    m_activeWallpaperIsDevelopment = false;
     m_activeWallpaperInteractive = false;
+
+    if (clearConfig) {
+        saveWallpaperConfig(QString(), false, false);
+    }
+
+    if (LinCef::LinWidgetCanvasWidget::hostWidget()) {
+        LinCef::LinWidgetCanvasWidget::hostWidget()->update();
+    }
+
+    updateDefaultCefPage();
 }
 
 void WidgetManager::syncWallpaperWindowLayer()
 {
+    if (m_activeWallpaperId.isEmpty()) {
+        return;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return;
+    }
+    QRect viewportRect;
+    if (LinCef::LinWidgetCanvasWidget::hostWidget() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().isValid()) {
+        viewportRect = LinCef::LinWidgetCanvasWidget::hostWidget()->rect();
+    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
+        viewportRect = m_canvasWidget->rect();
+    } else if (m_desktopLayerWindow) {
+#ifdef Q_OS_WIN
+        viewportRect = windowRect((HWND)m_desktopLayerWindow);
+#endif
+    }
+    if (!viewportRect.isValid() || viewportRect.width() <= 100) {
+        if (QGuiApplication::primaryScreen()) {
+            viewportRect = QGuiApplication::primaryScreen()->geometry();
+        } else {
+            viewportRect = QRect(0, 0, 1920, 1080);
+        }
+    }
+
+    if (viewportRect.isValid() && osr->geometry() != viewportRect) {
+        osr->setGeometry(viewportRect);
+        if (m_instances.contains(m_activeWallpaperId)) {
+            m_instances[m_activeWallpaperId].geometry = viewportRect;
+        }
+    }
 }
 
 void WidgetManager::loadWallpaperConfig()
 {
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    const bool enabled = settings.value(QStringLiteral("LinWallpapers/Enabled"), false).toBool();
+    if (!enabled) {
+        return;
+    }
+    const QString packagePath = settings.value(QStringLiteral("LinWallpapers/PackagePath")).toString();
+    const bool isDev = settings.value(QStringLiteral("LinWallpapers/IsDevelopment"), false).toBool();
+    const bool interactive = settings.value(QStringLiteral("LinWallpapers/Interactive"), false).toBool();
+    if (!packagePath.isEmpty() && QFileInfo::exists(packagePath)) {
+        startWallpaper(packagePath, isDev, interactive, nullptr);
+    }
 }
 
 void WidgetManager::saveWallpaperConfig(const QString& packagePath, bool isDevelopment, bool interactive)
 {
-    Q_UNUSED(packagePath);
-    Q_UNUSED(isDevelopment);
-    Q_UNUSED(interactive);
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    if (packagePath.isEmpty()) {
+        settings.setValue(QStringLiteral("LinWallpapers/Enabled"), false);
+        settings.remove(QStringLiteral("LinWallpapers/PackagePath"));
+        settings.remove(QStringLiteral("LinWallpapers/IsDevelopment"));
+        settings.remove(QStringLiteral("LinWallpapers/Interactive"));
+    } else {
+        settings.setValue(QStringLiteral("LinWallpapers/Enabled"), true);
+        settings.setValue(QStringLiteral("LinWallpapers/PackagePath"), packagePath);
+        settings.setValue(QStringLiteral("LinWallpapers/IsDevelopment"), isDevelopment);
+        settings.setValue(QStringLiteral("LinWallpapers/Interactive"), interactive);
+    }
+    settings.sync();
 }
 
 } // namespace LinWidget

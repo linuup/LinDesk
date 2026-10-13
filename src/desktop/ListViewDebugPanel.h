@@ -22,9 +22,6 @@ class QSlider;
 class QTimer;
 class ListView;
 class FluentToggleSwitch;
-namespace LinWidget {
-class WidgetManager;
-}
 namespace AI {
 class AICoreService;
 struct ChatRequest;
@@ -42,7 +39,6 @@ private:
     void updateAdaptiveLayout();
     void updateLabels();
     void updateOpenGLStatus();
-    LinWidget::WidgetManager* linWidgetManager();
     void reloadLinWidgetsList();
     void updateLinWidgetsButtons();
     void updateLinWidgetLogViewer();
@@ -62,6 +58,7 @@ private:
     QWidget* createLinWidgetItemWidget(QListWidgetItem* item);
     bool loadSelectedLinWidget();
     bool unloadSelectedLinWidget();
+    void exportLinWidgetDiagnostics();
     QListWidget* activeLinWidgetList() const;
     QString linWidgetPackageKey(const QString& packagePath) const;
     QString linWidgetRegistryKey(const QString& id, bool isDevelopment) const;
@@ -152,7 +149,6 @@ private:
     QPushButton* m_linWidgetsResetBundledButton = nullptr;
     QPushButton* m_linWidgetsRemoveDevButton = nullptr;
     QPushButton* m_linWidgetsDeleteButton = nullptr;
-    LinWidget::WidgetManager* m_linWidgetManager = nullptr;
     QString m_lastLinWidgetInstanceId;
     QHash<QString, QString> m_linWidgetInstancesByPackage;
     QHash<QString, QString> m_linWidgetInstancesById;

@@ -62,8 +62,6 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
-#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 #include "desktop/ListView_Helpers.h"
 

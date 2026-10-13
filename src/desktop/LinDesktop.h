@@ -28,7 +28,6 @@
 #include <QElapsedTimer>
 #include <windows.h>
 class FluentDialog;
-namespace LinCef { class LinWidgetCanvasWidget; }
 
 class LinDesktop : public QWidget {
     Q_OBJECT
@@ -40,8 +39,6 @@ public:
 
     //First Floor
     QPointer<ListView> listView;
-    LinCef::LinWidgetCanvasWidget* widgetCanvas = nullptr;
-    LinCef::LinWidgetCanvasWidget* getWidgetCanvas() const { return widgetCanvas; }
     QPointer<DesktopInfoMonitor> m_monitor;
     ~LinDesktop();
 

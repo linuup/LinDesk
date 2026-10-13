@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QFileInfo>
 #include <QDir>
 #include <QMimeDatabase>
@@ -141,6 +142,31 @@ public:
         if (relativePath.startsWith(QLatin1Char('/'))) {
             relativePath.remove(0, 1);
         }
+
+        // External media route (for wallpaper and media playback)
+        if (relativePath.startsWith(QLatin1String("_media")) || parsedUrl.host().compare(QLatin1String("media"), Qt::CaseInsensitive) == 0) {
+            QUrlQuery query(parsedUrl);
+            QString mediaFilePath = query.queryItemValue(QStringLiteral("path"));
+            if (mediaFilePath.isEmpty() && relativePath.length() > 6) {
+                mediaFilePath = relativePath.mid(7);
+            }
+            if (!mediaFilePath.isEmpty()) {
+                QFileInfo mediaFi(mediaFilePath);
+                if (mediaFi.exists() && mediaFi.isFile()) {
+                    CefRefPtr<CefStreamReader> stream = CefStreamReader::CreateForFile(mediaFi.canonicalFilePath().toStdWString());
+                    if (stream) {
+                        static QMimeDatabase mimeDb;
+                        QString mimeType = mimeDb.mimeTypeForFile(mediaFi).name();
+                        CefResponse::HeaderMap headers;
+                        headers.emplace(L"Access-Control-Allow-Origin", L"*");
+                        headers.emplace(L"Access-Control-Allow-Methods", L"GET, POST, OPTIONS");
+                        headers.emplace(L"Access-Control-Allow-Headers", L"*");
+                        return new CefStreamResourceHandler(200, "OK", mimeType.toStdString(), headers, stream);
+                    }
+                }
+            }
+        }
+
         if (relativePath.isEmpty()) {
             relativePath = QStringLiteral("index.html");
         }

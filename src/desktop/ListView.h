@@ -49,9 +49,6 @@ class ListViewMappedBoxHelper;
 class ListViewDebugPanel;
 class DesktopSnakeGameController;
 struct DesktopSnakeGameIcon;
-namespace LinWidget {
-class WidgetManager;
-}
 
 
 inline quint64 packGridCell(int gridX, int gridY)
@@ -407,7 +404,7 @@ public:
 	void showSettings(LinBox* target = nullptr);
 	void showTransientTip(const QString& message, int autoHideMs = 2500);
 	void showDebugPanel();
-	LinWidget::WidgetManager* linWidgetManager();
+	void* linWidgetManager();
 	void setShowLinWidgetBlockedCells(bool show);
 	bool showLinWidgetBlockedCells() const { return m_showLinWidgetBlockedCells; }
 	void syncLinWidgetLayer();
@@ -623,7 +620,6 @@ private:
 	QPointer<SettingUI> m_settingsWindow;
 	QPointer<ListViewDebugPanel> m_debugPanel;
 	DesktopSnakeGameController* m_snakeGameController = nullptr;
-	LinWidget::WidgetManager* m_linWidgetManager = nullptr;
 	QLabel* m_dragTip = nullptr;
 	FluentInfoTip* m_infoTip = nullptr;
 
@@ -723,4 +719,5 @@ private:
 	int m_backgroundSelectionThrottleMs = 8;
 	qreal m_backgroundSelectionRefreshCostMs = 0.0;
 	int m_backgroundSelectionThrottleRelaxFrames = 0;
+	QRect m_imeCursorRect;
 };

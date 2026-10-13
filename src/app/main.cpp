@@ -22,7 +22,7 @@
 #include "services/AppPaths.h"
 #include "services/LinDeskHoveredItemServer.h"
 #include "plugins/PluginManager.h"
-#include "desktop/widgets/cef/CefManager.h"
+#include "desktop/widgets/runtime_export.h"
 #include "services/CrashHandler.h"
 #include "services/LogManager.h"
 #include "desktop/RightMenu.h"
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
     }
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         PluginManager::shutdown();
-        LinCef::CefManager::instance()->shutdown();
+        LinWidgetRuntimeBridge::instance().shutdown();
     });
     qDebug() << isShortcutArrowEnabled();
     qDebug() << isUACShieldEnabled();

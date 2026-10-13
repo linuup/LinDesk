@@ -105,6 +105,30 @@ inline QString linWidgetDataDir()
     return dirPath;
 }
 
+inline QString userLinWidgetsDataDir()
+{
+    return linWidgetDataDir();
+}
+
+inline QString appDataDir()
+{
+    return userConfigDir();
+}
+
+inline QString userRuntimeDir()
+{
+    const QString dirPath = QDir(userLocalConfigDir()).filePath(QStringLiteral("runtime"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
+inline QString linWidgetRuntimeDir()
+{
+    const QString dirPath = QDir(userRuntimeDir()).filePath(QStringLiteral("linwidget"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
 inline QString configFilePath()
 {
     return QDir(userConfigDir()).filePath(QStringLiteral("config.ini"));

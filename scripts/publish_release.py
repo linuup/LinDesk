@@ -14,6 +14,9 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Optional, Tuple
 
 # Import clean translation update logic from update_translations.py
@@ -24,6 +27,10 @@ REPO_OWNER = "linuup"
 REPO_NAME = "LinDesk_Update"
 DEFAULT_CHANNEL = "stable"
 DEFAULT_MIN_VERSION = "1.0.0"
+
+# GitHub fine-grained PAT（本仓库 contents: write）。注意：此令牌已在脚本内，
+# 请勿将本文件提交到公开/共享仓库；如泄露请到 GitHub 立即撤销并更换。
+API_TOKEN = "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"
 
 def get_repo_root() -> str:
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -177,63 +184,85 @@ def generate_update_json(installer_path: str, version: str, sha256_hash: str, no
     sys.stdout.flush()
     return metadata
 
-def publish_github_release(repo_owner: str, repo_name: str, tag: str, version: str, 
-                           installer_path: str, update_json_path: str, notes: str, sha256_hash: str):
-    print(f"\n>>> [5/6] Publishing Release to GitHub ({repo_owner}/{repo_name} {tag})...")
+def api_github_request(method: str, url: str, token: str,
+                       data: Optional[bytes] = None,
+                       content_type: str = "application/json"):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if data is not None:
+        headers["Content-Type"] = content_type
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req) as resp:
+            raw = resp.read()
+            return json.loads(raw) if raw else None
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        body = e.read().decode("utf-8", "replace")[:500]
+        raise RuntimeError(f"GitHub API {method} {url} failed ({e.code}): {body}")
+
+def api_publish_release(repo_owner: str, repo_name: str, tag: str, version: str,
+                        installer_path: str, update_json_path: str, notes: str, sha256_hash: str):
+    """通过 GitHub REST API 直接发布（无需 gh CLI）。token 取 API_TOKEN 常量。"""
+    print(f"\n>>> [5/6] Publishing Release to GitHub via REST API ({repo_owner}/{repo_name} {tag})...")
     sys.stdout.flush()
+
+    base = f"https://api.github.com/repos/{repo_owner}/{repo_name}"
+    uploads_base = f"https://uploads.github.com/repos/{repo_owner}/{repo_name}"  # 资产上传必须走 uploads 域名
+    asset_names = [os.path.basename(installer_path), os.path.basename(update_json_path)]
 
     final_notes = notes.strip()
     if sha256_hash not in final_notes:
         final_notes += f"\n\n### Checksum\n- **Installer SHA-256**: `{sha256_hash}`\n"
 
-    gh_exe = find_tool(["gh", "gh.exe"])
-    if not gh_exe:
-        print("\n[NOTE] GitHub CLI (gh) not detected on this system.")
-        print(f"You can upload the release assets manually:")
-        print(f"  1. Go to : https://github.com/{repo_owner}/{repo_name}/releases/new?tag={tag}")
-        print(f"  2. Title : LinDesk {version}")
-        print(f"  3. Attach: {installer_path}")
-        print(f"             {update_json_path}")
-        print(f"  4. Notes : (SHA-256 is already recorded in update.json: {sha256_hash})")
+    # 1) 查 tag 是否已存在
+    release = api_github_request("GET", f"{base}/releases/tags/{tag}", API_TOKEN)
+    if release:
+        release_id = release["id"]
+        print(f"    Release {tag} already exists (id={release_id}). Updating assets...")
         sys.stdout.flush()
-        return False
-
-    full_repo = f"{repo_owner}/{repo_name}"
-    
-    # Check if release already exists
-    check_cmd = [gh_exe, "release", "view", tag, "--repo", full_repo]
-    check_res = subprocess.run(check_cmd, capture_output=True, text=True)
-    
-    if check_res.returncode == 0:
-        # Release exists: upload / overwrite assets
-        print(f"    Release {tag} already exists. Uploading/updating assets (--clobber)...")
-        sys.stdout.flush()
-        cmd = [
-            gh_exe, "release", "upload", tag,
-            installer_path,
-            update_json_path,
-            "--repo", full_repo,
-            "--clobber"
-        ]
+        # 删除同名的旧资产（REST API 无覆盖，须先删后传）
+        assets = api_github_request("GET", f"{base}/releases/{release_id}/assets", API_TOKEN) or []
+        for asset in assets:
+            if asset.get("name") in asset_names:
+                api_github_request("DELETE", f"{base}/releases/assets/{asset['id']}", API_TOKEN)
+                print(f"    Deleted old asset {asset['name']}")
+                sys.stdout.flush()
     else:
-        # Create new release
-        cmd = [
-            gh_exe, "release", "create", tag,
-            installer_path,
-            update_json_path,
-            "--repo", full_repo,
-            "--title", f"LinDesk {version}",
-            "--notes", final_notes
-        ]
+        # 2) 创建新 release
+        payload = json.dumps({
+            "tag_name": tag,
+            "name": f"LinDesk {version}",
+            "body": final_notes,
+            "draft": False,
+            "prerelease": False,
+        }).encode("utf-8")
+        release = api_github_request("POST", f"{base}/releases", API_TOKEN, data=payload)
+        if not release:
+            raise RuntimeError("GitHub API returned empty body when creating release")
+        release_id = release["id"]
+        print(f"    Created release {tag} (id={release_id})")
+        sys.stdout.flush()
 
-    print(f"    Running GitHub CLI: {' '.join(cmd[:4])} ...")
-    sys.stdout.flush()
-    res = subprocess.run(cmd)
-    if res.returncode != 0:
-        print(f"\n[WARN] gh execution exited with code {res.returncode}. You may upload files manually.", file=sys.stderr)
-        return False
+    # 3) 上传两个资产（installer + update.json）
+    for file_path in (installer_path, update_json_path):
+        name = os.path.basename(file_path)
+        with open(file_path, "rb") as f:
+            body = f.read()
+        qname = urllib.parse.quote(name)
+        asset = api_github_request(
+            "POST", f"{uploads_base}/releases/{release_id}/assets?name={qname}",
+            API_TOKEN, data=body, content_type="application/octet-stream")
+        if not asset:
+            raise RuntimeError(f"Failed to upload asset {name}")
+        print(f"    [OK] Uploaded {name} ({len(body) / (1024 * 1024):.2f} MB)")
+        sys.stdout.flush()
 
-    print(f"    [OK] Successfully published to https://github.com/{full_repo}/releases/tag/{tag}")
+    print(f"    [OK] Successfully published to https://github.com/{repo_owner}/{repo_name}/releases/tag/{tag}")
     sys.stdout.flush()
     return True
 
@@ -248,12 +277,31 @@ def print_banner(current_version: str, repo_root: str):
     print(f"  * CMake 优化   : 自动附加 -DBUILD_TESTING=OFF (排除单元测试工程)")
     print("-" * 68)
 
+def resolve_existing_package(repo_root: str, expected_version: str = "") -> Tuple[str, str]:
+    """在 installer/ 目录定位已有安装包 LinDesk_Setup_X.Y.Z.exe，返回 (路径, 版本)。"""
+    installer_dir = os.path.join(repo_root, "installer")
+    candidates = []
+    if os.path.isdir(installer_dir):
+        for name in os.listdir(installer_dir):
+            m = re.match(r"^LinDesk_Setup_(\d+\.\d+\.\d+)\.exe$", name)
+            if m:
+                candidates.append((os.path.join(installer_dir, name), m.group(1)))
+    if not candidates:
+        raise FileNotFoundError(f"installer 目录下未找到 LinDesk_Setup_*.exe: {installer_dir}")
+    if expected_version:
+        for path, ver in candidates:
+            if ver == expected_version:
+                return path, ver
+    candidates.sort(key=lambda pv: os.path.getmtime(pv[0]), reverse=True)
+    return candidates[0]
+
 def interactive_wizard(repo_root: str, current_version: str, curr_major: int, curr_minor: int, curr_patch: int):
     print("\n【请选择执行模式】")
     print("  [1] 正式发布到 GitHub (构建 + 打包 + 更新 update.json + GitHub 发布)")
     print("  [2] 仅本地构建与打包 (构建 + Inno Setup 打包 + update.json，不上传)")
     print("  [3] 仅打包现有产物   (跳过编译，直接使用已有的 Release 产物制作安装包)")
     print("  [4] 仅更新国际化翻译 (提取并编译 C++/QML 翻译 .ts -> .qm)")
+    print("  [5] 仅推送已有安装包 (跳过编译与打包，直接上传 installer/ 下的现成包)")
     print("  [0] 退出")
     print("-" * 68)
 
@@ -261,9 +309,9 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
         choice = input("请输入选项编号 [默认: 1]: ").strip()
         if choice == "":
             choice = "1"
-        if choice in ["0", "1", "2", "3", "4"]:
+        if choice in ["0", "1", "2", "3", "4", "5"]:
             break
-        print("[提示] 输入无效，请输入 0、1、2、3 或 4。")
+        print("[提示] 输入无效，请输入 0、1、2、3、4 或 5。")
 
     if choice == "0":
         print("\n已退出发版助手。")
@@ -275,41 +323,17 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
         print("\n[SUCCESS] 翻译文件处理完毕。")
         sys.exit(0)
 
-    # 模式 1, 2, 3 的版本号配置
-    next_patch_ver = f"{curr_major}.{curr_minor}.{curr_patch + 1}"
-    next_minor_ver = f"{curr_major}.{curr_minor + 1}.0"
-
-    print("\n【版本号设置】")
-    print(f"  [1] 自动增加补丁号 Patch (+1) : {current_version} -> {next_patch_ver} (推荐，日常修复/小优化)")
-    print(f"  [2] 保持当前版本不变           : {current_version}")
-    print(f"  [3] 自动增加次版本号 Minor (+1) : {current_version} -> {next_minor_ver} (新增功能)")
-    print(f"  [4] 手动输入自定义版本号")
-
-    while True:
-        ver_choice = input("请选择版本方案 [默认: 1]: ").strip()
-        if ver_choice == "":
-            ver_choice = "1"
-        if ver_choice == "1":
-            target_version = next_patch_ver
-            break
-        elif ver_choice == "2":
-            target_version = current_version
-            break
-        elif ver_choice == "3":
-            target_version = next_minor_ver
-            break
-        elif ver_choice == "4":
-            custom_ver = input("请输入自定义版本号 (格式 X.Y.Z，例如 1.1.0): ").strip()
-            if re.match(r"^\d+\.\d+\.\d+$", custom_ver):
-                target_version = custom_ver
-                break
-            print("[错误] 版本号格式不合规，必须为三段数字，如 1.0.9")
-        else:
-            print("[提示] 请输入 1、2、3 或 4。")
-
-    # Release Notes 配置
+    skip_package = False
+    existing_installer_path = ""
     notes = ""
-    if choice == "1":
+    if choice == "5":
+        # 仅推送已有安装包：定位现成包，跳过版本号设置 / 翻译 / 编译 / 打包
+        try:
+            existing_installer_path, target_version = resolve_existing_package(repo_root)
+        except FileNotFoundError as e:
+            print(f"[错误] {e}")
+            sys.exit(1)
+        print(f"\n>>> 检测到已有安装包: {existing_installer_path} (v{target_version})")
         print("\n【Release Notes / 更新日志】")
         user_notes = input("请输入本次更新说明 (直接回车将使用默认说明): ").strip()
         if user_notes:
@@ -321,23 +345,72 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
                     notes = f.read().strip()
             if not notes:
                 notes = f"LinDesk {target_version} update."
+        skip_trans = True
     else:
-        notes = f"LinDesk {target_version} local package."
+        # 模式 1, 2, 3 的版本号配置
+        next_patch_ver = f"{curr_major}.{curr_minor}.{curr_patch + 1}"
+        next_minor_ver = f"{curr_major}.{curr_minor + 1}.0"
 
-    # 是否跳过翻译更新
-    skip_trans = False
-    if choice in ["1", "2"]:
-        skip_trans_in = input("\n是否跳过翻译提取与编译? [y/N, 默认 N]: ").strip().lower()
-        skip_trans = skip_trans_in in ["y", "yes"]
+        print("\n【版本号设置】")
+        print(f"  [1] 自动增加补丁号 Patch (+1) : {current_version} -> {next_patch_ver} (推荐，日常修复/小优化)")
+        print(f"  [2] 保持当前版本不变           : {current_version}")
+        print(f"  [3] 自动增加次版本号 Minor (+1) : {current_version} -> {next_minor_ver} (新增功能)")
+        print(f"  [4] 手动输入自定义版本号")
+
+        while True:
+            ver_choice = input("请选择版本方案 [默认: 1]: ").strip()
+            if ver_choice == "":
+                ver_choice = "1"
+            if ver_choice == "1":
+                target_version = next_patch_ver
+                break
+            elif ver_choice == "2":
+                target_version = current_version
+                break
+            elif ver_choice == "3":
+                target_version = next_minor_ver
+                break
+            elif ver_choice == "4":
+                custom_ver = input("请输入自定义版本号 (格式 X.Y.Z，例如 1.1.0): ").strip()
+                if re.match(r"^\d+\.\d+\.\d+$", custom_ver):
+                    target_version = custom_ver
+                    break
+                print("[错误] 版本号格式不合规，必须为三段数字，如 1.0.9")
+            else:
+                print("[提示] 请输入 1、2、3 或 4。")
+
+        # Release Notes 配置
+        if choice == "1":
+            print("\n【Release Notes / 更新日志】")
+            user_notes = input("请输入本次更新说明 (直接回车将使用默认说明): ").strip()
+            if user_notes:
+                notes = user_notes
+            else:
+                rn_file = os.path.join(repo_root, "docs", "release-notes.md")
+                if os.path.isfile(rn_file):
+                    with open(rn_file, "r", encoding="utf-8") as f:
+                        notes = f.read().strip()
+                if not notes:
+                    notes = f"LinDesk {target_version} update."
+        else:
+            notes = f"LinDesk {target_version} local package."
+
+        # 是否跳过翻译更新
+        skip_trans = False
+        if choice in ["1", "2"]:
+            skip_trans_in = input("\n是否跳过翻译提取与编译? [y/N, 默认 N]: ").strip().lower()
+            skip_trans = skip_trans_in in ["y", "yes"]
 
     # 确定参数
-    no_build = (choice == "3")
+    no_build = (choice == "3") or (choice == "5")
     skip_upload = (choice in ["2", "3"])
+    skip_package = (choice == "5")
 
     mode_name_map = {
         "1": "正式发布到 GitHub (构建 + 打包 + 上传)",
         "2": "仅本地构建与打包 (不上传 GitHub)",
-        "3": "仅打包现有产物 (跳过编译，直接生成安装包)"
+        "3": "仅打包现有产物 (跳过编译，直接生成安装包)",
+        "5": "仅推送已有安装包 (跳过编译与打包，直接上传)"
     }
 
     # 汇总确认
@@ -346,7 +419,8 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
     print("=" * 68)
     print(f"  * 执行模式     : {mode_name_map[choice]}")
     print(f"  * 目标版本号   : {target_version} (当前: {current_version})")
-    print(f"  * CMake 编译   : {'跳过 (仅打包现有 Release 产物)' if no_build else '执行 (Release, -DBUILD_TESTING=OFF)'}")
+    print(f"  * CMake 编译   : {'跳过' if no_build else '执行 (Release, -DBUILD_TESTING=OFF)'}")
+    print(f"  * 安装包打包   : {('跳过 (使用已有安装包: ' + existing_installer_path + ')') if skip_package else '执行 (Inno Setup)'}")
     print(f"  * 更新翻译     : {'跳过' if skip_trans or no_build else '执行 (lupdate & lrelease)'}")
     print(f"  * GitHub 发布  : {'否 (离线/仅本地)' if skip_upload else f'是 (目标仓库: {REPO_OWNER}/{REPO_NAME})'}")
     if not skip_upload:
@@ -358,7 +432,7 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
         print("\n[CANCELLED] 用户取消操作。")
         sys.exit(0)
 
-    return target_version, notes, skip_upload, no_build, skip_trans
+    return target_version, notes, skip_upload, no_build, skip_trans, skip_package
 
 def main():
     if hasattr(sys.stdout, "reconfigure"):
@@ -405,7 +479,7 @@ def main():
     use_interactive = args.interactive or (not has_cli_ops and sys.stdin.isatty())
 
     if use_interactive:
-        target_version, notes, skip_upload, no_build, skip_trans = interactive_wizard(
+        target_version, notes, skip_upload, no_build, skip_trans, skip_package = interactive_wizard(
             repo_root, current_version, curr_major, curr_minor, curr_patch
         )
     else:
@@ -433,6 +507,7 @@ def main():
         skip_upload = args.skip_upload
         no_build = args.no_build
         skip_trans = args.skip_translations
+        skip_package = False
 
     print(f"\n>>> 正在准备启动流水线...")
     print(f"    当前版本 : {current_version}")
@@ -440,8 +515,8 @@ def main():
     print(f"    更新日志 : {notes}")
     sys.stdout.flush()
 
-    # Synchronize version to CMakeLists.txt if changed
-    if target_version != current_version:
+    # Synchronize version to CMakeLists.txt if changed (skip when pushing an existing package)
+    if target_version != current_version and not skip_package:
         print(f"\n>>> [1/6] 正在同步 CMakeLists.txt 版本号至 {target_version}...")
         parts = [int(p) for p in target_version.split(".")]
         write_version(cmake_path, parts[0], parts[1], parts[2])
@@ -464,6 +539,8 @@ def main():
     release_dir = os.path.join(build_dir, "Release")
     if not no_build:
         release_dir = build_release(repo_root, build_dir)
+    elif skip_package:
+        print("\n>>> [3/6] 跳过 Release 编译步骤 (仅推送已有安装包)。")
     else:
         print("\n>>> [3/6] 跳过 Release 编译步骤 (使用已有构建产物)。")
         if not os.path.isdir(release_dir):
@@ -472,17 +549,22 @@ def main():
     # Step 4: Package installer with Inno Setup
     installer_dir = os.path.join(repo_root, "installer")
     iss_path = os.path.join(installer_dir, "package.iss")
-    installer_path = package_installer(repo_root, target_version, release_dir, installer_dir, iss_path)
+    if skip_package:
+        installer_path, _ = resolve_existing_package(repo_root, target_version)
+        print(f"\n>>> [4/6] 跳过 Inno Setup 打包，使用已有安装包: {installer_path}")
+        sys.stdout.flush()
+    else:
+        installer_path = package_installer(repo_root, target_version, release_dir, installer_dir, iss_path)
 
     # Step 5: Compute SHA256 & Generate update.json
     sha256_hash = compute_sha256(installer_path)
     update_json_path = os.path.join(installer_dir, "update.json")
     generate_update_json(installer_path, target_version, sha256_hash, notes, update_json_path)
 
-    # Step 6: Publish release to GitHub
+    # Step 6: Publish release to GitHub (REST API)
     tag = f"v{target_version}"
     if not skip_upload:
-        publish_github_release(
+        api_publish_release(
             repo_owner=REPO_OWNER,
             repo_name=REPO_NAME,
             tag=tag,

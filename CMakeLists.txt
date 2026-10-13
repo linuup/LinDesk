@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.31)
 # 修改版本号只需要改这里
 set(LINDESK_VERSION_MAJOR 1)
 set(LINDESK_VERSION_MINOR 1)
-set(LINDESK_VERSION_PATCH 1)
+set(LINDESK_VERSION_PATCH 2)
 set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 # 生成完整版本字符串set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
@@ -87,6 +87,13 @@ configure_file(
 
 add_compile_options("/utf-8" "/FS")
 
+# Set 64-bit Qt path if available
+if(WIN32 AND (CMAKE_SIZEOF_VOID_P EQUAL 8 OR CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_CL_64))
+    if(EXISTS "F:/Qt/5.15.2/msvc2019_64")
+        list(PREPEND CMAKE_PREFIX_PATH "F:/Qt/5.15.2/msvc2019_64")
+    endif()
+endif()
+
 # Find Qt5
 find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools Concurrent REQUIRED)
 find_package(GTest CONFIG REQUIRED)
@@ -113,7 +120,7 @@ else()
     message(WARNING "Win11 menu host subproject will not be added because Visual Studio generator or W11MenuUI project was not found.")
 endif()
 
-# 自动收集 src 下所?.cpp?h ?.qrc 文件
+# 自动收集 src 下所有 .cpp .h .qrc 文件
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "src/*.h"
@@ -122,11 +129,10 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
 list(FILTER SOURCES EXCLUDE REGEX ".*/subprocess/.*")
-
-file(GLOB_RECURSE LINWIDGET_SHARED_SOURCES CONFIGURE_DEPENDS
-    "src/desktop/widgets/linwidget/*.cpp"
-    "src/desktop/widgets/linwidget/*.h"
-)
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/cef/.*")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetManager\\.(cpp|h)$")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetContainer\\.(cpp|h)$")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetSettingsDialog\\.(cpp|h)$")
 
 # 添加可执行文件资源 (WIN32_RESOURCES)
 if(WIN32)
@@ -152,7 +158,7 @@ set_target_properties(LinDesk PROPERTIES
 
 
 # ==============================================================================
-# CEF (Chromium Embedded Framework) OSR Integration
+# CEF (Chromium Embedded Framework) OSR Integration & LinWidgetRuntime
 # ==============================================================================
 set(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/cef" CACHE PATH "Path to CEF root directory")
 if(DEFINED ENV{CEF_ROOT} AND NOT EXISTS "${CEF_ROOT}/include/cef_app.h")
@@ -163,17 +169,70 @@ set(LINDESK_HAS_CEF OFF)
 if(EXISTS "${CEF_ROOT}/include/cef_app.h")
     message(STATUS "[CEF] Found Chromium Embedded Framework at: ${CEF_ROOT}")
     set(LINDESK_HAS_CEF ON)
-    target_compile_definitions(LinDesk PRIVATE LINDESK_HAS_CEF=1)
-    target_include_directories(LinDesk PRIVATE "${CEF_ROOT}")
 
     set(CEF_WRAPPER_LIB
         $<$<CONFIG:Debug>:${CEF_ROOT}/libcef_dll_wrapper/Debug/libcef_dll_wrapper.lib>
         $<$<NOT:$<CONFIG:Debug>>:${CEF_ROOT}/libcef_dll_wrapper/Release/libcef_dll_wrapper.lib>
     )
 
-    target_link_libraries(LinDesk PRIVATE
+    # 独立组件运行时动态库：LinWidgetRuntime.dll
+    file(GLOB_RECURSE LINWIDGET_RUNTIME_SOURCES CONFIGURE_DEPENDS
+        "src/desktop/widgets/cef/*.cpp"
+        "src/desktop/widgets/cef/*.h"
+        "src/desktop/widgets/linwidget/*.cpp"
+        "src/desktop/widgets/linwidget/*.h"
+    )
+    list(APPEND LINWIDGET_RUNTIME_SOURCES
+        "src/desktop/widgets/runtime_export.h"
+        "src/desktop/widgets/runtime_export.cpp"
+        "src/services/AppPaths.h"
+        "src/services/IconCacheManager.h"
+        "src/services/IconCacheManager.cpp"
+        "src/services/DpiScaleHelper.h"
+        "src/services/SystemInfo/SystemInfoService.h"
+        "src/services/SystemInfo/SystemInfoService.cpp"
+    )
+    list(FILTER LINWIDGET_RUNTIME_SOURCES EXCLUDE REGEX ".*/subprocess/.*")
+
+    add_library(LinWidgetRuntime SHARED ${LINWIDGET_RUNTIME_SOURCES})
+    if(MSVC)
+        target_compile_options(LinWidgetRuntime PRIVATE /Zc:char8_t-)
+    endif()
+    target_compile_definitions(LinWidgetRuntime PRIVATE
+        LINWIDGET_RUNTIME_EXPORTS=1
+        LINDESK_HAS_CEF=1
+        SPDLOG_ENABLE_SOURCE_LOC
+    )
+    target_include_directories(LinWidgetRuntime PRIVATE
+        "${CEF_ROOT}"
+        ${CMAKE_BINARY_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services
+    )
+    target_link_libraries(LinWidgetRuntime PRIVATE
         "${CEF_ROOT}/Release/libcef.lib"
         ${CEF_WRAPPER_LIB}
+        Qt5::Widgets
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Network
+        Qt5::WinExtras
+        spdlog::spdlog_header_only
+        Shell32
+        Psapi
+        Shlwapi
+        Ole32
+        Uuid
+        Comctl32
+        dwmapi
+        Winmm
+        Dbghelp
+        Iphlpapi
+        Dxgi
+        Pdh
     )
 
     # 独立子进程目标 LinDeskSubprocess
@@ -189,14 +248,24 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
             "${CEF_ROOT}/Release/libcef.lib"
             ${CEF_WRAPPER_LIB}
         )
-        add_dependencies(LinDesk LinDeskSubprocess)
+        add_dependencies(LinWidgetRuntime LinDeskSubprocess)
     endif()
 
-    # 复制 CEF 运行时资源与 DLL 到输出目录
-    add_custom_command(TARGET LinDesk POST_BUILD
+    add_dependencies(LinDesk LinWidgetRuntime)
+
+    # 组织输出目录：将组件运行时部署到 runtime/linwidget 目录
+    set(RUNTIME_DEPLOY_DIR "$<TARGET_FILE_DIR:LinDesk>/runtime/linwidget")
+    add_custom_command(TARGET LinWidgetRuntime POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${RUNTIME_DEPLOY_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:LinWidgetRuntime>"
+            "${RUNTIME_DEPLOY_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:LinDeskSubprocess>"
+            "${RUNTIME_DEPLOY_DIR}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CEF_ROOT}/Resources"
-            "$<TARGET_FILE_DIR:LinDesk>"
+            "${RUNTIME_DEPLOY_DIR}/Resources"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CEF_ROOT}/Release/libcef.dll"
             "${CEF_ROOT}/Release/chrome_elf.dll"
@@ -207,11 +276,11 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
             "${CEF_ROOT}/Release/vulkan-1.dll"
             "${CEF_ROOT}/Release/dxcompiler.dll"
             "${CEF_ROOT}/Release/dxil.dll"
-            "$<TARGET_FILE_DIR:LinDesk>"
-        COMMENT "Copying CEF runtime binaries and resources to output directory..."
+            "${RUNTIME_DEPLOY_DIR}"
+        COMMENT "Deploying LinWidget runtime and CEF binaries to runtime/linwidget..."
     )
 else()
-    message(STATUS "[CEF] CEF SDK not found in 3rdparty/cef. Run scripts/download_cef.ps1 to enable CEF OSR.")
+    message(STATUS "[CEF] CEF SDK not found in 3rdparty/cef. Widget runtime will not be built.")
 endif()
 
 target_compile_definitions(LinDesk PRIVATE "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRENT_SOURCE_DIR})\"" SPDLOG_ENABLE_SOURCE_LOC)
@@ -362,15 +431,63 @@ target_include_directories(LinDeskPersistenceTests
 )
 
 add_test(NAME LinDeskPersistenceTests COMMAND LinDeskPersistenceTests)
+
+add_executable(LinDeskRuntimeBridgeTests
+    tests/RuntimeBridgeTests.cpp
+    src/desktop/widgets/runtime_export.cpp
+    src/desktop/widgets/runtime_export.h
+    src/services/AppPaths.h
+)
+
+target_link_libraries(LinDeskRuntimeBridgeTests
+    PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskRuntimeBridgeTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_test(NAME LinDeskRuntimeBridgeTests COMMAND LinDeskRuntimeBridgeTests)
+
+add_executable(LinDeskRuntimeInstallerTests
+    tests/RuntimeInstallerTests.cpp
+    src/desktop/runtime/RuntimeInstaller.cpp
+    src/desktop/runtime/RuntimeInstaller.h
+    src/desktop/widgets/runtime_export.cpp
+    src/desktop/widgets/runtime_export.h
+    src/services/AppPaths.h
+)
+
+target_link_libraries(LinDeskRuntimeInstallerTests
+    PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskRuntimeInstallerTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_test(NAME LinDeskRuntimeInstallerTests COMMAND LinDeskRuntimeInstallerTests)
 endif(BUILD_TESTING)
 
 # ---- 解决方案文件夹分组 ----
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set_property(TARGET LinDesk LinDeskSubprocess Win11MenuIsland PROPERTY FOLDER "Apps")
+set_property(TARGET LinDesk LinWidgetRuntime LinDeskSubprocess Win11MenuIsland PROPERTY FOLDER "Apps")
 set_property(TARGET LinDeskUpdate PROPERTY FOLDER "Tools")
 if(BUILD_TESTING)
     set_property(TARGET LinDeskSystemInfoTests LinDeskWidgetEnvelopeTests
-        LinDeskLogManagerTests LinDeskPersistenceTests PROPERTY FOLDER "Tests")
+        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests PROPERTY FOLDER "Tests")
 endif()
 
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)

@@ -1,11 +1,24 @@
 #include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
-#include "desktop/ListView.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
 
 #include <QPainter>
 #include <QPaintEvent>
+#include <QPointer>
 #include <QDebug>
 
 namespace LinCef {
+
+static QPointer<QWidget> s_hostWidget;
+
+void LinWidgetCanvasWidget::setHostWidget(QWidget* hostWidget)
+{
+    s_hostWidget = hostWidget;
+}
+
+QWidget* LinWidgetCanvasWidget::hostWidget()
+{
+    return s_hostWidget.data();
+}
 
 LinWidgetCanvasWidget::LinWidgetCanvasWidget(QWidget* parent)
     : QWidget(parent)
@@ -26,16 +39,20 @@ void LinWidgetCanvasWidget::updateWidgetFrame(const QString& widgetId,
     buffer.imageBuffer = image;
     buffer.visible = true;
 
-    // 直接通知 ListView 进行图层合成局部重绘
+    // 直接通知 hostWidget 进行图层合成局部重绘
     if (dirtyRects.isEmpty()) {
-        if (ListView::instance()) {
-            ListView::instance()->update(widgetGeometry);
+        if (s_hostWidget) {
+            s_hostWidget->update(widgetGeometry);
+        } else {
+            update(widgetGeometry);
         }
     } else {
         for (const QRect& dirty : dirtyRects) {
             const QRect translatedDirty = dirty.translated(widgetGeometry.topLeft());
-            if (ListView::instance()) {
-                ListView::instance()->update(translatedDirty);
+            if (s_hostWidget) {
+                s_hostWidget->update(translatedDirty);
+            } else {
+                update(translatedDirty);
             }
         }
     }
@@ -47,8 +64,10 @@ void LinWidgetCanvasWidget::removeWidgetFrame(const QString& widgetId)
     if (it != m_widgetBuffers.end()) {
         const QRect rectToClear = it.value().geometry;
         m_widgetBuffers.erase(it);
-        if (ListView::instance()) {
-            ListView::instance()->update(rectToClear);
+        if (s_hostWidget) {
+            s_hostWidget->update(rectToClear);
+        } else {
+            update(rectToClear);
         }
     }
 }
@@ -58,8 +77,10 @@ void LinWidgetCanvasWidget::setWidgetVisible(const QString& widgetId, bool visib
     auto it = m_widgetBuffers.find(widgetId);
     if (it != m_widgetBuffers.end() && it.value().visible != visible) {
         it.value().visible = visible;
-        if (ListView::instance()) {
-            ListView::instance()->update(it.value().geometry);
+        if (s_hostWidget) {
+            s_hostWidget->update(it.value().geometry);
+        } else {
+            update(it.value().geometry);
         }
     }
 }
@@ -67,8 +88,10 @@ void LinWidgetCanvasWidget::setWidgetVisible(const QString& widgetId, bool visib
 void LinWidgetCanvasWidget::clearAllFrames()
 {
     m_widgetBuffers.clear();
-    if (ListView::instance()) {
-        ListView::instance()->update();
+    if (s_hostWidget) {
+        s_hostWidget->update();
+    } else {
+        update();
     }
 }
 
@@ -83,6 +106,13 @@ QString LinWidgetCanvasWidget::widgetAt(const QPoint& pos) const
         const WidgetRenderBuffer& buf = it.value();
         if (!buf.visible || !buf.geometry.contains(pos)) {
             continue;
+        }
+
+        // 壁纸组件：若非交互模式，完全穿透给底层 ListView / 图标
+        if (it.key().startsWith(QStringLiteral("wallpaper:"))) {
+            if (!LinWidget::WidgetManager::instance() || !LinWidget::WidgetManager::instance()->isWallpaperInteractive()) {
+                continue;
+            }
         }
 
         // 默认页面：仅居中卡片区域响应交互，周围广大透明区域完全穿透给 ListView
@@ -122,8 +152,10 @@ void LinWidgetCanvasWidget::setShowBounds(bool show)
 {
     if (m_showBounds != show) {
         m_showBounds = show;
-        if (ListView::instance()) {
-            ListView::instance()->update();
+        if (s_hostWidget) {
+            s_hostWidget->update();
+        } else {
+            update();
         }
     }
 }
@@ -139,7 +171,25 @@ void LinWidgetCanvasWidget::renderCanvas(QPainter& painter, const QRegion& clipR
 
     const QRect clipBoundingRect = clipRegion.boundingRect();
 
+    // 1. 最优先绘制壁纸图层（位于最底层，系统壁纸之上、普通组件之下）
     for (auto it = m_widgetBuffers.constBegin(); it != m_widgetBuffers.constEnd(); ++it) {
+        if (!it.key().startsWith(QStringLiteral("wallpaper:"))) {
+            continue;
+        }
+        const WidgetRenderBuffer& buffer = it.value();
+        if (!buffer.visible || buffer.imageBuffer.isNull()) {
+            continue;
+        }
+        if (clipBoundingRect.isNull() || buffer.geometry.intersects(clipBoundingRect)) {
+            painter.drawImage(buffer.geometry, buffer.imageBuffer);
+        }
+    }
+
+    // 2. 绘制普通组件与默认页（位于上层）
+    for (auto it = m_widgetBuffers.constBegin(); it != m_widgetBuffers.constEnd(); ++it) {
+        if (it.key().startsWith(QStringLiteral("wallpaper:"))) {
+            continue;
+        }
         const WidgetRenderBuffer& buffer = it.value();
         if (!buffer.visible || buffer.imageBuffer.isNull()) {
             continue;

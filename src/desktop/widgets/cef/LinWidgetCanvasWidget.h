@@ -19,6 +19,8 @@ public:
     ~LinWidgetCanvasWidget() override;
 
     // Direct render support for parent canvas / ListView
+    static void setHostWidget(QWidget* hostWidget);
+    static QWidget* hostWidget();
     void renderCanvas(QPainter& painter, const QRegion& clipRegion);
 
     // Frame buffer management for active widgets

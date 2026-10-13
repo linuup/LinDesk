@@ -1,6 +1,5 @@
 #include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 
-#include "desktop/ListView.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
 #include "services/AppPaths.h"
@@ -226,8 +225,7 @@ void WidgetSettingsDialog::handleSettingsWebMessage(const QJsonObject& object)
     const bool isLoad = type == QStringLiteral("linwidget_load_instance_request");
     const bool isSettingsChanged = type == QStringLiteral("linwidget_settings_changed_request");
     if (isSettingsChanged) {
-        ListView* view = ListView::instance();
-        WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
+        WidgetManager* manager = WidgetManager::instance();
         QJsonObject notifyMessage;
         notifyMessage.insert(QStringLiteral("type"), QStringLiteral("linwidget_appearance_changed_notification"));
         if (manager) {
@@ -261,8 +259,9 @@ void WidgetSettingsDialog::handleSettingsWebMessage(const QJsonObject& object)
     bool ok = false;
     if (m_instanceId.trimmed().isEmpty()) {
         errorMessage = QStringLiteral("Settings page is not attached to a running widget instance.");
-    } else if (ListView* view = ListView::instance()) {
-        if (WidgetManager* manager = view->linWidgetManager()) {
+    } else {
+        WidgetManager* manager = WidgetManager::instance();
+        if (manager) {
             if (isCreate) {
                 QRect requestedGeometry;
                 const QJsonObject geometry = object.value(QStringLiteral("geometry")).toObject();
@@ -330,8 +329,6 @@ void WidgetSettingsDialog::handleSettingsWebMessage(const QJsonObject& object)
         } else {
             errorMessage = QStringLiteral("LinWidget manager is unavailable.");
         }
-    } else {
-        errorMessage = QStringLiteral("Desktop view is unavailable.");
     }
 
     response.insert(QStringLiteral("ok"), ok);

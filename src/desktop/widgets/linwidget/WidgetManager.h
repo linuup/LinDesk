@@ -26,6 +26,7 @@ class WidgetManager : public QObject {
     Q_OBJECT
 
 public:
+    static WidgetManager* instance();
     explicit WidgetManager(QObject* parent = nullptr);
     ~WidgetManager() override;
 
@@ -81,11 +82,11 @@ public:
     WidgetInstance widgetInstance(const QString& instanceId) const;
     void broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message);
 
-    bool hasActiveWallpaper() const { return false; }
+    bool hasActiveWallpaper() const { return !m_activeWallpaperId.isEmpty() && m_osrBrowsers.contains(m_activeWallpaperId); }
     QWidget* activeWallpaperWidget() const { return nullptr; }
     bool isWidgetAt(const QPoint& clientPos) const;
     QString widgetAt(const QPoint& clientPos) const;
-    bool isWallpaperInteractive() const { return false; }
+    bool isWallpaperInteractive() const { return m_activeWallpaperInteractive; }
 
     void setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas);
     ::LinCef::LinWidgetCanvasWidget* canvasWidget() const { return m_canvasWidget; }

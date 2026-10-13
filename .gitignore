@@ -93,3 +93,6 @@ installer/*.exe
 # WebView2 缓存
 /src/resources/LinWidgets/*/.webview2/EBWebView
 **/EBWebView/
+
+# 发布打包产物目录
+dist/

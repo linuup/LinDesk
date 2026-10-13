@@ -19,7 +19,8 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/widgets/linwidget/ConfigManager.h"
 #include "desktop/widgets/linwidget/LinWidgetProjectTools.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/runtime_export.h"
+#include "desktop/runtime/RuntimeInstaller.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "ui/Fluent/FluentDialog.h"
@@ -3323,12 +3324,11 @@ QWidget* SettingUI::createLinWidgetsPage()
         QSettings s(settingsConfigPath(), QSettings::IniFormat);
         s.setValue("LinWidgets/Enabled", checked);
         s.sync();
-        if (ListView* view = ListView::instance()) {
-            LinWidget::WidgetManager* manager = view->linWidgetManager();
-            manager->setEnabled(checked);
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded()) {
+            bridge.setEnabled(checked);
             if (checked) {
-                QString error;
-                manager->restoreFromConfig(QString(), &error);
+                bridge.restoreFromConfig(QString());
             }
         }
         reloadLinWidgetsSettingsPage();
@@ -4369,13 +4369,10 @@ void SettingUI::refreshLinWidgetSettingsRunningMaps()
     m_linWidgetInstancesById.clear();
     m_linWidgetInstanceCountsById.clear();
 
-    ListView* view = ListView::instance();
-    LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
-    if (!manager) {
-        return;
-    }
+    QVector<LinWidget::WidgetLayoutState> states;
+    LinWidget::ConfigManager::loadLayout(LinWidget::ConfigManager::defaultConfigPath(), &states, nullptr);
 
-    for (const LinWidget::WidgetLayoutState& state : manager->layoutStates()) {
+    for (const LinWidget::WidgetLayoutState& state : states) {
         if (!state.visible) {
             continue;
         }
@@ -4393,10 +4390,11 @@ void SettingUI::refreshLinWidgetSettingsRunningMaps()
         }
     }
 
-    if (manager->hasActiveWallpaper()) {
-        const QString activePath = manager->activeWallpaperPackagePath();
-        const QString activeId = manager->activeWallpaperId();
-        const bool isDev = manager->activeWallpaperIsDevelopment();
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded() && bridge.hasActiveWallpaper()) {
+        const QString activePath = bridge.activeWallpaperPackagePath();
+        const QString activeId = bridge.activeWallpaperId();
+        const bool isDev = bridge.activeWallpaperIsDevelopment();
         const QString wallInstanceId = QStringLiteral("wallpaper:") + activeId;
         m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(activePath), wallInstanceId);
         const QString key = settingsLinWidgetRegistryKey(activeId, isDev);
@@ -4434,17 +4432,17 @@ void SettingUI::loadSelectedSettingsLinWidget()
         return;
     }
 
-    ListView* view = ListView::instance();
-    LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
-    QString instanceId;
-    const QRect geometry(260, 220, manifest.width, manifest.height);
-    const bool multiInstance = manifest.multiInstance;
-    const bool launched = manager && (multiInstance
-        ? manager->createWidgetInstanceFromPackage(packagePath, isDevelopment, isDevelopment, geometry, &instanceId, &errorMessage)
-        : manager->launchWidgetPackage(packagePath, geometry, isDevelopment, isDevelopment, &instanceId, &errorMessage));
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
+        if (m_linWidgetsStatusLabel) {
+            m_linWidgetsStatusLabel->setText(tr("Runtime not loaded"));
+        }
+        return;
+    }
+    const bool launched = bridge.startWidgetPackage(packagePath);
     if (!launched) {
         if (m_linWidgetsStatusLabel) {
-            m_linWidgetsStatusLabel->setText(tr("Load failed: %1").arg(errorMessage));
+            m_linWidgetsStatusLabel->setText(tr("Load failed"));
         }
         return;
     }
@@ -4455,9 +4453,7 @@ void SettingUI::loadSelectedSettingsLinWidget()
     registry.save();
 
     if (m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(multiInstance
-            ? tr("Added widget instance: %1").arg(instanceId)
-            : tr("Loaded widget: %1").arg(instanceId));
+        m_linWidgetsStatusLabel->setText(tr("Loaded widget: %1").arg(manifest.name));
     }
     reloadLinWidgetsSettingsPage();
 }
@@ -4472,10 +4468,9 @@ void SettingUI::unloadSelectedSettingsLinWidget()
     const QString registryId = selectedSettingsLinWidgetRegistryId();
     const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
 
-    if (ListView* view = ListView::instance()) {
-        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
-            manager->stopWidget(instanceId);
-        }
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        bridge.stopWidget(instanceId);
     }
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
@@ -4494,12 +4489,11 @@ void SettingUI::reloadSelectedSettingsLinWidget()
         refreshLinWidgetSettingsButtons();
         return;
     }
-    if (ListView* view = ListView::instance()) {
-        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
-            if (manager->restartWidget(instanceId)) {
-                if (m_linWidgetsStatusLabel) {
-                    m_linWidgetsStatusLabel->setText(tr("Reloaded widget iframe: %1").arg(instanceId));
-                }
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        if (bridge.restartWidget(instanceId)) {
+            if (m_linWidgetsStatusLabel) {
+                m_linWidgetsStatusLabel->setText(tr("Reloaded widget: %1").arg(instanceId));
             }
         }
     }
@@ -4534,20 +4528,9 @@ void SettingUI::uninstallSelectedSettingsLinWidget()
     }
 
     const QString stableInstanceId = settingsLinWidgetRegistryKey(registryId, isDevelopment);
-    if (ListView* view = ListView::instance()) {
-        if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
-            const QVector<LinWidget::WidgetLayoutState> states = manager->layoutStates();
-            for (const LinWidget::WidgetLayoutState& state : states) {
-                const bool sameRegistry = state.registryId.compare(registryId, Qt::CaseInsensitive) == 0 ||
-                    state.instanceId == stableInstanceId ||
-                    state.instanceId.startsWith(stableInstanceId + QLatin1Char(':'));
-                const bool samePackage = settingsLinWidgetPackageKey(state.packagePath) == settingsLinWidgetPackageKey(packagePath);
-                const bool sameMode = state.isDevelopment == isDevelopment || state.instanceId.startsWith(isDevelopment ? QStringLiteral("dev:") : QStringLiteral("installed:"));
-                if (sameMode && (sameRegistry || samePackage)) {
-                    manager->removeWidgetState(state.instanceId);
-                }
-            }
-        }
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        bridge.removeWidgetState(stableInstanceId);
     }
 
     if (isDevelopment) {
@@ -4633,20 +4616,19 @@ bool SettingUI::launchInstalledSettingsLinWidget(const QString& packagePath,
         return false;
     }
 
-    ListView* view = ListView::instance();
-    LinWidget::WidgetManager* manager = view ? view->linWidgetManager() : nullptr;
-    if (!manager) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
         if (errorMessage) {
-            *errorMessage = tr("LinWidget manager is not available.");
+            *errorMessage = tr("LinWidget runtime is not available.");
         }
         return false;
     }
 
-    const QRect geometry(260, 220, manifest.width, manifest.height);
-    const bool launched = manifest.multiInstance
-        ? manager->createWidgetInstanceFromPackage(packagePath, false, false, geometry, instanceId, errorMessage)
-        : manager->launchWidgetPackage(packagePath, geometry, false, false, instanceId, errorMessage);
+    const bool launched = bridge.startWidgetPackage(packagePath);
     if (!launched) {
+        if (errorMessage) {
+            *errorMessage = tr("Failed to launch widget package.");
+        }
         return false;
     }
 
@@ -4867,11 +4849,7 @@ void SettingUI::setSettingsLinWidgetPermission(const QString& registryId,
     const QString packageKey = settingsLinWidgetPackageKey(packagePath.isEmpty() ? entry.packagePath : packagePath);
     const QString instanceId = m_linWidgetInstancesById.value(stableSelectedKey, m_linWidgetInstancesByPackage.value(packageKey));
     if (!instanceId.isEmpty()) {
-        if (ListView* view = ListView::instance()) {
-            if (LinWidget::WidgetManager* manager = view->linWidgetManager()) {
-                manager->restartWidget(instanceId);
-            }
-        }
+        LinWidgetRuntimeBridge::instance().restartWidget(instanceId);
     }
     reloadLinWidgetsSettingsPage();
     if (!stableSelectedKey.isEmpty()) {

@@ -63,9 +63,9 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/runtime_export.h"
+#include "desktop/runtime/RuntimeInstaller.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
-#include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
 
 
 
@@ -150,21 +150,11 @@ int ListView::desktopItemFootprintHeight() const
 
 QVector<QRect> ListView::desktopLinWidgetOccupiedRects() const
 {
-    QVector<QRect> rects;
-    if (!m_linWidgetManager || !m_linWidgetManager->isEnabled() || !m_linWidgetManager->isCefOsrEnabled()) {
-        return rects;
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded() || !bridge.isEnabled() || !bridge.isCefOsrEnabled()) {
+        return {};
     }
-
-    for (const LinWidget::WidgetLayoutState& state : m_linWidgetManager->layoutStates()) {
-        if (!state.visible || state.geometry.isEmpty() || !state.geometry.isValid()) {
-            continue;
-        }
-        if (!m_linWidgetManager->hasRunningWidget(state.instanceId)) {
-            continue;
-        }
-        rects.append(state.geometry);
-    }
-    return rects;
+    return bridge.occupiedRects();
 }
 
 QSet<quint64> ListView::desktopLinWidgetOccupiedCells() const
@@ -433,68 +423,18 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     });
 }
 
-LinWidget::WidgetManager* ListView::linWidgetManager()
+void* ListView::linWidgetManager()
 {
-    if (!m_linWidgetManager) {
-        m_linWidgetManager = new LinWidget::WidgetManager(this);
-        setAttribute(Qt::WA_InputMethodEnabled, true);
-        m_linWidgetManager->setDesktopLayerWindow(winId());
-        connect(m_linWidgetManager, &LinWidget::WidgetManager::widgetSettingsRequested,
-                this, &ListView::openLinWidgetSettings);
-        connect(m_linWidgetManager, &LinWidget::WidgetManager::imeCursorRectChanged,
-                this, [this](const QRect&) {
-                    updateMicroFocus();
-                });
-    } else if (m_linWidgetManager->desktopLayerWindow() != winId()) {
-        m_linWidgetManager->setDesktopLayerWindow(winId());
-    }
-    return m_linWidgetManager;
+    return LinWidgetRuntimeBridge::instance().widgetManager();
 }
 
 void ListView::openLinWidgetSettings(const QString& instanceId)
 {
-    LinWidget::WidgetManager* manager = linWidgetManager();
-    if (!manager || instanceId.trimmed().isEmpty()) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded() || instanceId.trimmed().isEmpty()) {
         return;
     }
-
-    const LinWidget::WidgetInstance instance = manager->widgetInstance(instanceId.trimmed());
-    if (instance.instanceId.isEmpty()) {
-        qWarning() << "[LinWidgetSettings] instance not found" << instanceId;
-        return;
-    }
-
-    LinWidget::WidgetManifest manifest;
-    QString errorMessage;
-    if (!LinWidget::WidgetPackage::loadManifest(instance.packagePath, &manifest, &errorMessage)) {
-        qWarning() << "[LinWidgetSettings] manifest load failed" << instanceId << errorMessage;
-        return;
-    }
-
-    const QString settingsPath = manifest.settings.trimmed();
-    if (settingsPath.isEmpty() || !QFileInfo::exists(QDir(instance.packagePath).filePath(settingsPath))) {
-        qWarning() << "[LinWidgetSettings] settings page missing" << instanceId << settingsPath;
-        return;
-    }
-
-    auto* dialog = LinWidget::WidgetSettingsDialog::openOrCreate(
-        instance.packagePath,
-        manifest,
-        instance.grantedPermissions,
-        instance.isDevelopment,
-        instance.instanceId,
-        this,
-        &errorMessage);
-    if (dialog) {
-        connect(dialog, &QDialog::finished, this, [this, instanceId]() {
-            if (LinWidget::WidgetManager* manager = linWidgetManager()) {
-                manager->restartWidget(instanceId);
-            }
-        }, Qt::UniqueConnection);
-    }
-    if (!errorMessage.isEmpty()) {
-        qWarning() << "[LinWidgetSettings]" << errorMessage;
-    }
+    // settings will be handled via bridge or settings dialog
 }
 
 void ListView::setShowLinWidgetBlockedCells(bool show)
@@ -528,12 +468,9 @@ void ListView::initializeLinWidgets()
     ensureBundledLinWidgetsInstalled();
 
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
-    LinWidget::WidgetManager* manager = linWidgetManager();
     const bool linWidgetsEnabled = settings.value("LinWidgets/Enabled", true).toBool();
-    manager->setEnabled(linWidgetsEnabled);
-    manager->setShowWidgetBounds(settings.value("LinWidgets/ShowWidgetBounds", false).toBool());
+    const bool showWidgetBounds = settings.value("LinWidgets/ShowWidgetBounds", false).toBool();
     setShowLinWidgetBlockedCells(settings.value("LinWidgets/ShowBlockedCells", false).toBool());
-    setAttribute(Qt::WA_InputMethodEnabled, true);
 
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
@@ -541,20 +478,66 @@ void ListView::initializeLinWidgets()
     registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
     registry.save(&registryError);
 
-    if (!linWidgetsEnabled) {
-        qDebug() << "[LinWidgetAutoLoad] runtime disabled";
+    // 运行时未安装时保持完全休眠状态，零开销
+    if (!RuntimeInstaller::instance().isRuntimeInstalled()) {
+        qDebug() << "[LinWidget] Runtime is not installed. Subsystem is in dormant state.";
         return;
     }
 
-    QString restoreError;
-    if (!manager->restoreFromConfig(QString(), &restoreError) && !restoreError.isEmpty()) {
-        qDebug() << "[LinWidgetAutoLoad] restore failed" << restoreError;
+    // 尝试动态挂载已安装的运行时
+    if (!RuntimeInstaller::instance().loadInstalledRuntime()) {
+        qWarning() << "[LinWidget] Failed to load installed runtime.";
+        return;
+    }
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    LinWidgetDesktopCtx ctx = {};
+    ctx.desktopWindowHwnd = reinterpret_cast<quintptr>(reinterpret_cast<HWND>(winId()));
+    ctx.desktopWidgetPtr = this;
+    ctx.onWidgetSettingsRequested = [](const char* instanceId, void* userData) {
+        auto* lv = static_cast<ListView*>(userData);
+        if (lv && instanceId) {
+            lv->openLinWidgetSettings(QString::fromUtf8(instanceId));
+        }
+    };
+    ctx.onImeCursorRectChanged = [](int x, int y, int w, int h, void* userData) {
+        auto* lv = static_cast<ListView*>(userData);
+        if (lv) {
+            lv->m_imeCursorRect = (w > 0 && h > 0) ? QRect(x, y, w, h) : QRect();
+            lv->updateMicroFocus();
+        }
+    };
+    ctx.onCanvasNeedsRepaint = [](void* userData) {
+        auto* lv = static_cast<ListView*>(userData);
+        if (lv) {
+            lv->update();
+        }
+    };
+    ctx.userData = this;
+
+    if (!bridge.init(ctx)) {
+        qWarning() << "[LinWidget] Failed to initialize runtime bridge context.";
+        return;
+    }
+
+    bridge.setEnabled(linWidgetsEnabled);
+    bridge.setShowWidgetBounds(showWidgetBounds);
+    setAttribute(Qt::WA_InputMethodEnabled, true);
+
+    if (!linWidgetsEnabled) {
+        qDebug() << "[LinWidgetAutoLoad] runtime disabled in config";
+        return;
+    }
+
+    if (!bridge.restoreFromConfig(QString())) {
+        qDebug() << "[LinWidgetAutoLoad] restore from config returned false or empty";
     }
 }
 
 void ListView::syncLinWidgetLayer()
 {
-    if (!m_linWidgetManager) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
         return;
     }
 
@@ -571,7 +554,7 @@ void ListView::syncLinWidgetLayer()
     }
 #endif
 
-    m_linWidgetManager->syncAllWidgetWindowLayers();
+    bridge.syncAllWidgetWindowLayers();
 }
 
 void ListView::showDebugPanel()
@@ -676,18 +659,19 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         QPoint globalPos = QCursor::pos();
         QPoint clientPos = mapFromGlobal(globalPos);
 
-        if (m_linWidgetManager) {
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded()) {
             // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through,
             // EXCEPT if we are using composition windowless hosting where ListView needs to forward the input!
-            if (m_linWidgetManager->isWidgetAt(clientPos)) {
+            if (bridge.isWidgetAt(clientPos)) {
                 if (result) {
                     *result = HTCLIENT;
                 }
                 return true;
             }
 
-            const bool isWallpaperActive = m_linWidgetManager->hasActiveWallpaper();
-            const bool isWallpaperInteractive = isWallpaperActive && m_linWidgetManager->isWallpaperInteractive();
+            const bool isWallpaperActive = bridge.hasActiveWallpaper();
+            const bool isWallpaperInteractive = isWallpaperActive && bridge.isWallpaperInteractive();
 
             if (isWallpaperInteractive) {
                 // Keep HTCLIENT if cursor is over a desktop icon
@@ -1337,15 +1321,17 @@ void ListView::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::TextAntialiasing);
 
 
-    if (m_linWidgetManager && m_linWidgetManager->hasActiveWallpaper() && !m_linWidgetManager->isWallpaperInteractive()) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    const bool runtimeLoaded = bridge.isLoaded();
+    if (runtimeLoaded && bridge.hasActiveWallpaper() && !bridge.isWallpaperInteractive()) {
         painter.fillRect(event->rect(), QColor(0, 0, 0, 1));
     }
 
-    const bool widgetsEmbedded = m_linWidgetManager ? m_linWidgetManager->isWidgetLayerEmbedded() : true;
+    const bool widgetsEmbedded = runtimeLoaded ? bridge.isWidgetLayerEmbedded() : true;
 
     // 1. 如果处于嵌入模式（小组件在图标下方），优先绘制 CEF OSR 画布
-    if (widgetsEmbedded && m_linWidgetManager && m_linWidgetManager->canvasWidget()) {
-        m_linWidgetManager->canvasWidget()->renderCanvas(painter, dirtyRegion);
+    if (widgetsEmbedded && runtimeLoaded) {
+        bridge.renderCanvas(&painter, dirtyRegion);
     }
 
     if (m_hideDesktopItemsForRefresh) {
@@ -1381,8 +1367,8 @@ void ListView::paintEvent(QPaintEvent* event)
     }
 
     // 2. 如果处于浮动模式（小组件在图标上方），后置绘制 CEF OSR 画布
-    if (!widgetsEmbedded && m_linWidgetManager && m_linWidgetManager->canvasWidget()) {
-        m_linWidgetManager->canvasWidget()->renderCanvas(painter, dirtyRegion);
+    if (!widgetsEmbedded && runtimeLoaded) {
+        bridge.renderCanvas(&painter, dirtyRegion);
     }
 
     const QRect indicatorRect = desktopAutoArrangeInsertionIndicatorRect();
@@ -1443,16 +1429,16 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
-    qDebug() << "[LinWidgetInput] mousePressEvent: pos =" << event->pos() << "over widget =" << (m_linWidgetManager ? m_linWidgetManager->isWidgetAt(event->pos()) : false);
-    if (m_linWidgetManager) {
-        if (m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
-            if (m_linWidgetManager->forwardMouseEvent(event)) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        if (bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+            if (bridge.forwardMouseEvent(event)) {
                 m_forwardingMouseToWidget = true;
                 event->accept();
                 return;
             }
         } else {
-            m_linWidgetManager->clearWidgetFocus();
+            bridge.clearWidgetFocus();
         }
     }
 
@@ -1539,15 +1525,18 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
-    if (m_forwardingMouseToWidget) {
-        if (m_linWidgetManager && m_linWidgetManager->forwardMouseEvent(event)) {
-            event->accept();
-            return;
-        }
-    } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
-        if (m_linWidgetManager->forwardMouseEvent(event)) {
-            event->accept();
-            return;
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        if (m_forwardingMouseToWidget) {
+            if (bridge.forwardMouseEvent(event)) {
+                event->accept();
+                return;
+            }
+        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && bridge.isWidgetAt(event->pos())) {
+            if (bridge.forwardMouseEvent(event)) {
+                event->accept();
+                return;
+            }
         }
     }
     // handle multi-dragging
@@ -1597,16 +1586,19 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (m_forwardingMouseToWidget) {
-        m_forwardingMouseToWidget = false;
-        if (m_linWidgetManager && m_linWidgetManager->forwardMouseEvent(event)) {
-            event->accept();
-            return;
-        }
-    } else if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && m_linWidgetManager->isWidgetAt(event->pos())) {
-        if (m_linWidgetManager->forwardMouseEvent(event)) {
-            event->accept();
-            return;
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        if (m_forwardingMouseToWidget) {
+            m_forwardingMouseToWidget = false;
+            if (bridge.forwardMouseEvent(event)) {
+                event->accept();
+                return;
+            }
+        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && bridge.isWidgetAt(event->pos())) {
+            if (bridge.forwardMouseEvent(event)) {
+                event->accept();
+                return;
+            }
         }
     }
     // No-op for Item-based drags, as QDropEvent now handles them
@@ -1785,8 +1777,9 @@ QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) cons
 
 void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
-    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
-        if (m_linWidgetManager->forwardMouseEvent(event)) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+        if (bridge.forwardMouseEvent(event)) {
             event->accept();
             return;
         }
@@ -1812,8 +1805,9 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 
 void ListView::wheelEvent(QWheelEvent* event)
 {
-    if (m_linWidgetManager && m_linWidgetManager->isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && m_linWidgetManager->isWidgetAt(event->pos())) {
-        if (m_linWidgetManager->forwardWheelEvent(event)) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+        if (bridge.forwardWheelEvent(event)) {
             event->accept();
             return;
         }
@@ -1834,7 +1828,8 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
-    if (m_linWidgetManager && m_linWidgetManager->forwardKeyEvent(event)) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
         event->accept();
         return;
     }
@@ -2033,7 +2028,8 @@ void ListView::keyPressEvent(QKeyEvent* event)
 
 void ListView::keyReleaseEvent(QKeyEvent* event)
 {
-    if (m_linWidgetManager && m_linWidgetManager->forwardKeyEvent(event)) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
         event->accept();
         return;
     }
@@ -2042,7 +2038,8 @@ void ListView::keyReleaseEvent(QKeyEvent* event)
 
 void ListView::inputMethodEvent(QInputMethodEvent* event)
 {
-    if (m_linWidgetManager && m_linWidgetManager->forwardInputMethodEvent(event)) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded() && bridge.forwardInputMethodEvent(event)) {
         event->accept();
         return;
     }
@@ -2051,11 +2048,8 @@ void ListView::inputMethodEvent(QInputMethodEvent* event)
 
 QVariant ListView::inputMethodQuery(Qt::InputMethodQuery query) const
 {
-    if (query == Qt::ImCursorRectangle && m_linWidgetManager && !m_linWidgetManager->focusedWidget().isEmpty()) {
-        const QRect rect = m_linWidgetManager->focusedWidgetCursorRect();
-        if (rect.isValid()) {
-            return rect;
-        }
+    if ((query == Qt::ImMicroFocus || query == Qt::ImCursorRectangle) && m_imeCursorRect.isValid()) {
+        return m_imeCursorRect;
     }
     return QWidget::inputMethodQuery(query);
 }

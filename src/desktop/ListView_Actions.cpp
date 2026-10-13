@@ -11,8 +11,6 @@
 #include "desktop/ListViewSelectionController.h"
 #include "desktop/ListViewDragDropHelper.h"
 #include "desktop/LinDesktop.h"
-#include "desktop/widgets/linwidget/WidgetPackage.h"
-#include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 #include "app/AppFonts.h"
 #include "desktop/ListViewMappedBoxHelper.h"
 #include "models/DesktopQuadTree.h"
@@ -62,8 +60,6 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
-#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 #include "desktop/ListView_Helpers.h"
 

@@ -1,7 +1,5 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
-#include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
 #include "desktop/RenameManager.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
@@ -137,16 +135,10 @@ LinDesktop::LinDesktop(QWidget* parent)
         update();
     });
     loadBackImage();
-    widgetCanvas = new LinCef::LinWidgetCanvasWidget(this);
-    widgetCanvas->setGeometry(rect());
-    widgetCanvas->hide(); // OSR 帧数据直接由 ListView::paintEvent 合成渲染，不作为独立的原生分层窗口
 
     listView = ListView::instance(this);
     listView->setGeometry(rect());
     listView->show();
-    if (listView && listView->linWidgetManager()) {
-        listView->linWidgetManager()->setCanvasWidget(widgetCanvas);
-    }
 
     selectArea = new SelectArea(listView);
     selectArea->syncToRect(listView->rect());
@@ -480,10 +472,6 @@ void LinDesktop::handleDpiOrScreenMetricsChanged()
 
     if (m_isEmbedded && geometry() != targetGeometry) {
         setGeometry(targetGeometry);
-    }
-
-    if (widgetCanvas) {
-        widgetCanvas->setGeometry(rect());
     }
 
     if (listView) {
@@ -1122,9 +1110,6 @@ void LinDesktop::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     if (listView) {
         listView->setGeometry(rect());
-    }
-    if (widgetCanvas) {
-        widgetCanvas->setGeometry(rect());
     }
     rebuildScaledWallpaperPixmaps();
     if (selectArea) {

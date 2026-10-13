@@ -1,0 +1,14 @@
+{
+  "id": "lindesk.wallpaper",
+  "name": "Dynamic Wallpaper",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "LinDesk official dynamic wallpaper package supporting canvas aurora, fluid particles, video and local media playback.",
+  "role": "wallpaper",
+  "type": "html",
+  "entry": "index.html",
+  "permissions": [
+    "storage",
+    "desktop"
+  ]
+}
