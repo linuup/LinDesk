@@ -1,5 +1,5 @@
 #define AppName "LinDesk"
-#define AppVersion "1.1.0"
+#define AppVersion "1.1.1"
 #define AppExeName "LinDesk.exe"
 #define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
 #define PackageOutputDir "D:/Desktop/LinDesk/installer"

@@ -27,7 +27,7 @@
         },
         "fullpage": {
           "w": 1424,
-          "h": 18568
+          "h": 19758
         },
         "counts": {
           "section": 13,
@@ -69,7 +69,7 @@
         },
         "fullpage": {
           "w": 500,
-          "h": 25879
+          "h": 27422
         },
         "counts": {
           "section": 13,
@@ -93,7 +93,7 @@
   "chromiumExec": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "engineDegraded": true,
   "engineDegradedReason": "playwright 未装",
-  "elapsedSec": 8.52,
+  "elapsedSec": 9.73,
   "schemaVersion": 2,
   "status": "pass",
   "engineInfo": {

@@ -106,7 +106,7 @@
     <span>读者：antigravity / 开发者</span>
     <span>性质：组件平台打磨 + 与主程序集成任务书</span>
     <span>范围：组件系统运行时经 LinDesk 安装/卸载（动态加载）；组件包独立分发；CEF 缺口；AI 开发闭环；按代码细分的任务清单</span>
-    <span>更新：2026-10-13</span>
+    <span>更新：2026-10-14</span>
   </div>
 </header>
 
@@ -439,6 +439,44 @@
     <tr><td>视觉</td><td>无强制约束</td><td>作者与用户发挥；平台不注入设计令牌、不限制样式</td></tr>
   </table>
   </div>
+
+  <h3>8.1 组件管理窗口（用户侧统一入口）</h3>
+  <p>设置页组件区 <code>[打开组件管理]</code> 打开的独立窗口：<strong>主程序侧薄 UI + 运行时查询接口</strong>，是所有已安装组件的用户侧管理入口（列表 / 启停 / 权限 / 数据 / 日志 / 卸载）。<strong>不引入新窗口框架</strong>，复用现有设置页对话框体系；运行时未安装时不显示入口（2.7 门控）。</p>
+
+  <h4>窗口结构（两栏）</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:44%"><col style="width:36%"></colgroup>
+    <tr><th>区</th><th>内容</th><th>说明</th></tr>
+    <tr><td>左侧 · 组件列表</td><td>已装组件：名称 / 版本 / 启用状态 / role 标记（壁纸）；空态提示"未安装组件" + 去市场入口</td><td>数据来自 <code>widget_manager list</code></td></tr>
+    <tr><td>右侧 · 详情与操作</td><td>选中组件的基础信息、权限面板、数据管理、运行状态、操作按钮</td><td>数据来自 <code>widget_manager info</code></td></tr>
+  </table>
+  </div>
+
+  <h4>每项组件的能力（信息 + 操作）</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:14%"><col style="width:44%"><col style="width:42%"></colgroup>
+    <tr><th>块</th><th>内容</th><th>实现要点</th></tr>
+    <tr><td>基础信息</td><td>名称 / 版本 / 来源（市场 / 本地放置）/ 包大小 / 启用状态</td><td>manifest + 组件目录扫描（加载器已有）</td></tr>
+    <tr><td>权限面板</td><td>manifest 声明权限逐项展示，每项一个开关（当前授予状态）</td><td>开关写 PermissionManager 记忆表；关闭后组件 API 返回 <code>DENIED</code>，打开恢复；与 7.2 申请流一致，不重复弹窗</td></tr>
+    <tr><td>数据管理</td><td>storage 用量（上限 16MB，7.5）+ <code>[清空数据]</code> + <code>[导出备份]</code></td><td>导出 = 复制 <code>LinWidgetsData/&lt;id&gt;/</code> 到用户指定目录，不做压缩格式；清空走 <code>clear_storage</code></td></tr>
+    <tr><td>运行状态</td><td>最后运行状态（正常 / 异常 / 崩溃恢复 N 次）+ 异常记录条数 + <code>[重启组件]</code> + <code>[打开日志]</code></td><td>重启 = 停实例再启动（热重载）；日志进调试面板日志查看器（依赖 4.3 缺口）；只保留最近计数，不建历史库</td></tr>
+    <tr><td>操作</td><td><code>[启用/停用]</code> <code>[更新]</code>（走市场）<code>[卸载]</code>（保留数据，确认提示）</td><td>复用加载器已有动作；与设置页组件区按钮同语义</td></tr>
+  </table>
+  </div>
+
+  <h4>消息面（复用 handleRuntimeMessage 收敛类型，不新增 IPC）</h4>
+  <ul>
+    <li><code>widget_manager list</code>：已装组件元数据 + 状态列表；</li>
+    <li><code>widget_manager info</code>：单组件详情（权限 / storage 用量 / 运行状态计数）；</li>
+    <li><code>widget_manager set_permission</code>：权限开关 → PermissionManager 记忆表；</li>
+    <li><code>widget_manager clear_storage / export_data</code>：数据管理；</li>
+    <li><code>widget_manager restart</code>：停实例 + 重启（热重载）；</li>
+    <li><code>enable / disable / close / create</code>：复用实例管理现有类型。</li>
+  </ul>
+
+  <p class="note"><strong>克制边界：</strong>窗口只做"已安装组件的管理"，不做组件发现（那是市场层 6 章）、不做组件编辑（那是作者层 5 章）。权限开关是唯一新增的持久化面；运行统计不建库、不存历史，仅保留计数与最近状态。</p>
 </section>
 
 <section>
@@ -583,6 +621,7 @@
     <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
     <tr><td>settings schema 渲染</td><td>8 章：manifest <code>settingsSchema</code> → 自动渲染设置对话框；与 settings.html 并存</td><td>schema 设置项自动生成对话框</td><td><span class="tag p2">P2</span></td></tr>
     <tr><td>设置页组件区完善</td><td>3.4：组件列表 + [下载组件] + [检查更新] + [卸载] + [打开组件管理]；入口按运行时/组件显隐</td><td>全新机器"装主程序 → 安装组件系统 → 下载组件包 → 启用 → 卸载"全流程可用</td><td><span class="tag p2">P2</span></td></tr>
+    <tr><td>组件管理窗口</td><td>8.1：两栏窗口（列表 + 详情），权限开关 / 数据管理（清空/导出）/ 运行状态 / 重启 / 日志；消息走 widget_manager 收敛类型</td><td>设置页 [打开组件管理] 可用，权限 / 数据 / 日志入口闭环</td><td><span class="tag p2">P2</span></td></tr>
   </table>
   </div>
 

@@ -1252,6 +1252,10 @@ bool WidgetManager::isWidgetAt(const QPoint& clientPos) const
 
 QString WidgetManager::widgetAt(const QPoint& clientPos) const
 {
+    if (!m_enabled || !m_cefOsrEnabled) {
+        return QString();
+    }
+
     if (m_canvasWidget) {
         const QString canvasHit = m_canvasWidget->widgetAt(clientPos);
         if (!canvasHit.isEmpty()) {
@@ -1259,6 +1263,9 @@ QString WidgetManager::widgetAt(const QPoint& clientPos) const
         }
     }
     for (const WidgetInstance& instance : m_instances) {
+        if (!m_runningWidgets.contains(instance.instanceId)) {
+            continue;
+        }
         if (m_layout.contains(instance.instanceId)) {
             WidgetLayoutState state = m_layout.state(instance.instanceId);
             if (!state.visible) {

@@ -151,12 +151,15 @@ int ListView::desktopItemFootprintHeight() const
 QVector<QRect> ListView::desktopLinWidgetOccupiedRects() const
 {
     QVector<QRect> rects;
-    if (!m_linWidgetManager) {
+    if (!m_linWidgetManager || !m_linWidgetManager->isEnabled() || !m_linWidgetManager->isCefOsrEnabled()) {
         return rects;
     }
 
     for (const LinWidget::WidgetLayoutState& state : m_linWidgetManager->layoutStates()) {
         if (!state.visible || state.geometry.isEmpty() || !state.geometry.isValid()) {
+            continue;
+        }
+        if (!m_linWidgetManager->hasRunningWidget(state.instanceId)) {
             continue;
         }
         rects.append(state.geometry);
