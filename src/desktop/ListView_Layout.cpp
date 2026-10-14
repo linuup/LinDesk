@@ -602,11 +602,9 @@ int ListView::desktopCustomInsertionIndexForPos(const QPoint& pos, const QString
 
 void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QStringList& draggedPaths)
 {
-    const int nextIndex = desktopCustomInsertionIndexForPos(pos, draggedPaths);
     QVector<DesktopRootItemState*> allOrderedStates = collectAutoArrangeStates();
     sortAutoArrangeStates(allOrderedStates, SortOrderType::SortByCustom);
-    QVector<DesktopRootItemState*> orderedStates = collectAutoArrangeStates();
-    sortAutoArrangeStates(orderedStates, SortOrderType::SortByCustom);
+    QVector<DesktopRootItemState*> orderedStates = allOrderedStates;
     QSet<QString> draggedPathSet;
     for (const QString& path : draggedPaths) {
         draggedPathSet.insert(normalizeDesktopItemPath(path));
@@ -614,6 +612,40 @@ void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const Q
     orderedStates.erase(std::remove_if(orderedStates.begin(), orderedStates.end(), [&](DesktopRootItemState* state) {
         return state && draggedPathSet.contains(normalizeDesktopItemPath(state->model.filePath));
     }), orderedStates.end());
+
+    int nextIndex = 0;
+    bool foundHoverIndex = false;
+    for (int i = 0; i < orderedStates.size(); ++i) {
+        const QRect itemRect = orderedStates[i]->model.renderData.itemRect;
+        if (itemRect.contains(pos)) {
+            nextIndex = pos.y() <= itemRect.center().y() ? i : i + 1;
+            foundHoverIndex = true;
+            break;
+        }
+    }
+    if (!foundHoverIndex) {
+        int bestIndex = 0;
+        qint64 bestScore = LLONG_MAX;
+        for (int i = 0; i <= orderedStates.size(); ++i) {
+            const QRect rect = desktopAutoArrangeInsertionIndicatorRectForIndex(i, orderedStates);
+            if (rect.isNull()) {
+                continue;
+            }
+
+            const int dx = pos.x() < rect.left()
+                ? rect.left() - pos.x()
+                : (pos.x() > rect.right() ? pos.x() - rect.right() : 0);
+            const int dy = pos.y() < rect.top()
+                ? rect.top() - pos.y()
+                : (pos.y() > rect.bottom() ? pos.y() - rect.bottom() : 0);
+            const qint64 score = static_cast<qint64>(dx) * dx + static_cast<qint64>(dy) * dy;
+            if (score < bestScore) {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+        nextIndex = qBound(0, bestIndex, orderedStates.size());
+    }
 
     QRect nextIndicatorRect;
     const int lineHeight = 2;
@@ -732,10 +764,19 @@ void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const Q
         return;
     }
 
+    const QRect oldIndicatorRect = m_desktopReorderIndicatorRect;
     m_desktopReorderInsertIndex = nextIndex;
     m_desktopReorderDraggedPaths = draggedPaths;
     m_desktopReorderIndicatorRect = nextIndicatorRect;
-    update();
+
+    const QRect dirtyRect = oldIndicatorRect.isNull()
+        ? nextIndicatorRect.adjusted(-8, -8, 8, 8)
+        : oldIndicatorRect.united(nextIndicatorRect).adjusted(-8, -8, 8, 8);
+    if (!dirtyRect.isNull()) {
+        update(dirtyRect);
+    } else {
+        update();
+    }
 }
 
 void ListView::clearDesktopAutoArrangeReorderPreview()
@@ -746,10 +787,15 @@ void ListView::clearDesktopAutoArrangeReorderPreview()
         return;
     }
 
+    const QRect oldIndicatorRect = m_desktopReorderIndicatorRect;
     m_desktopReorderInsertIndex = -1;
     m_desktopReorderDraggedPaths.clear();
     m_desktopReorderIndicatorRect = QRect();
-    update();
+    if (!oldIndicatorRect.isNull()) {
+        update(oldIndicatorRect.adjusted(-8, -8, 8, 8));
+    } else {
+        update();
+    }
 }
 
 QRect ListView::desktopAutoArrangeInsertionIndicatorRect() const

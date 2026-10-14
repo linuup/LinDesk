@@ -296,7 +296,7 @@ public:
 	void selectRangeToPath(const QString& filePath, LinBox* box);
 	void clearCheckedItem();
 	void clearSelectionState();
-	QVector<DesktopRootItemState> queryItemsInRect(const QRect& rect) const;
+	QVector<const DesktopRootItemState*> queryItemsInRect(const QRect& rect) const;
 	bool IsSelecting() const { return m_isSelecting; }
 	void DisableSelecting() { endBackgroundSelection(); }
 	void setItemFullNameExpanded(const QString& filePath, bool expanded);

@@ -1563,22 +1563,71 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
     QPixmap dragPixmap;
     QPoint hotSpot;
     if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
-        dragPixmap = QPixmap(ghostBounds.size());
-        dragPixmap.fill(Qt::transparent);
+        const bool isOversized = ghostBounds.width() > 400 || ghostBounds.height() > 400 || ghostItems.size() > 4;
+        if (isOversized) {
+            const DesktopRootItemState* hitState = findDesktopStateAt(clickPos);
+            DesktopRootItemRenderData primaryData = (hitState && hitState->model.visible)
+                ? hitState->model.renderData
+                : ghostItems.first();
 
-        QPainter painter(&dragPixmap);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setRenderHint(QPainter::SmoothPixmapTransform);
-        painter.setRenderHint(QPainter::TextAntialiasing);
-        painter.translate(-ghostBounds.topLeft());
-        for (const DesktopRootItemRenderData& renderData : ghostItems) {
-            paintDesktopRootItemGhost(painter, renderData);
+            const int pad = 8;
+            const int badgeHeight = 18;
+            const QSize baseSize = primaryData.itemRect.size();
+            const QSize pixmapSize(baseSize.width() + pad * 2, baseSize.height() + pad * 2);
+
+            dragPixmap = QPixmap(pixmapSize);
+            dragPixmap.fill(Qt::transparent);
+
+            QPainter painter(&dragPixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            painter.setRenderHint(QPainter::TextAntialiasing);
+
+            painter.save();
+            painter.translate(-primaryData.itemRect.topLeft() + QPoint(pad, pad));
+            paintDesktopRootItemGhost(painter, primaryData);
+            painter.restore();
+
+            const QString countText = QString::number(ghostItems.size());
+            QFont badgeFont = font();
+            badgeFont.setPixelSize(11);
+            badgeFont.setBold(true);
+            painter.setFont(badgeFont);
+
+            const QFontMetrics fm(badgeFont);
+            const int textWidth = fm.horizontalAdvance(countText);
+            const int badgeWidth = qMax(badgeHeight, textWidth + 10);
+            const QRect badgeRect(pixmapSize.width() - badgeWidth - 2, 2, badgeWidth, badgeHeight);
+
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(0, 120, 215, 230));
+            painter.drawRoundedRect(badgeRect, badgeHeight / 2.0, badgeHeight / 2.0);
+
+            painter.setPen(Qt::white);
+            painter.drawText(badgeRect, Qt::AlignCenter, countText);
+            painter.end();
+
+            hotSpot = (clickPos - primaryData.itemRect.topLeft()) + QPoint(pad, pad);
+            hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
+            hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
+        } else {
+            dragPixmap = QPixmap(ghostBounds.size());
+            dragPixmap.fill(Qt::transparent);
+
+            QPainter painter(&dragPixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            painter.setRenderHint(QPainter::TextAntialiasing);
+            painter.translate(-ghostBounds.topLeft());
+            for (const DesktopRootItemRenderData& renderData : ghostItems) {
+                paintDesktopRootItemGhost(painter, renderData);
+            }
+            painter.end();
+
+            hotSpot = clickPos - ghostBounds.topLeft();
+            hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
+            hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
         }
-        painter.end();
-
-        hotSpot = clickPos - ghostBounds.topLeft();
-        hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
-        hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
     }
 
     for (GhostInfo& ghost : m_ghosts) {

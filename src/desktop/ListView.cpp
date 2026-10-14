@@ -1536,7 +1536,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
                 event->accept();
                 return;
             }
-        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && bridge.isWidgetAt(event->pos())) {
+        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
             if (bridge.forwardMouseEvent(event)) {
                 event->accept();
                 return;
@@ -1598,7 +1598,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
                 event->accept();
                 return;
             }
-        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && bridge.isWidgetAt(event->pos())) {
+        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
             if (bridge.forwardMouseEvent(event)) {
                 event->accept();
                 return;
@@ -1742,9 +1742,9 @@ void ListView::rebuildSpatialIndex()
     m_spatialIndexDirty = false;
 }
 
-QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) const
+QVector<const DesktopRootItemState*> ListView::queryItemsInRect(const QRect& rect) const
 {
-    QVector<DesktopRootItemState> results;
+    QVector<const DesktopRootItemState*> results;
     if (rect.isEmpty()) {
         return results;
     }
@@ -1758,10 +1758,10 @@ QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) cons
         const DesktopRootItemState* startPtr = m_itemStates.isEmpty() ? nullptr : m_itemStates.constData();
         const DesktopRootItemState* endPtr = startPtr ? (startPtr + m_itemStates.size()) : nullptr;
         results.reserve(candidates.size());
-        for (DesktopRootItemState* state : candidates) {
+        for (const DesktopRootItemState* state : candidates) {
             if (state && startPtr && state >= startPtr && state < endPtr) {
                 if (state->model.renderData.itemRect.intersects(rect)) {
-                    results.push_back(*state);
+                    results.push_back(state);
                 }
             }
         }
