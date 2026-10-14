@@ -147,19 +147,25 @@ bool UpdateChecker::parseUpdateInfo(const QByteArray& data, UpdateInfo& info, QS
 
     const QJsonArray assets = object.value(QStringLiteral("assets")).toArray();
     QJsonObject setupAsset;
+#ifdef _WIN64
+    const QString archSuffix = QStringLiteral("_x64.exe");
+#else
+    const QString archSuffix = QStringLiteral("_x86.exe");
+#endif
+
     for (const QJsonValue& val : assets) {
         if (!val.isObject()) continue;
         const QJsonObject assetObj = val.toObject();
         const QString assetName = assetObj.value(QStringLiteral("name")).toString();
         if (assetName.startsWith(QStringLiteral("LinDesk_Setup_"), Qt::CaseInsensitive) &&
-            assetName.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive)) {
+            assetName.endsWith(archSuffix, Qt::CaseInsensitive)) {
             setupAsset = assetObj;
             break;
         }
     }
 
     if (setupAsset.isEmpty()) {
-        errorMessage = tr("Release asset is missing.");
+        errorMessage = tr("Release asset for current architecture is missing.");
         return false;
     }
 

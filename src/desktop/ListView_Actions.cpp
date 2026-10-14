@@ -328,7 +328,7 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->model.displayName);
         } else if (isFolder && isDraggedDiskLetter) {
-            htmlText = QString("<b style='color:%1'>闂?/b> <span>%2</span> <b style='color:%1'>闂傚倷鐒﹁ぐ鍐嚐椤栫偛鍨傞柛妤冨剱閸ゅ牊绻涘顔荤凹闁瑰磭濞€閺?/b>")
+            htmlText = QString("<b style='color:%1'>Open</b> <span>%2</span> <b style='color:%1'>here</b>")
                 .arg(highlightColor, hitItem->model.displayName);
         } else if (isFolder) {
             actionKeyword = isCtrl ? "Copy to" : "Move to";
@@ -501,7 +501,7 @@ void ListView::dropEvent(QDropEvent* event)
             }
 
             if (!srcPaths.empty()) {
-                // 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ〒姘ｅ亾闁哄被鍔戦、娆撴倷椤掑偊绱┑鐑囩到濞村倿宕抽敐澶娢ч柟娈垮枤缁犳棃鏌ㄩ弴鐐测偓鐢稿磻閹炬潙绶為悗锝庝憾娴犲瓨绻濋姀锝嗙【缂佸鎸冲畷鍝勎旈崨顓狀吅闂佸搫绋侀崐锝夊煛閸涱厾顦?
+                // 处理拖拽文件放置到桌面
                 bool result = m_viewModel->handleDropFiles(draggedPaths, m_desktopDir, preferShortcutForDrop, isCopyAction);
                 if (result) {
                     applyAutoArrangeAfterDesktopMutation(false, false);
@@ -724,7 +724,7 @@ void ListView::dropEvent(QDropEvent* event)
             requestSaveBoxes();
         }
     } else {
-        // --- 濠电姰鍨奸崺鏍偋閻樿纾块柟缁㈠枛缁狀垶鏌″畵顔煎暙濮规煡姊绘笟鍥т簼婵″弶甯炲▎?---
+        // --- 移动外部文件到桌面目录 ---
         QString desktopDir = m_desktopDir;
         QStringList srcPaths;
         for (const QString& local : draggedPaths) {
@@ -1156,7 +1156,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         this->performSort(m_iconShowRule.sortType);
     };
 
-    auto removeTrackedPath = [this](const QString& path) -> bool {
+    auto removeTrackedPath = [this, scheduleRelayout](const QString& path) -> bool {
         if (path.isEmpty()) {
             return false;
         }
@@ -1166,6 +1166,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (DesktopRootItemState* state = findDesktopStateByPath(path)) {
             IconCacheManager::instance().invalidateItemCache(state->model.iconCacheKey, path);
             removeDesktopStateByPath(path);
+            scheduleRelayout();
             requestSaveBoxes();
             return true;
         }
@@ -1229,7 +1230,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 update();
             }
         } else {
-            addDesktopModelItemFromPath(resolvedNewPath);
+            addDesktopModelItemFromPath(resolvedNewPath, true);
         }
         
         requestSaveBoxes();
@@ -1293,7 +1294,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 sourceBox->removeItemState(oldPath, true);
             }
         } else if (!findAnyItemStateByPath(newPath)) {
-            addDesktopModelItemFromPath(eventInfo.newPath);
+            addDesktopModelItemFromPath(eventInfo.newPath, true);
         }
 
         auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
@@ -1862,7 +1863,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 			targetBox->refreshLayout();
 		}
 		
-		// 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅閻愬﹪鏌ｉ幇闈涘闁搞劎鍘ч湁闁挎繂鎳愯倴闂佹眹鍊曞Λ婵嗙暦濮橆厼顕遍柡澶嬪灥鐠у绱撻崒姘灓闁哥姵顨婂鎼佸礃閳哄喚娴?
+		// 触发持久化保存
         if (targetBox || dropTargetState || desktopBackgroundFileOperation || desktopPositionsChanged) {
 		    requestSaveBoxes();
         }

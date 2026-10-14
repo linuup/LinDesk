@@ -41,7 +41,6 @@ void CefOsrRenderHandler::GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& re
 {
     Q_UNUSED(browser);
     rect.Set(0, 0, m_width, m_height);
-    qDebug() << "[CefOsrRenderHandler::GetViewRect]" << m_widgetId << "size=" << m_width << "x" << m_height;
 }
 
 void CefOsrRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
@@ -55,8 +54,6 @@ void CefOsrRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
     if (type != PET_VIEW || !buffer || width <= 0 || height <= 0) {
         return;
     }
-
-    qDebug() << "[CefOsrRenderHandler::OnPaint]" << m_widgetId << "size=" << width << "x" << height;
 
     // Format_ARGB32_Premultiplied corresponds directly to Chromium's BGRA32 pre-multiplied surface on Windows
     const QImage frame(static_cast<const uchar*>(buffer),

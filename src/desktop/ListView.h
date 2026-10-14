@@ -498,7 +498,7 @@ private:
 	void syncBoxVisibilityWithDesktopIcons();
 	bool handlePendingShellCreatedItem(const QString& newPath);
 	DesktopItemInitContext currentDesktopItemInitContext() const;
-	bool addDesktopModelItemFromPath(const QString& filePath);
+	bool addDesktopModelItemFromPath(const QString& filePath, bool deferRelayout = false);
 	bool refreshDesktopModelItemPath(const QString& oldPath, const QString& newPath);
 	void invalidateFolderItemIconCache(const QString& folderPath);
 	bool refreshBoxModelItemPath(LinBox* box, const QString& oldPath, const QString& newPath);

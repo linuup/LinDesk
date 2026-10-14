@@ -1,6 +1,6 @@
 {
-  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_StoreApp_Icon_Compat.html",
-  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_StoreApp_Icon_Compat.html",
+  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Docs_Index.html",
+  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_Docs_Index.html",
   "outdir": "D:\\Desktop\\LinDesk\\docs\\_shots",
   "include": [
     "lint",
@@ -9,28 +9,28 @@
   ],
   "shots": {
     "desktop": {
-      "screenshot": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_desktop.jpg",
-      "screenshotBytes": 498892,
+      "screenshot": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_desktop.jpg",
+      "screenshotBytes": 192262,
       "truncated": false,
       "structure": {
-        "title": "LinDesk 微软商店应用图标兼容方案",
-        "firstH1": "LinDesk 微软商店应用图标兼容方案",
+        "title": "LinDesk 文档中心",
+        "firstH1": "LinDesk 文档中心",
         "viewport": {
           "w": 1424,
           "h": 749
         },
         "fullpage": {
           "w": 1424,
-          "h": 5203
+          "h": 2082
         },
         "counts": {
-          "section": 0,
+          "section": 3,
           "h1": 1,
-          "h2": 8,
+          "h2": 3,
           "img": 0,
           "canvas": 0,
           "svg": 0,
-          "links": 0,
+          "links": 29,
           "buttons": 0
         }
       },
@@ -41,32 +41,28 @@
       "reportSource": "cdp"
     },
     "mobile": {
-      "slices": [
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_mobile_p1of3.jpg",
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_mobile_p2of3.jpg",
-        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_mobile_p3of3.jpg"
-      ],
-      "sliceHint": "按顺序 Read slices 里的各分片。",
+      "screenshot": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_mobile.jpg",
+      "screenshotBytes": 274865,
       "truncated": false,
       "structure": {
-        "title": "LinDesk 微软商店应用图标兼容方案",
-        "firstH1": "LinDesk 微软商店应用图标兼容方案",
+        "title": "LinDesk 文档中心",
+        "firstH1": "LinDesk 文档中心",
         "viewport": {
           "w": 500,
           "h": 693
         },
         "fullpage": {
           "w": 500,
-          "h": 6921
+          "h": 3018
         },
         "counts": {
-          "section": 0,
+          "section": 3,
           "h1": 1,
-          "h2": 8,
+          "h2": 3,
           "img": 0,
           "canvas": 0,
           "svg": 0,
-          "links": 0,
+          "links": 29,
           "buttons": 0
         }
       },
@@ -81,7 +77,7 @@
   "chromiumExec": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "engineDegraded": true,
   "engineDegradedReason": "playwright 未装",
-  "elapsedSec": 7.32,
+  "elapsedSec": 6.87,
   "schemaVersion": 2,
   "status": "pass",
   "engineInfo": {
@@ -92,9 +88,9 @@
     ]
   },
   "input": {
-    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_StoreApp_Icon_Compat.html",
-    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_StoreApp_Icon_Compat.html",
-    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_StoreApp_Icon_Compat.html",
+    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Docs_Index.html",
+    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Docs_Index.html",
+    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_Docs_Index.html",
     "protocol": "file",
     "cwd": "D:\\Desktop\\LinDesk",
     "mediaMode": {
@@ -105,8 +101,8 @@
     "screenshots": [
       {
         "viewport": "desktop",
-        "path": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_desktop.jpg",
-        "size": 498892,
+        "path": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_desktop.jpg",
+        "size": 192262,
         "visualCoverage": {
           "complete": true,
           "reason": null
@@ -114,11 +110,8 @@
       },
       {
         "viewport": "mobile",
-        "tiles": [
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_mobile_p1of3.jpg",
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_mobile_p2of3.jpg",
-          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_StoreApp_Icon_Compat_mobile_p3of3.jpg"
-        ],
+        "path": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_mobile.jpg",
+        "size": 274865,
         "visualCoverage": {
           "complete": true,
           "reason": null

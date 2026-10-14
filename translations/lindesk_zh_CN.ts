@@ -491,6 +491,49 @@ Do you want to re map this box to another folder?</source>
     </message>
 </context>
 <context>
+    <name>RuntimeInstaller</name>
+    <message>
+        <source>Failed to completely remove runtime directory: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully uninstalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction timed out.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zip file does not exist: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extracting...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid runtime package: LinWidgetRuntime.dll not found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to move extracted runtime to destination: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SettingUI</name>
     <message>
         <source>LinDesk</source>
@@ -1476,7 +1519,7 @@ Manifest 错误:
     </message>
     <message>
         <source>Added widget instance: %1</source>
-        <translation>添加了 widget 实例: %1</translation>
+        <translation type="vanished">添加了 widget 实例: %1</translation>
     </message>
     <message>
         <source>Loaded widget: %1</source>
@@ -1488,7 +1531,7 @@ Manifest 错误:
     </message>
     <message>
         <source>Reloaded widget iframe: %1</source>
-        <translation>已重新加载 widget iframe: %1</translation>
+        <translation type="vanished">已重新加载 widget iframe: %1</translation>
     </message>
     <message>
         <source>Uninstall widget</source>
@@ -1536,7 +1579,7 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>LinWidget manager is not available.</source>
-        <translation>LinWidget 管理器不可用。</translation>
+        <translation type="vanished">LinWidget 管理器不可用。</translation>
     </message>
     <message>
         <source>Official reset failed: %1</source>
@@ -1647,6 +1690,26 @@ Load skipped: %2</source>
         <source>取消</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Runtime not loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reloaded widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to launch widget package.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UpdateChecker</name>
@@ -1671,7 +1734,7 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Release asset is missing.</source>
+        <source>Release asset for current architecture is missing.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

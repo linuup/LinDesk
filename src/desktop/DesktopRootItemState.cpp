@@ -247,6 +247,7 @@ void initDesktopRootItemModel(DesktopRootItemModel& model, const ListItemData& d
     while (model.normalizedPath.endsWith('\\')) model.normalizedPath.chop(1);
     model.fileInfo = QFileInfo(model.filePath);
     model.displayName = buildDisplayName(data, model.fileInfo, model.objectType, model.filePath);
+    model.displayName = DesktopItemLoader::applyDisplayNameOverride(model.filePath, model.displayName);
     model.isShortcut = isShortcutSuffix(model.fileInfo);
     if (context.getBoxId) model.boxId = context.getBoxId(model.filePath);
     const QString iconKey = buildIconIdentityKey(data, model.objectType, model.fileInfo, model.normalizedPath);

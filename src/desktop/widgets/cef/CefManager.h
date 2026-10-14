@@ -20,6 +20,8 @@ public:
     bool isCefAvailable() const;
 
     QString subprocessExecutablePath() const;
+    QString resourcesDirectoryPath() const;
+    QString localesDirectoryPath() const;
     QString cacheStoragePath() const;
 
 signals:

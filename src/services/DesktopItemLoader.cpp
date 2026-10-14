@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QStandardPaths>
 #include <SystemApi.h>
 
@@ -184,6 +185,44 @@ bool DesktopItemLoader::shouldTreatAsHiddenShellFolder(const ListItemData& item)
     static const QSet<QString> kHiddenShellPaths = hiddenShellFolderPaths();
     const QString normalizedItemPath = normalizedExistingPath(item.filePath());
     return !normalizedItemPath.isEmpty() && kHiddenShellPaths.contains(normalizedItemPath);
+}
+
+QList<DisplayNameOverride> DesktopItemLoader::displayNameOverrides()
+{
+    QList<DisplayNameOverride> overrides;
+
+    const QString hardcodedWps = normalizedExistingPath(QStringLiteral("D:/Documents/WPSDrive/NotLoginPage"));
+    if (!hardcodedWps.isEmpty()) {
+        overrides.append({ hardcodedWps, QStringLiteral("WPS云盘"), QStringLiteral("WPS Drive") });
+    }
+
+    const QString docPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (!docPath.isEmpty()) {
+        const QString docWps = normalizedExistingPath(docPath + QStringLiteral("/WPSDrive/NotLoginPage"));
+        if (!docWps.isEmpty() && docWps != hardcodedWps) {
+            overrides.append({ docWps, QStringLiteral("WPS云盘"), QStringLiteral("WPS Drive") });
+        }
+    }
+
+    return overrides;
+}
+
+QString DesktopItemLoader::applyDisplayNameOverride(const QString& filePath, const QString& originalName)
+{
+    const QString key = normalizedExistingPath(filePath);
+    if (key.isEmpty()) {
+        return originalName;
+    }
+
+    const auto overrides = displayNameOverrides();
+    for (const DisplayNameOverride& o : overrides) {
+        if (o.normalizedPath == key) {
+            const bool isZh = QLocale::system().name().startsWith(QStringLiteral("zh"), Qt::CaseInsensitive);
+            return isZh ? o.zhName : o.enName;
+        }
+    }
+
+    return originalName;
 }
 
 QString DesktopItemLoader::dumpJsonFileContent(const QString& filePath)

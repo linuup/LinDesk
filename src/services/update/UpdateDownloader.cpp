@@ -196,7 +196,12 @@ QString UpdateDownloader::fileNameForUpdate(const UpdateInfo& info) const
     if (!fromUrl.isEmpty()) {
         return fromUrl;
     }
-    return QStringLiteral("LinDesk_Setup_%1.exe").arg(info.version);
+#ifdef _WIN64
+    const QString archSuffix = QStringLiteral("x64");
+#else
+    const QString archSuffix = QStringLiteral("x86");
+#endif
+    return QStringLiteral("LinDesk_Setup_%1_%2.exe").arg(info.version, archSuffix);
 }
 
 bool UpdateDownloader::verifySha256(const QString& filePath, const QString& expectedHash) const

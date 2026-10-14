@@ -55,12 +55,12 @@ public:
 
     void onWallpaperChanged();
 
-	//QRect drawingMaskRect;    //鎷栨嫿閫夋嫨妗嗙煩褰?
+	//QRect drawingMaskRect;    // 拖拽选择框矩形
     void loadBackImage();
     void applyLoadedWallpaper(const QString& path, const QImage& image);
     void applyFallbackWallpaper(const QString& path, const QString& reason);
     void rebuildScaledWallpaperPixmaps();
-	// 璇锋眰缁樺埗榧犳爣鎮诞鏁堟灉
+	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
     void checkFirstLaunchPrompt();
     void initializeTrayIcon();

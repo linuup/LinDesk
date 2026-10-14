@@ -239,39 +239,38 @@ TEST_F(PersistenceTests, IconPositionValidation) {
     }
 }
 
-TEST_F(PersistenceTests, AtomicSaveAndBackup) {
-    const QString filePath = m_tempDir.filePath(QStringLiteral("data.json"));
-    const QString bakPath = filePath + QStringLiteral(".bak");
+TEST_F(PersistenceTests, AtomicSaveAndDebugInspection) {
+    const QString filePath = m_tempDir.filePath(QStringLiteral("data.dat"));
     const QString tmpPath = filePath + QStringLiteral(".tmp");
 
-    QMap<QString, QMap<QString, QVariant>> iconPositions1;
-    QMap<QString, QVariant> pos1;
-    pos1["x"] = 10;
-    pos1["y"] = 20;
-    pos1["boxId"] = QString();
-    pos1["ord"] = 0;
-    iconPositions1[QStringLiteral("C:/Desktop/file1.txt")] = pos1;
+    QMap<QString, QMap<QString, QVariant>> iconPositions;
+    QMap<QString, QVariant> pos;
+    pos["x"] = 120;
+    pos["y"] = 240;
+    pos["boxId"] = QString();
+    pos["ord"] = 0;
+    iconPositions[QStringLiteral("C:/Desktop/file1.txt")] = pos;
 
-    // First save: creates data.json, tmp must be gone
-    BoxManager::instance()->saveAll(filePath, true, iconPositions1, 1, 0, 0, 0, false, false, true, false, true, /*async=*/false);
+    // 1. 保存：生成受保护二进制 data.dat，tmp 不残留
+    BoxManager::instance()->saveAll(filePath, true, iconPositions, 1, 0, 0, 0, false, false, true, false, true, /*async=*/false);
     EXPECT_TRUE(QFile::exists(filePath));
     EXPECT_FALSE(QFile::exists(tmpPath));
 
-    // Second save with different icon position: data.json updated, data.json.bak created
-    QMap<QString, QMap<QString, QVariant>> iconPositions2;
-    QMap<QString, QVariant> pos2;
-    pos2["x"] = 999;
-    pos2["y"] = 888;
-    pos2["boxId"] = QString();
-    pos2["ord"] = 1;
-    iconPositions2[QStringLiteral("C:/Desktop/file2.txt")] = pos2;
+#ifdef QT_DEBUG
+    // 2. Debug 模式下验证自动伴随生成了明文可读的 .debug.json 方便开发者观察
+    const QString debugPath = filePath + QStringLiteral(".debug.json");
+    EXPECT_TRUE(QFile::exists(debugPath));
+    QFile debugFile(debugPath);
+    ASSERT_TRUE(debugFile.open(QIODevice::ReadOnly));
+    QJsonParseError parseErr;
+    QJsonDocument doc = QJsonDocument::fromJson(debugFile.readAll(), &parseErr);
+    debugFile.close();
+    EXPECT_EQ(parseErr.error, QJsonParseError::NoError);
+    EXPECT_TRUE(doc.isObject());
+    EXPECT_TRUE(doc.object().contains("iconPositions"));
+#endif
 
-    BoxManager::instance()->saveAll(filePath, true, iconPositions2, 1, 0, 0, 0, false, false, true, false, true, /*async=*/false);
-    EXPECT_TRUE(QFile::exists(filePath));
-    EXPECT_TRUE(QFile::exists(bakPath));
-    EXPECT_FALSE(QFile::exists(tmpPath));
-
-    // Load back primary file and check that pos2 is loaded
+    // 3. 重新读取：验证受保护二进制被完整解码恢复
     bool enablePersistence = false;
     QMap<QString, QString> rules;
     int viewMode = 0, sortType = 0, preAuto = 0, iconMode = 0;
@@ -285,79 +284,19 @@ TEST_F(PersistenceTests, AtomicSaveAndBackup) {
                                     loadedBoxes, loadedPositions, &droppedCount);
 
     EXPECT_EQ(droppedCount, 0);
-    EXPECT_TRUE(loadedPositions.contains(QStringLiteral("C:/Desktop/file2.txt")));
-    EXPECT_EQ(loadedPositions[QStringLiteral("C:/Desktop/file2.txt")].value("x").toInt(), 999);
+    EXPECT_TRUE(loadedPositions.contains(QStringLiteral("C:/Desktop/file1.txt")));
+    EXPECT_EQ(loadedPositions[QStringLiteral("C:/Desktop/file1.txt")].value("x").toInt(), 120);
 }
 
-TEST_F(PersistenceTests, CorruptedFileFallbackToBackup) {
-    const QString filePath = m_tempDir.filePath(QStringLiteral("data.json"));
-    const QString bakPath = filePath + QStringLiteral(".bak");
+TEST_F(PersistenceTests, CorruptedFileQuarantinedWithoutDataLoss) {
+    const QString filePath = m_tempDir.filePath(QStringLiteral("user_damaged.dat"));
 
-    // 1. Create a valid initial state so backup is established
-    QMap<QString, QMap<QString, QVariant>> iconPositions1;
-    QMap<QString, QVariant> pos1;
-    pos1["x"] = 100;
-    pos1["y"] = 200;
-    pos1["boxId"] = QString();
-    pos1["ord"] = 0;
-    iconPositions1[QStringLiteral("C:/Desktop/saved_in_bak.txt")] = pos1;
-
-    BoxManager::instance()->saveAll(filePath, true, iconPositions1, 1, 0, 0, 0, false, false, true, false, true, /*async=*/false);
-
-    // Save again so that data.json.bak is created containing saved_in_bak.txt
-    QMap<QString, QMap<QString, QVariant>> iconPositions2;
-    QMap<QString, QVariant> pos2;
-    pos2["x"] = 300;
-    pos2["y"] = 400;
-    pos2["boxId"] = QString();
-    pos2["ord"] = 1;
-    iconPositions2[QStringLiteral("C:/Desktop/second_save.txt")] = pos2;
-
-    BoxManager::instance()->saveAll(filePath, true, iconPositions2, 1, 0, 0, 0, false, false, true, false, true, /*async=*/false);
-    ASSERT_TRUE(QFile::exists(bakPath));
-
-    // 2. Corrupt the primary file (truncate to invalid JSON)
-    {
-        QFile file(filePath);
-        ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
-        file.write("{\"corrupted_json");
-        file.close();
-    }
-
-    // 3. Load -> should automatically fall back to data.json.bak
-    bool enablePersistence = false;
-    QMap<QString, QString> rules;
-    int viewMode = 0, sortType = 0, preAuto = 0, iconMode = 0;
-    bool autoArrange = false, gridAlign = false, showDesktop = false, doubleClick = false, arrow = false;
-    QVector<QMap<QString, QVariant>> loadedBoxes;
-    QMap<QString, QMap<QString, QVariant>> loadedPositions;
-    int droppedCount = 0;
-
-    BoxManager::instance()->loadAll(filePath, false, enablePersistence, rules, viewMode, sortType, preAuto, iconMode,
-                                    autoArrange, gridAlign, showDesktop, doubleClick, arrow,
-                                    loadedBoxes, loadedPositions, &droppedCount);
-
-    EXPECT_GT(droppedCount, 0); // Indicates fallback/repairs were needed
-    EXPECT_TRUE(loadedPositions.contains(QStringLiteral("C:/Desktop/saved_in_bak.txt")));
-    EXPECT_EQ(loadedPositions[QStringLiteral("C:/Desktop/saved_in_bak.txt")].value("x").toInt(), 100);
-}
-
-TEST_F(PersistenceTests, TotalCorruptionGracefulEmptyStartup) {
-    const QString filePath = m_tempDir.filePath(QStringLiteral("data.json"));
-    const QString bakPath = filePath + QStringLiteral(".bak");
-
-    // Both files are corrupted
+    // 写入无法解析的损坏数据
     {
         QFile file(filePath);
         ASSERT_TRUE(file.open(QIODevice::WriteOnly));
-        file.write("bad data");
+        file.write("GARBAGE_PAYLOAD_NOT_RECOGNIZED_BY_DECODER");
         file.close();
-    }
-    {
-        QFile bak(bakPath);
-        ASSERT_TRUE(bak.open(QIODevice::WriteOnly));
-        bak.write("also bad data");
-        bak.close();
     }
 
     bool enablePersistence = false;
@@ -366,17 +305,25 @@ TEST_F(PersistenceTests, TotalCorruptionGracefulEmptyStartup) {
     bool autoArrange = false, gridAlign = false, showDesktop = false, doubleClick = false, arrow = false;
     QVector<QMap<QString, QVariant>> loadedBoxes;
     QMap<QString, QMap<QString, QVariant>> loadedPositions;
-    int droppedCount = 0;
+    int droppedCount = -1;
 
-    // Must not crash or throw
+    // 尝试加载损坏文件，验证绝不崩溃
     EXPECT_NO_THROW({
         BoxManager::instance()->loadAll(filePath, false, enablePersistence, rules, viewMode, sortType, preAuto, iconMode,
                                         autoArrange, gridAlign, showDesktop, doubleClick, arrow,
                                         loadedBoxes, loadedPositions, &droppedCount);
     });
 
+    // 1. 验证内存回落为安全空桌面，不崩溃
+    EXPECT_EQ(droppedCount, 0); // 绝不设 dirty 标记，防止启动后保存直接覆写原文件
     EXPECT_TRUE(loadedBoxes.isEmpty());
     EXPECT_TRUE(loadedPositions.isEmpty());
+
+    // 2. 验证坏文件被安全隔离为 .corrupted_xxxx，原文件不存在（被挪走），案发现场保留
+    EXPECT_FALSE(QFile::exists(filePath));
+    QDir dir(m_tempDir.path());
+    QStringList quarantined = dir.entryList(QStringList() << QStringLiteral("user_damaged.dat.corrupted_*"), QDir::Files);
+    EXPECT_GE(quarantined.size(), 1);
 }
 
 TEST_F(PersistenceTests, PurgeAndCleanRewrite) {
@@ -480,3 +427,83 @@ TEST_F(PersistenceTests, PurgeAndCleanRewrite) {
     EXPECT_TRUE(reloadedPositions.contains(QStringLiteral("C:/Desktop/dangling.txt")));
     EXPECT_TRUE(reloadedPositions[QStringLiteral("C:/Desktop/dangling.txt")].value("boxId").toString().isEmpty());
 }
+
+TEST_F(PersistenceTests, EncryptedBinaryPersistenceRoundtrip) {
+    const QString filePath = m_tempDir.filePath(QStringLiteral("secured_data.dat"));
+
+    // 1. 构造桌面与图标配置
+    QMap<QString, QMap<QString, QVariant>> iconPositions;
+    QMap<QString, QVariant> pos1;
+    pos1["x"] = 50;
+    pos1["y"] = 100;
+    pos1["boxId"] = QString();
+    pos1["ord"] = 0;
+    iconPositions[QStringLiteral("C:/Desktop/app1.lnk")] = pos1;
+
+    QMap<QString, QVariant> pos2;
+    pos2["x"] = 200;
+    pos2["y"] = 300;
+    pos2["boxId"] = QString();
+    pos2["ord"] = 1;
+    iconPositions[QStringLiteral("C:/Desktop/document.pdf")] = pos2;
+
+    // 2. 保存为受保护二进制
+    BoxManager::instance()->saveAll(filePath, true, iconPositions,
+                                    2, 1, 0, 0, false, true, true, false, true, /*async=*/false);
+
+    // 3. 验证写出的文件是专有二进制格式（带有 LDBX 魔数，记事本等直接解析必报错）
+    {
+        QFile file(filePath);
+        ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+        const QByteArray rawBytes = file.readAll();
+        file.close();
+
+        // 验证文件头
+        ASSERT_GE(rawBytes.size(), 6);
+        EXPECT_EQ(rawBytes.left(4), QByteArray("LDBX"));
+
+        // 验证非明文（直接作为 JSON 解析报错，证明记事本直接打开无法查阅明文）
+        QJsonParseError directErr;
+        QJsonDocument::fromJson(rawBytes, &directErr);
+        EXPECT_NE(directErr.error, QJsonParseError::NoError);
+
+        // 验证通过 decodePersistenceData 解码后为合法 JSON
+        const QByteArray decoded = BoxManager::decodePersistenceData(rawBytes);
+        QJsonParseError parseErr;
+        QJsonDocument doc = QJsonDocument::fromJson(decoded, &parseErr);
+        EXPECT_EQ(parseErr.error, QJsonParseError::NoError);
+        EXPECT_TRUE(doc.isObject());
+        EXPECT_TRUE(doc.object().contains("settings"));
+        EXPECT_TRUE(doc.object().contains("iconPositions"));
+    }
+
+    // 4. 重新加载，验证数据无损还原
+    bool loadedEnablePersistence = false;
+    QMap<QString, QString> rules;
+    int loadedViewMode = 0, loadedSortType = 0, loadedPreAuto = 0, loadedIconMode = 0;
+    bool loadedAutoArrange = false, loadedGridAlign = false, loadedShowDesktop = false;
+    bool loadedDoubleClick = false, loadedArrow = false;
+    QVector<QMap<QString, QVariant>> loadedBoxes;
+    QMap<QString, QMap<QString, QVariant>> loadedPositions;
+    int reloadedDroppedCount = -1;
+
+    BoxManager::instance()->loadAll(filePath, false, loadedEnablePersistence, rules,
+                                    loadedViewMode, loadedSortType, loadedPreAuto, loadedIconMode,
+                                    loadedAutoArrange, loadedGridAlign, loadedShowDesktop,
+                                    loadedDoubleClick, loadedArrow,
+                                    loadedBoxes, loadedPositions, &reloadedDroppedCount);
+
+    EXPECT_EQ(reloadedDroppedCount, 0);
+    EXPECT_TRUE(loadedEnablePersistence);
+    EXPECT_EQ(loadedViewMode, 2);
+    EXPECT_EQ(loadedSortType, 1);
+    EXPECT_TRUE(loadedGridAlign);
+    EXPECT_EQ(loadedPositions.size(), 2);
+    EXPECT_TRUE(loadedPositions.contains(QStringLiteral("C:/Desktop/app1.lnk")));
+    EXPECT_EQ(loadedPositions[QStringLiteral("C:/Desktop/app1.lnk")].value("x").toInt(), 50);
+    EXPECT_TRUE(loadedPositions.contains(QStringLiteral("C:/Desktop/document.pdf")));
+    EXPECT_EQ(loadedPositions[QStringLiteral("C:/Desktop/document.pdf")].value("y").toInt(), 300);
+}
+
+
+

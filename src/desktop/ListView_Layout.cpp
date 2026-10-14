@@ -1005,7 +1005,7 @@ QPoint ListView::generateItemPosition()
     qDebug() << "[generateItemPosition] gridAlignment=" << m_iconShowRule.gridAlignment 
              << "m_lastRightClickPos=" << m_lastRightClickPos;
     
-    // 闂傚倸鍊搁悧濠囧礄閻ョ牫d闂佹眹鍩勯崹浼村疮椤愶附鍎戞い鎺嶈兌閳绘棃鏌￠崘銊モ偓褰掑汲閻曠枠闂備胶鎳撻悘婵堢矓瀹曞洨绀婇柡鍐ㄥ€归崰鍡涙煥閺囨浜鹃悷婊勬緲閸婂潡骞嗛崘顔肩闁告挷鑳堕ˇ鈺呮⒑閸涘﹦鎳勫┑鐐诧躬瀵偊顢橀姀鈥虫濠电姴锕ら崯顐ょ矆鐎ｎ喗鐓涢柛灞剧⊕缁惰尙绱撻崒娑欏磳闁轰礁绉靛鍕槈濮橀硸妲烽梻浣哄劦閺呮盯鎮洪妸褎鏆滈悗娑櫳戞刊鎾偣閹帒濡介柡鍡楃箰椤顦村┑顔炬暬閹儵鏁愭径濠勭厬闂佽鍎兼慨銈夊汲濞戞◤褰掓晲閸涱垍銈夋煟?
+    // 如果未开启对齐网格且存在右键位置，则优先在右键位置放置新项
     if (!m_iconShowRule.gridAlignment && m_lastRightClickPos != QPoint(-1, -1)) {
         QPoint pos = m_lastRightClickPos;
         qDebug() << "[generateItemPosition] Using right-click position:" << pos;
@@ -1057,7 +1057,7 @@ QPoint ListView::generateItemPosition()
     const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
     return gridCellToPoint(overflowCell.x(), overflowCell.y(), layoutLeft, layoutTop, strideX, strideY);
 
-    return QPoint(0, 0); // 闂備胶顭堢换鎴犲垝瀹€鈧懞閬嶆惞椤愶絼姘﹂梺鍝勫€圭€笛呯矆閳?
+    return QPoint(0, 0); // 兜底返回默认坐标
 }
 
 void ListView::updateAllItemRenderData()

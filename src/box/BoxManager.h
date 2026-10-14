@@ -66,6 +66,8 @@ public:
     // 条目级校验与净化辅助
     static bool validateBoxData(const QJsonObject& obj, QSet<QString>& seenBoxIds, QMap<QString, QVariant>& outData, int& droppedCount);
     static bool validateIconPosition(const QJsonObject& obj, const QSet<QString>& validBoxIds, QString& outPath, QMap<QString, QVariant>& outPos, int& droppedCount);
+    static QByteArray encodePersistenceData(const QByteArray& jsonData);
+    static QByteArray decodePersistenceData(const QByteArray& rawData);
     
     // 文件归属查询
     QString getBoxIdForItem(const QString& filePath) const;

@@ -4,8 +4,8 @@ cmake_minimum_required(VERSION 3.31)
 # ========== 版本定义，单一来源 ==========
 # 修改版本号只需要改这里
 set(LINDESK_VERSION_MAJOR 1)
-set(LINDESK_VERSION_MINOR 1)
-set(LINDESK_VERSION_PATCH 2)
+set(LINDESK_VERSION_MINOR 2)
+set(LINDESK_VERSION_PATCH 1)
 set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 # 生成完整版本字符串set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
@@ -87,10 +87,14 @@ configure_file(
 
 add_compile_options("/utf-8" "/FS")
 
-# Set 64-bit Qt path if available
+# Set Qt path according to architecture
 if(WIN32 AND (CMAKE_SIZEOF_VOID_P EQUAL 8 OR CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_CL_64))
     if(EXISTS "F:/Qt/5.15.2/msvc2019_64")
         list(PREPEND CMAKE_PREFIX_PATH "F:/Qt/5.15.2/msvc2019_64")
+    endif()
+else()
+    if(EXISTS "F:/Qt/5.15.2/msvc2019")
+        list(PREPEND CMAKE_PREFIX_PATH "F:/Qt/5.15.2/msvc2019")
     endif()
 endif()
 
@@ -113,11 +117,11 @@ add_subdirectory("LinDeskUpdate")
 
 set(LINDESK_W11_MENU_PROJECT "${CMAKE_CURRENT_SOURCE_DIR}/W11MenuUI/Win11MenuIsland.vcxproj")
 set(LINDESK_HAS_W11_MENU_HOST OFF)
-if(WIN32 AND CMAKE_GENERATOR MATCHES "Visual Studio" AND EXISTS "${LINDESK_W11_MENU_PROJECT}")
+if(WIN32 AND (CMAKE_SIZEOF_VOID_P EQUAL 8 OR CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_CL_64) AND CMAKE_GENERATOR MATCHES "Visual Studio" AND EXISTS "${LINDESK_W11_MENU_PROJECT}")
     include_external_msproject(Win11MenuIsland "${LINDESK_W11_MENU_PROJECT}" PLATFORM x64)
     set(LINDESK_HAS_W11_MENU_HOST ON)
 else()
-    message(WARNING "Win11 menu host subproject will not be added because Visual Studio generator or W11MenuUI project was not found.")
+    message(STATUS "Win11 menu host subproject will not be added (requires 64-bit platform and Visual Studio generator).")
 endif()
 
 # 自动收集 src 下所有 .cpp .h .qrc 文件
@@ -160,7 +164,15 @@ set_target_properties(LinDesk PROPERTIES
 # ==============================================================================
 # CEF (Chromium Embedded Framework) OSR Integration & LinWidgetRuntime
 # ==============================================================================
-set(CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/cef" CACHE PATH "Path to CEF root directory")
+if(WIN32 AND (CMAKE_SIZEOF_VOID_P EQUAL 8 OR CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_CL_64))
+    set(DEFAULT_CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/cef")
+    set(LINDESK_VCPKG_ARCH "x64-windows")
+else()
+    set(DEFAULT_CEF_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/cef32")
+    set(LINDESK_VCPKG_ARCH "x86-windows")
+endif()
+
+set(CEF_ROOT "${DEFAULT_CEF_ROOT}" CACHE PATH "Path to CEF root directory")
 if(DEFINED ENV{CEF_ROOT} AND NOT EXISTS "${CEF_ROOT}/include/cef_app.h")
     set(CEF_ROOT "$ENV{CEF_ROOT}")
 endif()
@@ -206,7 +218,7 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
     target_include_directories(LinWidgetRuntime PRIVATE
         "${CEF_ROOT}"
         ${CMAKE_BINARY_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${LINDESK_VCPKG_ARCH}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/app
         ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
@@ -255,6 +267,22 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
 
     # 组织输出目录：将组件运行时部署到 runtime/linwidget 目录
     set(RUNTIME_DEPLOY_DIR "$<TARGET_FILE_DIR:LinDesk>/runtime/linwidget")
+    set(CEF_DEPLOY_BINARIES
+        "${CEF_ROOT}/Release/libcef.dll"
+        "${CEF_ROOT}/Release/chrome_elf.dll"
+        "${CEF_ROOT}/Release/d3dcompiler_47.dll"
+        "${CEF_ROOT}/Release/v8_context_snapshot.bin"
+        "${CEF_ROOT}/Release/vk_swiftshader.dll"
+        "${CEF_ROOT}/Release/vk_swiftshader_icd.json"
+        "${CEF_ROOT}/Release/vulkan-1.dll"
+    )
+    if(EXISTS "${CEF_ROOT}/Release/dxcompiler.dll")
+        list(APPEND CEF_DEPLOY_BINARIES "${CEF_ROOT}/Release/dxcompiler.dll")
+    endif()
+    if(EXISTS "${CEF_ROOT}/Release/dxil.dll")
+        list(APPEND CEF_DEPLOY_BINARIES "${CEF_ROOT}/Release/dxil.dll")
+    endif()
+
     add_custom_command(TARGET LinWidgetRuntime POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${RUNTIME_DEPLOY_DIR}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -265,17 +293,9 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
             "${RUNTIME_DEPLOY_DIR}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CEF_ROOT}/Resources"
-            "${RUNTIME_DEPLOY_DIR}/Resources"
+            "${RUNTIME_DEPLOY_DIR}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CEF_ROOT}/Release/libcef.dll"
-            "${CEF_ROOT}/Release/chrome_elf.dll"
-            "${CEF_ROOT}/Release/d3dcompiler_47.dll"
-            "${CEF_ROOT}/Release/v8_context_snapshot.bin"
-            "${CEF_ROOT}/Release/vk_swiftshader.dll"
-            "${CEF_ROOT}/Release/vk_swiftshader_icd.json"
-            "${CEF_ROOT}/Release/vulkan-1.dll"
-            "${CEF_ROOT}/Release/dxcompiler.dll"
-            "${CEF_ROOT}/Release/dxil.dll"
+            ${CEF_DEPLOY_BINARIES}
             "${RUNTIME_DEPLOY_DIR}"
         COMMENT "Deploying LinWidget runtime and CEF binaries to runtime/linwidget..."
     )
@@ -319,7 +339,7 @@ target_link_libraries(LinDesk
 target_include_directories(LinDesk
     PRIVATE
         ${CMAKE_BINARY_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${LINDESK_VCPKG_ARCH}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/app
         ${CMAKE_CURRENT_SOURCE_DIR}/src/desktop
@@ -515,15 +535,57 @@ target_include_directories(LinDeskStoreAppIconCompatTests
 )
 
 add_test(NAME LinDeskStoreAppIconCompatTests COMMAND LinDeskStoreAppIconCompatTests)
+
+add_executable(LinDeskDisplayNameOverrideTests
+    tests/DisplayNameOverrideTests.cpp
+    src/services/DesktopItemLoader.cpp
+    src/services/DesktopItemLoader.h
+    src/services/SysInfoUtil.cpp
+    src/services/SysInfoUtil.h
+    src/services/SystemApi/SystemApi.cpp
+    src/services/SystemApi/SystemApi.h
+    src/services/SystemApi/Tool.cpp
+    src/services/SystemApi/Tool.h
+    src/services/IconCacheManager.cpp
+    src/services/IconCacheManager.h
+)
+
+target_link_libraries(LinDeskDisplayNameOverrideTests
+    PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        Qt5::WinExtras
+        Shell32
+        Propsys
+        Ole32
+        User32
+        Shlwapi
+        Version
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskDisplayNameOverrideTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services/SystemApi
+)
+
+add_test(NAME LinDeskDisplayNameOverrideTests COMMAND LinDeskDisplayNameOverrideTests)
 endif(BUILD_TESTING)
 
 # ---- 解决方案文件夹分组 ----
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set_property(TARGET LinDesk LinWidgetRuntime LinDeskSubprocess Win11MenuIsland PROPERTY FOLDER "Apps")
+set(APP_TARGETS LinDesk LinWidgetRuntime LinDeskSubprocess)
+if(TARGET Win11MenuIsland)
+    list(APPEND APP_TARGETS Win11MenuIsland)
+endif()
+set_property(TARGET ${APP_TARGETS} PROPERTY FOLDER "Apps")
 set_property(TARGET LinDeskUpdate PROPERTY FOLDER "Tools")
 if(BUILD_TESTING)
     set_property(TARGET LinDeskSystemInfoTests LinDeskWidgetEnvelopeTests
-        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests LinDeskStoreAppIconCompatTests PROPERTY FOLDER "Tests")
+        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests LinDeskStoreAppIconCompatTests LinDeskDisplayNameOverrideTests PROPERTY FOLDER "Tests")
 endif()
 
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)
@@ -565,10 +627,21 @@ add_custom_command(TARGET LinDesk POST_BUILD
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/translations")
 
 # Post-build: Copy OpenSSL DLLs to executable directory
-add_custom_command(TARGET LinDesk POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+if(WIN32 AND (CMAKE_SIZEOF_VOID_P EQUAL 8 OR CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_CL_64))
+    set(OPENSSL_DLLS
         "${CMAKE_CURRENT_SOURCE_DIR}/Openssl/libcrypto-1_1-x64.dll"
         "${CMAKE_CURRENT_SOURCE_DIR}/Openssl/libssl-1_1-x64.dll"
+    )
+else()
+    set(OPENSSL_DLLS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Openssl/libcrypto-1_1.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Openssl/libssl-1_1.dll"
+    )
+endif()
+
+add_custom_command(TARGET LinDesk POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${OPENSSL_DLLS}
         $<TARGET_FILE_DIR:LinDesk>
     COMMENT "Copying OpenSSL DLLs to output directory..."
 )

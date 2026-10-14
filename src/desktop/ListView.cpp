@@ -300,7 +300,7 @@ QMap<QString, QPoint> ListView::resolveDesktopDragFinalPositions(const QStringLi
 }
 
 
-// 闂傚倸鍊搁悧濠囨偡閿曞倸鐒垫い鎴ｆ硶閸斿秹鏌涢妸锕€鍝虹€规洏鍔岃灒闁告繂瀚禒瀛樼節濞堝灝鏋涙い鎴濇噽閳?
+// 单例指针与图标尺寸初始化
 ListView* ListView::m_instance = nullptr;
 int ListItemData::s_targetIconSize = ListItemData::calculateIconSourceTier(ListView::kMediumIconW);
 
@@ -574,7 +574,7 @@ void ListView::updateSystemIconVisibility(const QString& clsid, bool hidden)
 {
     qDebug() << "updateSystemIconVisibility:" << clsid << "->" << (hidden ? "hiding" : "showing");
     
-    // 闂佽崵鍠愰悷銉р偓姘煎灣閳ь剙鐏氶悧鐘茬暦閻樿瀚夐柛銏°€桰D闂備礁鎼粔鍫曞储瑜忓Σ鎰版晸閻樿櫕娅栭梺鍓插亐閹筹綁鍩￠崨顔规寖闂侀潧鐗嗛幊搴ｆ媼閺屻儲鐓犻悗鍦У椤ュ鏌ｆ幊閸旀垵鐣烽悜钘壩╃憸搴ㄦ偩?:闂備礁鎲￠幐鍝ョ矓閸撲焦顫曢柟杈鹃檮閺?
+    // 规范化 CLSID 并匹配对应系统图标
     QString normalizedClsid = clsid;
     normalizedClsid.replace("::", "");
 
@@ -636,18 +636,11 @@ void ListView::onWindowsShowHiddenFilesChanged(bool showHiddenFiles)
 
 void ListView::startListeningSpecialIcon()
 {
-    // 闁诲孩顔栭崰鎺楀磻閹炬枼鏀芥い鏃傗拡閸庢垶绻涢幓鎺戞殻鐎?
+    // 启动特殊图标监控并获取当前系统图标
     if (monitor->startListening()) {
         sysIconRegisterInfo = monitor->getCurrentIcons();
-
-        /*for (const auto& icon : monitor->getCurrentIcons()) {
-            qDebug() << icon.name << ":" << (icon.isHidden ? "hiddening" : "showing");
-        }*/
-
-        // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪☉閻愬﹪鏌ｉ幇顒傛憼闁哄棭浜炵槐鎺楀籍閳ь剟鎮烽埡浣叉灁闁挎繂顦扮€?
-        //monitor->setIconVisibility("{645FF040-5081-101B-9F08-00AA002F954E}", true);
     }
-    // 闂佸搫顦弲婵嬪磻閻愬灚鏆滈悗娑欘焽閳瑰秹鏌嶉妷銉ユ毐濠?
+    // 关联图标可见性变化信号
     connect(monitor, &DesktopInfoMonitor::iconVisibilityChanged,
         this, &ListView::updateSystemIconVisibility);
 }
@@ -1422,9 +1415,9 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
         // Since ListItems now intercept their own contextMenuEvent and emit signals,
         // this handler is only reached if the background (desktop) is clicked.
         
-        // 濠电姷顣介埀顒€鍟块埀顒€缍婇幃妯诲緞閹邦剛鐓戦梺瑙勫劶婵倝寮冲☉銏＄厽闁归偊鍠楅崵鈧梺鎼炲€ら崰妤呭箯閸涱収鍚嬮柛銉㈡櫆閻庮厽绻涢幋鐐村碍缂佸娼欓敃銏ゎ敂閸涱垼娴勯柣鐘辩绾绢厾绮旈崸妤佺厱闁靛／鍐у闂佺粯鐗紞浣哥暦閻樿浼犻柛鏇ㄥ幖楠炲秹姊洪崨濠傚闁归攱鍨瑰Σ鎰攽閸℃劏鍋撻幒妤€宸濋悗娑欘焽瑜版垿鎮楅崷顓х劸鐎殿喛娉涢敃銏＄瑹閳ь剟寮婚崨顔肩窞濠㈣泛楠搁獮鈧?
+        // 点击背景时清空选中项
         clearCheckedItem();
-        // 闂備礁鎼€氼剚鏅舵禒瀣︽慨姗嗗墻濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴姊哄Ч鍥у閻庢凹鍓濋妵鎰板箹娴ｅ湱鍙嗗銈嗘煥閻忔繄绱為崨瀛樼厱?
+        // 弹出桌面背景系统右键菜单
         requestSystemRightMenu(ObjectType::BackGround, rightClickPoint);
     }
 }
@@ -1829,7 +1822,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
         event->accept();
         return;
     }
-    // 闂佸吋鍎抽崲鑼躲亹閸モ斁鍋撻崷顓炰沪婵＄偛鍊块幆鍐礋椤栨稒娈梺鐑╂櫆椤洦鎱ㄩ幖浣哥畱?
+    // 键盘按键事件处理：检测修饰键与快捷键组合
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
 
@@ -2091,7 +2084,7 @@ ListView* ListView::instance(QWidget* parent) {
 
 void ListView::initialize()
 {
-    // === 闂備礁鎲￠懝楣冨嫉椤掑嫷鏁?Windows 婵犵鍓濋〃鍛存儗閸屾凹鐒藉ù鍏兼綑缁犳娊鏌熼悜妯虹仴闁诲繑鐟╅幃瑙勬媴缁嬪簱鎸冮梺?===
+    // === 读取 Windows 原生桌面配置（自动排列、对齐网格）===
     bool osAutoArrange = false;
     bool osSnapToGrid = false;
     CSystemApi::GetDesktopConfigFlags(osAutoArrange, osSnapToGrid);
@@ -2482,7 +2475,7 @@ bool ListView::addItem(const QString& filePath, bool refresh)
 
     const bool added = !findAnyItemStateByPath(normalizedPath) && addDesktopModelItemFromPath(filePath);
     
-    // 闂備礁婀遍。浠嬪磻閹剧粯鐓涢柛顐ｇ箥濡插綊鏌＄€ｎ亜鏆炵紒鍌涘浮瀹曞ジ寮撮悙鎻掔闂備礁鎲″缁樻叏閹绢喖鐭?m_items 闂?m_allItems
+    // 同步持久化存储
     if (refresh) {
         requestSaveBoxes();
     }
@@ -2670,14 +2663,8 @@ bool ListView::handlePendingShellCreatedItem(const QString& newPath)
 }
 
 /// <summary>
-/// 闂備焦鐪归崹濠氬窗閹版澘鍨傛慨妯块哺閸犲棝鏌涢弴銊ヤ簻闁?
-/// 1.unGrid婵犵妲呴崹顏堝焵椤掆偓绾绢厾娑甸埀?
-/// UI闂備礁鎲＄敮妤冪矙閹寸姷纾介柟缁樺敻em,闂備胶鍎甸弲娑㈡偤閵娧勬殰闁圭虎鍠栫粻鐢告煙闁缚绨介弶鈺傛煥椤顦村┑顔炬暬閹儵鏁愭径濠勭厬闂佽鍎兼慨銈夊汲濞戙垺鐓曠憸搴ㄥ礉閺嶎厽鍋?
-/// 闂傚倸鍊搁悧濠囧箯缁嬧晠姊洪崨濠傜瑲缂佸鍨圭槐鎾诲箻缂佹ɑ娅栭柣蹇曞仧閸樠囧煝韫囨稒鐓熼柍鍨涙櫅婢хid闂備礁鎲＄敮妤冪矙閹寸姷纾介柟鎹愬煐閸犲棝鏌涢弴銊ヤ簻闁?
-/// 2.Grid婵犵妲呴崹顏堝焵椤掆偓绾绢厾娑甸埀?
-/// 闂備礁鎼悮顐﹀磿閹绢噮鏁嬫俊銈呮噹閸愨偓闂佺粯鎸稿ù鐑藉箺瀹ュ鍋ㄦい鏍ㄨ壘閺嗘瑩鏌ｉ宥呭鐞氭瑩鐓崶褔鍙勯柛銈咁儔閺屾盯寮借閹牓鏌ｉ幘瀵告噰鐎殿喕鍗抽、娑橆潩椤撶偛澧鹃梻浣告惈閻楀棝藝娴兼潙鍑犻柛鎰ㄦ櫇椤╃兘鎮规ウ鎸庮仩闁圭晫濞€閺屾盯鏁傞懡銈呭辅缂備浇椴哥换鍐╃┍婵犲洤纾兼繛鎴炵煯閸戣姤绻涢幋鐐村碍缂佸鎸抽幃娲Ω閳轰焦宓嶉梺闈涱煭鐎靛苯顫忛崜褏纾煎〒姘仢閻忣噣鏌嶇憴鍕⒌鐎殿喕绮欓幃鈩冩償閿濆棙鍟㈤梻浣瑰缁嬫垶绺介弮鈧换娑㈠炊椤掍礁浠洪梺闈浤涚仦钘夊濠电偞鍨堕幐鎾磻閹炬枼妲堥柟鍨暕缁ㄥジ鏌ｅΔ鈧幗婊堝焵椤掍胶鈯曢柛鏃€娲栭…鍥旈崨顓炲敤?
+/// 初始化桌面右键菜单信号与槽连接
 /// </summary>
-/// <returns></returns>
 
 
 void ListView::initRightMenuConnections() {
@@ -2871,7 +2858,7 @@ DesktopItemInitContext ListView::currentDesktopItemInitContext() const
     return context;
 }
 
-bool ListView::addDesktopModelItemFromPath(const QString& filePath)
+bool ListView::addDesktopModelItemFromPath(const QString& filePath, bool deferRelayout)
 {
     if (filePath.isEmpty() || findDesktopStateByPath(filePath)) {
         return false;
@@ -2893,7 +2880,16 @@ bool ListView::addDesktopModelItemFromPath(const QString& filePath)
 
     m_itemStates.push_back(state);
     markDesktopStateIndexDirty();
+    markSpatialIndexDirty();
     markDesktopRenderDataDirty(&m_itemStates.back());
+
+    if (deferRelayout) {
+        if (m_fsRelayoutTimer) {
+            m_fsRelayoutTimer->start(120);
+        }
+        return true;
+    }
+
     updateAllItemRenderData();
 
     if (m_iconShowRule.autoArrange) {
@@ -3342,6 +3338,7 @@ void ListView::removeDesktopStateByPath(const QString& filePath)
 
     for (auto it = m_itemStates.begin(); it != m_itemStates.end(); ) {
         if (normalizeDesktopItemPath(it->model.filePath).compare(normalizedPath, Qt::CaseInsensitive) == 0) {
+            IconCacheManager::instance().invalidateItemCache(it->model.iconCacheKey, normalizedPath);
             const QRect dirty = desktopRootItemHighlightDirtyRect(it->model.renderData);
             const QString foundPath = normalizeDesktopItemPath(it->model.filePath);
             it = m_itemStates.erase(it);
@@ -3582,7 +3579,7 @@ QVector<DesktopSnakeGameIcon> ListView::desktopSnakeIcons() const
     return icons;
 }
 
-	// 闂備胶顭堢换鎰版偋婵犲洤钃熼柛銉戝苯娈ㄩ梺閫炲苯澧伴柟?item 闂備焦鐪归崝宀€鈧凹鍘介弲璺侯吋婢跺﹤鐝樻繝銏ｆ硾椤︻喚鎹㈤崱娑欑厱婵炲棙鍨堕悞璺ㄧ磼缂佹娲存鐐村浮婵＄兘顢涘鍜佹Х闂傚倸鍊搁崯顐㈩嚕閸洦鏁嗘繛鎴欏灪閻撳倻鈧箍鍎遍幏瀣ｆ繝姘骇闁冲搫鍟禒锕傛偨?
+// 重置重命名点击检测状态
 void ListView::resetRenameClickState()
 {
     m_lastClickedDesktopPath.clear();

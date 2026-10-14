@@ -14,6 +14,7 @@
 #include <QUuid>
 #include <QDebug>
 #include <QSet>
+#include <QDateTime>
 #include <QtConcurrent/qtconcurrentrun>
 
 #ifdef Q_OS_WIN
@@ -24,6 +25,14 @@ namespace {
 
 constexpr int kMaxPersistedBoxes = 4096;
 constexpr int kMaxPersistedIconPositions = 100000;
+
+static const char kLinDeskMagic[4] = {'L', 'D', 'B', 'X'};
+static const quint8 kLinDeskVersion = 1;
+static const quint8 kLinDeskFlagEncrypted = 0x01;
+static const quint8 kXorMask[] = {
+    0x5A, 0xA5, 0x6C, 0xC6, 0x73, 0x37, 0x8F, 0xF8,
+    0x24, 0x42, 0x1E, 0xE1, 0x9B, 0xB9, 0x3D, 0xD3
+};
 
 QString normalizeMappedFolderPathValue(const QString& path)
 {
@@ -368,6 +377,60 @@ bool BoxManager::validateIconPosition(const QJsonObject& posObj, const QSet<QStr
     return true;
 }
 
+QByteArray BoxManager::encodePersistenceData(const QByteArray& jsonData) {
+    if (jsonData.isEmpty()) {
+        return QByteArray();
+    }
+
+    // 1. zlib 压缩
+    QByteArray compressed = qCompress(jsonData, 9);
+    // 2. 循环异或混淆
+    for (int i = 0; i < compressed.size(); ++i) {
+        compressed[i] = static_cast<char>(static_cast<quint8>(compressed[i]) ^ kXorMask[i % sizeof(kXorMask)]);
+    }
+    // 3. 添加包头 (Magic 4B + Version 1B + Flags 1B)
+    QByteArray result;
+    result.reserve(6 + compressed.size());
+    result.append(kLinDeskMagic, 4);
+    result.append(static_cast<char>(kLinDeskVersion));
+    result.append(static_cast<char>(kLinDeskFlagEncrypted));
+    result.append(compressed);
+    return result;
+}
+
+QByteArray BoxManager::decodePersistenceData(const QByteArray& rawData) {
+    if (rawData.isEmpty()) {
+        return QByteArray();
+    }
+
+    // Tier 1: 检查 LinDesk 二进制加密包头 (LDBX)
+    if (rawData.size() >= 6 &&
+        memcmp(rawData.constData(), kLinDeskMagic, 4) == 0 &&
+        static_cast<quint8>(rawData[4]) == kLinDeskVersion) {
+
+        const quint8 flags = static_cast<quint8>(rawData[5]);
+        QByteArray payload = rawData.mid(6);
+        if (flags & kLinDeskFlagEncrypted) {
+            for (int i = 0; i < payload.size(); ++i) {
+                payload[i] = static_cast<char>(static_cast<quint8>(payload[i]) ^ kXorMask[i % sizeof(kXorMask)]);
+            }
+        }
+        QByteArray uncompressed = qUncompress(payload);
+        if (!uncompressed.isEmpty()) {
+            return uncompressed;
+        }
+    }
+
+    // Tier 2: 尝试直接纯 qCompress 压缩流
+    QByteArray uncompressed = qUncompress(rawData);
+    if (!uncompressed.isEmpty()) {
+        return uncompressed;
+    }
+
+    // Tier 3: 原始明文（回落到后续的 JSON / QDataStream 解析）
+    return rawData;
+}
+
 QFuture<bool> BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
                                   const QMap<QString, QMap<QString, QVariant>>& iconPositions,
                                   int viewMode, int sortType, int preAutoSort, int iconPosMode,
@@ -478,9 +541,10 @@ QFuture<bool> BoxManager::saveAll(const QString& persistencePath, bool enablePer
             return false;
         }
 
-        const QByteArray jsonData = QJsonDocument(rootObj).toJson(QJsonDocument::Indented);
-        if (tmpFile.write(jsonData) != jsonData.size()) {
-            qWarning() << "[BoxManager] Failed to write complete JSON data to:" << tmpPath;
+        const QByteArray jsonData = QJsonDocument(rootObj).toJson(QJsonDocument::Compact);
+        const QByteArray binaryPayload = encodePersistenceData(jsonData);
+        if (tmpFile.write(binaryPayload) != binaryPayload.size()) {
+            qWarning() << "[BoxManager] Failed to write complete binary data to:" << tmpPath;
             tmpFile.close();
             QFile::remove(tmpPath);
             return false;
@@ -489,15 +553,16 @@ QFuture<bool> BoxManager::saveAll(const QString& persistencePath, bool enablePer
         tmpFile.flush();
         tmpFile.close();
 
-        // 覆盖前备份旧文件为 .bak
-        if (QFile::exists(persistencePath)) {
-            if (QFile::exists(bakPath)) {
-                QFile::remove(bakPath);
-            }
-            if (!QFile::copy(persistencePath, bakPath)) {
-                qWarning() << "[BoxManager] Failed to create backup file at:" << bakPath;
-            }
+#ifdef QT_DEBUG
+        // Debug 模式下同步写出一份格式化明文 JSON 伴随文件，方便开发人员直接查看与调试
+        const QString debugJsonPath = persistencePath + QStringLiteral(".debug.json");
+        QFile debugFile(debugJsonPath);
+        if (debugFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            debugFile.write(QJsonDocument(rootObj).toJson(QJsonDocument::Indented));
+            debugFile.close();
+            qDebug() << "[BoxManager] [DEBUG] Plaintext JSON snapshot updated at:" << debugJsonPath;
         }
+#endif
 
         bool replaced = false;
 #ifdef Q_OS_WIN
@@ -579,78 +644,80 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
             return false;
         }
 
+        const QByteArray decodedContent = decodePersistenceData(content);
+
         QJsonParseError parseError;
-        QJsonDocument doc = QJsonDocument::fromJson(content, &parseError);
-        if (parseError.error != QJsonParseError::NoError || doc.isNull() || !doc.isObject()) {
-            qWarning() << "[BoxManager] JSON parse error in" << filePath << ":" << parseError.errorString();
+        QJsonDocument doc = QJsonDocument::fromJson(decodedContent, &parseError);
+        if (parseError.error == QJsonParseError::NoError && !doc.isNull() && doc.isObject()) {
+            QJsonObject rootObj = doc.object();
+            if (rootObj.contains("settings") && rootObj.contains("box-datas") && rootObj.contains("iconPositions")) {
+                // 加载设置
+                QJsonObject settingsObj = rootObj["settings"].toObject();
+                enablePersistence = settingsObj.value("enablePersistence").toBool(true);
+                viewMode = settingsObj.value("viewMode").toInt(1);
+                sortType = settingsObj.value("sortType").toInt(0);
+                preAutoSort = settingsObj.value("preAutoSort").toInt(0);
+                iconPosMode = settingsObj.value("iconPosMode").toInt(0);
+                autoArrange = settingsObj.value("autoArrange").toBool(false);
+                gridAlignment = settingsObj.value("gridAlignment").toBool(false);
+                showDesktopIcons = settingsObj.value("showDesktopIcons").toBool(true);
+                doubleClickHideIcons = settingsObj.value("doubleClickHideIcons").toBool(false);
+                showShortCutArrow = settingsObj.value("showShortCutArrow").toBool(true);
+
+                // 加载 Box 并做条目级校验与上限控制
+                QJsonArray boxArray = rootObj["box-datas"].toArray();
+                if (boxArray.size() > kMaxPersistedBoxes) {
+                    qWarning() << "[BoxManager] Persisted box count exceeds max limit:" << boxArray.size() << ">" << kMaxPersistedBoxes;
+                    localDropped += (boxArray.size() - kMaxPersistedBoxes);
+                }
+                const int boxLimit = qMin(boxArray.size(), kMaxPersistedBoxes);
+
+                QSet<QString> seenBoxIds;
+                boxData.clear();
+                for (int i = 0; i < boxLimit; ++i) {
+                    const QJsonValue val = boxArray[i];
+                    if (!val.isObject()) {
+                        qWarning() << "[BoxManager] Dropping non-object box at index:" << i;
+                        ++localDropped;
+                        continue;
+                    }
+                    QMap<QString, QVariant> bData;
+                    if (validateBoxData(val.toObject(), seenBoxIds, bData, localDropped)) {
+                        boxData.append(bData);
+                    }
+                }
+
+                // 加载图标位置并做条目级校验与上限控制
+                QJsonArray iconPosArray = rootObj["iconPositions"].toArray();
+                if (iconPosArray.size() > kMaxPersistedIconPositions) {
+                    qWarning() << "[BoxManager] Persisted icon count exceeds limit:" << iconPosArray.size() << ">" << kMaxPersistedIconPositions;
+                    localDropped += (iconPosArray.size() - kMaxPersistedIconPositions);
+                }
+                const int iconLimit = qMin(iconPosArray.size(), kMaxPersistedIconPositions);
+
+                iconPositions.clear();
+                for (int i = 0; i < iconLimit; ++i) {
+                    const QJsonValue val = iconPosArray[i];
+                    if (!val.isObject()) {
+                        qWarning() << "[BoxManager] Dropping non-object icon position at index:" << i;
+                        ++localDropped;
+                        continue;
+                    }
+                    QString path;
+                    QMap<QString, QVariant> posMap;
+                    if (validateIconPosition(val.toObject(), seenBoxIds, path, posMap, localDropped)) {
+                        iconPositions[path] = posMap;
+                    }
+                }
+                return true;
+            } else {
+                qWarning() << "[BoxManager] Missing required keys in JSON" << filePath << "(needs settings, box-datas, iconPositions)";
+                return false;
+            }
+        } else {
+            qWarning() << "[BoxManager] Persistence parse error in" << filePath << ":" << parseError.errorString();
             return false;
         }
-
-        QJsonObject rootObj = doc.object();
-        if (!rootObj.contains("settings") || !rootObj.contains("box-datas") || !rootObj.contains("iconPositions")) {
-            qWarning() << "[BoxManager] Missing required keys in" << filePath << "(needs settings, box-datas, iconPositions)";
-            return false;
-        }
-
-        // 加载设置
-        QJsonObject settingsObj = rootObj["settings"].toObject();
-        enablePersistence = settingsObj.value("enablePersistence").toBool(true);
-        viewMode = settingsObj.value("viewMode").toInt(1);
-        sortType = settingsObj.value("sortType").toInt(0);
-        preAutoSort = settingsObj.value("preAutoSort").toInt(0);
-        iconPosMode = settingsObj.value("iconPosMode").toInt(0);
-        autoArrange = settingsObj.value("autoArrange").toBool(false);
-        gridAlignment = settingsObj.value("gridAlignment").toBool(false);
-        showDesktopIcons = settingsObj.value("showDesktopIcons").toBool(true);
-        doubleClickHideIcons = settingsObj.value("doubleClickHideIcons").toBool(false);
-        showShortCutArrow = settingsObj.value("showShortCutArrow").toBool(true);
-
-        // 加载 Box 并做条目级校验与上限控制
-        QJsonArray boxArray = rootObj["box-datas"].toArray();
-        if (boxArray.size() > kMaxPersistedBoxes) {
-            qWarning() << "[BoxManager] Persisted box count exceeds max limit:" << boxArray.size() << ">" << kMaxPersistedBoxes;
-            localDropped += (boxArray.size() - kMaxPersistedBoxes);
-        }
-        const int boxLimit = qMin(boxArray.size(), kMaxPersistedBoxes);
-
-        QSet<QString> seenBoxIds;
-        boxData.clear();
-        for (int i = 0; i < boxLimit; ++i) {
-            const QJsonValue val = boxArray[i];
-            if (!val.isObject()) {
-                qWarning() << "[BoxManager] Dropping non-object box at index:" << i;
-                ++localDropped;
-                continue;
-            }
-            QMap<QString, QVariant> bData;
-            if (validateBoxData(val.toObject(), seenBoxIds, bData, localDropped)) {
-                boxData.append(bData);
-            }
-        }
-
-        // 加载图标位置并做条目级校验与上限控制
-        QJsonArray iconPosArray = rootObj["iconPositions"].toArray();
-        if (iconPosArray.size() > kMaxPersistedIconPositions) {
-            qWarning() << "[BoxManager] Persisted icon count exceeds limit:" << iconPosArray.size() << ">" << kMaxPersistedIconPositions;
-            localDropped += (iconPosArray.size() - kMaxPersistedIconPositions);
-        }
-        const int iconLimit = qMin(iconPosArray.size(), kMaxPersistedIconPositions);
-
-        iconPositions.clear();
-        for (int i = 0; i < iconLimit; ++i) {
-            const QJsonValue val = iconPosArray[i];
-            if (!val.isObject()) {
-                qWarning() << "[BoxManager] Dropping non-object icon position at index:" << i;
-                ++localDropped;
-                continue;
-            }
-            QString path;
-            QMap<QString, QVariant> posMap;
-            if (validateIconPosition(val.toObject(), seenBoxIds, path, posMap, localDropped)) {
-                iconPositions[path] = posMap;
-            }
-        }
-        return true;
     };
 
     int totalDropped = 0;
@@ -661,26 +728,28 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
     }
 
     if (!loaded) {
-        const QString bakPath = persistencePath + QStringLiteral(".bak");
-        if (QFile::exists(bakPath)) {
-            qWarning() << "[BoxManager] Primary file corrupted or missing. Falling back to backup:" << bakPath;
-            int bakDropped = 0;
-            if (tryLoadFile(bakPath, bakDropped)) {
-                qWarning() << "[BoxManager] Successfully recovered layout state from backup:" << bakPath;
-                totalDropped += bakDropped + 1; // +1 确保净化保存重写主文件
-                loaded = true;
-            } else {
-                qWarning() << "[BoxManager] Backup file is also corrupted:" << bakPath;
-            }
-        } else {
-            qDebug() << "[BoxManager] No persistence file or backup found at:" << persistencePath;
-        }
-    }
+        // 绝不抹除用户坏文件：如果主文件存在且非空，但解析失败，立即自动重命名隔离为 .corrupted_yyyyMMdd_hhmmss 保留案发现场！
+        if (QFile::exists(persistencePath) && QFile(persistencePath).size() > 0) {
+            const QString timeStamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss"));
+            const QString quarantinePath = persistencePath + QStringLiteral(".corrupted_") + timeStamp;
 
-    if (!loaded) {
+            bool quarantined = QFile::rename(persistencePath, quarantinePath);
+            if (!quarantined) {
+                if (QFile::copy(persistencePath, quarantinePath)) {
+                    QFile::remove(persistencePath);
+                    quarantined = true;
+                }
+            }
+            qCritical() << "[BoxManager] CRITICAL: Persistence file corrupted! Quarantined to:" << quarantinePath
+                        << "(Original user file preserved. Launching with clean layout without overwriting corrupted data)";
+        } else {
+            qDebug() << "[BoxManager] No persistence file found at:" << persistencePath;
+        }
+
         qWarning() << "[BoxManager] Starting with clean default layout.";
         boxData.clear();
         iconPositions.clear();
+        totalDropped = 0; // 严禁设置 dirty，防止启动立即写空文件破坏现场！
     }
 
     if (droppedCount) {

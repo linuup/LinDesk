@@ -471,6 +471,49 @@
     </message>
 </context>
 <context>
+    <name>RuntimeInstaller</name>
+    <message>
+        <source>Failed to completely remove runtime directory: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully uninstalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction timed out.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zip file does not exist: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extracting...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid runtime package: LinWidgetRuntime.dll not found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to move extracted runtime to destination: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully installed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SettingUI</name>
     <message>
         <source>LinDesk</source>
@@ -1409,19 +1452,11 @@ Manifest errors:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Added widget instance: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Loaded widget: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Unloaded widget: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reloaded widget iframe: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1472,10 +1507,6 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>LinWidget runtime is disabled.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinWidget manager is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1570,6 +1601,26 @@ Load skipped: %2</source>
         <source>Downloading update to: %1</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Runtime not loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reloaded widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to launch widget package.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UpdateChecker</name>
@@ -1594,7 +1645,7 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Release asset is missing.</source>
+        <source>Release asset for current architecture is missing.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

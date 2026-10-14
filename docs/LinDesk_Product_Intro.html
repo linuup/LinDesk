@@ -70,25 +70,24 @@
     <a href="LinDesk_Architecture_Guide.html">架构指南</a>
     <a href="LinDesk_Todo.html">任务清单</a>
     <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
-    <a href="LinDesk_Persistence_Plan.html">持久化方案</a>
 </nav>
 
 <header class="doc-head">
   <h1>LinDesk 产品介绍</h1>
   <div class="meta">
     <span>定位：Windows 桌面增强工具</span>
-    <span>更新：2026-10-12</span>
+    <span>更新：2026-10-14</span>
     <span>依据：当前代码（src 只读盘点）</span>
   </div>
 </header>
 
 <section>
   <h2>1. 产品定位</h2>
-  <p><strong>LinDesk 是一个运行在 Windows 桌面上的增强层工具</strong>：在不替换系统桌面的前提下，为桌面提供更现代的图标管理、可定制的收纳容器（LinBox）和基于 HTML 的桌面小组件（LinWidget）体系。</p>
+  <p><strong>LinDesk 是一个运行在 Windows 桌面上的增强层工具</strong>：在不替换系统桌面的前提下，为桌面提供更现代的图标管理、可定制的收纳容器（LinBox）和基于 HTML 的桌面小组件（LinWidget）体系。组件系统以独立运行时形态交付，主程序可脱离组件功能独立运行，用户按需经 LinDesk 安装/启用。</p>
   <ul>
     <li>桌面图标：网格对齐 / 自由摆放、自动排列、自然排序（数字与中文拼音）、多档视图、DPI 自适应。</li>
-    <li>收纳盒：把桌面文件收纳进可自定义的毛玻璃卡片容器；可映射真实文件夹，文件变化实时同步。</li>
-    <li>HTML 小组件：时钟、便签、待办、系统监控等组件直接渲染在桌面上，可置于图标层下方或上方。</li>
+    <li>收纳盒：把桌面文件收纳进可自定义的卡片容器；可映射真实文件夹，文件变化实时同步。</li>
+    <li>HTML 小组件：时钟、便签、待办、系统监控、壁纸等组件直接渲染在桌面上，可置于图标层下方或上方。</li>
   </ul>
 </section>
 
@@ -100,33 +99,39 @@
     <li>布局：网格对齐与自由位置两种模式，自动排列（按分类稳定排序）；视图切换时位置按比例重映射。</li>
     <li>排序：自然排序（<code>file1, file2, file10</code>）、按名称/大小/类型/修改时间、分类排序（系统、文件夹、应用、文档）；文件夹优先、隐藏/系统文件置后。</li>
     <li>视图：6 档图标尺寸（小/中/大/超大等），间隔可调，DPI 变化自动重排。</li>
-    <li>系统图标：我的电脑、回收站等特殊图标可显示/隐藏管理。</li>
+    <li>系统图标：我的电脑、回收站等特殊图标可显示/隐藏管理（注册表监听自动刷新）。</li>
     <li>交互：框选、Ctrl/Shift 多选、重命名、剪切/复制/粘贴、拖放（含外部文件拖入建快捷方式）、双击隐藏图标、右键系统菜单扩展。</li>
+    <li>图标获取：快捷方式/应用/文件夹分级提取（Shell API + 256 高清缩略图）；微软商店应用（UWP/MSIX）图标兼容；图标缓存 LRU 上限管理，文件变化按前缀失效。</li>
+    <li>显示名覆盖：WPS 云盘等特定目录在 UI 显示为自定义名称（中/英分语言），不改物理文件名。</li>
   </ul>
 
   <h3>2.2 收纳盒（LinBox）</h3>
   <ul>
     <li>自建容器：自定义标题、颜色、透明度、毛玻璃效果、折叠。</li>
     <li>映射文件夹：把任意本地文件夹"装进"桌面盒子，目录变化（增删改）实时同步。</li>
-    <li>拖放收纳：桌面图标拖入盒子；盒子内项目支持打开、重命名、删除。</li>
-    <li>布局持久化：盒子位置、大小、成员列表保存并恢复。</li>
+    <li>拖放收纳：桌面图标拖入盒子；盒子内项目支持打开、重命名、删除、多选拖拽。</li>
+    <li>布局持久化：盒子位置、大小、成员列表保存并恢复（<code>data.dat</code>，Debug 用 <code>data.json</code>）。</li>
   </ul>
 
   <h3>2.3 HTML 组件系统（LinWidget）</h3>
   <ul>
+    <li>独立运行时：组件系统为 <code>LinWidgetRuntime.dll</code>，经 LinDesk 设置界面<strong>安装 / 卸载 / 启用</strong>；卸载时保留用户组件与数据；主程序无组件系统也能独立运行。</li>
     <li>组件包模型：每个组件是一个独立包（<code>manifest.json</code> + <code>index.html</code> + JS/CSS），可安装、卸载、启用/禁用。</li>
-    <li>渲染：CEF OSR 离屏渲染，像素帧经统一绘制管线合成到桌面（组件层可置于图标下方或上方）。</li>
-    <li>内置组件：时钟、计时器、便签、待办、系统监控、新闻订阅、水杯提醒、API 测试器等。</li>
+    <li>渲染：CEF OSR 离屏渲染，像素帧经统一绘制管线合成到桌面（组件层可置于图标下方或上方）；鼠标/滚轮/键盘输入按组件路由。</li>
+    <li>内置组件（11 个）：时钟、计时器、便签、待办、系统监控、天气、新闻订阅、水杯提醒、API 测试器等，含<strong>壁纸组件</strong>（可设置视频或图片，默认占满 ListView 背景）。</li>
+    <li>旧组件兼容：桥内保留 <code>window.chrome.webview</code> 兼容对象，WebView2 时代组件代码无需改写。</li>
     <li>权限：网络 / 存储 / 桌面 API 三级权限声明与校验。</li>
     <li>开发模式：监听组件目录变化热重载；开发项目可一键安装。</li>
-    <li>持久化：组件布局（位置/大小/层级）保存到 <code>layout.json</code>，重启恢复。</li>
+    <li>持久化：组件布局（位置/大小/层级）保存到 <code>registry.json</code>，重启恢复。</li>
   </ul>
 
-  <h3>2.4 系统集成与监控</h3>
+  <h3>2.4 系统集成与更新维护</h3>
   <ul>
     <li>桌面文件实时监控：外部新建/删除/重命名文件即时反映到桌面（基于 Windows Shell 通知 + 目录监控）。</li>
-    <li>系统右键菜单：集成原生资源管理器菜单（打开、属性、删除等）。</li>
-    <li>设置界面与调试面板：图标规则、组件管理、渲染调试。</li>
+    <li>系统右键菜单：集成原生资源管理器菜单（打开、属性、删除等），支持排除项管理。</li>
+    <li>自动更新：GitHub Release 通道，按系统位数（x86/x64）自动匹配安装包下载安装；双架构安装包均发布。</li>
+    <li>日志与崩溃：spdlog 分级滚动日志 + 崩溃转储（<code>logs/crash/</code>），便于问题定位。</li>
+    <li>设置界面与调试面板：图标规则、组件管理与运行时安装、更新检查、渲染调试。</li>
   </ul>
 </section>
 
@@ -137,10 +142,13 @@
     <colgroup><col style="width:26%"><col style="width:74%"></colgroup>
     <tr><th>技术</th><th>用途</th></tr>
     <tr><td>C++ / Qt Widgets</td><td>主程序框架、桌面视图（ListView）、UI、信号槽体系。</td></tr>
-    <tr><td>CEF（Chromium 离屏渲染）</td><td>LinWidget 组件的当前渲染引擎（OSR 帧缓冲 + QPainter 统一合成）。</td></tr>
-    <tr><td>WebView2（Edge）</td><td>旧组件渲染引擎与动态壁纸实现——<strong>移除中</strong>（见改造任务书）。</td></tr>
-    <tr><td>Windows Shell API</td><td>系统图标提取、右键菜单、Shell 通知（SHChangeNotify）、特殊文件夹。</td></tr>
-    <tr><td>JSON</td><td>组件包清单、消息协议、配置持久化。</td></tr>
+    <tr><td>CEF（Chromium 离屏渲染）</td><td>LinWidget 组件渲染引擎（OSR 帧缓冲 + QPainter 统一合成）。</td></tr>
+    <tr><td>LinWidgetRuntime.dll</td><td>组件系统独立运行时，经 RuntimeInstaller 安装、动态加载（<code>LoadLibrary</code> + 导出函数桥）。</td></tr>
+    <tr><td>Windows Shell API</td><td>系统图标提取、商店应用图标、右键菜单、Shell 通知（SHChangeNotify）、特殊文件夹。</td></tr>
+    <tr><td>spdlog / CrashHandler</td><td>滚动日志与崩溃转储。</td></tr>
+    <tr><td>Qt Network（OpenSSL）</td><td>GitHub 更新检查与安装包下载（随包部署 OpenSSL DLL）。</td></tr>
+    <tr><td>Inno Setup / GitHub API</td><td>x86/x64 双架构安装包打包与 Release 发布。</td></tr>
+    <tr><td>JSON / INI</td><td>组件包清单、消息协议、配置持久化。</td></tr>
   </table>
   </div>
 </section>
@@ -149,12 +157,12 @@
   <h2>4. 架构概览</h2>
   <p>桌面渲染采用<strong>单条 QPainter 绘制管线</strong>（避免原生子窗口的 HWND 层级遮挡问题）：</p>
   <ul>
-    <li>底层：系统静态壁纸（或 CEF 动态壁纸，待决策）。</li>
+    <li>底层：系统静态壁纸 / 壁纸组件帧（视频或图片，默认 ListView 背景大小）。</li>
     <li>中层：CEF OSR 组件画布（每个组件独立 OSR 实例，帧按图层合成）。</li>
     <li>上层：桌面图标与收纳盒（ListView / LinBox）。</li>
   </ul>
-  <p>组件与主程序的通信走统一消息协议（设置变更、系统信息、存储、实例管理）；布局/权限/注册表等逻辑为纯 C++ 层，与渲染引擎无关。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>，文档体系见 <a href="LinDesk_Docs_Index.html">文档中心</a>。</p>
-  <p class="note warn"><strong>当前状态：</strong>组件渲染已切换为 CEF OSR；WebView2 移除改造已基本完成（运行时与宿主页面已清理，剩余 CEF IME / 本地资源 scheme / console 捕获 / 权限沙箱四项功能缺口）；动态壁纸暂无 CEF 替代，已停用待决策。细节见 <a href="LinDesk_Widget_Platform_Plan.html">组件系统打磨方案</a>。</p>
+  <p>组件系统与主程序通过<strong>独立运行时 DLL + 导出函数桥</strong>集成（主程序可脱离运行）；组件与运行时的通信走统一消息协议（设置变更、系统信息、存储、实例管理）；布局/权限/注册表等逻辑为纯 C++ 层，与渲染引擎无关。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>，文档体系见 <a href="LinDesk_Docs_Index.html">文档中心</a>。</p>
+  <p class="note"><strong>当前状态：</strong>WebView2 已彻底移除（旧组件经 <code>chrome.webview</code> 兼容桥运行）；CEF OSR 渲染、消息桥、输入路由、组件系统独立运行时安装/卸载、壁纸组件、日志与崩溃、双架构发布均已落地。组件权限沙箱、console 日志捕获、崩溃自动恢复、组件市场等见<a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a>。</p>
 </section>
 
 <footer class="doc-foot" style="margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;">

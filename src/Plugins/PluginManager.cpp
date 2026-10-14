@@ -3,7 +3,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QPluginLoader> // Added as per instruction snippet
-#include "services/HotkeyManager.h" // Added as per instruction
+#include "services/HotkeyManager.h"
+#include "services/AppPaths.h" // Added as per instruction
 #include <Windows.h> // Added as per instruction snippet
 
 PluginManager* PluginManager::m_instance = nullptr;
@@ -34,17 +35,27 @@ void PluginManager::loadPlugins() {
         return;
     }
 
-    QString pluginsPath = QCoreApplication::applicationDirPath() + "/plugins";
-    qDebug() << "[PluginManager] Target plugins directory:" << pluginsPath;
-    
-    QDir dir(pluginsPath);
-    if (!dir.exists()) {
-        if (dir.mkpath(".")) {
-            qDebug() << "[PluginManager] Created fresh plugins directory.";
+    // 收集所有候选插件搜索目录
+    QStringList searchDirs;
+
+    // 1. 系统/安装包内置插件目录（位于 applicationDirPath()/plugins）
+    const QString appPluginsPath = QCoreApplication::applicationDirPath() + "/plugins";
+    QDir appDir(appPluginsPath);
+    if (appDir.exists()) {
+        searchDirs << appPluginsPath;
+    } else {
+        if (appDir.mkpath(".")) {
+            qDebug() << "[PluginManager] Created app plugins directory:" << appPluginsPath;
+            searchDirs << appPluginsPath;
         } else {
-            qWarning() << "[PluginManager] Failed to create plugins directory!";
-            return;
+            qDebug() << "[PluginManager] App plugins directory does not exist or is read-only:" << appPluginsPath;
         }
+    }
+
+    // 2. 用户级插件目录（位于 APPDATA/LinDesk/plugins，始终拥有读写权限）
+    const QString userPluginsPath = AppPaths::userPluginConfigDir();
+    if (!searchDirs.contains(userPluginsPath)) {
+        searchDirs << userPluginsPath;
     }
 
     // Clear old state safely
@@ -53,10 +64,14 @@ void PluginManager::loadPlugins() {
     QStringList filters;
     filters << "*.dll";
 
-    qDebug() << "[PluginManager] Querying directory content...";
-    const QFileInfoList entryList = dir.entryInfoList(filters, QDir::Files);
-    qDebug() << "[PluginManager] Found" << entryList.size() << "potential DLL files.";
-    for (const QFileInfo& info : entryList) {
+    for (const QString& pluginDir : searchDirs) {
+        QDir dir(pluginDir);
+        if (!dir.exists()) continue;
+
+        qDebug() << "[PluginManager] Querying directory content in:" << pluginDir;
+        const QFileInfoList entryList = dir.entryInfoList(filters, QDir::Files);
+        qDebug() << "[PluginManager] Found" << entryList.size() << "potential DLL files in" << pluginDir;
+        for (const QFileInfo& info : entryList) {
         QPluginLoader* loader = new QPluginLoader(info.absoluteFilePath(), this);
         QObject* pluginObject = loader->instance();
 
@@ -105,6 +120,8 @@ void PluginManager::loadPlugins() {
             qWarning() << "[PluginManager] Failed to load DLL instance:" << loader->errorString();
             delete loader;
         }
+    }
+
     }
 
     qDebug() << "[PluginManager] Load complete. Total plugins:" << m_allPlugins.size();

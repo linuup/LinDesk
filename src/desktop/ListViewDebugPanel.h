@@ -126,7 +126,6 @@ private:
     FluentToggleSwitch* m_linWidgetBoundsToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBlockedCellsToggle = nullptr;
     FluentToggleSwitch* m_defaultWallpaperToggle = nullptr;
-    FluentToggleSwitch* m_widgetEmbeddedToggle = nullptr;
     QCheckBox* m_linWidgetNetworkPermissionCheck = nullptr;
     QCheckBox* m_linWidgetStoragePermissionCheck = nullptr;
     QCheckBox* m_linWidgetDesktopPermissionCheck = nullptr;

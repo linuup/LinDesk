@@ -1027,17 +1027,6 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
         });
         s2.cards.append(registerCard(new FluentCard(u8"\uE7F4", "Default Wallpaper", "Toggle desktop default wallpaper background", m_defaultWallpaperToggle)));
 
-        m_widgetEmbeddedToggle = new FluentToggleSwitch();
-        auto& bridge = LinWidgetRuntimeBridge::instance();
-        m_widgetEmbeddedToggle->setChecked(bridge.isLoaded() ? bridge.isWidgetLayerEmbedded() : true, false);
-        connect(m_widgetEmbeddedToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
-            auto& b = LinWidgetRuntimeBridge::instance();
-            if (b.isLoaded()) {
-                b.setWidgetLayerEmbedded(checked);
-            }
-        });
-        s2.cards.append(registerCard(new FluentCard(u8"\uE8A7", "Widget Layer Embedded", "Layer widgets below desktop icons or float on top", m_widgetEmbeddedToggle)));
-
         m_openGLStatusLabel = new QLabel(page);
         m_openGLStatusLabel->setWordWrap(true);
         m_openGLStatusLabel->setStyleSheet(QStringLiteral(
