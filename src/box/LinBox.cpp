@@ -1,4 +1,5 @@
 #include "box/LinBox.h"
+#include "services/IconCacheManager.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <winuser.h>
@@ -891,6 +892,7 @@ bool LinBox::removeItemState(const QString& filePath, bool refresh)
         if (normalizeBoxItemPath(m_itemStates[i].model.filePath) != normalizedPath) {
             continue;
         }
+        IconCacheManager::instance().invalidateItemCache(m_itemStates[i].model.iconCacheKey, normalizedPath);
         m_itemStates.removeAt(i);
         if (refresh) {
             refreshLayout();

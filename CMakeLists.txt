@@ -489,6 +489,8 @@ add_executable(LinDeskStoreAppIconCompatTests
     src/services/SystemApi/SystemApi.h
     src/services/SystemApi/Tool.cpp
     src/services/SystemApi/Tool.h
+    src/services/IconCacheManager.cpp
+    src/services/IconCacheManager.h
 )
 
 target_link_libraries(LinDeskStoreAppIconCompatTests

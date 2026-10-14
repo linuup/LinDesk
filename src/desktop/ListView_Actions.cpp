@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include "desktop/ListView.h"
+#include "services/IconCacheManager.h"
 #include "desktop/ListViewSelectionHelper.h"
 #include "desktop/ListViewSelectionController.h"
 #include "desktop/ListViewDragDropHelper.h"
@@ -1126,7 +1127,6 @@ void ListView::onMenuPasteShortcut() {
 
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 {
-    // 闂佽崵鍠愰悷銉р偓姘煎灣閳ь剙鐏氶悧鐘茬暦閻樿鍐€妞ゆ帒鍊婚崬鎾倵閸偅绶查悗姘憸濡叉劕鈻庨幋鐘碉紲闂佺粯鏌ㄦ晶搴敂闁秵鐓熸い顐墮婵¤偐鈧鍠曠划娆忣嚕椤掆偓椤劑宕熼浣恒偖闂備焦瀵х粙鎴︽嚐椤栫偟宓侀柟鎹愵嚙缁犲啿顭跨捄渚剱婵湱鍋ら幃妯跨疀閺囩偘澹曢梺鍝勵儌閺呯姴顕ｉ崼鏇熷亼闁告侗鍨抽ˇ?
     const QString newPath = normalizeDesktopPath(eventInfo.newPath);
     const QString oldPath = normalizeDesktopPath(eventInfo.oldPath);
 
@@ -1136,17 +1136,22 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
              << "old:" << oldPath
              << "new:" << newPath;
 
-    // 闂傚倷鐒﹁ぐ鍐矓閻㈢钃熷┑鐘插閺嗘粓鏌涢幇鈺佸婵犫偓閻楀牜娈介柣鎰煐绾箖鏌涢埡鍌滄创鐎?
-    auto relayout = [this]() {
-        if (m_iconShowRule.autoArrange) {
-            applyAutoArrangeLayout(false, false);
+    // 防抖合并重排重绘，避免连续高频文件系统事件卡顿
+    auto scheduleRelayout = [this]() {
+        if (m_fsRelayoutTimer) {
+            m_fsRelayoutTimer->start(120);
         } else {
-            loadIconLayer();
-            update();
+            if (m_iconShowRule.autoArrange) {
+                applyAutoArrangeLayout(false, false);
+            } else {
+                updateAllItemRenderData();
+                rebuildSpatialIndex();
+                update();
+            }
         }
     };
 
-    // 闂備礁婀遍…鍫ニ囬婊呯閻庯綆鍠栫粈鍫⑩偓骞垮劚濡绮幘璇茬闁哄鍨圭粻鐑樸亜椤愩埄妯€鐎规洘鑹鹃埢搴ㄥ箻閾忣偒浠ч梻?
+    // 重新排序
     auto resort = [this]() {
         this->performSort(m_iconShowRule.sortType);
     };
@@ -1156,7 +1161,10 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             return false;
         }
 
-        if (findDesktopStateByPath(path)) {
+        IconCacheManager::instance().invalidateItemCache(QString(), path);
+
+        if (DesktopRootItemState* state = findDesktopStateByPath(path)) {
+            IconCacheManager::instance().invalidateItemCache(state->model.iconCacheKey, path);
             removeDesktopStateByPath(path);
             requestSaveBoxes();
             return true;
@@ -1224,7 +1232,6 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             addDesktopModelItemFromPath(resolvedNewPath);
         }
         
-        // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣鏌ｉ悩杈╁妽婵犮垺顭囩槐鐐差吋婢跺﹥顥濋梺缁橆殔閻楀﹪鎮楅娴庡綊鎮╅搹顐ｇ€紓鍌氱Т閹虫劗妲?
         requestSaveBoxes();
         break;
     }
@@ -1235,7 +1242,6 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (deletePath.isEmpty()) break;
         if (consumePendingExternalRemoval(deletePath)) break;
         
-            // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻喚绱撴担鍓叉Ц妞ゎ厼鍢查埢宥嗘償閳藉棗鏅犻梺鍦帛鐢帡鎮橀埡鍛拻闁告洍鏅涢埀顒佺墵瀵悂宕橀埡鍐炬祫闂佽鍨堕崑濠囧船閸撲焦鍠?
         removeTrackedPath(deletePath);
         break;
     }
@@ -1267,7 +1273,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                     }
                     resort();
                     if (!m_iconShowRule.autoArrange) {
-                        relayout();
+                        scheduleRelayout();
                     }
                 }
             } else {
@@ -1303,7 +1309,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 if (m_iconShowRule.autoArrange) {
                     applyAutoArrangeAfterDesktopMutation(false, false);
                 } else {
-                    update();
+                    scheduleRelayout();
                 }
             }
         }
@@ -1311,7 +1317,6 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             handlePendingShellCreatedItem(eventInfo.newPath);
         }
         
-        // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣姊洪崫鍕悙闁宦板姂瀵粯绻濋崶銊у帓閻庡箍鍎遍幊蹇涘吹閹烘鐓曟慨姗嗗墰鏍￠梺鍝勵儏閸燁垳绮嬮幒妤€绠氶梺顓ㄧ畱閺佸綊鎮?
         requestSaveBoxes();
         break;
     }
@@ -1321,6 +1326,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     {
         const QString& updatePath = !newPath.isEmpty() ? newPath : oldPath;
         if (updatePath.isEmpty()) break;
+
+        // T3: 文件更新时主动失效 image_preview 缓存
+        IconCacheManager::instance().invalidatePixmapsByPrefix("image_preview:" + QDir::toNativeSeparators(updatePath));
 
         if (CSystemApi::GetPathType(updatePath) == PathType::InvalidPath) {
             removeTrackedPath(updatePath);

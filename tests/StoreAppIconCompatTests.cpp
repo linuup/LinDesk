@@ -10,6 +10,7 @@
 #include <shlobj.h>
 #include "services/SysInfoUtil.h"
 #include "services/SystemApi/SystemApi.h"
+#include "services/IconCacheManager.h"
 
 class StoreAppIconCompatTest : public ::testing::Test {
 protected:
@@ -166,4 +167,79 @@ TEST_F(StoreAppIconCompatTest, GetAumidFromShortcut_SafeOnInvalidPath)
 {
     QString aumid = SysInfoUtil::GetAumidFromShortcut(QStringLiteral("C:/invalid_shortcut.lnk"));
     EXPECT_TRUE(aumid.isEmpty());
+}
+
+TEST_F(StoreAppIconCompatTest, IconCacheManager_LruCapacityEviction)
+{
+    auto& mgr = IconCacheManager::instance();
+    mgr.clear();
+    const int originalCap = mgr.maxCapacity();
+    
+    // 设置较小上限进行严格验证
+    const int testCap = 50;
+    mgr.setMaxCapacity(testCap);
+    EXPECT_EQ(mgr.maxCapacity(), testCap);
+
+    // 注入 120 个 QIcon
+    QPixmap dummyPix(16, 16);
+    dummyPix.fill(Qt::blue);
+    QIcon dummyIcon(dummyPix);
+
+    for (int i = 0; i < 120; ++i) {
+        QString key = QString("test_icon_%1").arg(i);
+        mgr.getIcon(key, [&]() { return dummyIcon; });
+    }
+
+    // 断言条目数严格不超过上限
+    EXPECT_LE(mgr.iconCount(), testCap);
+    EXPECT_EQ(mgr.iconCount(), testCap);
+
+    // 断言最新插入的条目必定命中（不需要走 loader）
+    bool loaderCalled = false;
+    QIcon hit = mgr.getIcon("test_icon_119", [&]() {
+        loaderCalled = true;
+        return QIcon();
+    });
+    EXPECT_FALSE(loaderCalled);
+    EXPECT_FALSE(hit.isNull());
+
+    // 同样验证 QImage / QPixmap 缓存容量限制
+    for (int i = 0; i < 120; ++i) {
+        QString key = QString("test_image_%1").arg(i);
+        mgr.getPixmap(key, [&]() { return dummyPix; });
+    }
+    EXPECT_LE(mgr.imageCount(), testCap);
+    EXPECT_EQ(mgr.imageCount(), testCap);
+
+    // 恢复全局默认容量并清空测试数据
+    mgr.clear();
+    mgr.setMaxCapacity(originalCap);
+}
+
+TEST_F(StoreAppIconCompatTest, IconCacheManager_InvalidateItemCache)
+{
+    auto& mgr = IconCacheManager::instance();
+    mgr.clear();
+
+    QPixmap dummyPix(16, 16);
+    dummyPix.fill(Qt::green);
+    QIcon dummyIcon(dummyPix);
+
+    const QString iconKey = "path:C:\\Users\\Desktop\\sample.png";
+    const QString normPath = "C:\\Users\\Desktop\\sample.png";
+
+    mgr.getIcon(iconKey + "|base|48", [&]() { return dummyIcon; });
+    mgr.getPixmap(iconKey + "|render|48", [&]() { return dummyPix; });
+    mgr.getPixmap(iconKey + "|matte|48", [&]() { return dummyPix; });
+    mgr.getPixmap("image_preview:" + normPath + "|48", [&]() { return dummyPix; });
+
+    EXPECT_EQ(mgr.iconCount(), 1);
+    EXPECT_EQ(mgr.imageCount(), 3);
+
+    // 执行统一失效
+    mgr.invalidateItemCache(iconKey, normPath);
+
+    // 断言关联的所有缓存条目被全部清空
+    EXPECT_EQ(mgr.iconCount(), 0);
+    EXPECT_EQ(mgr.imageCount(), 0);
 }

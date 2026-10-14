@@ -296,7 +296,7 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     }
     QPixmap rawPix;
     if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isFile() && !model.isShortcut && isPreviewableImageSuffix(model.fileInfo.suffix())) {
-        const QString pKey = QString("image_preview:%1|%2|%3").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(model.fileInfo.lastModified().toMSecsSinceEpoch()).arg(clampedIconSide);
+        const QString pKey = QString("image_preview:%1|%2").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(clampedIconSide);
         rawPix = IconCacheManager::instance().getPixmap(pKey, [&]() {
             QImageReader r(model.fileInfo.absoluteFilePath());
             r.setAutoTransform(true);
@@ -320,10 +320,10 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     if (rawPix.isNull()) rawPix = IconCacheManager::instance().getPixmap(QString("%1|render|%2").arg(model.iconCacheKey).arg(clampedIconSide), [&]() { return buildCroppedRenderPix(model.sourceIcon, clampedIconSide); });
     if (rawPix.isNull()) rawPix = buildCroppedRenderPix(SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll"), clampedIconSide);
     if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isDir() && !rawPix.isNull()) {
-        QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPix);
-        if (!sanitized.isNull()) {
-            rawPix = sanitized;
-        }
+        rawPix = IconCacheManager::instance().getPixmap(QString("%1|matte|%2").arg(model.iconCacheKey).arg(clampedIconSide), [&]() {
+            QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPix);
+            return !sanitized.isNull() ? sanitized : rawPix;
+        });
     }
     if (model.objectType == ObjectType::DiskLetter && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.8);
     if (model.isHiddenFileVisual && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.45);

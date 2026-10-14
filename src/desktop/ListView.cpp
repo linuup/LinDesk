@@ -315,18 +315,9 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     m_forwardingMouseToWidget(false)
 {
     setAcceptDrops(true);
-    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冾殢濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴姊洪悡搴℃毐闁哄牜鍓欓埢宥呪枎閹惧磭鍊為梺鍛婃寙閸愮偓姣?
-    //SystemParametersInfo(SPI_SETDESKWALLPAPER, 0, (PVOID)imagePath.toStdString().c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
-
-
-    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪☉缁秹鏌ｅΟ鎸庮仩闁绘繆鍩栨穱濠偽旈埀顒€螞濞戙垺鍋橀柕澶嗘櫅閻?
-    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪⊕閻掑鐓崶銊︹拹妞ゎ偅鐗犻弻銈夊礃閸欏鎷卞┑?
     setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
-    // 闂佽崵濮崇粈浣规櫠娴犲鍋柛鈩冪⊕閻掑鐓崶銊︹拹妞ゎ偅鐗楅〃銉╂倷閼哥數銆愰梺鍛娚戦崹褰掑箯鐎ｎ喖绠瑰ù锝嗗絻娴滈箖鐓崶銊︾殤缂佺姵鐗滅槐鎺楀箛椤撗勭暥閻熸粎澧楅惄顖炲箚閸モ斁鍋撻敐搴濈盎闁绘挸鍊块弻娑橆潩椤掑嫬寮板┑鐐烘？閸楁娊骞嗛崘顔肩妞ゆ劑鍨洪弳銉╂煟?
-    //setAttribute(Qt::WA_TransparentForMouseEvents); // 闂備胶顭堢换瀣归崶顒夋晩闊洦绋掗崐鐑芥煟閻斿憡绶叉慨锝咃躬濮婃椽顢曢姀銏㈩啈缂備浇顕ч崯鎵垝閿濆憘鏃堝焵椤掑啨浜?
-    //setAttribute(Qt::WA_OpaquePaintEvent);  // 闂備礁鎲￠崙褰掑垂閹惰棄鏋侀柕鍫濐槹閸ゅ嫰鎮橀悙闈涗壕闁绘繍鍨跺娲敃閵忋垻顔夊┑鈥冲级閸ㄥ灝鐣?
 
     setGeometry(QApplication::primaryScreen()->geometry());
     //setAutoFillBackground(true);
@@ -338,6 +329,18 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         this, &ListView::onWindowsShowHiddenFilesChanged);
     m_windowsConfigMonitor->startListening();
     m_showHiddenFiles = m_windowsConfigMonitor->showHiddenFiles();
+
+    m_fsRelayoutTimer = new QTimer(this);
+    m_fsRelayoutTimer->setSingleShot(true);
+    connect(m_fsRelayoutTimer, &QTimer::timeout, this, [this]() {
+        if (m_iconShowRule.autoArrange) {
+            applyAutoArrangeLayout(false, false);
+        } else {
+            updateAllItemRenderData();
+            rebuildSpatialIndex();
+            update();
+        }
+    });
 
     // Initialize Plugin System & Hotkeys ASYNCHRONOUSLY to avoid recursion in constructor
     QTimer::singleShot(0, this, [this]() {
@@ -355,24 +358,22 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     //m_deskMonitor = new DirectoryMonitor(reinterpret_cast<HWND>(winId()),false, this);
     //m_deskMonitor->startListening();
     
-    // 闂備礁鍚嬮崕鎶藉床閼艰翰浜归柛銉墯閸庢垿鏌ｉ弮鍫闁哄绮欓弻锝夊Ω閵夈儺浠惧銈冨灪閸ㄥ灝螞閸愵喖顫呴柨婵嗘川閸炴挳鎮?
+    // 获取系统标准桌面路径
     QString desktopPath;
     PWSTR path = nullptr;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Desktop, 0, nullptr, &path))) {
         desktopPath = QString::fromWCharArray(path);
         CoTaskMemFree(path);
     } else {
-        // 闂傚倸鍊哥€氼剛绮旈懜娈挎闁搞儺鍓欏Λ姗€鎮峰▎蹇擃伌闁衡偓閹惰姤鐓ユ繛鎴炵懅閻擃垰鈹戦悙鍙夊枠闁诡喕绮欓崺澶愩€冪粻鍍dardPaths
         desktopPath = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     }
-    m_desktopDir = desktopPath; // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁€鍡涙煟濡も偓閻楀棝鎮橀崶顒佺厱婵炴垶顏鍥ヤ汗濠㈣埖鍔栭悡?
+    m_desktopDir = desktopPath;
+    qDebug() << "[ListView] Desktop path:" << desktopPath;
     
-    qDebug() << "闂備胶鍎甸弲婊堝垂閸撲焦鏆滈悹杞拌濞存牜鈧厜鍋撻柛鏇ㄥ墯閵嗗啴鏌ｉ悩杈劅闁搞劍澹嗗▎?" << desktopPath;
-    
-    // 婵犵數鍋涢ˇ顓㈠礉瀹€鍕埞濞寸姴顑嗛崵濠冦亜韫囨挸顏柡鍡樻緲閳藉寮▎鐐ㄩ柣鐐村嚬閸嬪﹤鐣烽崷顓涘亾閿濆懎顣崇紒鈧径鎰厱闊洤瀛╃粊鐗堛亜閺傝法绠抽柟鐟板婵℃瓕顦叉繛鍫㈠Х缁辨帞鈧綆浜堕崕鏃€淇婄拠褏鐣电€规洘鑹鹃—鍐矗閵壯呯暰闂備礁鎲￠悷銊ャ€掗崷顓燁潟闁割偅娲橀悞?
+    // 注册跨线程信号槽元类型
     qRegisterMetaType<FileSystemEventInfo>("FileSystemEventInfo");
     
-    // 濠电偠鎻紞鈧繛澶嬫礋瀵偊藟閻闂備胶鍎甸弲鈺呭窗閺嶎偆绀婄€广儱顦伴崕搴ㄦ煙鐎电浠滃ù鐘筹耿閺?
+    // 初始化并启动桌面目录监控
     m_linMonitor = new LinDirectoryMonitor(desktopPath, false, this);
     connect(m_linMonitor, &LinDirectoryMonitor::fileSystemChanged, this, &ListView::onFileSystemChanged);
     m_linMonitor->startListening();
@@ -746,7 +747,8 @@ ListView::~ListView() {
     // Clean up ghost widgets
     for (auto& ghost : m_ghosts) {
         if (ghost.widget) {
-            ghost.widget->deleteLater();
+            delete ghost.widget;
+            ghost.widget = nullptr;
         }
     }
     m_ghosts.clear();
@@ -3241,7 +3243,8 @@ void ListView::removeItemPathsBatch(const QStringList& paths, bool refresh)
         }
         seenPaths.insert(normalizedPath);
 
-        if (findDesktopStateByPath(normalizedPath)) {
+        if (DesktopRootItemState* state = findDesktopStateByPath(normalizedPath)) {
+            IconCacheManager::instance().invalidateItemCache(state->model.iconCacheKey, normalizedPath);
             removeDesktopStateByPath(normalizedPath);
             removedAny = true;
             continue;

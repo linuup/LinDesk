@@ -687,6 +687,7 @@ private:
 	// 计时器
 	QTimer* m_pendingShellNewTargetTimer = nullptr;
 	QTimer* m_backgroundSelectionThrottleTimer = nullptr;
+	QTimer* m_fsRelayoutTimer = nullptr;
 	QElapsedTimer m_clickTimer;
 	QElapsedTimer m_backgroundSelectionFrameTimer;
 
