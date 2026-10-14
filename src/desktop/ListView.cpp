@@ -1696,6 +1696,7 @@ void ListView::markAllDesktopRenderDataDirty()
 void ListView::markDesktopStateIndexDirty()
 {
     m_desktopStateIndexDirty = true;
+    m_spatialIndexDirty = true;
 }
 
 void ListView::rebuildDesktopStateIndex()
@@ -1725,21 +1726,10 @@ void ListView::rebuildSpatialIndex()
     }
 
     QVector<DesktopRootItemState*> states;
-    states.reserve(m_itemStates.size() + 64);
+    states.reserve(m_itemStates.size());
     for (auto& state : m_itemStates) {
-        if (state.model.visible) {
+        if (state.model.visible && state.model.boxId.isEmpty()) {
             states.append(&state);
-        }
-    }
-    if (BoxManager* bm = BoxManager::instance()) {
-        for (const auto& boxPtr : bm->allBoxes()) {
-            if (LinBox* box = boxPtr.data()) {
-                for (auto& state : const_cast<QVector<DesktopRootItemState>&>(box->itemStates())) {
-                    if (state.model.visible) {
-                        states.append(&state);
-                    }
-                }
-            }
         }
     }
 
@@ -1761,10 +1751,14 @@ QVector<DesktopRootItemState> ListView::queryItemsInRect(const QRect& rect) cons
 
     if (m_spatialIndex) {
         const QVector<DesktopRootItemState*> candidates = m_spatialIndex->query(rect);
+        const DesktopRootItemState* startPtr = m_itemStates.isEmpty() ? nullptr : m_itemStates.constData();
+        const DesktopRootItemState* endPtr = startPtr ? (startPtr + m_itemStates.size()) : nullptr;
         results.reserve(candidates.size());
         for (DesktopRootItemState* state : candidates) {
-            if (state && state->model.renderData.itemRect.intersects(rect)) {
-                results.push_back(*state);
+            if (state && startPtr && state >= startPtr && state < endPtr) {
+                if (state->model.renderData.itemRect.intersects(rect)) {
+                    results.push_back(*state);
+                }
             }
         }
     }
@@ -3065,9 +3059,13 @@ DesktopRootItemState* ListView::findDesktopStateAt(const QPoint& pos)
 
     if (m_spatialIndex) {
         const QVector<DesktopRootItemState*> candidates = m_spatialIndex->queryPoint(pos);
+        const DesktopRootItemState* startPtr = m_itemStates.isEmpty() ? nullptr : m_itemStates.constData();
+        const DesktopRootItemState* endPtr = startPtr ? (startPtr + m_itemStates.size()) : nullptr;
         for (DesktopRootItemState* state : candidates) {
-            if (state && shouldPaintDesktopModelState(*state) && state->model.renderData.itemRect.contains(pos)) {
-                return state;
+            if (state && startPtr && state >= startPtr && state < endPtr) {
+                if (shouldPaintDesktopModelState(*state) && state->model.renderData.itemRect.contains(pos)) {
+                    return state;
+                }
             }
         }
     }

@@ -288,6 +288,7 @@ target_compile_definitions(LinDesk PRIVATE "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRE
 target_link_libraries(LinDesk
     PRIVATE
         Shell32
+        Propsys
 
         Psapi
         Shlwapi
@@ -479,6 +480,39 @@ target_include_directories(LinDeskRuntimeInstallerTests
 )
 
 add_test(NAME LinDeskRuntimeInstallerTests COMMAND LinDeskRuntimeInstallerTests)
+
+add_executable(LinDeskStoreAppIconCompatTests
+    tests/StoreAppIconCompatTests.cpp
+    src/services/SysInfoUtil.cpp
+    src/services/SysInfoUtil.h
+    src/services/SystemApi/SystemApi.cpp
+    src/services/SystemApi/SystemApi.h
+    src/services/SystemApi/Tool.cpp
+    src/services/SystemApi/Tool.h
+)
+
+target_link_libraries(LinDeskStoreAppIconCompatTests
+    PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        Qt5::WinExtras
+        Shell32
+        Propsys
+        Ole32
+        User32
+        Shlwapi
+        Version
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskStoreAppIconCompatTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_test(NAME LinDeskStoreAppIconCompatTests COMMAND LinDeskStoreAppIconCompatTests)
 endif(BUILD_TESTING)
 
 # ---- 解决方案文件夹分组 ----
@@ -487,7 +521,7 @@ set_property(TARGET LinDesk LinWidgetRuntime LinDeskSubprocess Win11MenuIsland P
 set_property(TARGET LinDeskUpdate PROPERTY FOLDER "Tools")
 if(BUILD_TESTING)
     set_property(TARGET LinDeskSystemInfoTests LinDeskWidgetEnvelopeTests
-        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests PROPERTY FOLDER "Tests")
+        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests LinDeskStoreAppIconCompatTests PROPERTY FOLDER "Tests")
 endif()
 
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)

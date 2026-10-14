@@ -51,7 +51,7 @@
 <div class="wrap">
 
 <h1>LinDesk 微软商店应用图标兼容方案</h1>
-<div class="meta">对象：UWP / MSIX（Microsoft Store）应用图标在桌面的显示 · 2026-10-14 · 执行人：anti</div>
+<div class="meta">对象：UWP / MSIX（Microsoft Store）应用图标在桌面的显示 · 2026-10-14（含黑边/清晰度回归修复 T6-T9） · 执行人：anti</div>
 
 <div class="callout">
   <p><b>问题：</b>微软商店（UWP/MSIX）应用没有传统 exe 图标，现有图标链路（SHGetFileInfo / SHGetImageList / QFileIconProvider）在 Win11 上对这类应用<b>不可靠，会返回白色或通用图标</b>。</p>
@@ -106,7 +106,7 @@ item-&gt;QueryInterface(IID_PPV_ARGS(&amp;factory));
 SIZE size = { side, side };
 HBITMAP hbm = nullptr;
 factory-&gt;GetImage(size, SIIGBF_BIGGERSIZEOK | SIIGBF_ICONONLY, &amp;hbm);
-QPixmap pix = QtWin::fromHBITMAP(hbm, QtWin::HBitmapAlpha);
+QPixmap pix = QtWin::fromHBITMAP(hbm, QtWin::HBitmapAlpha); // 注意：有黑边风险，须走第 4 节 T6 专用转换
 DeleteObject(hbm);</code></pre>
 
 <h3>L2 · 兜底：AUMID + AppxManifest（L1 失败/空白时）</h3>
@@ -124,7 +124,28 @@ DeleteObject(hbm);</code></pre>
 <h3>L3 · 可选：WinRT PackageManager 全枚举</h3>
 <p>若未来需要"列出所有已装商店应用"（如组件系统里的应用启动器），引入 C++/WinRT <code>Windows.ApplicationModel.PackageManager</code> 枚举包并读图标。桌面图标场景不需要，本方案不实现。</p>
 
-<h2>4. 落地改动点</h2>
+<h2>4. 黑边与清晰度问题（2026-10-14 回归分析）</h2>
+<div class="callout warn">
+  <p><b>现象：</b>按本方案实现后，图标出现黑边（黑色描边/halo），且图标模糊不清晰。</p>
+  <p><b>结论：</b>实现存在 3 个根因叠加：HBITMAP alpha 语义错配、无 ICONONLY 回退引入缩略图背景、普通文件/文件夹被全量切到 L1。修复见任务 T6-T9。</p>
+</div>
+<h3>4.1 根因 1：HBITMAP alpha 语义错配（黑边主因）</h3>
+<p><code>SysInfoUtil.cpp:568</code> 用 <code>QtWin::fromHBITMAP(hBmp, QtWin::HBitmapAlpha)</code> 转换，Qt 按 <b>预乘 alpha</b>（Format_ARGB32_Premultiplied）解读。而 IShellItemImageFactory 在 ICONONLY 模式下对不同 Shell 项返回的 HBITMAP alpha 语义不一致：部分返回 straight alpha，部分为 24bpp 无 alpha（DDB）。straight 数据被按预乘解读 → 半透明边缘 RGB 残留 → <b>黑色 halo</b>。</p>
+<h3>4.2 根因 2：无 ICONONLY 回退引入缩略图背景</h3>
+<p><code>SysInfoUtil.cpp:560 / :564</code> 的失败回退不带 <code>SIIGBF_ICONONLY</code> → 进入<b>缩略图模式</b>。文件夹/图片文件会返回带白色（或黑底）背景的缩略图矩形 → 明显黑/白边。此回退对文件夹图标尤其致命。</p>
+<h3>4.3 根因 3：普通文件/文件夹被全量切到 L1（"都不清晰"放大器）</h3>
+<p><code>ListItemData.h:448-449</code> 对<b>所有图标</b>先走 <code>LoadShellItemIcon</code>。普通 exe 的图标源小（16/32/48px），被 GetImage 请求 96/256 后用 GDI 拉伸 → 模糊；文件夹走根因 2 的缩略图分支 → 背景块。改造前这两类走 SHGetFileInfo/ImageList（256px 原生、有 alpha）与 GetShellThumbnail+sanitize（专门处理过黑底），都不该被替换。</p>
+<h3>4.4 清晰度根因：请求尺寸超出图标源</h3>
+<p><code>GetImage(sz=96/256)</code> 而 UWP 图标源仅 44/48px（Square44x44Logo），Shell 用 GDI 放大 → 糊。Qt 的 SmoothTransformation 平滑缩放远好于 GDI StretchBlt；UWP 的 <code>scale-200/400</code> PNG（88/176px）是原生清晰来源。</p>
+<h3>4.5 修复要点（对应 T6-T9）</h3>
+<ul>
+  <li><b>T6</b>：<code>LoadShellItemIcon</code> 改为专用转换：GetObject 查位深；32bpp 且存在半透明像素时逐像素检测 <code>r&gt;a || g&gt;a || b&gt;a</code>（straight 误读特征）→ demultiply + clamp；无 alpha 按 NoAlpha 处理。请求尺寸 <code>min(side, 64)</code>，返回后由 Qt 平滑缩放到档位。删除 :560/:564 两个无 ICONONLY 回退。</li>
+  <li><b>T7</b>：<code>ListItemData.h:448-449</code> 收敛 L1 范围：仅 .lnk / .appref-ms / UWP 走 L1/L2；普通文件保留 SHGetFileInfo/ImageList，文件夹保留 GetShellThumbnail + sanitizeFolderPreviewMatte。</li>
+  <li><b>T8</b>：<code>LoadUwpAppIconFromAumid</code> 反转优先级：<b>先解析 manifest 读 PNG</b>（真 alpha、高分辨率、无黑边），<code>shell:Appsfolder</code> 仅作失败兜底；<code>findBestImageCandidate</code> 的 scale 优先级按 side 参数调整（side≥176 → scale-400 优先；≥88 → scale-200；否则 scale-100/150）。</li>
+  <li><b>T9</b>：回归验证（见第 7 节）。</li>
+</ul>
+
+<h2>5. 落地改动点</h2>
 <table>
   <colgroup><col style="width:8%"><col style="width:38%"><col style="width:54%"></colgroup>
   <thead><tr><th>编号</th><th>改动</th><th>说明</th></tr></thead>
@@ -171,24 +192,51 @@ DeleteObject(hbm);</code></pre>
       <td class="file">src/services/SysInfoUtil.cpp</td>
       <td>在无 COM 初始化的线程调用不崩溃（封装内自初始化/报错返回空）</td>
     </tr>
+    <tr>
+      <td>T6</td>
+      <td>黑边修复：LoadShellItemIcon 改专用 HBITMAP 转换（位深检测 + 半透明像素 r&gt;a 时 demultiply/clamp + 无 alpha 走 NoAlpha）；请求尺寸 <code>min(side, 64)</code>；删除 :560/:564 无 ICONONLY 回退</td>
+      <td class="file">src/services/SysInfoUtil.cpp:526-575</td>
+      <td>UWP 快捷方式与普通 exe 图标均无黑边；边缘像素无 RGB 残留（放大截图检查 4 角）；请求大尺寸时无 GDI 拉伸糊</td>
+    </tr>
+    <tr>
+      <td>T7</td>
+      <td>收敛 L1 范围：ListItemData.h:448-449 仅 .lnk / .appref-ms / UWP 走 L1/L2；普通文件保留 SHGetFileInfo/ImageList，文件夹保留 GetShellThumbnail + sanitizeFolderPreviewMatte</td>
+      <td class="file">src/models/data/ListItemData.h:445-465</td>
+      <td>普通 exe/文件夹图标与改造前一致（对比截图）；文件夹无白/黑底背景块；空文件夹仍显示默认文件夹图标</td>
+    </tr>
+    <tr>
+      <td>T8</td>
+      <td>L2 优先级反转：LoadUwpAppIconFromAumid 先读 manifest PNG（真 alpha、高分辨率），shell:Appsfolder 仅兜底；findBestImageCandidate 的 scale 优先级按 side 调整</td>
+      <td class="file">src/services/SysInfoUtil.cpp:634-775</td>
+      <td>Store 应用图标清晰（无放大糊）、无黑边；side≥176 时命中 scale-400 PNG</td>
+    </tr>
+    <tr>
+      <td>T9</td>
+      <td>回归验证：12 个 AUMID 快捷方式 + 固定计算器/照片到桌面 + 普通文件/文件夹对比 + 已卸载应用回退</td>
+      <td class="file">手动验证</td>
+      <td>见第 7 节验证清单全部通过</td>
+    </tr>
   </tbody>
 </table>
 
-<h2>6. 验证方式</h2>
+<h2>7. 验证方式</h2>
 <ul>
-  <li><span class="ok">形态覆盖：</span>桌面 12 个 AUMID 快捷方式（MSIX 桌面应用）+ 手动固定计算器/照片等到桌面（纯 UWP）→ 两类图标均正确显示。</li>
-  <li><span class="ok">回归：</span>普通 exe 快捷方式、文件夹、图片文件图标与改造前一致（对比截图）。</li>
+  <li><span class="ok">黑边检查：</span>任意图标放大 200% 截图，四角与边缘无黑色描边；半透明边缘（如 UWP 圆角 logo）背景干净。</li>
+  <li><span class="ok">清晰度：</span>96px 档图标源≥96px 时原生清晰（不模糊）；小源图标由 Qt SmoothTransformation 缩放而非 GDI 拉伸。</li>
+  <li><span class="ok">形态覆盖：</span>桌面 12 个 AUMID 快捷方式（MSIX 桌面应用）+ 手动固定计算器/照片等到桌面（纯 UWP）→ 两类图标均正确显示且无黑边。</li>
+  <li><span class="ok">回归：</span>普通 exe 快捷方式、文件夹、图片文件图标与改造前一致（对比截图）；文件夹无白/黑底背景块。</li>
   <li><span class="ok">异常：</span>指向已卸载 Store 应用的快捷方式显示不崩溃、回退通用图标；无句柄/内存增长。</li>
   <li><span class="ok">缓存：</span>结合 <code>docs/LinDesk_ListView_Memory_Review.html</code> 的验证清单，确认新图标 key 参与上限与失效机制。</li>
 </ul>
 
-<h2>7. 风险与注意</h2>
+<h2>8. 风险与注意</h2>
 <ul>
   <li><b>WindowsApps ACL：</b>L2 读注册表路径在部分机器可能因目录权限失败，属预期，回退即可。</li>
   <li><b>图标缓存：</b>不要依赖 SHGetFileInfo 为 Store 应用提供图标（Win11 缓存损坏会整片变白，微软已知问题）——这正是换 L1 的原因。</li>
   <li><b>线程与 COM：</b>IShellItemImageFactory 调用要求 COM 初始化；图标加载目前主线程执行，注意封装内处理。</li>
   <li><b>性能：</b>L1/L2 仅首次调用开销，结果进缓存；不要在渲染热路径重复解析 AUMID。</li>
   <li><b>Win7 兼容：</b>IShellItemImageFactory 最低 Vista，项目 Win10/11 目标不受影响。</li>
+  <li><b>HBITMAP alpha：</b>IShellItemImageFactory 返回位图的 alpha 语义不稳定（社区已知），<b>不要直接信任 HBitmapAlpha 转换</b>，一律走 T6 的专用转换。</li>
 </ul>
 
 </div>

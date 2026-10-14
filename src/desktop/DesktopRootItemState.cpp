@@ -321,9 +321,7 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     if (rawPix.isNull()) rawPix = buildCroppedRenderPix(SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll"), clampedIconSide);
     if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isDir() && !rawPix.isNull()) {
         QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPix);
-        if (sanitized.isNull()) {
-            rawPix = buildCroppedRenderPix(SysInfoUtil::SysFileIconByDLL(4, ListItemData::s_targetIconSize, "shell32.dll"), clampedIconSide);
-        } else {
+        if (!sanitized.isNull()) {
             rawPix = sanitized;
         }
     }

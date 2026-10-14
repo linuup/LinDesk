@@ -5,11 +5,16 @@
 #include <shobjidl.h>
 #include <shlobj.h>
 #include <comdef.h>
+#include <wrl/client.h>
+#include <propsys.h>
+#include <propkey.h>
+#include <propvarutil.h>
 #include <QImageReader>
 #include <QStandardPaths>
 #include <QFileInfoList>
 #include <QQueue>
 #include <QPainter>
+#include <QXmlStreamReader>
 
 QIcon SysInfoUtil::ExtractIconFromExe(const QString& exePath, int iconIndex)
 {
@@ -378,8 +383,8 @@ QPixmap SysInfoUtil::sanitizeFolderPreviewMatte(const QPixmap& source)
     // 检查四角不透明度：底色背景应接近完全不透明 (alpha >= 220)
     for (int i = 0; i < 4; ++i) {
         if (qAlpha(corners[i]) < 220) {
-            // S4: 四角透明度异常，无法可靠判定纯色背景，fallback
-            return QPixmap();
+            // 四角包含透明/半透明，无需按纯色底抠图，安全保留原图
+            return source;
         }
     }
 
@@ -407,9 +412,9 @@ QPixmap SysInfoUtil::sanitizeFolderPreviewMatte(const QPixmap& source)
         }
     }
 
-    // S4 防御：若四角颜色不一致（至少 3 角吻合），无法可靠判定 matte，fallback 文件夹图标
+    // 若四角颜色不一致（至少 3 角吻合），无法可靠判定 matte，安全保留原图
     if (maxMatches < 3) {
-        return QPixmap();
+        return source;
     }
 
     // 计算吻合角的平均色作为 matteColor
@@ -503,3 +508,341 @@ QPixmap SysInfoUtil::sanitizeFolderPreviewMatte(const QPixmap& source)
 
     return QPixmap::fromImage(result);
 }
+
+namespace {
+struct ScopedComInit {
+    HRESULT hr = E_FAIL;
+    ScopedComInit() {
+        hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    }
+    ~ScopedComInit() {
+        if (hr == S_OK || hr == S_FALSE) {
+            CoUninitialize();
+        }
+    }
+};
+}
+
+QIcon SysInfoUtil::LoadShellItemIcon(const QString& path, int side)
+{
+    if (path.trimmed().isEmpty()) {
+        return QIcon();
+    }
+    ScopedComInit comInit;
+
+    QString parsePath = path.trimmed();
+    if (parsePath.startsWith(QStringLiteral("shell:Appsfolder\\"), Qt::CaseInsensitive)) {
+        // direct
+    } else if (parsePath.contains(QLatin1Char('!')) && !parsePath.contains(QLatin1Char('\\')) && !parsePath.contains(QLatin1Char('/')) && !parsePath.contains(QLatin1Char(':'))) {
+        parsePath = QStringLiteral("shell:Appsfolder\\") + parsePath;
+    }
+
+    const std::wstring nativePath = QDir::toNativeSeparators(parsePath).toStdWString();
+    Microsoft::WRL::ComPtr<IShellItem> shellItem;
+    HRESULT hr = SHCreateItemFromParsingName(nativePath.c_str(), nullptr, IID_PPV_ARGS(&shellItem));
+    if (FAILED(hr) || !shellItem) {
+        return QIcon();
+    }
+
+    Microsoft::WRL::ComPtr<IShellItemImageFactory> imageFactory;
+    hr = shellItem.As(&imageFactory);
+    if (FAILED(hr) || !imageFactory) {
+        return QIcon();
+    }
+
+    const int targetSide = (side > 0) ? side : 48;
+    SIZE sz = { targetSide, targetSide };
+    HBITMAP hBmp = nullptr;
+    // 优先尝试纯图标，允许更大尺寸
+    hr = imageFactory->GetImage(sz, SIIGBF_BIGGERSIZEOK | SIIGBF_ICONONLY, &hBmp);
+    if (FAILED(hr) || !hBmp) {
+        // 如果 ICONONLY 失败，尝试标准 SIIGBF_BIGGERSIZEOK
+        hr = imageFactory->GetImage(sz, SIIGBF_BIGGERSIZEOK, &hBmp);
+    }
+    if (FAILED(hr) || !hBmp) {
+        // 再次回退普通无标志提取
+        hr = imageFactory->GetImage(sz, 0, &hBmp);
+    }
+
+    if (SUCCEEDED(hr) && hBmp) {
+        QImage img = QtWin::imageFromHBITMAP(hBmp, QtWin::HBitmapAlpha);
+        DeleteObject(hBmp);
+        if (!img.isNull()) {
+            img = img.convertToFormat(QImage::Format_ARGB32);
+            for (int y = 0; y < img.height(); ++y) {
+                QRgb* scan = reinterpret_cast<QRgb*>(img.scanLine(y));
+                for (int x = 0; x < img.width(); ++x) {
+                    const int a = qAlpha(scan[x]);
+                    if (a <= 8) {
+                        scan[x] = 0;
+                    }
+                }
+            }
+            return QIcon(QPixmap::fromImage(img));
+        }
+    }
+    return QIcon();
+}
+
+QString SysInfoUtil::GetAumidFromShortcut(const QString& lnkPath)
+{
+    if (lnkPath.trimmed().isEmpty()) {
+        return QString();
+    }
+    ScopedComInit comInit;
+    const std::wstring nativePath = QDir::toNativeSeparators(lnkPath.trimmed()).toStdWString();
+
+    // 1. 从快捷方式 PropertyStore 中读取 PKEY_AppUserModel_ID
+    Microsoft::WRL::ComPtr<IPropertyStore> propStore;
+    HRESULT hr = SHGetPropertyStoreFromParsingName(nativePath.c_str(), nullptr, GPS_DEFAULT, IID_PPV_ARGS(&propStore));
+    if (SUCCEEDED(hr) && propStore) {
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        hr = propStore->GetValue(PKEY_AppUserModel_ID, &pv);
+        if (SUCCEEDED(hr)) {
+            if (pv.vt == VT_LPWSTR && pv.pwszVal) {
+                QString aumid = QString::fromWCharArray(pv.pwszVal).trimmed();
+                PropVariantClear(&pv);
+                if (!aumid.isEmpty()) {
+                    return aumid;
+                }
+            }
+            PropVariantClear(&pv);
+        }
+    }
+
+    // 2. 从 IShellLink 读取目标或参数（处理形如 shell:Appsfolder\<AUMID>）
+    Microsoft::WRL::ComPtr<IShellLinkW> shellLink;
+    hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shellLink));
+    if (SUCCEEDED(hr) && shellLink) {
+        Microsoft::WRL::ComPtr<IPersistFile> persistFile;
+        if (SUCCEEDED(shellLink.As(&persistFile))) {
+            if (SUCCEEDED(persistFile->Load(nativePath.c_str(), STGM_READ))) {
+                WCHAR target[MAX_PATH] = { 0 };
+                shellLink->GetPath(target, MAX_PATH, nullptr, SLGP_RAWPATH);
+                QString targetStr = QString::fromWCharArray(target).trimmed();
+                const QString appsPrefix = QStringLiteral("shell:Appsfolder\\");
+                int idx = targetStr.indexOf(appsPrefix, 0, Qt::CaseInsensitive);
+                if (idx >= 0) {
+                    return targetStr.mid(idx + appsPrefix.length()).trimmed();
+                }
+
+                WCHAR args[1024] = { 0 };
+                shellLink->GetArguments(args, 1024);
+                QString argsStr = QString::fromWCharArray(args).trimmed();
+                idx = argsStr.indexOf(appsPrefix, 0, Qt::CaseInsensitive);
+                if (idx >= 0) {
+                    return argsStr.mid(idx + appsPrefix.length()).trimmed();
+                }
+            }
+        }
+    }
+
+    return QString();
+}
+
+QIcon SysInfoUtil::LoadUwpAppIconFromAumid(const QString& aumid, int side)
+{
+    if (aumid.trimmed().isEmpty()) {
+        return QIcon();
+    }
+    const QString trimmedAumid = aumid.trimmed();
+
+    // 1. 优先尝试直接用 shell:Appsfolder\<AUMID> 走 LoadShellItemIcon
+    QIcon shellIcon = LoadShellItemIcon(QStringLiteral("shell:Appsfolder\\") + trimmedAumid, side);
+    if (!shellIcon.isNull()) {
+        return shellIcon;
+    }
+
+    // 2. 解析 AUMID 中的 PackageFamilyName
+    QString packageFamilyName = trimmedAumid;
+    const int exclIdx = trimmedAumid.indexOf(QLatin1Char('!'));
+    if (exclIdx > 0) {
+        packageFamilyName = trimmedAumid.left(exclIdx);
+    }
+
+    // 3. 查注册表定位 PackageRootFolder
+    QString packageRootFolder;
+    auto searchRegistryForPackageRoot = [&](const QString& rootPath) -> QString {
+        const QString familiesPath = rootPath + QStringLiteral("\\Families\\") + packageFamilyName;
+        QSettings famSettings(familiesPath, QSettings::NativeFormat);
+        const QStringList subkeys = famSettings.childGroups();
+        for (const QString& subkey : subkeys) {
+            const QString pkgRegPath = rootPath + QStringLiteral("\\Packages\\") + subkey;
+            QSettings pkgSettings(pkgRegPath, QSettings::NativeFormat);
+            const QString rootFolder = pkgSettings.value(QStringLiteral("PackageRootFolder")).toString();
+            if (!rootFolder.isEmpty() && QDir(rootFolder).exists()) {
+                return rootFolder;
+            }
+        }
+
+        const QString packagesPath = rootPath + QStringLiteral("\\Packages");
+        QSettings pkgListSettings(packagesPath, QSettings::NativeFormat);
+        for (const QString& pkgName : pkgListSettings.childGroups()) {
+            if (pkgName.startsWith(packageFamilyName, Qt::CaseInsensitive)) {
+                QSettings subSettings(packagesPath + QStringLiteral("\\") + pkgName, QSettings::NativeFormat);
+                const QString rootFolder = subSettings.value(QStringLiteral("PackageRootFolder")).toString();
+                if (!rootFolder.isEmpty() && QDir(rootFolder).exists()) {
+                    return rootFolder;
+                }
+            }
+        }
+        return QString();
+    };
+
+    const QString hkcuRepo = QStringLiteral("HKEY_CURRENT_USER\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository");
+    packageRootFolder = searchRegistryForPackageRoot(hkcuRepo);
+    if (packageRootFolder.isEmpty()) {
+        const QString hklmRepo = QStringLiteral("HKEY_LOCAL_MACHINE\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository");
+        packageRootFolder = searchRegistryForPackageRoot(hklmRepo);
+    }
+
+    if (packageRootFolder.isEmpty() || !QDir(packageRootFolder).exists()) {
+        return QIcon();
+    }
+
+    // 4. 解析 AppxManifest.xml 提取 Logo 相对路径
+    QString logoRelativePath;
+    const QString manifestPath = QDir(packageRootFolder).filePath(QStringLiteral("AppxManifest.xml"));
+    QFile manifestFile(manifestPath);
+    if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QXmlStreamReader xml(&manifestFile);
+        while (!xml.atEnd() && !xml.hasError()) {
+            QXmlStreamReader::TokenType token = xml.readNext();
+            if (token == QXmlStreamReader::StartElement) {
+                const QStringRef name = xml.name();
+                if (name == QStringLiteral("VisualElements") || name.endsWith(QStringLiteral(":VisualElements"))) {
+                    const auto attrs = xml.attributes();
+                    if (attrs.hasAttribute(QStringLiteral("Square150x150Logo"))) {
+                        logoRelativePath = attrs.value(QStringLiteral("Square150x150Logo")).toString();
+                    } else if (attrs.hasAttribute(QStringLiteral("Square44x44Logo"))) {
+                        logoRelativePath = attrs.value(QStringLiteral("Square44x44Logo")).toString();
+                    } else if (attrs.hasAttribute(QStringLiteral("Logo"))) {
+                        logoRelativePath = attrs.value(QStringLiteral("Logo")).toString();
+                    }
+                    if (!logoRelativePath.isEmpty()) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. 寻找最优 scale / targetsize 图片文件
+    auto findBestImageCandidate = [&](const QString& baseRelative) -> QString {
+        if (baseRelative.isEmpty()) return QString();
+        const QString absPath = QDir(packageRootFolder).filePath(baseRelative);
+        if (QFile::exists(absPath)) {
+            return absPath;
+        }
+
+        const QFileInfo fi(absPath);
+        const QString dir = fi.absolutePath();
+        const QString baseName = fi.completeBaseName();
+        const QString ext = fi.suffix().isEmpty() ? QStringLiteral("png") : fi.suffix();
+
+        const QStringList preferredScales = {
+            QStringLiteral(".scale-200."), QStringLiteral(".scale-150."),
+            QStringLiteral(".scale-125."), QStringLiteral(".scale-100."),
+            QStringLiteral(".scale-400."), QStringLiteral(".targetsize-48."),
+            QStringLiteral(".targetsize-256."), QStringLiteral(".targetsize-32.")
+        };
+        for (const QString& scaleTag : preferredScales) {
+            const QString candidate = dir + QStringLiteral("/") + baseName + scaleTag + ext;
+            if (QFile::exists(candidate)) {
+                return candidate;
+            }
+        }
+
+        QDir assetDir(dir);
+        const QStringList matches = assetDir.entryList(QStringList() << (baseName + QStringLiteral("*.png")), QDir::Files);
+        if (!matches.isEmpty()) {
+            return assetDir.filePath(matches.first());
+        }
+        return QString();
+    };
+
+    QString bestImagePath = findBestImageCandidate(logoRelativePath);
+    if (bestImagePath.isEmpty()) {
+        const QString assetsDir = QDir(packageRootFolder).filePath(QStringLiteral("Assets"));
+        if (QDir(assetsDir).exists()) {
+            const QStringList fallbackFilters = {
+                QStringLiteral("*StoreLogo*.png"), QStringLiteral("*Logo*.png"), QStringLiteral("*Square*.png")
+            };
+            for (const QString& flt : fallbackFilters) {
+                const QStringList entries = QDir(assetsDir).entryList(QStringList() << flt, QDir::Files);
+                if (!entries.isEmpty()) {
+                    bestImagePath = QDir(assetsDir).filePath(entries.first());
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!bestImagePath.isEmpty() && QFile::exists(bestImagePath)) {
+        QPixmap pix(bestImagePath);
+        if (!pix.isNull()) {
+            const int targetSide = (side > 0) ? side : 48;
+            if (pix.width() > targetSide || pix.height() > targetSide) {
+                pix = pix.scaled(targetSide, targetSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
+            return QIcon(pix);
+        }
+    }
+
+    return QIcon();
+}
+
+QIcon SysInfoUtil::GetBlankFileFallbackIcon(int side)
+{
+    const int targetSide = (side > 0) ? side : 48;
+    // 1. 优先尝试从 shell32.dll 读取 0 号空白文件图标
+    QIcon dllIcon = SysFileIconByDLL(0, targetSide, QStringLiteral("shell32.dll"));
+    if (!dllIcon.isNull()) {
+        QPixmap px = dllIcon.pixmap(targetSide, targetSide);
+        if (!px.isNull()) {
+            if (px.width() != targetSide || px.height() != targetSide) {
+                px = px.scaled(targetSide, targetSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
+            return QIcon(px);
+        }
+    }
+
+    // 2. 内存绘制纯白优雅折角文档图标作为终极防线
+    QPixmap fallbackPix(targetSide, targetSide);
+    fallbackPix.fill(Qt::transparent);
+    {
+        QPainter p(&fallbackPix);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        const qreal pad = targetSide * 0.12;
+        const qreal fold = targetSide * 0.22;
+        const qreal w = targetSide - pad * 2.0;
+        const qreal h = targetSide - pad * 1.8;
+        const qreal left = pad;
+        const qreal top = pad * 0.9;
+        const qreal right = left + w;
+        const qreal bottom = top + h;
+
+        QPolygonF docPoly;
+        docPoly << QPointF(left, top)
+                << QPointF(right - fold, top)
+                << QPointF(right, top + fold)
+                << QPointF(right, bottom)
+                << QPointF(left, bottom);
+
+        p.setBrush(QColor(250, 250, 252));
+        p.setPen(QPen(QColor(180, 185, 195), qMax(1.0, targetSide * 0.025)));
+        p.drawPolygon(docPoly);
+
+        QPolygonF foldPoly;
+        foldPoly << QPointF(right - fold, top)
+                 << QPointF(right - fold, top + fold)
+                 << QPointF(right, top + fold);
+        p.setBrush(QColor(230, 233, 240));
+        p.setPen(QPen(QColor(180, 185, 195), qMax(1.0, targetSide * 0.025)));
+        p.drawPolygon(foldPoly);
+    }
+    return QIcon(fallbackPix);
+}
+
