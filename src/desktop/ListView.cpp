@@ -1443,6 +1443,15 @@ void ListView::mousePressEvent(QMouseEvent* event)
     }
 #endif
     RenameManager::instance()->cancelRename();
+    if (m_hideDesktopItemsForRefresh) {
+        m_hideDesktopItemsForRefresh = false;
+        for (const auto& box : BoxManager::instance()->allBoxes()) {
+            if (box && !box->isVisible()) {
+                box->show();
+            }
+        }
+        update();
+    }
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             this->activateWindow();

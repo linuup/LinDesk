@@ -1,6 +1,6 @@
 {
-  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Docs_Index.html",
-  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_Docs_Index.html",
+  "src": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Widget_Platform_Plan.html",
+  "url": "file:///D:/Desktop/LinDesk/docs/LinDesk_Widget_Platform_Plan.html",
   "outdir": "D:\\Desktop\\LinDesk\\docs\\_shots",
   "include": [
     "lint",
@@ -9,28 +9,35 @@
   ],
   "shots": {
     "desktop": {
-      "screenshot": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_desktop.jpg",
-      "screenshotBytes": 192262,
+      "slices": [
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p1of6.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p2of6.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p3of6.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p4of6.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p5of6.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p6of6.jpg"
+      ],
+      "sliceHint": "按顺序 Read slices 里的各分片。",
       "truncated": false,
       "structure": {
-        "title": "LinDesk 文档中心",
-        "firstH1": "LinDesk 文档中心",
+        "title": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
+        "firstH1": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
         "viewport": {
           "w": 1424,
           "h": 749
         },
         "fullpage": {
           "w": 1424,
-          "h": 2082
+          "h": 22842
         },
         "counts": {
-          "section": 3,
+          "section": 14,
           "h1": 1,
-          "h2": 3,
+          "h2": 14,
           "img": 0,
           "canvas": 0,
           "svg": 0,
-          "links": 29,
+          "links": 6,
           "buttons": 0
         }
       },
@@ -41,28 +48,40 @@
       "reportSource": "cdp"
     },
     "mobile": {
-      "screenshot": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_mobile.jpg",
-      "screenshotBytes": 274865,
+      "slices": [
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p1of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p2of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p3of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p4of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p5of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p6of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p7of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p8of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p9of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p10of11.jpg",
+        "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p11of11.jpg"
+      ],
+      "sliceHint": "按顺序 Read slices 里的各分片。",
       "truncated": false,
       "structure": {
-        "title": "LinDesk 文档中心",
-        "firstH1": "LinDesk 文档中心",
+        "title": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
+        "firstH1": "LinDesk 组件系统方案（单进程 · 运行时动态加载）",
         "viewport": {
           "w": 500,
           "h": 693
         },
         "fullpage": {
           "w": 500,
-          "h": 3018
+          "h": 32076
         },
         "counts": {
-          "section": 3,
+          "section": 14,
           "h1": 1,
-          "h2": 3,
+          "h2": 14,
           "img": 0,
           "canvas": 0,
           "svg": 0,
-          "links": 29,
+          "links": 6,
           "buttons": 0
         }
       },
@@ -77,7 +96,7 @@
   "chromiumExec": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "engineDegraded": true,
   "engineDegradedReason": "playwright 未装",
-  "elapsedSec": 6.87,
+  "elapsedSec": 9.33,
   "schemaVersion": 2,
   "status": "pass",
   "engineInfo": {
@@ -88,9 +107,9 @@
     ]
   },
   "input": {
-    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Docs_Index.html",
-    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Docs_Index.html",
-    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_Docs_Index.html",
+    "original": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Widget_Platform_Plan.html",
+    "resolvedPath": "D:\\Desktop\\LinDesk\\docs\\LinDesk_Widget_Platform_Plan.html",
+    "baseUrl": "file:///D:/Desktop/LinDesk/docs/LinDesk_Widget_Platform_Plan.html",
     "protocol": "file",
     "cwd": "D:\\Desktop\\LinDesk",
     "mediaMode": {
@@ -101,8 +120,14 @@
     "screenshots": [
       {
         "viewport": "desktop",
-        "path": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_desktop.jpg",
-        "size": 192262,
+        "tiles": [
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p1of6.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p2of6.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p3of6.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p4of6.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p5of6.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_desktop_p6of6.jpg"
+        ],
         "visualCoverage": {
           "complete": true,
           "reason": null
@@ -110,8 +135,19 @@
       },
       {
         "viewport": "mobile",
-        "path": "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Docs_Index_mobile.jpg",
-        "size": 274865,
+        "tiles": [
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p1of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p2of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p3of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p4of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p5of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p6of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p7of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p8of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p9of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p10of11.jpg",
+          "D:\\Desktop\\LinDesk\\docs\\_shots\\LinDesk_Widget_Platform_Plan_mobile_p11of11.jpg"
+        ],
         "visualCoverage": {
           "complete": true,
           "reason": null

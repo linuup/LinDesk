@@ -988,47 +988,49 @@ void ListView::onMenuRefresh() {
         }
         syncBoxVisibilityWithDesktopIcons();
         this->update();
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
-        QTimer::singleShot(0, this, [this]() {
-            const QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
-            this->setUpdatesEnabled(false);
-            for (const auto& box : allBoxes) {
-                if (box) {
-                    box->setUpdatesEnabled(false);
-                }
-            }
+        const bool isInteracting = m_isSelecting || m_isDragging || (RenameManager::instance() && RenameManager::instance()->isRenaming());
 
-            // --- Original Refresh Logic ---
-            if (m_enablePersistence) {
-                for (const auto& state : m_itemStates) {
-                    const QString normPath = normalizeDesktopItemPath(state.model.filePath);
-                    if (normPath.isEmpty()) {
-                        continue;
-                    }
-                    if (state.model.position != QPoint(0, 0)) {
-                        m_savedIconPositions[normPath] = {
-                            state.model.position.x(),
-                            state.model.position.y(),
-                            state.model.boxId
-                        };
-                    }
-                }
-            }
-
-            qDebug() << "Comprehensive State Sync (Mirroring Initialize)...";
-            
-            if (monitor) {
-                monitor->refreshIconsState();
-                sysIconRegisterInfo = monitor->getCurrentIcons();
-            }
-
-            DesktopItemInitContext context = currentDesktopItemInitContext();
-            for (auto& state : m_itemStates) {
-                if (state.model.filePath.isEmpty()) {
+        if (m_enablePersistence) {
+            for (const auto& state : m_itemStates) {
+                const QString normPath = normalizeDesktopItemPath(state.model.filePath);
+                if (normPath.isEmpty()) {
                     continue;
                 }
+                if (state.model.position != QPoint(0, 0)) {
+                    m_savedIconPositions[normPath] = {
+                        state.model.position.x(),
+                        state.model.position.y(),
+                        state.model.boxId
+                    };
+                }
+            }
+        }
 
+        qDebug() << "Comprehensive State Sync (Optimized Refresh)...";
+        
+        if (monitor) {
+            monitor->refreshIconsState();
+            sysIconRegisterInfo = monitor->getCurrentIcons();
+        }
+
+        DesktopItemInitContext context = currentDesktopItemInitContext();
+        bool anyItemChanged = false;
+
+        for (auto& state : m_itemStates) {
+            if (state.model.filePath.isEmpty()) {
+                continue;
+            }
+
+            const QFileInfo currentFi(state.model.filePath);
+            const bool exists = currentFi.exists();
+            const bool isSpecial = (state.model.objectType == ObjectType::SpecialFolder);
+            const bool metadataChanged = !exists ||
+                (currentFi.lastModified() != state.model.fileInfo.lastModified()) ||
+                (currentFi.size() != state.model.fileInfo.size());
+
+            if (isSpecial || metadataChanged) {
+                anyItemChanged = true;
                 const ListItemData data = DesktopItemLoader().loadItem(state.model.filePath);
                 DesktopRootItemModel updatedModel;
                 initDesktopRootItemModel(updatedModel, data, context);
@@ -1050,40 +1052,43 @@ void ListView::onMenuRefresh() {
                 updatedModel.isReady = true;
                 state.model = updatedModel;
                 markDesktopRenderDataDirty(&state);
+            } else {
+                state.model.baseSize = QSize(m_iconWidth, m_iconHeight);
+                state.model.fileInfo = currentFi;
+                state.model.isReady = true;
             }
+        }
 
+        if (anyItemChanged) {
             updateAllItemRenderData();
+        }
+
+        if (!isInteracting) {
             if (m_iconShowRule.autoArrange) {
                 applyAutoArrangeAfterDesktopMutation(false, false);
             } else {
                 rebuildSpatialIndex();
                 update();
             }
+        }
 
-            // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
-            for (const auto& box : allBoxes) {
-                if (box) {
-                    if (box->isFolderMapped()) {
-                        loadMappedFolderItemsForBox(box.data());
-                    }
-                    box->refreshLayout();
+        // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
+        const QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
+        for (const auto& box : allBoxes) {
+            if (box) {
+                if (box->isFolderMapped()) {
+                    loadMappedFolderItemsForBox(box.data());
                 }
+                box->refreshLayout();
+                box->update();
             }
-            syncBoxVisibilityWithDesktopIcons();
+        }
+        syncBoxVisibilityWithDesktopIcons();
+        this->update();
 
-            for (const auto& box : allBoxes) {
-                if (box) {
-                    box->setUpdatesEnabled(true);
-                    box->update();
-                }
-            }
-            this->setUpdatesEnabled(true);
+        QTimer::singleShot(0, this, [this]() {
             syncBoxVisibilityWithDesktopIcons();
-            this->update();
-            QTimer::singleShot(0, this, [this]() {
-                syncBoxVisibilityWithDesktopIcons();
-                syncLinWidgetLayer();
-            });
+            syncLinWidgetLayer();
         });
     });
 }
