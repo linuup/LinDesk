@@ -90,6 +90,7 @@
     <li><strong>要理解渲染与组件系统架构</strong> → <a href="LinDesk_Architecture_Guide.html">架构指南</a>（CEF OSR 版，统一绘制管线）。</li>
     <li><strong>要查功能进度与待办</strong> → <a href="LinDesk_Todo.html">任务清单</a>（由项目根 Todo.md 迁移整理）。</li>
     <li><strong>要打磨 HTML 组件系统（AI 开发组件、组件市场、权限/沙箱、组件包动态加载、组件系统安装/卸载）</strong> → <a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a>（单进程 · 组件系统运行时经 LinDesk 安装/卸载 + 组件包动态加载：安装/卸载设计、CEF 缺口、AI 开发闭环、与主程序集成、按代码细分的任务清单、P0-P3 路线图）。</li>
+    <li><strong>要处理桌面交互性能问题（Box 移动卡顿/撕裂、拖拽、毛玻璃、文件监控）</strong> → <a href="LinDesk_Box_Move_Lag_Plan.html">Box 移动卡顿修复计划</a>（根因分析 + 修复方案，待 antigravity 执行）。</li>
   </ul>
 </section>
 
@@ -105,6 +106,8 @@
     <tr><td><a href="LinDesk_Architecture_Guide.html">LinDesk_Architecture_Guide.html</a></td><td>架构指南：桌面底座、统一绘制管线、LinWidget 组件系统、消息桥现状、持久化</td><td><span class="tag current">当前</span></td><td>开发者</td></tr>
     <tr><td><a href="LinDesk_Todo.html">LinDesk_Todo.html</a></td><td>任务清单：功能勾选清单（待办 + 已完成），由项目根 Todo.md 迁移</td><td><span class="tag current">当前</span></td><td>开发者 / 产品</td></tr>
     <tr><td><a href="LinDesk_Widget_Platform_Plan.html">LinDesk_Widget_Platform_Plan.html</a></td><td>组件系统方案：单进程 · 组件系统运行时安装/卸载（动态加载）+ 组件包动态加载（CEF 缺口、AI 开发闭环、组件市场、权限与沙箱、壁纸组件、与主程序集成）、按代码细分的任务清单、P0-P3 路线图</td><td><span class="tag current">当前</span></td><td>antigravity / 开发者</td></tr>
+    <tr><td><a href="LinWidget_Protocol.md">LinWidget_Protocol.md</a></td><td>组件通信协议规范：C++ 宿主与 HTML5 小组件之间的双向 JSON IPC 信封、存储、硬件指标推送与生命周期控制</td><td><span class="tag current">当前</span></td><td>小组件开发者 / 开发者</td></tr>
+    <tr><td><a href="LinDesk_Box_Move_Lag_Plan.html">LinDesk_Box_Move_Lag_Plan.html</a></td><td>Box 移动卡顿与撕裂修复计划：同步 repaint / 跨层刷新 / raise() 根因分析 + 修复方案（功能不变）、实现注意、验收清单、任务划分</td><td><span class="tag arch">待执行</span></td><td>antigravity / 开发者</td></tr>
   </table>
   </div>
   <p class="note">历史文档（旧 WebView2 架构指南、CEF POC 与完整改造规划、CEF 实现笔记、WebView2 移除改造任务书、更新功能方案与使用说明、组件独立进程方案）已并入/由上述文档替代并删除（多进程否决决策记录保留在组件系统方案第 1 节）；内存审查、商店图标兼容、显示名覆盖、双架构发布四份改造任务书（对应改造均已落地）已删除；<code>docs/_shots/</code> 为自检产物目录，保留。</p>

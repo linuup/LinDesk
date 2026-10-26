@@ -96,3 +96,8 @@ installer/*.exe
 
 # 发布打包产物目录
 dist/
+
+# HTML 文档自检产物与历史备份（豆包 html skill 生成，不进版本库）
+docs/_shots/
+docs/_backup/
+
