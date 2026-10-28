@@ -4374,6 +4374,17 @@ void SettingUI::refreshLinWidgetSettingsRunningMaps()
             m_linWidgetInstanceCountsById.insert(key, m_linWidgetInstanceCountsById.value(key, 0) + 1);
         }
     }
+
+    if (manager->hasActiveWallpaper()) {
+        const QString activePath = manager->activeWallpaperPackagePath();
+        const QString activeId = manager->activeWallpaperId();
+        const bool isDev = manager->activeWallpaperIsDevelopment();
+        const QString wallInstanceId = QStringLiteral("wallpaper:") + activeId;
+        m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(activePath), wallInstanceId);
+        const QString key = settingsLinWidgetRegistryKey(activeId, isDev);
+        m_linWidgetInstancesById.insert(key, wallInstanceId);
+        m_linWidgetInstanceCountsById.insert(key, m_linWidgetInstanceCountsById.value(key, 0) + 1);
+    }
 }
 
 void SettingUI::loadSelectedSettingsLinWidget()

@@ -1186,7 +1186,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (pendingTargetBox.isNull()) {
             pendingTargetBox = m_pendingShellNewTargetBox;
         }
-        addDesktopModelItemFromPath(newPath);
+        addDesktopModelItemFromPath(eventInfo.newPath);
 
         auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
         if (boxIt != m_pendingCreatedItemBoxes.end()) {
@@ -1195,7 +1195,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             const bool hasPendingInsertIndex = m_pendingCreatedItemInsertIndices.contains(newPath);
             const int insertIndex = hasPendingInsertIndex ? m_pendingCreatedItemInsertIndices.take(newPath) : -1;
             if (targetBox) {
-                moveItemToBox(newPath, targetBox, false, insertIndex);
+                moveItemToBox(eventInfo.newPath, targetBox, false, insertIndex);
                 targetBox->refreshLayout();
                 targetBox->raise();
                 if (m_iconShowRule.autoArrange) {
@@ -1206,7 +1206,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             }
         }
         else {
-            handlePendingShellCreatedItem(newPath);
+            handlePendingShellCreatedItem(eventInfo.newPath);
         }
         
         // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣鏌ｉ悩杈╁妽婵犮垺顭囩槐鐐差吋婢跺﹥顥濋梺缁橆殔閻楀﹪鎮楅娴庡綊鎮╅搹顐ｇ€紓鍌氱Т閹虫劗妲?
@@ -1239,7 +1239,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             const QString newDir = QFileInfo(newPath).absolutePath();
 
             if (oldDir == newDir) {
-                if (refreshDesktopModelItemPath(oldPath, newPath)) {
+                if (refreshDesktopModelItemPath(oldPath, eventInfo.newPath)) {
                     if (eventInfo.eventType == FileSystemEvent::DirectoryRenamed) {
                         invalidateFolderItemIconCache(oldPath);
                         invalidateFolderItemIconCache(newPath);
@@ -1267,12 +1267,12 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                     invalidateFolderItemIconCache(oldPath);
                     invalidateFolderItemIconCache(newPath);
                 }
-                refreshBoxModelItemPath(sourceBox, oldPath, newPath);
+                refreshBoxModelItemPath(sourceBox, oldPath, eventInfo.newPath);
             } else {
                 sourceBox->removeItemState(oldPath, true);
             }
         } else if (!findAnyItemStateByPath(newPath)) {
-            addDesktopModelItemFromPath(newPath);
+            addDesktopModelItemFromPath(eventInfo.newPath);
         }
 
         auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
@@ -1282,7 +1282,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             const bool hasPendingInsertIndex = m_pendingCreatedItemInsertIndices.contains(newPath);
             const int insertIndex = hasPendingInsertIndex ? m_pendingCreatedItemInsertIndices.take(newPath) : -1;
             if (targetBox) {
-                moveItemToBox(newPath, targetBox, false, insertIndex);
+                moveItemToBox(eventInfo.newPath, targetBox, false, insertIndex);
                 targetBox->refreshLayout();
                 targetBox->raise();
                 if (m_iconShowRule.autoArrange) {
@@ -1293,7 +1293,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             }
         }
         else {
-            handlePendingShellCreatedItem(newPath);
+            handlePendingShellCreatedItem(eventInfo.newPath);
         }
         
         // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣姊洪崫鍕悙闁宦板姂瀵粯绻濋崶銊у帓閻庡箍鍎遍幊蹇涘吹閹烘鐓曟慨姗嗗墰鏍￠梺鍝勵儏閸燁垳绮嬮幒妤€绠氶梺顓ㄧ畱閺佸綊鎮?
@@ -1313,17 +1313,17 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         }
 
         if (eventInfo.eventType == FileSystemEvent::DirectoryUpdated) {
-            refreshFolderItemByPath(updatePath);
+            refreshFolderItemByPath(eventInfo.newPath);
             break;
         }
 
         if (findDesktopStateByPath(updatePath)) {
-            refreshDesktopModelItemPath(updatePath, updatePath);
+            refreshDesktopModelItemPath(updatePath, !eventInfo.newPath.isEmpty() ? eventInfo.newPath : eventInfo.oldPath);
             if (eventInfo.eventType == FileSystemEvent::FileAttributesChanged) {
                 update();
             }
         } else if (LinBox* box = BoxManager::instance()->findBoxContainingItem(updatePath)) {
-            refreshBoxModelItemPath(box, updatePath, updatePath);
+            refreshBoxModelItemPath(box, updatePath, !eventInfo.newPath.isEmpty() ? eventInfo.newPath : eventInfo.oldPath);
         }
         break;
     }

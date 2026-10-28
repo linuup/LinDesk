@@ -16,6 +16,7 @@
 #include <QDebug>
 #include <psapi.h>
 
+
 namespace {
 QPointer<LinDesktop> g_desktopHostWindowMonitorOwner;
 
@@ -118,7 +119,7 @@ LinDesktop::LinDesktop(QWidget* parent)
     setFocusPolicy(Qt::StrongFocus);
     initializeTrayIcon();
 
-    setAttribute(Qt::WA_TranslucentBackground);
+    // setAttribute(Qt::WA_TranslucentBackground);
 
     m_transitionAnimation = new QVariantAnimation(this);
     m_transitionAnimation->setDuration(m_transitionDuration);
@@ -203,14 +204,55 @@ void LinDesktop::setTransitionDuration(int ms)
     }
 }
 
+bool LinDesktop::showDefaultWallpaper() const
+{
+    QSettings settings(m_configPath, QSettings::IniFormat);
+    return settings.value("General/ShowDefaultWallpaper", true).toBool();
+}
+
+void LinDesktop::setShowDefaultWallpaper(bool show)
+{
+    QSettings settings(m_configPath, QSettings::IniFormat);
+    settings.setValue("General/ShowDefaultWallpaper", show);
+    settings.sync();
+
+    if (show) {
+        loadBackImage();
+    } else {
+        m_backImagePixmap = QPixmap();
+        m_scaledBackImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
+        m_prevScaledBackImagePixmap = QPixmap();
+        m_currentWallpaperPath.clear();
+        m_pendingWallpaperPath.clear();
+        m_fallbackWallpaperPath.clear();
+        update();
+    }
+}
+
 void LinDesktop::onWallpaperChanged()
 {
+    if (!showDefaultWallpaper()) {
+        return;
+    }
     qDebug() << "[LinDesktop] Wallpaper registry change detected, debouncing...";
     m_wallpaperLoadTimer->start();
 }
 
 void LinDesktop::loadBackImage()
 {
+    if (!showDefaultWallpaper()) {
+        m_backImagePixmap = QPixmap();
+        m_scaledBackImagePixmap = QPixmap();
+        m_prevBackImagePixmap = QPixmap();
+        m_prevScaledBackImagePixmap = QPixmap();
+        m_currentWallpaperPath.clear();
+        m_pendingWallpaperPath.clear();
+        m_fallbackWallpaperPath.clear();
+        update();
+        return;
+    }
+
     const QString path = SysInfoUtil::GetRobustWallpaperPath();
     qDebug() << "[LinDesktop] Loading wallpaper from:" << path;
 
@@ -561,8 +603,17 @@ void LinDesktop::embedToDesktop()
     if (hwnd) {
         logDesktopDpiTrace("embedBefore", this);
         setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
+        setAttribute(Qt::WA_TranslucentBackground, false);
         setGeometry(QApplication::primaryScreen()->geometry());
-        SetParent((HWND)this->winId(), hwnd);
+        
+        HWND hostWindow = (HWND)this->winId();
+        SetParent(hostWindow, hwnd);
+
+        // Strip WS_EX_LAYERED to prevent child window rendering issues in Qt
+        LONG_PTR exStyle = GetWindowLongPtr(hostWindow, GWL_EXSTYLE);
+        exStyle &= ~WS_EX_LAYERED;
+        SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
+
         m_isEmbedded = true;
         show();
         logDesktopDpiTrace("embedAfter", this);
@@ -925,7 +976,10 @@ void LinDesktop::forceDesktopRepaint()
 void LinDesktop::unembedFromDesktop()
 {
     SetParent((HWND)this->winId(), NULL);
-    setWindowFlags(Qt::Window | Qt::CustomizeWindowHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint | Qt::WindowTitleHint);
+    setWindowFlags(windowFlags() | Qt::FramelessWindowHint);
+    //setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    setAttribute(Qt::WA_TranslucentBackground, true);
+    setAutoFillBackground(false);
     m_isEmbedded = false;
 
     QRect screenGeom = QApplication::primaryScreen()->availableGeometry();
@@ -1003,6 +1057,11 @@ void LinDesktop::paintEvent(QPaintEvent* event)
 
     QPainter painter(this);
 
+    if (!showDefaultWallpaper()) {
+        painter.fillRect(rect(), Qt::transparent);
+        return;
+    }
+
     if (m_transitionOpacity < 1.0f && !m_prevScaledBackImagePixmap.isNull()) {
         painter.setOpacity(1.0f - m_transitionOpacity);
         painter.drawPixmap(QPoint(0, 0), m_prevScaledBackImagePixmap);
@@ -1017,6 +1076,9 @@ void LinDesktop::paintEvent(QPaintEvent* event)
 void LinDesktop::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
+    if (listView) {
+        listView->setGeometry(rect());
+    }
     rebuildScaledWallpaperPixmaps();
     if (selectArea) {
         selectArea->syncToRect(listView ? listView->rect() : rect());

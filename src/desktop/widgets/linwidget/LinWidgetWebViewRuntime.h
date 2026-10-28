@@ -30,6 +30,7 @@ public:
 
     bool initialize(QString* errorMessage = nullptr);
     void handleManagerMessage(const QJsonObject& message);
+    bool isCompositionMode() const { return m_compositionController != nullptr; }
 
 signals:
     void messageToManager(const QString& widgetId, const QJsonObject& message);
@@ -41,6 +42,10 @@ private:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    void forwardMouseInput(QMouseEvent* event, int eventKind);
 
     void setupWindow();
     void attachToParentWindow();
@@ -106,7 +111,13 @@ private:
     WidgetManifest m_manifest;
     QLabel* m_placeholderLabel = nullptr;
     void* m_webViewController = nullptr;
+    void* m_compositionController = nullptr;
     void* m_webView = nullptr;
+    void* m_d3d11Device = nullptr;
+    void* m_dcompDevice = nullptr;
+    void* m_dcompTarget = nullptr;
+    void* m_rootVisual = nullptr;
+    void* m_webViewVisual = nullptr;
     bool m_comInitialized = false;
     bool m_embedded = false;
     bool m_dragging = false;

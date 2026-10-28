@@ -22,6 +22,11 @@
 #ifdef LINDESK_HAS_WEBVIEW2
 #include <WebView2.h>
 #include <wrl.h>
+#include <d3d11.h>
+#include <dcomp.h>
+#pragma comment(lib, "dcomp.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
@@ -36,6 +41,7 @@ LinWallpaperWebViewRuntime::LinWallpaperWebViewRuntime(QString wallpaperId,
     , m_wallpaperId(std::move(wallpaperId))
     , m_packagePath(std::move(packagePath))
 {
+    setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TranslucentBackground, false);
     setAttribute(Qt::WA_NoSystemBackground, false);
 }
@@ -49,10 +55,35 @@ LinWallpaperWebViewRuntime::~LinWallpaperWebViewRuntime()
         controller->Release();
         m_webViewController = nullptr;
     }
+    auto* compController = static_cast<ICoreWebView2CompositionController*>(m_compositionController);
+    if (compController) {
+        compController->Release();
+        m_compositionController = nullptr;
+    }
     auto* webView = static_cast<ICoreWebView2*>(m_webView);
     if (webView) {
         webView->Release();
         m_webView = nullptr;
+    }
+    if (m_webViewVisual) {
+        static_cast<IDCompositionVisual*>(m_webViewVisual)->Release();
+        m_webViewVisual = nullptr;
+    }
+    if (m_rootVisual) {
+        static_cast<IDCompositionVisual*>(m_rootVisual)->Release();
+        m_rootVisual = nullptr;
+    }
+    if (m_dcompTarget) {
+        static_cast<IDCompositionTarget*>(m_dcompTarget)->Release();
+        m_dcompTarget = nullptr;
+    }
+    if (m_dcompDevice) {
+        static_cast<IDCompositionDevice*>(m_dcompDevice)->Release();
+        m_dcompDevice = nullptr;
+    }
+    if (m_d3d11Device) {
+        static_cast<ID3D11Device*>(m_d3d11Device)->Release();
+        m_d3d11Device = nullptr;
     }
     if (m_comInitialized) {
         CoUninitialize();
@@ -112,7 +143,7 @@ void LinWallpaperWebViewRuntime::renderHtmlWallpaper()
         userData.c_str(),
         nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [this, parentWindow, entryPath](HRESULT envResult, ICoreWebView2Environment* environment) -> HRESULT {
+            [this, parentWindow](HRESULT envResult, ICoreWebView2Environment* environment) -> HRESULT {
                 if (FAILED(envResult) || !environment) {
                     qWarning() << "[WallpaperWebView] Failed to initialize WebView2 environment";
                     return S_OK;
@@ -121,7 +152,7 @@ void LinWallpaperWebViewRuntime::renderHtmlWallpaper()
                 environment->CreateCoreWebView2Controller(
                     parentWindow,
                     Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                        [this, entryPath, environment](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                        [this, environment, parentWindow](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
                             if (FAILED(controllerResult) || !controller) {
                                 qWarning() << "[WallpaperWebView] Failed to create WebView2 controller";
                                 return S_OK;
@@ -132,7 +163,7 @@ void LinWallpaperWebViewRuntime::renderHtmlWallpaper()
                             ICoreWebView2* webView = nullptr;
                             controller->get_CoreWebView2(&webView);
                             m_webView = webView;
-                            
+
                             ComPtr<ICoreWebView2_3> webView3;
                             if (SUCCEEDED(webView->QueryInterface(IID_PPV_ARGS(&webView3)))) {
                                 const std::wstring host = L"wallpaper.local.lindesk";
@@ -187,6 +218,11 @@ void LinWallpaperWebViewRuntime::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
     updateWebViewBounds();
+
+    ListView* lv = ListView::instance();
+    if (lv && lv->parentWidget() == this) {
+        lv->setGeometry(rect());
+    }
 }
 
 void LinWallpaperWebViewRuntime::updateWebViewBounds()
@@ -214,17 +250,6 @@ bool LinWallpaperWebViewRuntime::nativeEvent(const QByteArray& eventType, void* 
             *result = MA_NOACTIVATE;
         }
         return true;
-    } else if (msg->message == WM_WINDOWPOSCHANGING) {
-        WINDOWPOS* wp = reinterpret_cast<WINDOWPOS*>(msg->lParam);
-        HWND listViewHwnd = nullptr;
-        ListView* lv = ListView::instance();
-        if (lv) {
-            listViewHwnd = reinterpret_cast<HWND>(lv->winId());
-        }
-        if (listViewHwnd) {
-            wp->hwndInsertAfter = listViewHwnd;
-            wp->flags &= ~SWP_NOZORDER;
-        }
     }
 #endif
     return QWidget::nativeEvent(eventType, message, result);
