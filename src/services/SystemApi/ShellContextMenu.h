@@ -148,16 +148,7 @@ public:
     /// <summary>
     /// 自定义菜单项（追加到背景菜单末尾）
     /// </summary>
-    struct CustomMenuItem {
-        std::wstring text;       // 显示文本
-        std::function<void()> callback; // 选中时的回调
-        std::vector<CustomMenuItem> children; // 子菜单项
-        bool isSeparator = false; // 是否为分隔线
-        bool checkable = false;   // 是否可选
-        bool checked = false;     // 是否已选中
-        bool enabled = true;      // 是否可用
-        HBITMAP hBitmap = nullptr;    // 图标位图句柄
-    };
+    using CustomMenuItem = ShellCustomMenuItem;
 
     struct CompiledExclusions {
         bool empty = true;
@@ -231,7 +222,7 @@ public:
 
     void DisplayBoxBackgroundContextMenu(const std::wstring& folderPath = L"");
 
-    void DisplayItemContextMenu(LPITEMIDLIST pidl);
+    void DisplayItemContextMenu(LPITEMIDLIST pidl, HWND hwndOwner = nullptr);
     void DisplayLinkContextMenu(const wchar_t* path);
     void DisplayFileContextMenu(const wchar_t* path);
     //为快捷方式生成右键上下文菜单
@@ -295,7 +286,7 @@ private:
     /// <param name="pidl"></param>
     /// <param name="pShellFolder"></param>
     /// <returns></returns>
-    wil::com_ptr_nothrow<IContextMenu3> IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder);
+    wil::com_ptr_nothrow<IContextMenu3> IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder, HWND hwndOwner = nullptr);
     
 };
 DEFINE_ENUM_FLAG_OPERATORS(ShellContextMenu::Flags);

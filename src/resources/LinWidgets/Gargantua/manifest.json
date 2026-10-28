@@ -1,0 +1,15 @@
+{
+  "id": "lindesk.wallpaper.gargantua",
+  "name": "Gargantua Relativistic Black Hole",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "Top-tier cinematic deep space wallpaper featuring a relativistic Kerr black hole, gravitational lensing accretion disk with Doppler beaming, and reactive cosmic particle dust.",
+  "type": "html",
+  "entry": "index.html",
+  "role": "wallpaper",
+  "interactive": true,
+  "permissions": [
+    "desktop",
+    "storage"
+  ]
+}

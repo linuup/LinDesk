@@ -71,6 +71,10 @@ public:
     bool allowNetwork() const { return m_allowNetwork; }
     void setAllowNetwork(bool allow) { m_allowNetwork = allow; }
 
+    bool hasDevTools() const;
+    void showDevTools();
+    void closeDevTools();
+
     void onRenderProcessTerminated(int status, int errorCode, const QString& errorString);
     void onConsoleMessage(int level, const QString& message, const QString& source, int line);
 

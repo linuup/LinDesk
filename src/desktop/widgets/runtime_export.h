@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QtGlobal>
+#include <QJsonObject>
 #include <QPoint>
 #include <QRect>
 #include <QRegion>
@@ -51,6 +52,8 @@ LINWIDGET_EXPORT void linwidget_clear_widget_focus();
 LINWIDGET_EXPORT bool linwidget_is_widget_layer_embedded();
 LINWIDGET_EXPORT void linwidget_set_widget_layer_embedded(bool embedded);
 LINWIDGET_EXPORT int linwidget_get_occupied_rects(int* outRects, int maxRects);
+LINWIDGET_EXPORT bool linwidget_get_widget_geometry(const char* instanceId, int* outX, int* outY, int* outW, int* outH);
+LINWIDGET_EXPORT bool linwidget_set_widget_geometry(const char* instanceId, int x, int y, int w, int h);
 LINWIDGET_EXPORT bool linwidget_is_cef_osr_enabled();
 LINWIDGET_EXPORT void linwidget_set_cef_osr_enabled(bool enabled);
 LINWIDGET_EXPORT bool linwidget_is_enabled();
@@ -73,7 +76,9 @@ LINWIDGET_EXPORT int linwidget_active_wallpaper_package_path(char* outBuffer, in
 LINWIDGET_EXPORT int linwidget_active_wallpaper_id(char* outBuffer, int bufferSize);
 LINWIDGET_EXPORT bool linwidget_active_wallpaper_is_development();
 LINWIDGET_EXPORT bool linwidget_open_widget_settings(const char* packagePath, const char* instanceId);
+LINWIDGET_EXPORT bool linwidget_show_devtools(const char* instanceId);
 LINWIDGET_EXPORT bool linwidget_validate_package(const char* packagePath, char* outReportBuffer, int bufferSize);
+LINWIDGET_EXPORT int linwidget_query_manager(const char* requestJson, char* outResponseBuffer, int bufferSize);
 #endif
 
 // 主程序侧持有的动态桥接单例（负责 LoadLibrary、符号解析与判空转发）
@@ -103,6 +108,8 @@ public:
     void setWidgetLayerEmbedded(bool embedded);
 
     QVector<QRect> occupiedRects();
+    QRect widgetGeometry(const QString& instanceId) const;
+    bool setWidgetGeometry(const QString& instanceId, const QRect& geometry);
 
     bool isCefOsrEnabled() const;
     void setCefOsrEnabled(bool enabled);
@@ -126,11 +133,14 @@ public:
     void stopWallpaper(bool restoreSystemWallpaper = true);
     bool hasActiveWallpaper() const;
     bool isWallpaperInteractive() const;
+    void setWallpaperInteractive(bool interactive);
     QString activeWallpaperPackagePath() const;
     QString activeWallpaperId() const;
     bool activeWallpaperIsDevelopment() const;
     bool openWidgetSettings(const QString& packagePath, const QString& instanceId = QString());
+    bool showDevTools(const QString& instanceId);
     bool validatePackage(const QString& packagePath, QString* outReport = nullptr);
+    QJsonObject queryWidgetManager(const QJsonObject& request);
 
 private:
     LinWidgetRuntimeBridge();
@@ -162,6 +172,8 @@ private:
     bool (*m_pfnIsWidgetLayerEmbedded)() = nullptr;
     void (*m_pfnSetWidgetLayerEmbedded)(bool) = nullptr;
     int (*m_pfnGetOccupiedRects)(int*, int) = nullptr;
+    bool (*m_pfnGetWidgetGeometry)(const char*, int*, int*, int*, int*) = nullptr;
+    bool (*m_pfnSetWidgetGeometry)(const char*, int, int, int, int) = nullptr;
     bool (*m_pfnIsCefOsrEnabled)() = nullptr;
     void (*m_pfnSetCefOsrEnabled)(bool) = nullptr;
     bool (*m_pfnIsEnabled)() = nullptr;
@@ -180,9 +192,12 @@ private:
     void (*m_pfnStopWallpaper)(bool) = nullptr;
     bool (*m_pfnHasActiveWallpaper)() = nullptr;
     bool (*m_pfnIsWallpaperInteractive)() = nullptr;
+    void (*m_pfnSetWallpaperInteractive)(bool) = nullptr;
     int (*m_pfnActiveWallpaperPackagePath)(char*, int) = nullptr;
     int (*m_pfnActiveWallpaperId)(char*, int) = nullptr;
     bool (*m_pfnActiveWallpaperIsDevelopment)() = nullptr;
     bool (*m_pfnOpenWidgetSettings)(const char*, const char*) = nullptr;
+    bool (*m_pfnShowDevTools)(const char*) = nullptr;
     bool (*m_pfnValidatePackage)(const char*, char*, int) = nullptr;
+    int (*m_pfnQueryManager)(const char*, char*, int) = nullptr;
 };

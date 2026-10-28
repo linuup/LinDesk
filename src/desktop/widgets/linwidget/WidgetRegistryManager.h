@@ -19,6 +19,7 @@ public:
     WidgetRegistryEntry entryById(const QString& id) const;
 
     bool syncFromFolder(const QString& widgetsDir, QString* errorMessage = nullptr);
+    bool syncOfficialWidgetsIfOutdated(const QString& bundledWidgetsDir, const QString& userWidgetsDir, QString* errorMessage = nullptr);
     bool upsertFromPackage(const QString& packagePath, QString* errorMessage = nullptr);
     bool addDevelopmentProject(const QString& sourcePath, QString* errorMessage = nullptr);
     bool installDevelopmentProject(const QString& id, QString* installedPath = nullptr, QString* errorMessage = nullptr);
@@ -27,6 +28,7 @@ public:
     bool setEnabled(const QString& id, bool isDevelopment, bool enabled);
     bool setLastRunState(const QString& id, const QString& state);
     bool setLastRunState(const QString& id, bool isDevelopment, const QString& state);
+    bool setPermissionsGranted(const QString& id, const QStringList& permissions);
     bool setPermissionsGranted(const QString& id, bool isDevelopment, const QStringList& permissions);
     bool removeById(const QString& id);
     bool removeDevelopmentProject(const QString& id);

@@ -6,6 +6,7 @@
   "type": "html",
   "entry": "index.html",
   "role": "wallpaper",
+  "interactive": true,
   "permissions": [
     "audio"
   ]

@@ -432,6 +432,7 @@ protected:
 	void wheelEvent(QWheelEvent* event) override;
 	void keyPressEvent(QKeyEvent* event) override;
 	void keyReleaseEvent(QKeyEvent* event) override;
+	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 	void inputMethodEvent(QInputMethodEvent* event) override;
 	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
@@ -696,6 +697,36 @@ private:
 	bool m_isDragging = false;
 	bool m_isSelecting = false;
 	bool m_forwardingMouseToWidget = false;
+	bool m_widgetDragPending = false;
+	bool m_draggingWidget = false;
+	QString m_draggedWidgetId;
+	QPoint m_widgetDragStartPos;
+	QPoint m_widgetDragStartGlobalPos;
+	QRect m_widgetDragStartGeometry;
+	Qt::MouseButton m_pendingWidgetPressButton = Qt::NoButton;
+	Qt::MouseButtons m_pendingWidgetPressButtons = Qt::NoButton;
+	Qt::KeyboardModifiers m_pendingWidgetPressModifiers = Qt::NoModifier;
+
+	enum WidgetResizeEdge {
+		ResizeEdgeNone = 0,
+		ResizeEdgeLeft = 1 << 0,
+		ResizeEdgeRight = 1 << 1,
+		ResizeEdgeTop = 1 << 2,
+		ResizeEdgeBottom = 1 << 3,
+		ResizeEdgeTopLeft = ResizeEdgeTop | ResizeEdgeLeft,
+		ResizeEdgeTopRight = ResizeEdgeTop | ResizeEdgeRight,
+		ResizeEdgeBottomLeft = ResizeEdgeBottom | ResizeEdgeLeft,
+		ResizeEdgeBottomRight = ResizeEdgeBottom | ResizeEdgeRight
+	};
+	QString m_resizeHintWidgetId;
+	bool m_resizingWidget = false;
+	QString m_resizingWidgetId;
+	int m_widgetResizeEdge = ResizeEdgeNone;
+	QPoint m_widgetResizeStartPos;
+	QRect m_widgetResizeStartGeometry;
+
+	int widgetResizeEdgeAt(const QPoint& clientPos, const QRect& widgetGeom, int hitMargin = 8) const;
+	Qt::CursorShape cursorForResizeEdge(int edge) const;
 	bool m_wasSelectedBeforeClick = false;
 	bool m_showHiddenFiles = false;
 	bool m_hideDesktopItemsForRefresh = false;

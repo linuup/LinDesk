@@ -26,6 +26,7 @@
 
 namespace {
 std::shared_ptr<spdlog::logger> g_logger;
+std::shared_ptr<spdlog::logger> g_linwidgetLogger;
 std::atomic<bool> g_debugEnabled{false};
 std::mutex g_initMutex;
 
@@ -64,9 +65,15 @@ void customMessageHandler(QtMsgType type, const QMessageLogContext& context, con
     };
 
     const std::string utf8Msg = msg.toStdString();
-    g_logger->log(loc, lvl, utf8Msg);
+    auto& target = (msg.startsWith(QStringLiteral("[LinWidget]")) && g_linwidgetLogger)
+                       ? g_linwidgetLogger
+                       : g_logger;
+    target->log(loc, lvl, utf8Msg);
 
     if (type == QtFatalMsg) {
+        if (g_linwidgetLogger) {
+            g_linwidgetLogger->flush();
+        }
         g_logger->flush();
         spdlog::shutdown();
         abort();
@@ -111,6 +118,7 @@ void initialize()
 
     const QString desktopLogPath = QDir(logsDir).filePath(QStringLiteral("desktop.log"));
     const QString errorLogPath = QDir(logsDir).filePath(QStringLiteral("desktop-error.log"));
+    const QString linwidgetLogPath = QDir(logsDir).filePath(QStringLiteral("linwidget.log"));
 
     std::vector<spdlog::sink_ptr> sinks;
 
@@ -143,7 +151,7 @@ void initialize()
 #endif
 
         g_logger = std::make_shared<spdlog::logger>("desktop", sinks.begin(), sinks.end());
-        g_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [desktop] [%P] [%t] [%s:%#] %v");
+        g_logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] [%P] [%t] [%s:%#] %v");
 
         if (g_debugEnabled.load()) {
             g_logger->set_level(spdlog::level::debug);
@@ -152,6 +160,36 @@ void initialize()
         }
 
         g_logger->flush_on(spdlog::level::warn);
+
+        // 组件系统独立日志：linwidget.log（20MB × 7，不做 error 双写，创建失败不阻塞主日志）
+        try {
+            std::vector<spdlog::sink_ptr> linwidgetSinks;
+            auto linwidgetFileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+                QDir::toNativeSeparators(linwidgetLogPath).toStdString(),
+                20 * 1024 * 1024,
+                7
+            );
+            linwidgetSinks.push_back(linwidgetFileSink);
+            linwidgetSinks.push_back(consoleSink);
+#ifdef Q_OS_WIN
+            linwidgetSinks.push_back(msvcSink);
+#endif
+
+            g_linwidgetLogger = std::make_shared<spdlog::logger>("linwidget", linwidgetSinks.begin(), linwidgetSinks.end());
+            g_linwidgetLogger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] [%P] [%t] [%s:%#] %v");
+
+            if (g_debugEnabled.load()) {
+                g_linwidgetLogger->set_level(spdlog::level::debug);
+            } else {
+                g_linwidgetLogger->set_level(spdlog::level::info);
+            }
+
+            g_linwidgetLogger->flush_on(spdlog::level::warn);
+            spdlog::register_logger(g_linwidgetLogger);
+        } catch (const std::exception&) {
+            g_linwidgetLogger.reset();
+        }
+
         spdlog::flush_every(std::chrono::seconds(2));
         spdlog::set_default_logger(g_logger);
 
@@ -166,10 +204,14 @@ void shutdown()
 {
     std::lock_guard<std::mutex> lock(g_initMutex);
     qInstallMessageHandler(nullptr);
+    if (g_linwidgetLogger) {
+        g_linwidgetLogger->flush();
+    }
     if (g_logger) {
         g_logger->flush();
     }
     spdlog::shutdown();
+    g_linwidgetLogger.reset();
     g_logger.reset();
 }
 

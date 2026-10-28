@@ -975,15 +975,19 @@ void ListView::onMenuRefresh() {
     update();
     for (const auto& box : flashBoxes) {
         if (box) {
-            box->hide();
+            if (box->isVisible()) {
+                box->setRefreshFlashing(true);
+            }
         }
     }
 
     QTimer::singleShot(80, this, [this, flashBoxes]() {
         m_hideDesktopItemsForRefresh = false;
-        for (const auto& box : flashBoxes) {
-            if (box) {
-                box->show();
+        if (m_iconShowRule.showDesktopIcons) {
+            for (const auto& box : flashBoxes) {
+                if (box) {
+                    box->setRefreshFlashing(false);
+                }
             }
         }
         syncBoxVisibilityWithDesktopIcons();
@@ -1140,6 +1144,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
              << "isDir:" << eventInfo.isDirectory
              << "old:" << oldPath
              << "new:" << newPath;
+    if (rightMenu) {
+        rightMenu->invalidateCustomMenuCaches();
+    }
 
     // 防抖合并重排重绘，避免连续高频文件系统事件卡顿
     auto scheduleRelayout = [this]() {

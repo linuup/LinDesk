@@ -118,3 +118,94 @@ TEST_F(RuntimeBridgeTest, PackageValidatorLinting)
 
     bridge.unloadRuntime();
 }
+
+#include "services/AppPaths.h"
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
+TEST_F(RuntimeBridgeTest, RestoreFromConfigInitializesCefWithoutCrash)
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    const QString runtimeDir = QDir(QCoreApplication::applicationDirPath()).filePath("runtime/linwidget");
+    const QString runtimeDll = QDir(runtimeDir).filePath("LinWidgetRuntime.dll");
+    if (!QFile::exists(runtimeDll)) {
+        return;
+    }
+
+    // 1. 模拟旧版/未重生成构建目录结构：icudtl.dat 仅存在于 Resources 子目录，不在 runtime/linwidget 根目录
+    const QString rootIcu = QDir(runtimeDir).filePath("icudtl.dat");
+    const QString nestedResDir = QDir(runtimeDir).filePath("Resources");
+    const QString nestedIcu = QDir(nestedResDir).filePath("icudtl.dat");
+    bool createdNestedRes = false;
+    if (QFile::exists(rootIcu) && !QFile::exists(nestedIcu)) {
+        createdNestedRes = !QDir(nestedResDir).exists();
+        QDir().mkpath(nestedResDir);
+        QFile::copy(rootIcu, nestedIcu);
+    }
+    if (QFile::exists(nestedIcu)) {
+        // 若后台没有其他进程映射 rootIcu，则移除 rootIcu 以验证自动补齐逻辑
+        QFile::remove(rootIcu);
+    }
+
+    // 2. 模拟主进程已持有 cef-cache/lockfile 排他写锁（FILE_SHARE_READ），验证 CefManager 自动切换进程级缓存目录而不触发 ExitCode 21 / 0xc0000005 崩溃
+#ifdef Q_OS_WIN
+    const QString defaultCacheDir = QDir(AppPaths::userLocalConfigDir()).filePath("LinWidgets/cef-cache");
+    QDir().mkpath(defaultCacheDir);
+    const QString lockFilePath = QDir::toNativeSeparators(QDir(defaultCacheDir).filePath("lockfile"));
+    const std::wstring lockFileW = lockFilePath.toStdWString();
+    HANDLE hLock = CreateFileW(
+        lockFileW.c_str(),
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE,
+        nullptr);
+#endif
+
+    ASSERT_TRUE(bridge.loadRuntime(runtimeDll));
+    LinWidgetDesktopCtx ctx = {};
+    ASSERT_TRUE(bridge.init(ctx));
+    bridge.setEnabled(true);
+    bridge.setCefOsrEnabled(true);
+
+    const QString tempConfig = QDir(QCoreApplication::applicationDirPath()).filePath("test_empty_widgets.json");
+    QFile::remove(tempConfig);
+
+    // 3. 验证预检拦截：当必要资产（如 LinDeskSubprocess.exe）缺失时，CefManager::initialize() 安全中止而不触发 FATAL CHECK 崩溃
+    const QString subInRuntime = QDir(runtimeDir).filePath("LinDeskSubprocess.exe");
+    const QString subInApp = QDir(QCoreApplication::applicationDirPath()).filePath("LinDeskSubprocess.exe");
+    const QString subInRuntimeBak = subInRuntime + ".bak";
+    const QString subInAppBak = subInApp + ".bak";
+    const bool renamedRuntimeSub = QFile::exists(subInRuntime) && QFile::rename(subInRuntime, subInRuntimeBak);
+    const bool renamedAppSub = QFile::exists(subInApp) && QFile::rename(subInApp, subInAppBak);
+    if (renamedRuntimeSub && (!QFile::exists(subInApp) || renamedAppSub)) {
+        EXPECT_TRUE(bridge.restoreFromConfig(tempConfig));
+    }
+    if (renamedRuntimeSub) {
+        QFile::rename(subInRuntimeBak, subInRuntime);
+    }
+    if (renamedAppSub) {
+        QFile::rename(subInAppBak, subInApp);
+    }
+
+    // 4. 恢复资产后再次执行 restoreFromConfig，验证 CefManager 自动将 icudtl.dat 补齐到 libcef.dll 同级目录并完成初始化
+    EXPECT_TRUE(bridge.restoreFromConfig(tempConfig));
+    QFile::remove(tempConfig);
+
+    EXPECT_TRUE(QFile::exists(rootIcu));
+    if (createdNestedRes && QFile::exists(rootIcu)) {
+        QDir(nestedResDir).removeRecursively();
+    }
+
+    bridge.shutdown();
+    bridge.unloadRuntime();
+
+#ifdef Q_OS_WIN
+    if (hLock != INVALID_HANDLE_VALUE) {
+        CloseHandle(hLock);
+    }
+#endif
+}
+

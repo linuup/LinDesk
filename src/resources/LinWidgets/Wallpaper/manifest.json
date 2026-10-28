@@ -1,12 +1,13 @@
 {
   "id": "lindesk.wallpaper",
-  "name": "Dynamic Wallpaper",
-  "version": "1.0.0",
+  "name": "LinDesk Living Wallpaper",
+  "version": "1.1.0",
   "author": "LinDesk",
-  "description": "LinDesk official dynamic wallpaper package supporting canvas aurora, fluid particles, video and local media playback.",
+  "description": "LinDesk official interactive living wallpaper: Cosmic gravity singularity, fluid aurora, and cyber quantum grid with rich mouse physics.",
   "role": "wallpaper",
   "type": "html",
   "entry": "index.html",
+  "interactive": true,
   "permissions": [
     "storage",
     "desktop"

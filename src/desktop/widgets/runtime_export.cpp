@@ -1,3 +1,5 @@
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "desktop/widgets/runtime_export.h"
 
 #ifdef LINWIDGET_RUNTIME_EXPORTS
@@ -328,6 +330,58 @@ LINWIDGET_EXPORT bool linwidget_open_widget_settings(const char* packagePath, co
     return dialog != nullptr;
 }
 
+
+LINWIDGET_EXPORT bool linwidget_get_widget_geometry(const char* instanceId, int* outX, int* outY, int* outW, int* outH)
+{
+    if (!s_runtimeWidgetManager || !instanceId) {
+        return false;
+    }
+    const QRect geom = s_runtimeWidgetManager->widgetGeometry(QString::fromUtf8(instanceId));
+    if (!geom.isValid()) {
+        return false;
+    }
+    if (outX) *outX = geom.x();
+    if (outY) *outY = geom.y();
+    if (outW) *outW = geom.width();
+    if (outH) *outH = geom.height();
+    return true;
+}
+
+LINWIDGET_EXPORT bool linwidget_set_widget_geometry(const char* instanceId, int x, int y, int w, int h)
+{
+    if (!s_runtimeWidgetManager || !instanceId) {
+        return false;
+    }
+    return s_runtimeWidgetManager->setWidgetGeometry(QString::fromUtf8(instanceId), QRect(x, y, w, h));
+}
+
+LINWIDGET_EXPORT int linwidget_query_manager(const char* requestJson, char* outResponseBuffer, int bufferSize)
+{
+    if (!s_runtimeWidgetManager || !requestJson) {
+        return 0;
+    }
+    const QJsonDocument reqDoc = QJsonDocument::fromJson(QByteArray(requestJson));
+    if (!reqDoc.isObject()) {
+        return 0;
+    }
+    const QJsonObject resObj = s_runtimeWidgetManager->handleWidgetManagerRequest(reqDoc.object());
+    const QByteArray resBytes = QJsonDocument(resObj).toJson(QJsonDocument::Compact);
+    if (outResponseBuffer && bufferSize > 0) {
+        const int len = qMin(resBytes.size(), bufferSize - 1);
+        memcpy(outResponseBuffer, resBytes.constData(), len);
+        outResponseBuffer[len] = '\0';
+    }
+    return resBytes.size();
+}
+
+LINWIDGET_EXPORT bool linwidget_show_devtools(const char* instanceId)
+{
+    if (!s_runtimeWidgetManager || !instanceId) {
+        return false;
+    }
+    return s_runtimeWidgetManager->showDevTools(QString::fromUtf8(instanceId));
+}
+
 LINWIDGET_EXPORT bool linwidget_validate_package(const char* packagePath, char* outReportBuffer, int bufferSize)
 {
     if (!packagePath) return false;
@@ -505,6 +559,10 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_active_wallpaper_id", m_pfnActiveWallpaperId);
     RESOLVE_FN("linwidget_active_wallpaper_is_development", m_pfnActiveWallpaperIsDevelopment);
     RESOLVE_FN("linwidget_open_widget_settings", m_pfnOpenWidgetSettings);
+    RESOLVE_FN("linwidget_get_widget_geometry", m_pfnGetWidgetGeometry);
+    RESOLVE_FN("linwidget_set_widget_geometry", m_pfnSetWidgetGeometry);
+    RESOLVE_FN("linwidget_query_manager", m_pfnQueryManager);
+    RESOLVE_FN("linwidget_show_devtools", m_pfnShowDevTools);
     RESOLVE_FN("linwidget_validate_package", m_pfnValidatePackage);
 
     #undef RESOLVE_FN
@@ -761,6 +819,44 @@ bool LinWidgetRuntimeBridge::openWidgetSettings(const QString& packagePath, cons
     const QByteArray pkgUtf8 = packagePath.toUtf8();
     const QByteArray instUtf8 = instanceId.toUtf8();
     return m_pfnOpenWidgetSettings(pkgUtf8.constData(), instUtf8.isEmpty() ? nullptr : instUtf8.constData());
+}
+
+
+QRect LinWidgetRuntimeBridge::widgetGeometry(const QString& instanceId) const
+{
+    if (!m_pfnGetWidgetGeometry) return QRect();
+    int x = 0, y = 0, w = 0, h = 0;
+    const QByteArray idBytes = instanceId.toUtf8();
+    if (m_pfnGetWidgetGeometry(idBytes.constData(), &x, &y, &w, &h)) {
+        return QRect(x, y, w, h);
+    }
+    return QRect();
+}
+
+bool LinWidgetRuntimeBridge::setWidgetGeometry(const QString& instanceId, const QRect& geometry)
+{
+    if (!m_pfnSetWidgetGeometry) return false;
+    const QByteArray idBytes = instanceId.toUtf8();
+    return m_pfnSetWidgetGeometry(idBytes.constData(), geometry.x(), geometry.y(), geometry.width(), geometry.height());
+}
+
+QJsonObject LinWidgetRuntimeBridge::queryWidgetManager(const QJsonObject& request)
+{
+    if (!m_pfnQueryManager) return QJsonObject();
+    const QByteArray reqBytes = QJsonDocument(request).toJson(QJsonDocument::Compact);
+    char buf[65536] = {0};
+    const int len = m_pfnQueryManager(reqBytes.constData(), buf, sizeof(buf));
+    if (len > 0) {
+        return QJsonDocument::fromJson(QByteArray(buf, len)).object();
+    }
+    return QJsonObject();
+}
+
+bool LinWidgetRuntimeBridge::showDevTools(const QString& instanceId)
+{
+    if (!m_pfnShowDevTools) return false;
+    const QByteArray instUtf8 = instanceId.toUtf8();
+    return m_pfnShowDevTools(instUtf8.constData());
 }
 
 bool LinWidgetRuntimeBridge::validatePackage(const QString& packagePath, QString* outReport)

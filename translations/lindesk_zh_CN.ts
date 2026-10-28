@@ -1032,6 +1032,14 @@ Do you want to re map this box to another folder?</source>
         <translation>右键菜单</translation>
     </message>
     <message>
+        <source>Enable Context Menu Filtering</source>
+        <translation>启用右键菜单过滤</translation>
+    </message>
+    <message>
+        <source>Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering.</source>
+        <translation>根据下方排除规则过滤右键菜单项。关闭后将直接跳过菜单过滤。</translation>
+    </message>
+    <message>
         <source>Shell Menu Exclusions</source>
         <translation>右键菜单排除项</translation>
     </message>

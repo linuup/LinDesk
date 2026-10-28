@@ -85,6 +85,7 @@
     <a href="LinDesk_Architecture_Guide.html" class="active">架构指南</a>
     <a href="LinDesk_Todo.html">任务清单</a>
     <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
+    <a href="LinDesk_Widget_Management_Interaction_Plan.html">管理与交互</a>
 </nav>
 
 <header class="doc-head">
@@ -171,7 +172,6 @@
     <li>输入路由：鼠标 / 滚轮 / 键盘（<code>sendKeyEvent</code> → <code>CefKeyEvent</code>）按 widgetId 查 <code>m_osrBrowsers</code> 转发。</li>
     <li>本地资源：通过 CefResourceRequestHandler / 自定义 Scheme（<code>linwidget://</code>）由 C++ 直接读取本地组件包目录返回资源流，避免 <code>file://</code> 跨域限制。</li>
   </ul>
-  <p class="note warn"><strong>备选方向（已讨论未采用）：</strong>单宿主页 + 每组件一个 <code>&lt;iframe&gt;</code> 可省渲染进程数，但引入单点故障；当前路线按独立实例推进。</p>
 
   <h3>3.3 组件系统核心模块</h3>
   <div class="tbl-scroll">
@@ -203,8 +203,8 @@
   </table>
   </div>
 
-  <h3>3.5 内置组件包（11 个）</h3>
-  <p>位于 <code>src/resources/LinWidgets/</code>，遵循标准组件包规范（<code>manifest.json</code> + entry 页面）：<strong>Clock、SysMonitor、Weather、Notes、Timer、Todo、NewsFeed、WaterTracker、CyberFan、ApiTester、Wallpaper</strong>。</p>
+  <h3>3.5 内置组件包（9 个）</h3>
+  <p>位于 <code>src/resources/LinWidgets/</code>，遵循标准组件包规范（<code>manifest.json</code> + entry 页面）：<strong>Clock、SysMonitor、Weather、Notes、Timer、Todo、WaterTracker、Wallpaper</strong>。</p>
   <ul>
     <li><strong>壁纸组件（Wallpaper）</strong>：特殊组件类型，可在组件内设置<strong>视频或图片</strong>，默认尺寸占满整个 ListView 背景；活动时经 <code>hasActiveWallpaper / isWallpaperInteractive</code> 控制互动层级，替代旧 WebView2 动态壁纸方案。</li>
     <li>尺寸与权限声明以各组件 <code>manifest.json</code> 为准。</li>
@@ -266,9 +266,9 @@
 <section>
   <h2>6. 日志与崩溃处理</h2>
   <ul>
-    <li><strong>LogManager</strong>（<code>src/services/LogManager.*</code>）：基于 <strong>spdlog</strong>，滚动文件 sink（<code>rotating_file_sink</code>）+ 控制台/MSVC sink；<code>main.cpp</code> 启动时 <code>LogManager::initialize()</code>、退出时 <code>shutdown()</code>；日志落在 <code>%LOCALAPPDATA%/LinDesk/logs/</code>。</li>
+    <li><strong>LogManager</strong>（<code>src/services/LogManager.*</code>）：基于 <strong>spdlog</strong> 双 logger 分流（主日志 <code>desktop.log</code> + 错误双写 <code>desktop-error.log</code>；组件系统独立日志 <code>linwidget.log</code>，按 <code>[LinWidget]</code> 消息前缀自动分流，均 20MB × 7 份滚动）+ 控制台/MSVC sink；<code>main.cpp</code> 启动时 <code>LogManager::initialize()</code>、退出时 <code>shutdown()</code>；日志落在 <code>%LOCALAPPDATA%/LinDesk/logs/</code>。</li>
     <li><strong>CrashHandler</strong>（<code>src/services/CrashHandler.cpp</code>）：崩溃时写转储到 <code>logs/crash/</code>，并在退出路径先关闭日志确保落盘。</li>
-    <li><strong>组件日志</strong>：组件与运行时的运行日志同目录管理（<code>linWidgetLogsDir</code> = 日志目录）。</li>
+    <li><strong>组件与 CEF 日志</strong>：组件运行时 Qt 日志（<code>[LinWidget][...]</code> 前缀）独立写入 <code>linwidget.log</code>；CEF 内部日志写 <code>cef.log</code>，初始化参数快照写 <code>cef_init_trace.log</code>（同目录管理，<code>linWidgetLogsDir</code> = 日志目录）。</li>
   </ul>
 </section>
 

@@ -92,6 +92,8 @@ public:
 
     void refreshStyles();
     void refreshSelectionOverlayColor();
+    void setRefreshFlashing(bool flashing);
+    bool isRefreshFlashing() const { return m_flashingForRefresh; }
 
 signals:
     void geometryChanged(LinBox* box);
@@ -228,6 +230,7 @@ private:
     QPixmap m_blurCache;
     bool m_isCapturingBackground = false;
     bool m_isRefreshingLayout = false;
+    bool m_flashingForRefresh = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
     QString m_hoveredItemPath;

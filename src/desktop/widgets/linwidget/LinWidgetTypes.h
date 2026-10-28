@@ -1,17 +1,37 @@
 #pragma once
 
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QMap>
 #include <QRect>
 #include <QSize>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 namespace LinWidget {
 
 enum class RuntimeType {
     Native,
     Html
+};
+
+struct WidgetSettingOption {
+    QString label;
+    QString value;
+};
+
+struct WidgetSettingField {
+    QString key;
+    QString type = QStringLiteral("string");
+    QString title;
+    QString description;
+    QJsonValue defaultValue;
+    QVector<WidgetSettingOption> options;
+    double minimum = 0.0;
+    double maximum = 0.0;
+    bool hasMin = false;
+    bool hasMax = false;
 };
 
 struct WidgetManifest {
@@ -30,12 +50,14 @@ struct WidgetManifest {
     int maxHeight = 0;
     bool transparent = true;
     bool resizable = true;
+    bool interactive = true;
     bool autoLoad = false;
     bool multiInstance = false;
     QString entry;
     QString settings;
     QString icon;
     QStringList permissions;
+    QVector<WidgetSettingField> settingsSchema;
 };
 
 struct WidgetInstance {

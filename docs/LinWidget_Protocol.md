@@ -262,6 +262,45 @@ window.addEventListener('message', function (event) {
 }
 ```
 
+#### 4.3.3 设置壁纸主题预设 (`wallpaper_set_preset`)
+壁纸内置三档主题（`aurora` 极光 / `twilight` 暮紫 / `deepblue` 深蓝），仅换 Canvas 色相，不影响媒体模式。宿主持久化到 `LinWallpapers/<id>/Preset`（config.ini）。
+- **请求消息**：
+```json
+{
+  "type": "wallpaper_set_preset",
+  "requestId": "req_303",
+  "preset": "twilight"
+}
+```
+- **宿主响应** (`wallpaper_preset_changed`)：
+```json
+{
+  "type": "wallpaper_preset_changed",
+  "requestId": "req_303",
+  "ok": true,
+  "preset": "twilight"
+}
+```
+
+#### 4.3.4 恢复读取壁纸主题预设 (`wallpaper_get_preset`)
+- **请求消息**：
+```json
+{
+  "type": "wallpaper_get_preset",
+  "requestId": "req_304"
+}
+```
+- **宿主响应** (`wallpaper_preset_response`)：
+```json
+{
+  "type": "wallpaper_preset_response",
+  "requestId": "req_304",
+  "ok": true,
+  "preset": "aurora"
+}
+```
+> 未设置过时返回默认值 `aurora`。
+
 ---
 
 ### 4.4 窗口与视口控制 API (`Window & Geometry`)

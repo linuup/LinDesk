@@ -41,7 +41,7 @@ private:
     void updateOpenGLStatus();
     void reloadLinWidgetsList();
     void updateLinWidgetsButtons();
-    void updateLinWidgetLogViewer();
+    void updateLinWidgetDetailsPanel();
     void updateLinWidgetPermissionControls();
     void refreshLinWidgetRunningMaps();
     QString selectedLinWidgetRunningInstanceId() const;
@@ -132,6 +132,10 @@ private:
     QLabel* m_openGLStatusLabel = nullptr;
     QLabel* m_linWidgetsPageStatusLabel = nullptr;
     QLabel* m_linWidgetPermissionsLabel = nullptr;
+    QPushButton* m_linWidgetsDevToolsButton = nullptr;
+    QPushButton* m_linWidgetsRestartButton = nullptr;
+    QPushButton* m_linWidgetsSettingsButton = nullptr;
+    QLabel* m_linWidgetDetailsLabel = nullptr;
     QLabel* m_linWidgetsLogTitleLabel = nullptr;
     QPlainTextEdit* m_linWidgetsLogView = nullptr;
     QFileSystemWatcher* m_linWidgetsLogWatcher = nullptr;

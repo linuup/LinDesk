@@ -104,5 +104,7 @@ TEST_F(RuntimeInstallerTest, LocalZipInstallationFlow)
     EXPECT_TRUE(error.isEmpty());
     EXPECT_TRUE(installer.isRuntimeInstalled());
     EXPECT_EQ(installer.status(), RuntimeInstaller::Status::Installed);
+    EXPECT_TRUE(QFile::exists(QDir(installer.runtimeDirectory()).filePath("icudtl.dat")));
+    EXPECT_TRUE(QFile::exists(QDir(installer.runtimeDirectory()).filePath("locales/zh-CN.pak")));
 }
 

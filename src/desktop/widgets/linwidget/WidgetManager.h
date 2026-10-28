@@ -31,7 +31,7 @@ public:
     ~WidgetManager() override;
 
     bool start();
-    bool startWallpaper(const QString& packagePath, bool isDevelopment, bool interactive = false, QString* errorMessage = nullptr);
+    bool startWallpaper(const QString& packagePath, bool isDevelopment, bool interactive = true, QString* errorMessage = nullptr);
     void stopWallpaper(bool clearConfig = false);
     void syncWallpaperWindowLayer();
     void loadWallpaperConfig();
@@ -64,9 +64,12 @@ public:
     bool saveToConfig(const QString& configPath = QString(), QString* errorMessage = nullptr) const;
     QVector<WidgetLayoutState> layoutStates() const;
     bool hasRunningWidget(const QString& instanceId) const;
+    QRect widgetGeometry(const QString& instanceId) const;
+    bool setWidgetGeometry(const QString& instanceId, const QRect& geometry);
     bool moveWidget(const QString& instanceId, const QPoint& pos);
     bool resizeWidget(const QString& instanceId, const QSize& size);
     bool removeWidgetState(const QString& instanceId);
+    QJsonObject handleWidgetManagerRequest(const QJsonObject& request);
     void setEnabled(bool enabled);
     bool isEnabled() const;
     void setHostParentWindow(WId parentWindow);
@@ -87,6 +90,7 @@ public:
     bool isWidgetAt(const QPoint& clientPos) const;
     QString widgetAt(const QPoint& clientPos) const;
     bool isWallpaperInteractive() const { return m_activeWallpaperInteractive; }
+    void setWallpaperInteractive(bool interactive);
 
     void setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas);
     ::LinCef::LinWidgetCanvasWidget* canvasWidget() const { return m_canvasWidget; }
@@ -104,6 +108,7 @@ public:
     bool isCefOsrEnabled() const { return m_cefOsrEnabled; }
     void setCefOsrEnabled(bool enabled);
     int cefOsrBrowserCount() const { return m_osrBrowsers.size(); }
+    bool showDevTools(const QString& instanceId);
 
     void setWidgetLayerEmbedded(bool embedded);
     bool isWidgetLayerEmbedded() const;
@@ -156,6 +161,7 @@ private:
     QStringList watchedDirectoriesForPackage(const QString& packagePath) const;
 
     QVector<WidgetLayoutState> filterWallpapers(const QVector<WidgetLayoutState>& states) const;
+    QString resolveWidgetId(const QString& rawId) const;
 
     LayoutManager m_layout;
     PermissionManager m_permissions;
@@ -185,7 +191,10 @@ private:
     QString m_focusedInstanceId;
     QRect m_imeCursorRect;
     QMap<QString, QVector<qint64>> m_crashTimestamps;
+    QHash<QString, int> m_totalCrashCounts;
+    QSet<QString> m_crashTrippedWidgets;
 
+    QRect clampGeometryToHostBounds(const QRect& geometry) const;
     void handleBrowserCrashed(const QString& widgetId, int status, int errorCode, const QString& errorString);
     void updateDefaultCefPage();
     QString defaultCefPagePath() const;

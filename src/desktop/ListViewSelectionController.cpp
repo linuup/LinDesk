@@ -789,16 +789,11 @@ void ListViewSelectionController::moveFocusInHost(ListView& view, LinBox* box, L
             return;
         }
 
-        const QString currentPath = view.effectiveFocusedDesktopPath();
-        QString targetPath = findDirectionalDesktopFocusCandidate(view, currentPath, direction);
-        if (targetPath.isEmpty() && !currentPath.isEmpty()) {
-            const int currentIndex = orderedPaths.indexOf(currentPath);
-            if (currentIndex >= 0) {
-                const int delta = (direction == ListView::FocusMoveDirection::Left || direction == ListView::FocusMoveDirection::Up) ? -1 : 1;
-                const int fallbackIndex = qBound(0, currentIndex + delta, orderedPaths.size() - 1);
-                targetPath = orderedPaths.at(fallbackIndex);
-            }
+        QString currentPath = view.effectiveFocusedDesktopPath();
+        if (currentPath.isEmpty() && !view.m_selectedDesktopPaths.isEmpty()) {
+            currentPath = view.normalizeDesktopItemPath(view.m_selectedDesktopPaths.first());
         }
+        QString targetPath = findDirectionalDesktopFocusCandidate(view, currentPath, direction);
 
         if (targetPath.isEmpty()) {
             return;
@@ -840,17 +835,11 @@ void ListViewSelectionController::moveFocusInHost(ListView& view, LinBox* box, L
         return;
     }
 
-    const QString currentPath = view.effectiveFocusedBoxPath();
-    QString targetPath = findDirectionalBoxFocusCandidate(view, box, currentPath, direction);
-
-    if (targetPath.isEmpty() && !currentPath.isEmpty()) {
-        const int currentIndex = orderedPaths.indexOf(currentPath);
-        if (currentIndex >= 0) {
-            const int delta = (direction == ListView::FocusMoveDirection::Left || direction == ListView::FocusMoveDirection::Up) ? -1 : 1;
-            const int fallbackIndex = qBound(0, currentIndex + delta, orderedPaths.size() - 1);
-            targetPath = orderedPaths.at(fallbackIndex);
-        }
+    QString currentPath = view.effectiveFocusedBoxPath();
+    if (currentPath.isEmpty() && !view.m_selectedBoxPaths.isEmpty()) {
+        currentPath = view.normalizeDesktopItemPath(view.m_selectedBoxPaths.first());
     }
+    QString targetPath = findDirectionalBoxFocusCandidate(view, box, currentPath, direction);
 
     if (targetPath.isEmpty()) {
         return;

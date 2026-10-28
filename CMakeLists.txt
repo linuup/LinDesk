@@ -177,6 +177,37 @@ if(DEFINED ENV{CEF_ROOT} AND NOT EXISTS "${CEF_ROOT}/include/cef_app.h")
     set(CEF_ROOT "$ENV{CEF_ROOT}")
 endif()
 
+# --- CEF SDK 自动获取（configure 阶段）---
+if(NOT EXISTS "${CEF_ROOT}/include/cef_app.h")
+    set(LINDESK_AUTO_DOWNLOAD_CEF ON CACHE BOOL
+        "自动下载 CEF SDK（configure 时运行 scripts/download_cef.py）")
+    if(LINDESK_AUTO_DOWNLOAD_CEF)
+        if(NOT LINDESK_VCPKG_ARCH STREQUAL "x64-windows")
+            # download_cef.py 目前只下载 windows64 包，x86 部署会得到错误架构，故不自动下载
+            message(WARNING "[CEF] 未找到 ${CEF_ROOT}，且 download_cef.py 仅提供 x64 包，32 位不自动下载，组件运行时将被跳过。")
+        else()
+            find_package(Python3 COMPONENTS Interpreter QUIET)
+            if(Python3_FOUND)
+                message(STATUS "[CEF] 未找到 SDK，自动下载中（约数百 MB，请稍候）...")
+                execute_process(
+                    COMMAND "${Python3_EXECUTABLE}"
+                            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/download_cef.py"
+                            --target-dir "${CEF_ROOT}"
+                    RESULT_VARIABLE _cef_dl_result
+                    OUTPUT_VARIABLE _cef_dl_out
+                    ERROR_VARIABLE  _cef_dl_out
+                )
+                if(NOT _cef_dl_result EQUAL 0)
+                    message(WARNING "[CEF] 自动下载失败，组件运行时将被跳过。")
+                    message(STATUS  "[CEF] 可手动运行: python scripts/download_cef.py 后重新 configure。详情:\n${_cef_dl_out}")
+                endif()
+            else()
+                message(WARNING "[CEF] 未找到 Python3，请手动运行: python scripts/download_cef.py 后重新 configure")
+            endif()
+        endif()
+    endif()
+endif()
+# --- 原逻辑从下一行继续 ---
 set(LINDESK_HAS_CEF OFF)
 if(EXISTS "${CEF_ROOT}/include/cef_app.h")
     message(STATUS "[CEF] Found Chromium Embedded Framework at: ${CEF_ROOT}")
@@ -213,6 +244,7 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
     target_compile_definitions(LinWidgetRuntime PRIVATE
         LINWIDGET_RUNTIME_EXPORTS=1
         LINDESK_HAS_CEF=1
+        "LINDESK_SOURCE_DIR=R\"(${CMAKE_CURRENT_SOURCE_DIR})\""
         SPDLOG_ENABLE_SOURCE_LOC
     )
     target_include_directories(LinWidgetRuntime PRIVATE
@@ -573,6 +605,39 @@ target_include_directories(LinDeskDisplayNameOverrideTests
 )
 
 add_test(NAME LinDeskDisplayNameOverrideTests COMMAND LinDeskDisplayNameOverrideTests)
+
+# ==============================================================================
+# ShellMenuWorker Unit Verification Tests (Milestone 1)
+# ==============================================================================
+add_executable(LinDeskShellMenuWorkerTests
+    tests/ShellMenuWorkerTests.cpp
+    src/services/SystemApi/ShellMenuWorker.cpp
+    src/services/SystemApi/ShellMenuWorker.h
+    src/services/SystemApi/ShellMenuTypes.h
+)
+
+target_link_libraries(LinDeskShellMenuWorkerTests
+    PRIVATE
+        Qt5::Core
+        Qt5::Gui
+        Qt5::Widgets
+        Shell32
+        Propsys
+        Ole32
+        User32
+        Gdi32
+        Shlwapi
+        GTest::gtest
+        GTest::gtest_main
+)
+
+target_include_directories(LinDeskShellMenuWorkerTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/services/SystemApi
+)
+
+add_test(NAME LinDeskShellMenuWorkerTests COMMAND LinDeskShellMenuWorkerTests)
 endif(BUILD_TESTING)
 
 # ---- 解决方案文件夹分组 ----
@@ -585,7 +650,7 @@ set_property(TARGET ${APP_TARGETS} PROPERTY FOLDER "Apps")
 set_property(TARGET LinDeskUpdate PROPERTY FOLDER "Tools")
 if(BUILD_TESTING)
     set_property(TARGET LinDeskSystemInfoTests LinDeskWidgetEnvelopeTests
-        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests LinDeskStoreAppIconCompatTests LinDeskDisplayNameOverrideTests PROPERTY FOLDER "Tests")
+        LinDeskLogManagerTests LinDeskPersistenceTests LinDeskRuntimeBridgeTests LinDeskRuntimeInstallerTests LinDeskStoreAppIconCompatTests LinDeskDisplayNameOverrideTests LinDeskShellMenuWorkerTests PROPERTY FOLDER "Tests")
 endif()
 
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)
@@ -614,6 +679,13 @@ qt5_add_translation(QM_FILES ${TS_FILES_CONFIGURED})
 
 add_custom_target(translations ALL DEPENDS ${QM_FILES})
 add_dependencies(LinDesk translations)
+
+add_custom_target(sync_widgets
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/resources/LinWidgets"
+        "$ENV{APPDATA}/LinDesk/LinWidgets"
+    COMMENT "Syncing source LinWidgets directly to %APPDATA%/LinDesk/LinWidgets..."
+)
 
 add_custom_command(TARGET LinDesk POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LinDesk>/translations"

@@ -5,7 +5,9 @@
 #include "services/AppPaths.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -160,6 +162,51 @@ bool WidgetRegistryManager::syncFromFolder(const QString& widgetsDir, QString* e
         *errorMessage = errors.join(QStringLiteral("\n"));
     }
     return ok;
+}
+
+bool WidgetRegistryManager::syncOfficialWidgetsIfOutdated(const QString& bundledWidgetsDir, const QString& userWidgetsDir, QString* errorMessage)
+{
+    const QDir bundled(bundledWidgetsDir);
+    const QDir user(userWidgetsDir);
+    if (!bundled.exists() || !user.exists()) {
+        return true;
+    }
+
+    auto getNewestMtime = [](const QString& dirPath) -> QDateTime {
+        QDateTime newest;
+        QDirIterator it(dirPath, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            it.next();
+            const QDateTime mtime = it.fileInfo().lastModified();
+            if (!newest.isValid() || mtime > newest) {
+                newest = mtime;
+            }
+        }
+        return newest;
+    };
+
+    bool allOk = true;
+    const QFileInfoList bundledEntries = bundled.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo& bEntry : bundledEntries) {
+        const QString widgetName = bEntry.fileName();
+        const QString targetPath = user.filePath(widgetName);
+        if (QDir(targetPath).exists()) {
+            const QDateTime bundledMtime = getNewestMtime(bEntry.absoluteFilePath());
+            const QDateTime userMtime = getNewestMtime(targetPath);
+            if (bundledMtime.isValid() && (!userMtime.isValid() || bundledMtime > userMtime)) {
+                qDebug() << "[LinWidget] Updating outdated widget in AppData:" << widgetName
+                         << "bundled:" << bundledMtime << "user:" << userMtime;
+                QString copyErr;
+                if (!copyDirectoryForInstall(bEntry.absoluteFilePath(), targetPath, &copyErr)) {
+                    allOk = false;
+                    if (errorMessage) {
+                        *errorMessage = copyErr;
+                    }
+                }
+            }
+        }
+    }
+    return allOk;
 }
 
 bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QString* errorMessage)
@@ -359,6 +406,12 @@ bool WidgetRegistryManager::setLastRunState(const QString& id, bool isDevelopmen
         : QStringLiteral("stopped");
     it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     return true;
+}
+
+bool WidgetRegistryManager::setPermissionsGranted(const QString& id, const QStringList& permissions)
+{
+    WidgetRegistryEntry entry = entryById(id);
+    return setPermissionsGranted(id, entry.isDevelopment, permissions);
 }
 
 bool WidgetRegistryManager::setPermissionsGranted(const QString& id, bool isDevelopment, const QStringList& permissions)

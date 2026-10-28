@@ -10,6 +10,7 @@ namespace LinWidget {
 class PermissionManager {
 public:
     QStringList normalizePermissions(const QStringList& permissions) const;
+    bool isPermissionSupported(const QString& permission) const;
     bool hasPermission(const QStringList& grantedPermissions, const QString& permission) const;
     bool canUseNetwork(const QStringList& grantedPermissions) const;
     bool canUseStorage(const QStringList& grantedPermissions) const;

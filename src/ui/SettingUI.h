@@ -1,4 +1,4 @@
-﻿#ifndef SETTINGUI_H
+#ifndef SETTINGUI_H
 #define SETTINGUI_H
 
 #include <QWidget>
@@ -126,6 +126,10 @@ private:
     QString settingsLinWidgetPackageKey(const QString& packagePath) const;
     QString settingsLinWidgetLogPath(const QString& instanceId) const;
     bool m_preserveLinWidgetDrawerOnReload = false;
+    QWidget* createWallpaperSubsystemPage(QWidget* parent);
+    void refreshWallpaperSubsystemState();
+    void applyWallpaperPackage(const QString& packagePath, bool isDevelopment);
+    void stopActiveWallpaper();
 
     QPointer<LinBox> m_targetBox;
     QVector<QPointer<LinBox>> m_allBoxes;
@@ -136,6 +140,7 @@ private:
     QListWidgetItem* m_generalTabItem = nullptr;
     QListWidgetItem* m_desktopTabItem = nullptr;
     QListWidgetItem* m_contextMenuTabItem = nullptr;
+    QPointer<QListWidget> m_shellTypeList;
     QListWidgetItem* m_boxTabItem = nullptr;
     QListWidgetItem* m_linWidgetsTabItem = nullptr;
     QListWidgetItem* m_pluginsTabItem = nullptr;
@@ -208,6 +213,15 @@ private:
     QPushButton* m_settingsMinBtn = nullptr;
     QPushButton* m_settingsMaxBtn = nullptr;
     QPushButton* m_settingsCloseBtn = nullptr;
+    QStackedWidget* m_linWidgetSubsystemStack = nullptr;
+    QPushButton* m_subsystemWidgetsBtn = nullptr;
+    QPushButton* m_subsystemWallpaperBtn = nullptr;
+    QWidget* m_wallpaperSubsystemPage = nullptr;
+    QListWidget* m_wallpaperList = nullptr;
+    QLabel* m_wallpaperActiveTitle = nullptr;
+    QLabel* m_wallpaperActiveDesc = nullptr;
+    QLabel* m_wallpaperPreviewLabel = nullptr;
+    QPushButton* m_wallpaperStopBtn = nullptr;
     QTabWidget* m_linWidgetsTabs = nullptr;
     QListWidget* m_officialLinWidgetsList = nullptr;
     QListWidget* m_marketplaceLinWidgetsList = nullptr;

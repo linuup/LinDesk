@@ -203,6 +203,31 @@ bool RuntimeInstaller::installFromLocalZip(const QString& zipFilePath, QString* 
         return false;
     }
 
+    // 兼容旧版运行时压缩包（Resources 子目录结构）：将 icudtl.dat、.pak 与 locales 平铺到 libcef.dll 同级目录
+    const QDir nestedResDir(QDir(tempExtractDir).filePath(QStringLiteral("Resources")));
+    if (nestedResDir.exists()) {
+        const QFileInfoList resEntries = nestedResDir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+        for (const QFileInfo& entry : resEntries) {
+            const QString destFile = QDir(tempExtractDir).filePath(entry.fileName());
+            if (!QFileInfo::exists(destFile)) {
+                QFile::copy(entry.absoluteFilePath(), destFile);
+            }
+        }
+        const QDir nestedLocalesDir(nestedResDir.filePath(QStringLiteral("locales")));
+        if (nestedLocalesDir.exists()) {
+            const QString destLocalesPath = QDir(tempExtractDir).filePath(QStringLiteral("locales"));
+            QDir().mkpath(destLocalesPath);
+            const QFileInfoList localeEntries = nestedLocalesDir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+            for (const QFileInfo& entry : localeEntries) {
+                const QString destFile = QDir(destLocalesPath).filePath(entry.fileName());
+                if (!QFileInfo::exists(destFile)) {
+                    QFile::copy(entry.absoluteFilePath(), destFile);
+                }
+            }
+        }
+    }
+
+
     // 停止并卸载当前已加载的运行时（若有）
     LinWidgetRuntimeBridge::instance().unloadRuntime();
 
