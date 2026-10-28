@@ -229,7 +229,7 @@ public:
     void DisplayDesktopContextMenu();
     bool prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenuCommandSession& session);
 
-    void DisplayBoxBackgroundContextMenu();
+    void DisplayBoxBackgroundContextMenu(const std::wstring& folderPath = L"");
 
     void DisplayItemContextMenu(LPITEMIDLIST pidl);
     void DisplayLinkContextMenu(const wchar_t* path);

@@ -2,70 +2,81 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="en_US">
 <context>
+    <name>CefManager</name>
+    <message>
+        <source>CEF SDK is not integrated in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CefInitialize failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LinBox</name>
     <message>
         <source>New Box</source>
-        <translation>New Box</translation>
+        <translation type="vanished">New Box</translation>
     </message>
     <message>
         <source>Move to</source>
-        <translation>Move to</translation>
+        <translation type="vanished">Move to</translation>
     </message>
     <message>
         <source>Copy to</source>
-        <translation>Copy to</translation>
+        <translation type="vanished">Copy to</translation>
     </message>
     <message>
         <source>Open with</source>
-        <translation>Open with</translation>
+        <translation type="vanished">Open with</translation>
     </message>
     <message>
         <source>Rename Box</source>
-        <translation>Rename Box</translation>
+        <translation type="vanished">Rename Box</translation>
     </message>
     <message>
         <source>List View</source>
-        <translation>List View</translation>
+        <translation type="vanished">List View</translation>
     </message>
     <message>
         <source>Icon View</source>
-        <translation>Icon View</translation>
+        <translation type="vanished">Icon View</translation>
     </message>
     <message>
         <source>Box Settings</source>
-        <translation>Box Settings</translation>
+        <translation type="vanished">Box Settings</translation>
     </message>
     <message>
         <source>Destroy Box</source>
-        <translation>Destroy Box</translation>
+        <translation type="vanished">Destroy Box</translation>
     </message>
     <message>
         <source>this Box</source>
-        <translation>this Box</translation>
+        <translation type="vanished">this Box</translation>
     </message>
     <message>
         <source>[Missing] %1</source>
-        <translation>[Missing] %1</translation>
+        <translation type="vanished">[Missing] %1</translation>
     </message>
     <message>
         <source>[No Access] %1</source>
-        <translation>[No Access] %1</translation>
+        <translation type="vanished">[No Access] %1</translation>
     </message>
     <message>
         <source>Mapped Folder Missing</source>
-        <translation>Mapped Folder Missing</translation>
+        <translation type="vanished">Mapped Folder Missing</translation>
     </message>
     <message>
         <source>ReMap Folder</source>
-        <translation>ReMap Folder</translation>
+        <translation type="vanished">ReMap Folder</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation>Cancel</translation>
+        <translation type="vanished">Cancel</translation>
     </message>
     <message>
         <source>Mapped Folder Unavailable</source>
-        <translation>Mapped Folder Unavailable</translation>
+        <translation type="vanished">Mapped Folder Unavailable</translation>
     </message>
     <message>
         <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.Do you want to re map this box to another folder?</source>
@@ -73,47 +84,31 @@
     </message>
     <message>
         <source>Select Folder to Map</source>
-        <translation>Select Folder to Map</translation>
+        <translation type="vanished">Select Folder to Map</translation>
     </message>
     <message>
         <source>This folder is already on the desktop.</source>
-        <translation>This folder is already on the desktop</translation>
+        <translation type="vanished">This folder is already on the desktop</translation>
     </message>
     <message>
         <source>Create shortcut in</source>
-        <translation>Create shortcut in</translation>
+        <translation type="vanished">Create shortcut in</translation>
     </message>
     <message>
         <source>Move to %1</source>
-        <translation>Move to %1</translation>
-    </message>
-    <message>
-        <source>Create shortcut in %1</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Open with %1</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Change Mapped Folder</source>
-        <translation></translation>
+        <translation type="vanished">Move to %1</translation>
     </message>
     <message>
         <source>The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</source>
         <translation type="vanished">The mapped folder &quot;%1&quot; is still missing.Do you want to re map this box to another folder?</translation>
     </message>
     <message>
-        <source>The mapped folder &quot;%1&quot; is still missing.
-
-Do you want to re map this box to another folder?</source>
-        <translation type="unfinished"></translation>
+        <source>Create shortcut in %1</source>
+        <translation type="obsolete">Create shortcut in %1</translation>
     </message>
     <message>
-        <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.
-
-Do you want to re map this box to another folder?</source>
-        <translation type="unfinished"></translation>
+        <source>Open with %1</source>
+        <translation type="obsolete">Open with %1</translation>
     </message>
 </context>
 <context>
@@ -172,54 +167,6 @@ Do you want to re map this box to another folder?</source>
     </message>
     <message>
         <source>LinDesk is already running.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>LinWidgetWebViewRuntime</name>
-    <message>
-        <source>Native Widget
-%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>WebView2 SDK is not enabled in this build.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Entry file is missing: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Cannot create native widget window.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to initialize WebView2 environment.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to create WebView2 controller.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to start WebView2 environment.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Shared runtime page is missing: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>network: %1
-storage: %2
-desktop: %3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>HTML Widget Host
-%1
-%2%3</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -521,6 +468,49 @@ desktop: %3</source>
     <message>
         <source>New Timer</source>
         <translation type="vanished">New Timer</translation>
+    </message>
+</context>
+<context>
+    <name>RuntimeInstaller</name>
+    <message>
+        <source>Failed to completely remove runtime directory: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully uninstalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction timed out.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zip file does not exist: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extracting...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid runtime package: LinWidgetRuntime.dll not found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to move extracted runtime to destination: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully installed.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1462,19 +1452,11 @@ Manifest errors:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Added widget instance: %1</source>
+        <source>Loaded widget: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Loaded into WebView: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Unloaded from WebView: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reloaded widget iframe: %1</source>
+        <source>Unloaded widget: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1525,10 +1507,6 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>LinWidget runtime is disabled.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinWidget manager is not available.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1623,6 +1601,26 @@ Load skipped: %2</source>
         <source>Downloading update to: %1</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Runtime not loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reloaded widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to launch widget package.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UpdateChecker</name>
@@ -1642,6 +1640,14 @@ Load skipped: %2</source>
         <source>Update installer URL is invalid.</source>
         <translation>Update installer URL is invalid.</translation>
     </message>
+    <message>
+        <source>Draft release cannot be used for update.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release asset for current architecture is missing.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>WidgetSettingsDialog</name>
@@ -1658,27 +1664,7 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>WebView2 SDK is not enabled in this build.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Cannot create native settings window.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to initialize WebView2 environment.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to create WebView2 controller.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to map widget settings host.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to start WebView2 environment.</source>
+        <source>Widget settings page will be rendered in CEF OSR mode.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

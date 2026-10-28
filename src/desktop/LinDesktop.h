@@ -28,13 +28,14 @@
 #include <QElapsedTimer>
 #include <windows.h>
 class FluentDialog;
+
 class LinDesktop : public QWidget {
     Q_OBJECT
     Q_PROPERTY(float transitionOpacity READ transitionOpacity WRITE setTransitionOpacity)
 
 public:
     explicit LinDesktop(QWidget* parent = nullptr);
-    QPointer<SelectArea> selectArea; //閫夋嫨鍖哄煙瀵硅薄
+    QPointer<SelectArea> selectArea; //选择区域对象
 
     //First Floor
     QPointer<ListView> listView;
@@ -54,12 +55,12 @@ public:
 
     void onWallpaperChanged();
 
-	//QRect drawingMaskRect;    //鎷栨嫿閫夋嫨妗嗙煩褰?
+	//QRect drawingMaskRect;    // 拖拽选择框矩形
     void loadBackImage();
     void applyLoadedWallpaper(const QString& path, const QImage& image);
     void applyFallbackWallpaper(const QString& path, const QString& reason);
     void rebuildScaledWallpaperPixmaps();
-	// 璇锋眰缁樺埗榧犳爣鎮诞鏁堟灉
+	// 请求绘制鼠标悬浮效果
     void requestHoverEffect();
     void checkFirstLaunchPrompt();
     void initializeTrayIcon();

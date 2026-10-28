@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinDesk 模块介绍文档</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232b2b2b'/%3E%3Crect x='7' y='9' width='18' height='14' rx='2' fill='none' stroke='%23f5f5f5' stroke-width='2'/%3E%3Ccircle cx='13' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3Ccircle cx='19' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --text:#1f2328;
+    --text-sub:#57606a;
+    --line:#d0d7de;
+    --line-soft:#eaeef2;
+    --bg:#ffffff;
+    --accent:#0969da;
+    --code-bg:#f6f8fa;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    font-size:15px;
+    line-height:1.75;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 64px;}
+  header.doc-head{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:26px;margin:0 0 8px;font-weight:700;}
+  .meta{color:var(--text-sub);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 16px;}
+  h2{
+    font-size:20px;margin:40px 0 14px;padding-bottom:8px;
+    border-bottom:2px solid var(--line-soft);
+  }
+  h3{font-size:16px;margin:26px 0 10px;}
+  p{margin:10px 0;}
+  ul,ol{margin:10px 0;padding-left:24px;}
+  li{margin:4px 0;}
+  code{
+    font-family:Consolas,"Courier New",monospace;
+    font-size:13px;
+    background:var(--code-bg);
+    border:1px solid var(--line-soft);
+    border-radius:3px;
+    padding:1px 5px;
+  }
+  table{
+    width:100%;border-collapse:collapse;margin:12px 0;
+    font-size:14px;
+  }
+  th,td{
+    border:1px solid var(--line);
+    padding:7px 10px;text-align:left;vertical-align:top;
+  }
+  th{background:var(--code-bg);font-weight:600;white-space:nowrap;}
+  .tbl-scroll{overflow-x:auto;}
+  .note{
+    background:var(--code-bg);
+    border:1px solid var(--line-soft);
+    border-left:3px solid var(--accent);
+    padding:10px 14px;margin:14px 0;font-size:14px;color:var(--text-sub);
+  }
+  .map{display:flex;flex-direction:column;gap:6px;margin:16px 0;}
+  .map-row{display:flex;align-items:center;gap:10px;}
+  .map-box{
+    border:1px solid var(--line);border-radius:4px;
+    padding:6px 14px;background:var(--code-bg);
+    font-size:14px;white-space:nowrap;
+  }
+  .map-box.main{background:#eef6ff;border-color:#b6d4fe;}
+  .map-arrow{color:var(--text-sub);font-size:13px;}
+  .map-note{font-size:13px;color:var(--text-sub);}
+  footer.doc-foot{margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;}
+  @media (max-width:560px){
+    body{font-size:14px;}
+    h1{font-size:22px;}
+    h2{font-size:18px;}
+    .wrap{padding:24px 14px 48px;}
+    .map-row{flex-wrap:wrap;}
+  }
+</style>
+<style>
+  .doc-nav{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 24px;padding:10px 12px;background:#f6f8fa;border:1px solid #eaeef2;border-radius:4px;}
+  .doc-nav a{font-size:13px;color:#57606a;text-decoration:none;padding:2px 10px;border-radius:3px;white-space:nowrap;}
+  .doc-nav a:hover{background:#eaeef2;color:#1f2328;}
+  .doc-nav a.active{background:#0969da;color:#fff;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="doc-nav">
+    <a href="LinDesk_Docs_Index.html">文档中心</a>
+    <a href="LinDesk_Product_Intro.html">产品介绍</a>
+    <a href="LinDesk_Module_Guide.html" class="active">模块介绍</a>
+    <a href="LinDesk_Architecture_Guide.html">架构指南</a>
+    <a href="LinDesk_Todo.html">任务清单</a>
+    <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
+    <a href="LinDesk_Box_Move_Lag_Plan.html">Box 卡顿修复</a>
+</nav>
+
+<header class="doc-head">
+  <h1>LinDesk 模块介绍文档</h1>
+  <div class="meta">
+    <span>版本：1.0.8 Stable</span>
+    <span>技术栈：Qt 5 / C++20 / CMake + vcpkg</span>
+    <span>平台：Windows x64</span>
+    <span>整理日期：2026-10-12</span>
+  </div>
+</header>
+
+<section>
+  <h2>1. 项目概览</h2>
+  <p>LinDesk 是一款 Windows 桌面整理软件（对标腾讯桌面整理、Codesker），用于桌面图标管理、分类整理、批量操作与个性化桌面管理。主体代码位于 <code>src/</code>，由单个 CMake 工程统一构建，另含更新模块、Win11 右键菜单宿主与 OCR 插件等配套工程。</p>
+  <p>工程要点：</p>
+  <ul>
+    <li>版本号单一来源：<code>CMakeLists.txt</code> 中 <code>LINDESK_VERSION_*</code> 定义，通过 <code>configure_file</code> 生成 <code>src/app/Version.h</code>、<code>LinDesk.rc</code> 与安装脚本。</li>
+    <li>依赖管理：vcpkg（<code>vcpkg.json</code>），Qt5 组件包括 Widgets、WinExtras、Core、Network、OpenGL、Svg、Qml、Quick、QuickWidgets、Multimedia、LinguistTools。</li>
+    <li>CEF（Chromium Embedded Framework）为可选集成：<code>3rdparty/cef</code> 存在时启用 <code>LINDESK_HAS_CEF</code> 并构建 OSR 子进程；WebView2 同样按目录探测启用。</li>
+    <li>多语言：<code>translations/</code> 下维护 <code>lindesk_zh_CN.ts</code>、<code>lindesk_en_US.ts</code>，构建时经 Qt Linguist 编译为 .qm 并拷贝到输出目录。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>2. 顶层目录结构</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:80%"></colgroup>
+    <tr><th>目录</th><th>说明</th></tr>
+    <tr><td><code>src/</code></td><td>主程序全部源码与资源（模块划分见第 3 节）</td></tr>
+    <tr><td><code>3rdparty/</code></td><td>第三方 SDK，当前为 CEF（Chromium Embedded Framework）</td></tr>
+    <tr><td><code>Plugins/OCRModule/</code></td><td>OCR 插件工程（动态库），实现 <code>IOCRPlugin</code> 接口</td></tr>
+    <tr><td><code>W11MenuUI/</code></td><td>Win11 右键菜单宿主 <code>Win11MenuIsland</code>（外部 vcxproj 工程）及 <code>Win11ContextMenu</code></td></tr>
+    <tr><td><code>LinDeskUpdate/</code></td><td>更新模块，独立 CMake 子工程（<code>add_subdirectory</code>）</td></tr>
+    <tr><td><code>installer/</code></td><td>Inno Setup 安装脚本（<code>package.iss</code>）</td></tr>
+    <tr><td><code>scripts/</code></td><td>构建辅助脚本（如 <code>download_cef.ps1</code>）</td></tr>
+    <tr><td><code>tests/</code></td><td>单元测试源码（GTest）</td></tr>
+    <tr><td><code>translations/</code></td><td>多语言翻译源文件（ts / qm）</td></tr>
+    <tr><td><code>Openssl/</code></td><td>OpenSSL DLL（构建后拷贝到输出目录）</td></tr>
+    <tr><td><code>vcpkg_installed/</code></td><td>vcpkg 安装的三方依赖（x64-windows）</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>3. 模块划分</h2>
+  <p><code>src/</code> 下共 10 个模块目录，其中 <code>desktop</code> 内嵌 <code>widgets/linwidget</code> 与 <code>widgets/cef</code> 两个子系统。</p>
+
+  <h3>3.1 app —— 应用入口与全局配置</h3>
+  <p>主窗口与应用级配置。主程序入口由 <code>LinDesk</code> 主窗口承载，启动时加载字体、语言与启动参数。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>LinDesk</code></td><td>主窗口（单例），处理桌面右键菜单事件，作为整体 UI 根容器</td></tr>
+    <tr><td><code>AppFonts</code></td><td>应用字体加载与管理</td></tr>
+    <tr><td><code>AppLaunchOptions</code></td><td>启动命令行参数解析</td></tr>
+    <tr><td><code>LanguageManager</code></td><td>语言/多语言切换，配合 translations 目录</td></tr>
+    <tr><td><code>Version</code></td><td>版本号定义（由 CMake 生成）</td></tr>
+  </table>
+  </div>
+
+  <h3>3.2 desktop —— 桌面画布与图标管理（核心模块）</h3>
+  <p>桌面整理的核心：负责图标列表渲染、框选、拖拽、重命名、右键菜单等交互。分层结构与 <code>Readme.md</code> 描述一致：<code>ListView</code>（图标项）→ <code>SelectArea</code>（框选层）→ <code>LinDesktop</code>（控制层）。组件渲染走统一绘制管线（壁纸 → CEF OSR 组件画布 → 图标层），详见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>LinDesktop</code></td><td>桌面画布根控件：组合 ListView、SelectArea、组件画布、桌面监控，处理鼠标事件与透明度过渡</td></tr>
+    <tr><td><code>ListView</code></td><td>图标列表视图，绘制每个列表项（图标、覆盖层、文件名）</td></tr>
+    <tr><td><code>SelectArea</code></td><td>拖拽框选区域，绘制选择框，支持多选/单选</td></tr>
+    <tr><td><code>ListViewModel</code> / <code>DesktopRootItemModel</code></td><td>列表与桌面根项的数据模型</td></tr>
+    <tr><td><code>DesktopRootItemState</code> / <code>DesktopRootItemRenderData</code></td><td>桌面根项的状态与渲染数据</td></tr>
+    <tr><td><code>DesktopItemRenderCacheHelper</code></td><td>图标项渲染缓存，提升重绘性能</td></tr>
+    <tr><td><code>ListViewDragDropHelper</code></td><td>图标拖拽逻辑（拖入盒子、分类等）</td></tr>
+    <tr><td><code>ListViewFileOpsHelper</code></td><td>文件级操作（移动、删除等）</td></tr>
+    <tr><td><code>ListViewMappedBoxHelper</code></td><td>图标映射到盒子的归属逻辑</td></tr>
+    <tr><td><code>ListViewSelectionController</code> / <code>ListViewSelectionHelper</code> / <code>ListViewSelectionSnapshot</code></td><td>多选状态控制、辅助与快照</td></tr>
+    <tr><td><code>ListViewDebugPanel</code></td><td>列表调试面板</td></tr>
+    <tr><td><code>RightMenu</code></td><td>右键快捷菜单</td></tr>
+    <tr><td><code>RenameManager</code> / <code>FilenameEditor</code></td><td>图标重命名管理与内联编辑框</td></tr>
+    <tr><td><code>DesktopSnakeGame</code></td><td>桌面小游戏（贪吃蛇）</td></tr>
+    <tr><td><code>Win11MenuBridge</code></td><td>与 Win11 右键菜单宿主（Win11MenuIsland）通信</td></tr>
+  </table>
+  </div>
+
+  <h4>3.2.1 desktop/widgets/linwidget —— LinWidget 桌面小组件系统</h4>
+  <p>桌面小组件（Widget）与动态壁纸的运行时：组件包加载、组件运行时（当前主渲染为 CEF OSR，WebView2 运行时待移除）、配置/布局/权限管理。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>WidgetManager</code></td><td>组件总控：启动组件、动态壁纸（startWallpaper）、配置读写、层级同步</td></tr>
+    <tr><td><code>LinWidgetWebViewRuntime</code></td><td>小组件的 WebView 运行时（待移除，当前主渲染为 CEF）</td></tr>
+    <tr><td><code>LinWallpaperWebViewRuntime</code></td><td>动态壁纸的 WebView 运行时（CEF 无替代，去留待决策）</td></tr>
+    <tr><td><code>WidgetPackage</code></td><td>组件包（描述、资源）</td></tr>
+    <tr><td><code>ConfigManager</code> / <code>LayoutManager</code> / <code>PermissionManager</code></td><td>组件配置、布局与权限管理</td></tr>
+    <tr><td><code>WidgetRegistryManager</code></td><td>组件注册表管理</td></tr>
+    <tr><td><code>WidgetSettingsDialog</code></td><td>组件设置对话框</td></tr>
+    <tr><td><code>WidgetMessageTypes</code> / <code>LinWidgetTypes</code></td><td>组件消息与类型定义</td></tr>
+    <tr><td><code>LinWidgetProjectTools</code></td><td>组件开发辅助工具</td></tr>
+  </table>
+  </div>
+
+  <h4>3.2.2 desktop/widgets/cef —— CEF OSR 渲染集成</h4>
+  <p>基于 Chromium Embedded Framework 的离屏渲染（OSR）集成，为 LinWidget 提供浏览器内核渲染能力。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>CefManager</code></td><td>CEF 生命周期与全局初始化管理</td></tr>
+    <tr><td><code>CefOsrBrowserInstance</code></td><td>OSR 浏览器实例（单组件对应实例）</td></tr>
+    <tr><td><code>CefOsrRenderHandler</code></td><td>离屏渲染回调处理</td></tr>
+    <tr><td><code>LinWidgetCanvasWidget</code></td><td>组件画布控件，承载 OSR 内容显示</td></tr>
+  </table>
+  </div>
+
+  <h3>3.3 box —— 桌面盒子</h3>
+  <p>可折叠的盒子容器，把桌面图标按文件夹/分类收纳组织，支持图标、列表两种显示模式。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>LinBox</code></td><td>盒子控件：图标/列表两种显示模式、折叠、拖拽落点预览、内联重命名、映射文件夹状态（正常/缺失/无权限）</td></tr>
+    <tr><td><code>BoxManager</code></td><td>盒子生命周期管理（创建/销毁/查找/置顶）、布局与图标归属持久化（saveAll/loadAll）、文件归属查询</td></tr>
+  </table>
+  </div>
+
+  <h3>3.4 models —— 数据模型</h3>
+  <p>与桌面/文件相关的数据模型与空间结构。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>DeskFileModel</code></td><td>桌面文件数据模型（名称、路径、图标路径）</td></tr>
+    <tr><td><code>DesktopQuadTree</code></td><td>桌面图标空间四叉树，用于布局/碰撞检测</td></tr>
+    <tr><td><code>data/ListItemData</code></td><td>列表项数据定义</td></tr>
+  </table>
+  </div>
+
+  <h3>3.5 monitor —— 文件系统与配置监控</h3>
+  <p>监听系统级事件：桌面文件变化、Windows 配置变化、桌面信息变化，并转换为应用内事件。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>DirectoryMonitor</code> / <code>LinDirectoryMonitor</code></td><td>基于 Windows SHChangeNotify 的文件系统事件监听（创建/删除/重命名/属性变化/驱动器变化等）</td></tr>
+    <tr><td><code>WindowsConfigMonitor</code></td><td>Windows 配置/注册表变化监听</td></tr>
+    <tr><td><code>DesktopInfoMonitor</code></td><td>桌面信息监控</td></tr>
+    <tr><td><code>IDirectoryMonitorInterface</code> / <code>IListenerInterface</code> / <code>IRegistryListenerInterface</code></td><td>监听器抽象接口</td></tr>
+  </table>
+  </div>
+
+  <h3>3.6 services —— 服务层</h3>
+  <p>跨模块的基础能力：Windows 系统集成、系统信息、更新、持久化、热键、图标缓存、日志、崩溃处理等。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类 / 子目录</th><th>职责</th></tr>
+    <tr><td><code>SystemApi/</code></td><td>Windows 系统集成：<code>SystemApi</code>、<code>ShellContextMenu</code>（Shell 右键菜单）、<code>MenuHelper</code>、<code>ResourceHelper</code>、<code>WindowSubclassWrapper</code> 及枚举/类型定义</td></tr>
+    <tr><td><code>SystemInfo/SystemInfoService</code></td><td>系统信息采集（CPU / GPU / 内存，基于 Iphlpapi、Dxgi、Pdh）</td></tr>
+    <tr><td><code>update/</code></td><td>更新模块：<code>UpdateChecker</code>（版本检查/比较）、<code>UpdateDownloader</code>（下载）、<code>UpdateTypes</code>（数据结构）</td></tr>
+    <tr><td><code>HotkeyManager</code></td><td>全局快捷键注册与管理</td></tr>
+    <tr><td><code>IconCacheManager</code></td><td>图标缓存，避免重复提取系统图标</td></tr>
+    <tr><td><code>LayoutPersistenceService</code></td><td>桌面布局与盒子状态持久化（收集/保存/加载图标位置与显示规则）</td></tr>
+    <tr><td><code>DesktopItemLoader</code></td><td>桌面图标加载</td></tr>
+    <tr><td><code>DpiCoordinateHelper</code> / <code>DpiScaleHelper</code></td><td>DPI 坐标换算与缩放适配</td></tr>
+    <tr><td><code>LogManager</code></td><td>日志管理</td></tr>
+    <tr><td><code>CrashHandler</code> / <code>DebugInfoExporter</code></td><td>崩溃处理与调试信息导出</td></tr>
+    <tr><td><code>AppPaths</code> / <code>SysInfoUtil</code></td><td>应用路径与系统信息工具</td></tr>
+    <tr><td><code>LinDeskHoveredItemServer</code> / <code>SpaceLookIpcClient</code></td><td>悬停项服务与 SpaceLook IPC 客户端</td></tr>
+    <tr><td><code>ShellMenuExclusionStore</code></td><td>Shell 菜单排除项存储</td></tr>
+    <tr><td><code>WinBlurHelper</code></td><td>窗口模糊特效辅助</td></tr>
+  </table>
+  </div>
+
+  <h3>3.7 plugins —— 插件体系</h3>
+  <p>基于 Qt 插件机制的动态库扩展体系，提供插件生命周期与能力接口。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>ILinPlugin</code></td><td>插件基接口：标识（pluginId/pluginName/pluginDescription）、生命周期（onInit/onUnload/onSettingsRequested/onTrigger）、可选自定义热键（customHotkey）</td></tr>
+    <tr><td><code>IOCRPlugin</code></td><td>OCR 能力扩展接口（<code>recognizeText</code>）</td></tr>
+    <tr><td><code>PluginManager</code></td><td>插件发现与加载（DLL）、热键注册、启用状态管理、按 ID 触发插件</td></tr>
+  </table>
+  </div>
+  <p class="note">现网插件：<code>Plugins/OCRModule</code> 为默认构建的 OCR 插件（<code>LINDESK_BUILD_OCR_PLUGIN</code>，默认 ON）。</p>
+
+  <h3>3.8 ai —— AI 对话能力</h3>
+  <p>多厂商大模型对话能力：统一的客户端抽象、请求管理与后台工作线程。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类</th><th>职责</th></tr>
+    <tr><td><code>AIClient</code></td><td>客户端入口与 <code>ProviderKind</code> 提供商枚举</td></tr>
+    <tr><td><code>client/AIProviderBase</code> 及实现</td><td>提供商抽象基类与实现：OpenAI、Claude、Google、Ollama 客户端</td></tr>
+    <tr><td><code>AICoreService</code></td><td>核心服务：provider 切换、消息发送/流式回复/取消/超时，工作线程模型</td></tr>
+    <tr><td><code>AIWorker</code></td><td>后台工作线程，执行网络请求</td></tr>
+    <tr><td><code>AIRequestManager</code></td><td>请求管理</td></tr>
+  </table>
+  </div>
+
+  <h3>3.9 ui —— 界面控件与设置</h3>
+  <p>Fluent 风格控件库、设置界面与桌面文字预览渲染。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>关键类 / 子目录</th><th>职责</th></tr>
+    <tr><td><code>Fluent/</code></td><td>Fluent 风格控件库：<code>FluentBaseWidget</code>、<code>FluentBaseDialog</code>、<code>FluentDialog</code>、<code>FluentButton</code>、<code>FluentCard</code>、<code>FluentCheckBox</code>、<code>FluentColorWheel</code>、<code>FluentComboBox</code>、<code>FluentDragTip</code>、<code>FluentInfoTip</code>、<code>FluentInput</code>、<code>FluentResultView</code>、<code>FluentToggleSwitch</code>、<code>FluentWidget</code></td></tr>
+    <tr><td><code>SettingUI</code></td><td>设置主界面：常规设置、盒子/组件配置、更新检查与下载等入口</td></tr>
+    <tr><td><code>SoftDesktopTextRenderer</code></td><td>桌面文字渲染与描边/发光效果</td></tr>
+    <tr><td><code>QmlTestWindow</code></td><td>QML 测试窗口</td></tr>
+  </table>
+  </div>
+
+  <h3>3.10 resources —— 应用资源</h3>
+  <p>图标、样式等应用资源（.qrc 打包，构建后拷贝到输出目录 <code>resources/</code>）。</p>
+</section>
+
+<section>
+  <h2>4. 模块依赖关系</h2>
+  <div class="map">
+    <div class="map-row"><span class="map-box main">app（入口 / 主窗口）</span></div>
+    <div class="map-row"><span class="map-arrow">└─ 加载与组合</span></div>
+    <div class="map-row"><span class="map-box main">desktop（桌面画布 + 图标管理）</span><span class="map-arrow">└─ widgets/linwidget ─ widgets/cef</span></div>
+    <div class="map-row"><span class="map-arrow">│   ├─ 收纳</span><span class="map-box">box（盒子）</span></div>
+    <div class="map-row"><span class="map-arrow">│   ├─ 使用</span><span class="map-box">models（数据模型）</span></div>
+    <div class="map-row"><span class="map-arrow">│   ├─ 依赖</span><span class="map-box">services（系统集成/持久化/热键/更新…）</span></div>
+    <div class="map-row"><span class="map-arrow">│   ├─ 订阅事件</span><span class="map-box">monitor（文件/配置监控）</span></div>
+    <div class="map-row"><span class="map-arrow">│   ├─ 扩展</span><span class="map-box">plugins（插件）</span></div>
+    <div class="map-row"><span class="map-arrow">│   └─ 使用</span><span class="map-box">ui（Fluent 控件 + 设置界面）</span></div>
+    <div class="map-row"><span class="map-arrow">└─ 独立能力</span><span class="map-box">ai（AI 对话）</span></div>
+  </div>
+  <p class="map-note">说明：<code>app</code> 为入口；<code>desktop</code> 依赖 <code>box</code>、<code>models</code>、<code>services</code>、<code>monitor</code>、<code>plugins</code>、<code>ui</code>；<code>monitor</code> 将系统事件转换为应用事件供桌面层消费；<code>services</code> 提供跨模块公共服务；<code>ai</code> 相对独立。以上为代码层面的模块归属关系，不表示严格分层架构。</p>
+</section>
+
+<section>
+  <h2>5. 构建与测试</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:24%"><col style="width:14%"><col style="width:62%"></colgroup>
+    <tr><th>构建目标</th><th>类型</th><th>说明</th></tr>
+    <tr><td><code>LinDesk</code></td><td>可执行文件</td><td>主程序，glob 收集 <code>src/</code> 下 cpp/h/qrc（排除旧 ListItem 与 subprocess），链接 Shell32、Psapi、Qt5 等</td></tr>
+    <tr><td><code>LinDeskUpdate</code></td><td>子工程</td><td>更新模块（<code>LinDeskUpdate/</code>），主程序依赖它</td></tr>
+    <tr><td><code>LinDeskSubprocess</code></td><td>可执行文件</td><td>CEF 子进程（仅 CEF 存在时构建）</td></tr>
+    <tr><td><code>Win11MenuIsland</code></td><td>可执行文件</td><td>Win11 右键菜单宿主，Visual Studio 生成器下通过 <code>include_external_msproject</code> 引入</td></tr>
+    <tr><td><code>LinDeskSystemInfoTests</code></td><td>测试可执行文件</td><td>SystemInfo 服务单元测试（GTest），注册为 CTest 用例</td></tr>
+    <tr><td><code>OCRModule</code></td><td>插件动态库</td><td>OCR 插件（<code>Plugins/OCRModule</code>，默认构建）</td></tr>
+    <tr><td><code>translations</code></td><td>自定义目标</td><td>ts → qm 编译并拷贝到输出目录</td></tr>
+  </table>
+  </div>
+  <p>构建流程：<code>vcpkg install --triplet x64-windows</code> → <code>cmake -B build</code> → 用 VS2022 打开 build 目录构建运行。Debug 配置显示控制台，Release 配置隐藏（<code>WIN32_EXECUTABLE</code>）。</p>
+</section>
+
+<footer class="doc-foot">
+  本文档依据 <code>src/</code> 源码结构与 <code>CMakeLists.txt</code> 整理，仅作模块介绍，不涉及代码修改。如模块划分或类职责有误，以源码为准。
+  相关文档：<a href="LinDesk_Docs_Index.html">文档中心</a> / <a href="LinDesk_Architecture_Guide.html">架构指南</a> / <a href="LinDesk_Todo.html">任务清单</a>
+</footer>
+
+</div>
+</body>
+</html>

@@ -7,67 +7,16 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <Shlwapi.h>
 #include <ShlObj.h>
 #include <shellapi.h>
+#include <QDebug>
+#include <QElapsedTimer>
+#include <mutex>
 
 namespace {
 constexpr wchar_t kShellMenuExclusionSection[] = L"ShellMenuExclusions";
-
-std::filesystem::path GetDesktopLogPath()
-{
-    PWSTR localAppDataPath = nullptr;
-    const HRESULT hr = SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppDataPath);
-    if (FAILED(hr) || !localAppDataPath) {
-        return {};
-    }
-
-    std::filesystem::path logPath(localAppDataPath);
-    CoTaskMemFree(localAppDataPath);
-    logPath /= L"LinDesk";
-    logPath /= L"desktop.log";
-    return logPath;
-}
-
-std::string WideToUtf8(const std::wstring& text)
-{
-    if (text.empty()) {
-        return {};
-    }
-
-    const int requiredSize = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    if (requiredSize <= 0) {
-        return {};
-    }
-
-    std::string utf8(requiredSize, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), utf8.data(), requiredSize, nullptr, nullptr);
-    return utf8;
-}
-
-void AppendDesktopLogLine(const std::wstring& line)
-{
-    const std::filesystem::path logPath = GetDesktopLogPath();
-    if (logPath.empty()) {
-        return;
-    }
-
-    std::error_code ec;
-    const bool logFileExists = std::filesystem::exists(logPath, ec) && !ec;
-    if (!logFileExists) {
-        return;
-    }
-
-    std::ofstream logFile(logPath, std::ios::app | std::ios::binary);
-    if (!logFile.is_open()) {
-        return;
-    }
-
-    const std::string utf8Line = WideToUtf8(line);
-    if (!utf8Line.empty()) {
-        logFile.write(utf8Line.data(), static_cast<std::streamsize>(utf8Line.size()));
-    }
-}
 
 HBITMAP CopyMenuBitmap(HBITMAP source)
 {
@@ -77,6 +26,101 @@ HBITMAP CopyMenuBitmap(HBITMAP source)
     }
 
     return reinterpret_cast<HBITMAP>(CopyImage(source, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION));
+}
+
+// ==========================================
+// SEH 结构化异常保护辅助函数 (隔离第三方 COM 插件崩溃)
+// ==========================================
+HRESULT SafeInvokeCommand(IContextMenu* contextMenu, CMINVOKECOMMANDINFO* cmi)
+{
+    if (!contextMenu || !cmi) return E_POINTER;
+    __try {
+        return contextMenu->InvokeCommand(cmi);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return E_FAIL;
+    }
+}
+
+HRESULT SafeQueryContextMenu(IContextMenu* contextMenu, HMENU hmenu, UINT indexMenu, UINT idCmdFirst, UINT idCmdLast, UINT uFlags)
+{
+    if (!contextMenu) return E_POINTER;
+    __try {
+        return contextMenu->QueryContextMenu(hmenu, indexMenu, idCmdFirst, idCmdLast, uFlags);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return E_FAIL;
+    }
+}
+
+HRESULT SafeHandleMenuMsg2(IContextMenu3* contextMenu3, UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT* plResult)
+{
+    if (!contextMenu3) return E_POINTER;
+    __try {
+        return contextMenu3->HandleMenuMsg2(uMsg, wParam, lParam, plResult);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return E_FAIL;
+    }
+}
+
+HRESULT SafeHandleMenuMsg(IContextMenu2* contextMenu2, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    if (!contextMenu2) return E_POINTER;
+    __try {
+        return contextMenu2->HandleMenuMsg(uMsg, wParam, lParam);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return E_FAIL;
+    }
+}
+
+HRESULT SafeGetCommandString(IContextMenu* contextMenu, UINT_PTR idCmd, UINT uType, UINT* pReserved, LPSTR pszName, UINT cchMax)
+{
+    if (!contextMenu) return E_POINTER;
+    __try {
+        return contextMenu->GetCommandString(idCmd, uType, pReserved, pszName, cchMax);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return E_FAIL;
+    }
+}
+
+HRESULT SafeGetCommandStringW(IContextMenu* contextMenu, UINT_PTR idCmd, UINT uType, UINT* pReserved, LPWSTR pszName, UINT cchMax)
+{
+    if (!contextMenu) return E_POINTER;
+    __try {
+        return contextMenu->GetCommandString(idCmd, uType, pReserved, reinterpret_cast<LPSTR>(pszName), cchMax);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return E_FAIL;
+    }
+}
+
+// 动态适配 Windows 原生暗黑右键菜单主题
+void EnableWindowDarkMenuTheme(HWND hwnd)
+{
+    if (!hwnd) return;
+    static HMODULE hUxtheme = LoadLibraryW(L"uxtheme.dll");
+    if (!hUxtheme) return;
+
+    using fnSetPreferredAppMode = int(WINAPI*)(int appMode);
+    using fnAllowDarkModeForWindow = bool(WINAPI*)(HWND hWnd, bool allow);
+    using fnFlushMenuThemes = void(WINAPI*)();
+
+    static auto pSetPreferredAppMode = reinterpret_cast<fnSetPreferredAppMode>(GetProcAddress(hUxtheme, MAKEINTRESOURCEA(135)));
+    static auto pAllowDarkModeForWindow = reinterpret_cast<fnAllowDarkModeForWindow>(GetProcAddress(hUxtheme, MAKEINTRESOURCEA(133)));
+    static auto pFlushMenuThemes = reinterpret_cast<fnFlushMenuThemes>(GetProcAddress(hUxtheme, MAKEINTRESOURCEA(136)));
+
+    if (pSetPreferredAppMode) {
+        pSetPreferredAppMode(1); // AllowDark = 1 (自动跟随系统深浅模式)
+    }
+    if (pAllowDarkModeForWindow) {
+        pAllowDarkModeForWindow(hwnd, true);
+    }
+    if (pFlushMenuThemes) {
+        pFlushMenuThemes();
+    }
 }
 
 HBITMAP BitmapFromIcon(HICON icon)
@@ -336,15 +380,15 @@ std::wstring CommandVerbForMenuItem(IContextMenu3* contextMenu, UINT commandId)
     }
 
     wchar_t wideVerb[256] = {};
-    if (SUCCEEDED(contextMenu->GetCommandString(commandId - MIN_SHELL_MENU_ID, GCS_VERBW, nullptr,
-        reinterpret_cast<LPSTR>(wideVerb), static_cast<UINT>(sizeof(wideVerb))))) {
+    if (SUCCEEDED(SafeGetCommandStringW(contextMenu, commandId - MIN_SHELL_MENU_ID, GCS_VERBW, nullptr,
+        wideVerb, static_cast<UINT>(sizeof(wideVerb))))) {
         if (wideVerb[0] != L'\0') {
             return wideVerb;
         }
     }
 
     char verb[256] = {};
-    if (SUCCEEDED(contextMenu->GetCommandString(commandId - MIN_SHELL_MENU_ID, GCS_VERBA, nullptr,
+    if (SUCCEEDED(SafeGetCommandString(contextMenu, commandId - MIN_SHELL_MENU_ID, GCS_VERBA, nullptr,
         verb, static_cast<UINT>(std::size(verb))))) {
         if (verb[0] != '\0') {
             const int required = MultiByteToWideChar(CP_UTF8, 0, verb, -1, nullptr, 0);
@@ -477,12 +521,38 @@ HBITMAP ResolveFallbackMenuBitmap(IContextMenu3* contextMenu,
     const std::wstring& menuText,
     const std::vector<std::wstring>& registryShellRoots)
 {
-    if (registryShellRoots.empty()) {
+    if (registryShellRoots.empty() || menuText.empty()) {
         return nullptr;
     }
 
     const std::wstring verb = CommandVerbForMenuItem(contextMenu, commandId);
-    return BitmapFromRegistryShellRoots(registryShellRoots, menuText, verb);
+    std::wstring cacheKey = registryShellRoots.front() + L"|" + menuText + L"|" + verb;
+
+    static std::unordered_map<std::wstring, HBITMAP> s_cachedBitmaps;
+    static std::unordered_set<std::wstring> s_negativeCache;
+    static std::mutex s_cacheMutex;
+
+    {
+        std::lock_guard<std::mutex> lock(s_cacheMutex);
+        if (s_negativeCache.find(cacheKey) != s_negativeCache.end()) {
+            return nullptr;
+        }
+        auto it = s_cachedBitmaps.find(cacheKey);
+        if (it != s_cachedBitmaps.end()) {
+            return CopyMenuBitmap(it->second);
+        }
+    }
+
+    HBITMAP rawBitmap = BitmapFromRegistryShellRoots(registryShellRoots, menuText, verb);
+    {
+        std::lock_guard<std::mutex> lock(s_cacheMutex);
+        if (rawBitmap) {
+            s_cachedBitmaps[cacheKey] = CopyMenuBitmap(rawBitmap);
+        } else {
+            s_negativeCache.insert(cacheKey);
+        }
+    }
+    return rawBitmap;
 }
 
 void ResetSnapshotBitmap(ShellMenuSnapshotItem& item)
@@ -534,16 +604,19 @@ void EmitBoxMenuDebugLine(const wchar_t* moduleName, const std::wstring& info)
         return;
     }
 
-    const std::wstring line = BuildTimestamp() + L"-" + (moduleName ? moduleName : L"Menu") + L"-" + info + L"\n";
-    OutputDebugStringW(line.c_str());
+    qDebug().noquote() << QString::fromWCharArray(moduleName ? moduleName : L"Menu")
+                       << QString::fromStdWString(info);
 }
 
 void EmitDesktopShellMenuListLine(const wchar_t* tag, const std::wstring& info)
 {
-    const std::wstring line = BuildTimestamp() + L" [DesktopShellMenuList] "
-        + (tag ? tag : L"Desktop") + L" " + info + L"\n";
-    OutputDebugStringW(line.c_str());
-    AppendDesktopLogLine(line);
+    if (!IsBoxMenuDebugEnabled()) {
+        return;
+    }
+
+    qDebug().noquote() << QStringLiteral("[DesktopShellMenuList]")
+                       << QString::fromWCharArray(tag ? tag : L"Desktop")
+                       << QString::fromStdWString(info);
 }
 
 std::wstring MenuStateToText(UINT state)
@@ -557,7 +630,7 @@ std::wstring MenuStateToText(UINT state)
 
 void DebugLogMenuTree(HMENU menu, IContextMenu3* contextMenu, const wchar_t* tag, int depth = 0)
 {
-    if (!menu || depth > 8) {
+    if (!menu || depth > 8 || !IsBoxMenuDebugEnabled()) {
         return;
     }
 
@@ -600,7 +673,7 @@ void DebugLogMenuTree(HMENU menu, IContextMenu3* contextMenu, const wchar_t* tag
         EmitDesktopShellMenuListLine(tag, line);
         if (hasSubMenu) {
             if (contextMenu) {
-                contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
+                SafeHandleMenuMsg2(contextMenu, WM_INITMENUPOPUP,
                     reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
                     MAKELPARAM(i, FALSE),
                     nullptr);
@@ -1362,7 +1435,7 @@ void AppendMenuSnapshotItems(HMENU menu,
 
         if (itemInfo.hSubMenu) {
             if (contextMenu) {
-                contextMenu->HandleMenuMsg2(WM_INITMENUPOPUP,
+                SafeHandleMenuMsg2(contextMenu, WM_INITMENUPOPUP,
                     reinterpret_cast<WPARAM>(itemInfo.hSubMenu),
                     MAKELPARAM(i, FALSE),
                     nullptr);
@@ -1444,6 +1517,14 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
         L"个性化",
         L"Organize Desktop",
         L"Desktop organizer",
+        L"Give access to",
+        L"授予访问权限",
+        L"Properties",
+        L"属性",
+        L"Customize this folder...",
+        L"自定义此文件夹...",
+        L"Customize this folder",
+        L"自定义此文件夹",
     };
 
     for (int i = GetMenuItemCount(menu) - 1; i >= 0; --i) {
@@ -1454,7 +1535,7 @@ void KeepOnlyNewMenuForBoxBackground(HMENU menu)
 
         bool shouldDelete = false;
         for (const auto* candidate : exactCandidates) {
-            if (normalizedText == normalizeMenuText(candidate)) {
+            if (_wcsicmp(normalizedText.c_str(), normalizeMenuText(candidate).c_str()) == 0) {
                 shouldDelete = true;
                 break;
             }
@@ -1849,7 +1930,8 @@ std::vector<ShellMenuSnapshotItem> ShellContextMenu::SnapshotMenuForExclusionKey
         return {};
     }
 
-    const HRESULT queryHr = menu.m_contextMenu->QueryContextMenu(
+    const HRESULT queryHr = SafeQueryContextMenu(
+        menu.m_contextMenu.get(),
         hMenu.get(),
         0,
         MIN_SHELL_MENU_ID,
@@ -1900,10 +1982,25 @@ void ShellContextMenu::DisplayDesktopContextMenu()
     }
 }
 
-void ShellContextMenu::DisplayBoxBackgroundContextMenu()
+void ShellContextMenu::DisplayBoxBackgroundContextMenu(const std::wstring& folderPath)
 {
     m_contextMenu = nullptr;
     operationType = OperationType::boxBackground;
+    if (!folderPath.empty() && PathFileExistsW(folderPath.c_str())) {
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        HRESULT hr = SHParseDisplayName(folderPath.c_str(), NULL, &pidl, 0, NULL);
+        if (SUCCEEDED(hr) && pidl) {
+            m_pidlParent.reset(pidl);
+            setFilesystemDirectory(Tool::WstrToStr(folderPath.c_str()));
+            return;
+        }
+        pidl = ILCreateFromPathW(folderPath.c_str());
+        if (pidl) {
+            m_pidlParent.reset(pidl);
+            setFilesystemDirectory(Tool::WstrToStr(folderPath.c_str()));
+            return;
+        }
+    }
     if (FAILED(SHGetKnownFolderIDList(FOLDERID_Desktop, 0, NULL, wil::out_param(m_pidlParent)))) {
         m_pidlParent.reset();
     }
@@ -2191,7 +2288,7 @@ bool ShellMenuCommandSession::invokeShellCommand(const std::string& commandId, H
     commandInfo.lpVerb = reinterpret_cast<LPCSTR>(MAKEINTRESOURCE(commandIt->second - MIN_SHELL_MENU_ID));
     commandInfo.lpDirectory = directory ? directory->c_str() : nullptr;
     commandInfo.nShow = SW_SHOWNORMAL;
-    return SUCCEEDED(m_contextMenu->InvokeCommand(&commandInfo));
+    return SUCCEEDED(SafeInvokeCommand(m_contextMenu.get(), &commandInfo));
 }
 
 bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenuCommandSession& session)
@@ -2314,7 +2411,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
 
     const UINT queryFlags = CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME
         | ((flags & Flags::ExtendedVerbs) != Flags::Standard ? CMF_EXTENDEDVERBS : 0);
-    HRESULT queryHr = m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
+    HRESULT queryHr = SafeQueryContextMenu(m_contextMenu.get(), hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
         queryFlags);
     if (FAILED(queryHr)) {
         return;
@@ -2455,6 +2552,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
         DebugLogMenuTree(hMenu.get(), m_contextMenu.get(), L"DefaultDesktopShellMenu");
     }
 
+    EnableWindowDarkMenuTheme(hwnd);
     SetForegroundWindow(hwnd);
     SetActiveWindow(hwnd);
 
@@ -2477,7 +2575,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     if (cmd >= MIN_SHELL_MENU_ID && cmd <= MAX_SHELL_MENU_ID)
     {
         char verb[64] = "";
-        HRESULT hr = m_contextMenu->GetCommandString(cmd - MIN_SHELL_MENU_ID, GCS_VERBA, nullptr,
+        HRESULT hr = SafeGetCommandString(m_contextMenu.get(), cmd - MIN_SHELL_MENU_ID, GCS_VERBA, nullptr,
             verb, static_cast<UINT>(std::size(verb)));
         bool handled = false;
         // Pass the menu back to the caller to give it the chance to handle it.
@@ -2529,7 +2627,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
             commandInfo.lpVerb = reinterpret_cast<LPCSTR>(MAKEINTRESOURCE(cmd - MIN_SHELL_MENU_ID));
             commandInfo.lpDirectory = parsingPathOpt ? parsingPathOpt->c_str() : nullptr;
             commandInfo.nShow = SW_SHOWNORMAL;
-            m_contextMenu->InvokeCommand(&commandInfo);
+            SafeInvokeCommand(m_contextMenu.get(), &commandInfo);
         }
     }
 }
@@ -2622,8 +2720,8 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
 
         if (auto contextMenu3 = m_contextMenu.try_query<IContextMenu3>())
         {
-            LRESULT result;
-            HRESULT hr = contextMenu3->HandleMenuMsg2(msg, wParam, lParam, &result);
+            LRESULT result = 0;
+            HRESULT hr = SafeHandleMenuMsg2(contextMenu3.get(), msg, wParam, lParam, &result);
 
             if (SUCCEEDED(hr))
             {
@@ -2637,7 +2735,7 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
         }
         else if (auto contextMenu2 = m_contextMenu.try_query<IContextMenu2>())
         {
-            contextMenu2->HandleMenuMsg(msg, wParam, lParam);
+            SafeHandleMenuMsg(contextMenu2.get(), msg, wParam, lParam);
             if (msg == WM_INITMENUPOPUP) {
                 RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_compiledExclusions);
             }

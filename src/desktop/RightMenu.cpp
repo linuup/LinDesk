@@ -195,13 +195,18 @@ QString saveShellMenuBitmapIcon(HBITMAP bitmap, const QString& commandId, const 
         return QString();
     }
 
+    const QString fileName = QStringLiteral("%1_%2.png").arg(prefix, sanitizeIconFileName(commandId));
+    const QString basePath = QCoreApplication::applicationDirPath() + QStringLiteral("/Win11ContextMenu");
+    const QString lightFile = basePath + QStringLiteral("/light/") + fileName;
+    if (QFile::exists(lightFile)) {
+        return fileName;
+    }
+
     QPixmap pixmap = QtWin::fromHBITMAP(bitmap, QtWin::HBitmapAlpha);
     if (pixmap.isNull()) {
         return QString();
     }
 
-    const QString fileName = QStringLiteral("%1_%2.png").arg(prefix, sanitizeIconFileName(commandId));
-    const QString basePath = QCoreApplication::applicationDirPath() + QStringLiteral("/Win11ContextMenu");
     const QStringList themeFolders = {
         basePath + QStringLiteral("/light"),
         basePath + QStringLiteral("/dark")
@@ -496,12 +501,12 @@ void RightMenu::initializeCustomMenu()
     
     m_createBoxAction->setIcon(QIcon(gridPix));
 
-    connect(m_createBoxAction, &QAction::triggered, this, &RightMenu::onCreateBox);
+    connect(m_createBoxAction, &QAction::triggered, this, QOverload<>::of(&RightMenu::onCreateBox));
     m_customMenu->addAction(m_createBoxAction);
 
     m_mapFolderAction = new QAction(tr("Map Folder"), linDeskMenu);
     m_mapFolderAction->setIcon(QIcon(":/Assets/folder-share.svg"));
-    connect(m_mapFolderAction, &QAction::triggered, this, &RightMenu::onMapFolder);
+    connect(m_mapFolderAction, &QAction::triggered, this, QOverload<>::of(&RightMenu::onMapFolder));
     linDeskMenu->addAction(m_mapFolderAction);
 
     QAction* organizeDesktopAction = new QAction(tr("Organize Desktop"), linDeskMenu);
@@ -549,8 +554,20 @@ void RightMenu::onSortByDate() {
 void RightMenu::onRefresh() { emit refreshTriggered(); }
 void RightMenu::onPaste() { emit pasteTriggered(); }
 void RightMenu::onPasteShortcut() { emit pasteShortcutTriggered(); }
-void RightMenu::onCreateBox() { emit createBoxTriggered(); }
-void RightMenu::onMapFolder() { emit mapFolderTriggered(); }
+void RightMenu::onCreateBox() {
+    onCreateBox(m_lastMenuGlobalPos);
+}
+void RightMenu::onCreateBox(const QPoint& pos) {
+    const QPoint effectivePos = (!pos.isNull() && pos != QPoint(-1, -1)) ? pos : m_lastMenuGlobalPos;
+    emit createBoxTriggered(effectivePos);
+}
+void RightMenu::onMapFolder() {
+    onMapFolder(m_lastMenuGlobalPos);
+}
+void RightMenu::onMapFolder(const QPoint& pos) {
+    const QPoint effectivePos = (!pos.isNull() && pos != QPoint(-1, -1)) ? pos : m_lastMenuGlobalPos;
+    emit mapFolderTriggered(effectivePos);
+}
 void RightMenu::onOrganizeDesktop() { emit organizeDesktopTriggered(); }
 void RightMenu::onQuitApp() { emit quitAppTriggered(); }
 void RightMenu::onLinDesk() { emit linDeskTriggered(); }
@@ -609,6 +626,11 @@ void RightMenu::updatePasteActionsState()
     if (pasteShortcutAction) {
         pasteShortcutAction->setEnabled(m_cachedPasteShortcutEnabled);
     }
+
+    updateCachedPasteActionItem(m_cachedDesktopMenuData);
+    updateCachedPasteActionItem(m_cachedSharedBoxMenuData);
+    updateCachedPasteActionItem(m_cachedFilteredDesktopMenuData);
+    updateCachedPasteActionItem(m_cachedFilteredSharedBoxMenuData);
 }
 
 void RightMenu::preparePasteActionsForMenu() const
@@ -678,10 +700,44 @@ void RightMenu::connectMenuActionInvalidation(QMenu* menu)
     }
 }
 
+void RightMenu::updateCachedPasteActionItem(CachedCustomMenuData& cache) const
+{
+    if (!cache.valid) {
+        return;
+    }
+    for (auto& item : cache.items) {
+        if (item.text == L"粘贴" || item.text == L"&Paste" || item.text == L"Paste") {
+            item.enabled = m_cachedPasteEnabled;
+        } else if (item.text == L"粘贴快捷方式" || item.text == L"Paste shortcut") {
+            item.enabled = m_cachedPasteShortcutEnabled;
+        }
+    }
+}
+
+void RightMenu::updateCachedPasteActionItem(CachedFilteredCustomMenuData& cache) const
+{
+    if (!cache.valid) {
+        return;
+    }
+    for (auto& item : cache.items) {
+        if (item.text == L"粘贴" || item.text == L"&Paste" || item.text == L"Paste") {
+            item.enabled = m_cachedPasteEnabled;
+        } else if (item.text == L"粘贴快捷方式" || item.text == L"Paste shortcut") {
+            item.enabled = m_cachedPasteShortcutEnabled;
+        }
+    }
+}
+
 void RightMenu::invalidateCustomMenuCaches()
 {
     clearCachedCustomMenuItems(m_cachedDesktopMenuData);
     clearCachedCustomMenuItems(m_cachedSharedBoxMenuData);
+    m_cachedFilteredDesktopMenuData.items.clear();
+    m_cachedFilteredDesktopMenuData.valid = false;
+    m_cachedFilteredSharedBoxMenuData.items.clear();
+    m_cachedFilteredSharedBoxMenuData.valid = false;
+    m_cachedWin11Menu.items = QJsonArray();
+    m_cachedWin11Menu.valid = false;
 }
 
 QList<QAction*> RightMenu::filteredCustomMenuActions(bool includeCreateBox, bool includeLinDeskMenu) const
@@ -831,12 +887,20 @@ std::vector<ShellContextMenu::CustomMenuItem> RightMenu::filterCustomItemsForExc
 
 std::vector<ShellContextMenu::CustomMenuItem> RightMenu::filteredDesktopCustomMenuItems() const
 {
-    return filterCustomItemsForExclusionKey(desktopCustomMenuItems(), L"desktop");
+    if (!m_cachedFilteredDesktopMenuData.valid) {
+        m_cachedFilteredDesktopMenuData.items = filterCustomItemsForExclusionKey(desktopCustomMenuItems(), L"desktop");
+        m_cachedFilteredDesktopMenuData.valid = true;
+    }
+    return m_cachedFilteredDesktopMenuData.items;
 }
 
 std::vector<ShellContextMenu::CustomMenuItem> RightMenu::filteredSharedBoxCustomMenuItems() const
 {
-    return filterCustomItemsForExclusionKey(sharedBoxCustomMenuItems(), L"box_background");
+    if (!m_cachedFilteredSharedBoxMenuData.valid) {
+        m_cachedFilteredSharedBoxMenuData.items = filterCustomItemsForExclusionKey(sharedBoxCustomMenuItems(), L"box_background");
+        m_cachedFilteredSharedBoxMenuData.valid = true;
+    }
+    return m_cachedFilteredSharedBoxMenuData.items;
 }
 
 std::vector<ShellMenuSnapshotItem> RightMenu::customItemsToPreviewItems(const std::vector<ShellContextMenu::CustomMenuItem>& items)
@@ -1105,9 +1169,9 @@ void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoin
     } else if (commandId == QStringLiteral("personalize")) {
         openUriWithShell(L"ms-settings:personalization");
     } else if (commandId == QStringLiteral("create_box")) {
-        onCreateBox();
+        onCreateBox(pos);
     } else if (commandId == QStringLiteral("map_folder")) {
-        onMapFolder();
+        onMapFolder(pos);
     } else if (commandId == QStringLiteral("organize_desktop")) {
         onOrganizeDesktop();
     } else if (commandId == QStringLiteral("settings")) {
@@ -1125,6 +1189,7 @@ void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoin
 
 void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
 {
+    m_lastMenuGlobalPos = pos;
     ShellContextMenu scm;
     logRightMenuDpiTrace("defaultDesktopShellMenu", this->hwnd, pos);
     const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);
@@ -1140,6 +1205,7 @@ void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
 
 bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 {
+    m_lastMenuGlobalPos = pos;
     logRightMenuDpiTrace("windows11DesktopMenu", this->hwnd, pos);
     ShellContextMenu shellMenu;
     ShellMenuCommandSession shellSession;
@@ -1164,6 +1230,7 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 
 void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool extendedVerbs) const
 {
+    m_lastMenuGlobalPos = pos;
     ShellContextMenu scm;
     logRightMenuDpiTrace("showMenu", this->hwnd, pos);
     const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);

@@ -422,7 +422,7 @@ bool WidgetRegistryManager::copyDirectoryForInstall(const QString& sourcePath, c
     const QFileInfoList entries = sourceDir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
     for (const QFileInfo& entry : entries) {
         const QString name = entry.fileName();
-        if (name == QStringLiteral(".git") || name == QStringLiteral(".webview2") || name == QStringLiteral("node_modules")) {
+        if (name == QStringLiteral(".git") || name == QStringLiteral("node_modules")) {
             continue;
         }
 

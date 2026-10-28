@@ -27,6 +27,7 @@ struct LayoutPersistenceState {
     bool showDesktopIcons = true;
     bool doubleClickHideIcons = true;
     bool showShortCutArrow = true;
+    int droppedCount = 0;
     QVector<QMap<QString, QVariant>> boxData;
     QMap<QString, QMap<QString, QVariant>> iconPositions;
 };

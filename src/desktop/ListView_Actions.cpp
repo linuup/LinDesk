@@ -7,12 +7,11 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include "desktop/ListView.h"
+#include "services/IconCacheManager.h"
 #include "desktop/ListViewSelectionHelper.h"
 #include "desktop/ListViewSelectionController.h"
 #include "desktop/ListViewDragDropHelper.h"
 #include "desktop/LinDesktop.h"
-#include "desktop/widgets/linwidget/WidgetPackage.h"
-#include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 #include "app/AppFonts.h"
 #include "desktop/ListViewMappedBoxHelper.h"
 #include "models/DesktopQuadTree.h"
@@ -62,8 +61,6 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
-#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 #include "desktop/ListView_Helpers.h"
 
@@ -331,7 +328,7 @@ void ListView::dragMoveEvent(QDragMoveEvent* event)
             htmlText = QString("<b style='color:%1'>%2</b> <span>%3</span>")
                 .arg(highlightColor, actionKeyword, hitItem->model.displayName);
         } else if (isFolder && isDraggedDiskLetter) {
-            htmlText = QString("<b style='color:%1'>闂?/b> <span>%2</span> <b style='color:%1'>闂傚倷鐒﹁ぐ鍐嚐椤栫偛鍨傞柛妤冨剱閸ゅ牊绻涘顔荤凹闁瑰磭濞€閺?/b>")
+            htmlText = QString("<b style='color:%1'>Open</b> <span>%2</span> <b style='color:%1'>here</b>")
                 .arg(highlightColor, hitItem->model.displayName);
         } else if (isFolder) {
             actionKeyword = isCtrl ? "Copy to" : "Move to";
@@ -504,7 +501,7 @@ void ListView::dropEvent(QDropEvent* event)
             }
 
             if (!srcPaths.empty()) {
-                // 闂備礁鎼粔鐑斤綖婢跺﹦鏆ゅ〒姘ｅ亾闁哄被鍔戦、娆撴倷椤掑偊绱┑鐑囩到濞村倿宕抽敐澶娢ч柟娈垮枤缁犳棃鏌ㄩ弴鐐测偓鐢稿磻閹炬潙绶為悗锝庝憾娴犲瓨绻濋姀锝嗙【缂佸鎸冲畷鍝勎旈崨顓狀吅闂佸搫绋侀崐锝夊煛閸涱厾顦?
+                // 处理拖拽文件放置到桌面
                 bool result = m_viewModel->handleDropFiles(draggedPaths, m_desktopDir, preferShortcutForDrop, isCopyAction);
                 if (result) {
                     applyAutoArrangeAfterDesktopMutation(false, false);
@@ -727,7 +724,7 @@ void ListView::dropEvent(QDropEvent* event)
             requestSaveBoxes();
         }
     } else {
-        // --- 濠电姰鍨奸崺鏍偋閻樿纾块柟缁㈠枛缁狀垶鏌″畵顔煎暙濮规煡姊绘笟鍥т簼婵″弶甯炲▎?---
+        // --- 移动外部文件到桌面目录 ---
         QString desktopDir = m_desktopDir;
         QStringList srcPaths;
         for (const QString& local : draggedPaths) {
@@ -991,47 +988,49 @@ void ListView::onMenuRefresh() {
         }
         syncBoxVisibilityWithDesktopIcons();
         this->update();
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
-        QTimer::singleShot(0, this, [this]() {
-            const QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
-            this->setUpdatesEnabled(false);
-            for (const auto& box : allBoxes) {
-                if (box) {
-                    box->setUpdatesEnabled(false);
-                }
-            }
+        const bool isInteracting = m_isSelecting || m_isDragging || (RenameManager::instance() && RenameManager::instance()->isRenaming());
 
-            // --- Original Refresh Logic ---
-            if (m_enablePersistence) {
-                for (const auto& state : m_itemStates) {
-                    const QString normPath = normalizeDesktopItemPath(state.model.filePath);
-                    if (normPath.isEmpty()) {
-                        continue;
-                    }
-                    if (state.model.position != QPoint(0, 0)) {
-                        m_savedIconPositions[normPath] = {
-                            state.model.position.x(),
-                            state.model.position.y(),
-                            state.model.boxId
-                        };
-                    }
-                }
-            }
-
-            qDebug() << "Comprehensive State Sync (Mirroring Initialize)...";
-            
-            if (monitor) {
-                monitor->refreshIconsState();
-                sysIconRegisterInfo = monitor->getCurrentIcons();
-            }
-
-            DesktopItemInitContext context = currentDesktopItemInitContext();
-            for (auto& state : m_itemStates) {
-                if (state.model.filePath.isEmpty()) {
+        if (m_enablePersistence) {
+            for (const auto& state : m_itemStates) {
+                const QString normPath = normalizeDesktopItemPath(state.model.filePath);
+                if (normPath.isEmpty()) {
                     continue;
                 }
+                if (state.model.position != QPoint(0, 0)) {
+                    m_savedIconPositions[normPath] = {
+                        state.model.position.x(),
+                        state.model.position.y(),
+                        state.model.boxId
+                    };
+                }
+            }
+        }
 
+        qDebug() << "Comprehensive State Sync (Optimized Refresh)...";
+        
+        if (monitor) {
+            monitor->refreshIconsState();
+            sysIconRegisterInfo = monitor->getCurrentIcons();
+        }
+
+        DesktopItemInitContext context = currentDesktopItemInitContext();
+        bool anyItemChanged = false;
+
+        for (auto& state : m_itemStates) {
+            if (state.model.filePath.isEmpty()) {
+                continue;
+            }
+
+            const QFileInfo currentFi(state.model.filePath);
+            const bool exists = currentFi.exists();
+            const bool isSpecial = (state.model.objectType == ObjectType::SpecialFolder);
+            const bool metadataChanged = !exists ||
+                (currentFi.lastModified() != state.model.fileInfo.lastModified()) ||
+                (currentFi.size() != state.model.fileInfo.size());
+
+            if (isSpecial || metadataChanged) {
+                anyItemChanged = true;
                 const ListItemData data = DesktopItemLoader().loadItem(state.model.filePath);
                 DesktopRootItemModel updatedModel;
                 initDesktopRootItemModel(updatedModel, data, context);
@@ -1053,37 +1052,43 @@ void ListView::onMenuRefresh() {
                 updatedModel.isReady = true;
                 state.model = updatedModel;
                 markDesktopRenderDataDirty(&state);
+            } else {
+                state.model.baseSize = QSize(m_iconWidth, m_iconHeight);
+                state.model.fileInfo = currentFi;
+                state.model.isReady = true;
             }
+        }
 
+        if (anyItemChanged) {
             updateAllItemRenderData();
+        }
+
+        if (!isInteracting) {
             if (m_iconShowRule.autoArrange) {
                 applyAutoArrangeAfterDesktopMutation(false, false);
             } else {
                 rebuildSpatialIndex();
                 update();
             }
+        }
 
-            // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
-            for (const auto& box : allBoxes) {
-                if (box) {
-                    box->refreshLayout();
+        // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
+        const QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
+        for (const auto& box : allBoxes) {
+            if (box) {
+                if (box->isFolderMapped()) {
+                    loadMappedFolderItemsForBox(box.data());
                 }
+                box->refreshLayout();
+                box->update();
             }
-            syncBoxVisibilityWithDesktopIcons();
+        }
+        syncBoxVisibilityWithDesktopIcons();
+        this->update();
 
-            for (const auto& box : allBoxes) {
-                if (box) {
-                    box->setUpdatesEnabled(true);
-                    box->update();
-                }
-            }
-            this->setUpdatesEnabled(true);
+        QTimer::singleShot(0, this, [this]() {
             syncBoxVisibilityWithDesktopIcons();
-            this->update();
-            QTimer::singleShot(0, this, [this]() {
-                syncBoxVisibilityWithDesktopIcons();
-                syncLinWidgetLayer();
-            });
+            syncLinWidgetLayer();
         });
     });
 }
@@ -1127,7 +1132,6 @@ void ListView::onMenuPasteShortcut() {
 
 void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
 {
-    // 闂佽崵鍠愰悷銉р偓姘煎灣閳ь剙鐏氶悧鐘茬暦閻樿鍐€妞ゆ帒鍊婚崬鎾倵閸偅绶查悗姘憸濡叉劕鈻庨幋鐘碉紲闂佺粯鏌ㄦ晶搴敂闁秵鐓熸い顐墮婵¤偐鈧鍠曠划娆忣嚕椤掆偓椤劑宕熼浣恒偖闂備焦瀵х粙鎴︽嚐椤栫偟宓侀柟鎹愵嚙缁犲啿顭跨捄渚剱婵湱鍋ら幃妯跨疀閺囩偘澹曢梺鍝勵儌閺呯姴顕ｉ崼鏇熷亼闁告侗鍨抽ˇ?
     const QString newPath = normalizeDesktopPath(eventInfo.newPath);
     const QString oldPath = normalizeDesktopPath(eventInfo.oldPath);
 
@@ -1137,29 +1141,37 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
              << "old:" << oldPath
              << "new:" << newPath;
 
-    // 闂傚倷鐒﹁ぐ鍐矓閻㈢钃熷┑鐘插閺嗘粓鏌涢幇鈺佸婵犫偓閻楀牜娈介柣鎰煐绾箖鏌涢埡鍌滄创鐎?
-    auto relayout = [this]() {
-        if (m_iconShowRule.autoArrange) {
-            applyAutoArrangeLayout(false, false);
+    // 防抖合并重排重绘，避免连续高频文件系统事件卡顿
+    auto scheduleRelayout = [this]() {
+        if (m_fsRelayoutTimer) {
+            m_fsRelayoutTimer->start(120);
         } else {
-            loadIconLayer();
-            update();
-            repaint();
+            if (m_iconShowRule.autoArrange) {
+                applyAutoArrangeLayout(false, false);
+            } else {
+                updateAllItemRenderData();
+                rebuildSpatialIndex();
+                update();
+            }
         }
     };
 
-    // 闂備礁婀遍…鍫ニ囬婊呯閻庯綆鍠栫粈鍫⑩偓骞垮劚濡绮幘璇茬闁哄鍨圭粻鐑樸亜椤愩埄妯€鐎规洘鑹鹃埢搴ㄥ箻閾忣偒浠ч梻?
+    // 重新排序
     auto resort = [this]() {
         this->performSort(m_iconShowRule.sortType);
     };
 
-    auto removeTrackedPath = [this](const QString& path) -> bool {
+    auto removeTrackedPath = [this, scheduleRelayout](const QString& path) -> bool {
         if (path.isEmpty()) {
             return false;
         }
 
-        if (findDesktopStateByPath(path)) {
+        IconCacheManager::instance().invalidateItemCache(QString(), path);
+
+        if (DesktopRootItemState* state = findDesktopStateByPath(path)) {
+            IconCacheManager::instance().invalidateItemCache(state->model.iconCacheKey, path);
             removeDesktopStateByPath(path);
+            scheduleRelayout();
             requestSaveBoxes();
             return true;
         }
@@ -1178,38 +1190,54 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     case FileSystemEvent::FileCreated:
     case FileSystemEvent::DirectoryCreated:
     {
-        if (newPath.isEmpty()) break;
-        if (findAnyItemStateByPath(newPath)) break;
+        const QString effectivePath = (eventInfo.eventType == FileSystemEvent::DirectoryCreated)
+            ? ListViewFileOpsHelper::normalizeNewFolderCasePath(eventInfo.newPath)
+            : eventInfo.newPath;
+        const QString resolvedNewPath = normalizeDesktopPath(effectivePath);
+        if (resolvedNewPath.isEmpty()) break;
+        if (findAnyItemStateByPath(resolvedNewPath)) break;
         
-        qDebug() << "[onFileSystemChanged] Creating item:" << newPath;
-        QPointer<LinBox> pendingTargetBox = m_pendingCreatedItemBoxes.value(newPath);
+        qDebug() << "[onFileSystemChanged] Creating item:" << resolvedNewPath;
+        QPointer<LinBox> pendingTargetBox = m_pendingCreatedItemBoxes.value(resolvedNewPath);
         if (pendingTargetBox.isNull()) {
             pendingTargetBox = m_pendingShellNewTargetBox;
         }
-        addDesktopModelItemFromPath(eventInfo.newPath);
-
-        auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
-        if (boxIt != m_pendingCreatedItemBoxes.end()) {
-            QPointer<LinBox> targetBox = boxIt.value();
-            m_pendingCreatedItemBoxes.erase(boxIt);
-            const bool hasPendingInsertIndex = m_pendingCreatedItemInsertIndices.contains(newPath);
-            const int insertIndex = hasPendingInsertIndex ? m_pendingCreatedItemInsertIndices.take(newPath) : -1;
-            if (targetBox) {
-                moveItemToBox(eventInfo.newPath, targetBox, false, insertIndex);
-                targetBox->refreshLayout();
-                targetBox->raise();
-                if (m_iconShowRule.autoArrange) {
-                    applyAutoArrangeAfterDesktopMutation(false, false);
-                } else {
-                    update();
+        if (pendingTargetBox) {
+            if (pendingTargetBox->isFolderMapped()) {
+                handlePendingShellCreatedItem(effectivePath);
+            } else {
+                auto boxIt = m_pendingCreatedItemBoxes.find(resolvedNewPath);
+                const int insertIndex = (boxIt != m_pendingCreatedItemBoxes.end() && m_pendingCreatedItemInsertIndices.contains(resolvedNewPath))
+                    ? m_pendingCreatedItemInsertIndices.take(resolvedNewPath) : -1;
+                if (boxIt != m_pendingCreatedItemBoxes.end()) {
+                    m_pendingCreatedItemBoxes.erase(boxIt);
                 }
+                clearPendingShellNewTargetBox();
+
+                const ListItemData data = DesktopItemLoader().loadItem(resolvedNewPath);
+                DesktopRootItemState state;
+                initDesktopRootItemModel(state.model, data, currentDesktopItemInitContext());
+                state.model.layoutMode = DesktopLayoutMode::IconMode;
+                state.model.baseSize = QSize(m_iconWidth, m_iconHeight);
+                state.model.effectiveSize = state.model.baseSize;
+                state.model.boxId = pendingTargetBox->boxId();
+                state.model.visible = true;
+
+                if (insertIndex >= 0) {
+                    pendingTargetBox->insertItemState(state, insertIndex, false);
+                } else {
+                    pendingTargetBox->addItemState(state, false);
+                }
+
+                pendingTargetBox->refreshLayout();
+                pendingTargetBox->raise();
+                pendingTargetBox->update();
+                update();
             }
-        }
-        else {
-            handlePendingShellCreatedItem(eventInfo.newPath);
+        } else {
+            addDesktopModelItemFromPath(resolvedNewPath, true);
         }
         
-        // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣鏌ｉ悩杈╁妽婵犮垺顭囩槐鐐差吋婢跺﹥顥濋梺缁橆殔閻楀﹪鎮楅娴庡綊鎮╅搹顐ｇ€紓鍌氱Т閹虫劗妲?
         requestSaveBoxes();
         break;
     }
@@ -1220,7 +1248,6 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         if (deletePath.isEmpty()) break;
         if (consumePendingExternalRemoval(deletePath)) break;
         
-            // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻喚绱撴担鍓叉Ц妞ゎ厼鍢查埢宥嗘償閳藉棗鏅犻梺鍦帛鐢帡鎮橀埡鍛拻闁告洍鏅涢埀顒佺墵瀵悂宕橀埡鍐炬祫闂佽鍨堕崑濠囧船閸撲焦鍠?
         removeTrackedPath(deletePath);
         break;
     }
@@ -1252,7 +1279,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                     }
                     resort();
                     if (!m_iconShowRule.autoArrange) {
-                        relayout();
+                        scheduleRelayout();
                     }
                 }
             } else {
@@ -1272,7 +1299,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 sourceBox->removeItemState(oldPath, true);
             }
         } else if (!findAnyItemStateByPath(newPath)) {
-            addDesktopModelItemFromPath(eventInfo.newPath);
+            addDesktopModelItemFromPath(eventInfo.newPath, true);
         }
 
         auto boxIt = m_pendingCreatedItemBoxes.find(newPath);
@@ -1288,7 +1315,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 if (m_iconShowRule.autoArrange) {
                     applyAutoArrangeAfterDesktopMutation(false, false);
                 } else {
-                    update();
+                    scheduleRelayout();
                 }
             }
         }
@@ -1296,7 +1323,6 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
             handlePendingShellCreatedItem(eventInfo.newPath);
         }
         
-        // 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅缁犳澘霉閿濆妫戦柣锝勭矙閺屾盯寮介妸褍顫ч梺鍝勵儏閸燁垳绮嬮幒鏃€濯奸柛锔诲幘椤︻噣姊洪崫鍕悙闁宦板姂瀵粯绻濋崶銊у帓閻庡箍鍎遍幊蹇涘吹閹烘鐓曟慨姗嗗墰鏍￠梺鍝勵儏閸燁垳绮嬮幒妤€绠氶梺顓ㄧ畱閺佸綊鎮?
         requestSaveBoxes();
         break;
     }
@@ -1306,6 +1332,9 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     {
         const QString& updatePath = !newPath.isEmpty() ? newPath : oldPath;
         if (updatePath.isEmpty()) break;
+
+        // T3: 文件更新时主动失效 image_preview 缓存
+        IconCacheManager::instance().invalidatePixmapsByPrefix("image_preview:" + QDir::toNativeSeparators(updatePath));
 
         if (CSystemApi::GetPathType(updatePath) == PathType::InvalidPath) {
             removeTrackedPath(updatePath);
@@ -1351,17 +1380,42 @@ void ListView::onMenuQuitApp() {
     qApp->quit();
 }
 
-void ListView::onMenuCreateBox()
+static QPoint resolveSafeBoxCreationPos(const QPoint& requestedPos, ListView* view)
 {
+    QPoint targetPos = requestedPos;
+    if (targetPos.isNull() || targetPos == QPoint(-1, -1)) {
+        targetPos = view->lastRightClickPos();
+    }
+    if (targetPos.isNull() || targetPos == QPoint(-1, -1)) {
+        targetPos = view->mapFromGlobal(QCursor::pos());
+    }
+
+    const QRect viewBounds = view->rect();
+    if (!viewBounds.contains(targetPos)) {
+        targetPos = QPoint(qBound(20, targetPos.x(), qMax(20, viewBounds.width() - 320)),
+                           qBound(20, targetPos.y(), qMax(20, viewBounds.height() - 320)));
+    }
+    return targetPos;
+}
+
+void ListView::onMenuCreateBox(const QPoint& pos)
+{
+    const QPoint creationPos = resolveSafeBoxCreationPos(pos, this);
     BoxManager* manager = BoxManager::instance();
-	LinBox* box = manager->createBox(m_lastRightClickPos, this);
+	LinBox* box = manager->createBox(creationPos, this);
     
     // Connect box signals to ListView
     manager->setupConnections(box, this);
+    box->show();
+    box->raise();
+    box->update();
+    this->update(box->geometry().adjusted(-16, -16, 16, 16));
 }
 
-void ListView::onMenuMapFolder()
+void ListView::onMenuMapFolder(const QPoint& pos)
 {
+    const QPoint creationPos = resolveSafeBoxCreationPos(pos, this);
+
     const QString selectedDir = QFileDialog::getExistingDirectory(
         this,
         tr("Select Folder to Map"),
@@ -1379,14 +1433,17 @@ void ListView::onMenuMapFolder()
     }
 
     BoxManager* manager = BoxManager::instance();
-	LinBox* box = manager->createBox(m_lastRightClickPos, this);
+	LinBox* box = manager->createBox(creationPos, this);
     manager->setupConnections(box, this);
 
     box->setBoxTitle(QString());
     box->setMappedFolderPath(normalizedPath);
-    loadMappedFolderItemsForBox(box);
-    box->refreshLayout();
+    manager->applyUnifiedStyleToBox(box);
+    box->show();
     box->raise();
+    box->update();
+    this->update(box->geometry().adjusted(-16, -16, 16, 16));
+    loadMappedFolderItemsForBox(box);
     requestSaveBoxes();
 }
 
@@ -1506,22 +1563,71 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
     QPixmap dragPixmap;
     QPoint hotSpot;
     if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
-        dragPixmap = QPixmap(ghostBounds.size());
-        dragPixmap.fill(Qt::transparent);
+        const bool isOversized = ghostBounds.width() > 400 || ghostBounds.height() > 400 || ghostItems.size() > 4;
+        if (isOversized) {
+            const DesktopRootItemState* hitState = findDesktopStateAt(clickPos);
+            DesktopRootItemRenderData primaryData = (hitState && hitState->model.visible)
+                ? hitState->model.renderData
+                : ghostItems.first();
 
-        QPainter painter(&dragPixmap);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setRenderHint(QPainter::SmoothPixmapTransform);
-        painter.setRenderHint(QPainter::TextAntialiasing);
-        painter.translate(-ghostBounds.topLeft());
-        for (const DesktopRootItemRenderData& renderData : ghostItems) {
-            paintDesktopRootItemGhost(painter, renderData);
+            const int pad = 8;
+            const int badgeHeight = 18;
+            const QSize baseSize = primaryData.itemRect.size();
+            const QSize pixmapSize(baseSize.width() + pad * 2, baseSize.height() + pad * 2);
+
+            dragPixmap = QPixmap(pixmapSize);
+            dragPixmap.fill(Qt::transparent);
+
+            QPainter painter(&dragPixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            painter.setRenderHint(QPainter::TextAntialiasing);
+
+            painter.save();
+            painter.translate(-primaryData.itemRect.topLeft() + QPoint(pad, pad));
+            paintDesktopRootItemGhost(painter, primaryData);
+            painter.restore();
+
+            const QString countText = QString::number(ghostItems.size());
+            QFont badgeFont = font();
+            badgeFont.setPixelSize(11);
+            badgeFont.setBold(true);
+            painter.setFont(badgeFont);
+
+            const QFontMetrics fm(badgeFont);
+            const int textWidth = fm.horizontalAdvance(countText);
+            const int badgeWidth = qMax(badgeHeight, textWidth + 10);
+            const QRect badgeRect(pixmapSize.width() - badgeWidth - 2, 2, badgeWidth, badgeHeight);
+
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(0, 120, 215, 230));
+            painter.drawRoundedRect(badgeRect, badgeHeight / 2.0, badgeHeight / 2.0);
+
+            painter.setPen(Qt::white);
+            painter.drawText(badgeRect, Qt::AlignCenter, countText);
+            painter.end();
+
+            hotSpot = (clickPos - primaryData.itemRect.topLeft()) + QPoint(pad, pad);
+            hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
+            hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
+        } else {
+            dragPixmap = QPixmap(ghostBounds.size());
+            dragPixmap.fill(Qt::transparent);
+
+            QPainter painter(&dragPixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            painter.setRenderHint(QPainter::TextAntialiasing);
+            painter.translate(-ghostBounds.topLeft());
+            for (const DesktopRootItemRenderData& renderData : ghostItems) {
+                paintDesktopRootItemGhost(painter, renderData);
+            }
+            painter.end();
+
+            hotSpot = clickPos - ghostBounds.topLeft();
+            hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
+            hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
         }
-        painter.end();
-
-        hotSpot = clickPos - ghostBounds.topLeft();
-        hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
-        hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
     }
 
     for (GhostInfo& ghost : m_ghosts) {
@@ -1811,7 +1917,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
 			targetBox->refreshLayout();
 		}
 		
-		// 濠电儑绲藉ú锔炬崲閸岀偞鍋ら柕濞炬櫅閻愬﹪鏌ｉ幇闈涘闁搞劎鍘ч湁闁挎繂鎳愯倴闂佹眹鍊曞Λ婵嗙暦濮橆厼顕遍柡澶嬪灥鐠у绱撻崒姘灓闁哥姵顨婂鎼佸礃閳哄喚娴?
+		// 触发持久化保存
         if (targetBox || dropTargetState || desktopBackgroundFileOperation || desktopPositionsChanged) {
 		    requestSaveBoxes();
         }

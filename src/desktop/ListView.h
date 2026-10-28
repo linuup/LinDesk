@@ -49,9 +49,6 @@ class ListViewMappedBoxHelper;
 class ListViewDebugPanel;
 class DesktopSnakeGameController;
 struct DesktopSnakeGameIcon;
-namespace LinWidget {
-class WidgetManager;
-}
 
 
 inline quint64 packGridCell(int gridX, int gridY)
@@ -299,7 +296,7 @@ public:
 	void selectRangeToPath(const QString& filePath, LinBox* box);
 	void clearCheckedItem();
 	void clearSelectionState();
-	QVector<DesktopRootItemState> queryItemsInRect(const QRect& rect) const;
+	QVector<const DesktopRootItemState*> queryItemsInRect(const QRect& rect) const;
 	bool IsSelecting() const { return m_isSelecting; }
 	void DisableSelecting() { endBackgroundSelection(); }
 	void setItemFullNameExpanded(const QString& filePath, bool expanded);
@@ -314,7 +311,9 @@ public:
 	QString currentSpaceLookHoveredPath() const;
 	QString anchorItemPath() const;
 	QString draggedItemPath() const;
+	QStringList draggedItemPaths() const;
 	void setDraggedItemPath(const QString& filePath, bool fromBox);
+	void setDraggedItemPaths(const QStringList& filePaths, bool fromBox);
 	void clearDraggedItemPath(bool fromBoxOnly = false);
 
 	// 拖放相关
@@ -398,13 +397,14 @@ public:
 	void setDebugGridSpacing(int rowSpacing, int colSpacing);
 	void createRecentModifiedItemsBox();
 	QStringList selectedItemPaths() const;
+	static QString normalizeDesktopItemPath(const QString& filePath);
 	QVector<DesktopSnakeGameIcon> desktopSnakeIcons() const;
 	void rebuildSpatialIndex();
 	void refreshCheckedItem(QRect rect);
 	void showSettings(LinBox* target = nullptr);
 	void showTransientTip(const QString& message, int autoHideMs = 2500);
 	void showDebugPanel();
-	LinWidget::WidgetManager* linWidgetManager();
+	void* linWidgetManager();
 	void setShowLinWidgetBlockedCells(bool show);
 	bool showLinWidgetBlockedCells() const { return m_showLinWidgetBlockedCells; }
 	void syncLinWidgetLayer();
@@ -431,6 +431,9 @@ protected:
 	void mouseDoubleClickEvent(QMouseEvent* event) override;
 	void wheelEvent(QWheelEvent* event) override;
 	void keyPressEvent(QKeyEvent* event) override;
+	void keyReleaseEvent(QKeyEvent* event) override;
+	void inputMethodEvent(QInputMethodEvent* event) override;
+	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
 	void dragMoveEvent(QDragMoveEvent* event) override;
 	void dragLeaveEvent(QDragLeaveEvent* event) override;
@@ -495,7 +498,7 @@ private:
 	void syncBoxVisibilityWithDesktopIcons();
 	bool handlePendingShellCreatedItem(const QString& newPath);
 	DesktopItemInitContext currentDesktopItemInitContext() const;
-	bool addDesktopModelItemFromPath(const QString& filePath);
+	bool addDesktopModelItemFromPath(const QString& filePath, bool deferRelayout = false);
 	bool refreshDesktopModelItemPath(const QString& oldPath, const QString& newPath);
 	void invalidateFolderItemIconCache(const QString& folderPath);
 	bool refreshBoxModelItemPath(LinBox* box, const QString& oldPath, const QString& newPath);
@@ -516,7 +519,6 @@ private:
 	void markDesktopStateIndexDirty();
 	void rebuildDesktopStateIndex();
 	bool shouldPaintDesktopModelState(const DesktopRootItemState& state) const;
-	QString normalizeDesktopItemPath(const QString& filePath) const;
 	bool isDesktopPathSelected(const QString& filePath) const;
 	QVector<DesktopRootItemModel> selectedDesktopModels() const;
 	QStringList selectedDesktopPaths() const;
@@ -575,8 +577,10 @@ public slots:
 	void onMenuSortByDate();
 	void onMenuDelete(bool permanently = false);
 	void onMenuRefresh();
-	void onMenuCreateBox();
-	void onMenuMapFolder();
+	void onMenuCreateBox(const QPoint& pos = QPoint());
+	void onMenuMapFolder(const QPoint& pos = QPoint());
+	void setLastRightClickPos(const QPoint& pos) { m_lastRightClickPos = pos; }
+	QPoint lastRightClickPos() const { return m_lastRightClickPos; }
 	void onMenuOrganizeDesktop();
 	void onMenuOrganizeDesktopByNameSort();
 	void onMenuQuitApp();
@@ -616,7 +620,6 @@ private:
 	QPointer<SettingUI> m_settingsWindow;
 	QPointer<ListViewDebugPanel> m_debugPanel;
 	DesktopSnakeGameController* m_snakeGameController = nullptr;
-	LinWidget::WidgetManager* m_linWidgetManager = nullptr;
 	QLabel* m_dragTip = nullptr;
 	FluentInfoTip* m_infoTip = nullptr;
 
@@ -675,6 +678,8 @@ private:
 	QString m_lastClickedBoxPath;
 	QString m_draggedDesktopPath;
 	QString m_draggedBoxPath;
+	QStringList m_draggedDesktopPaths;
+	QStringList m_draggedBoxPaths;
 	DesktopInfoMonitor* monitor;
 	LinDirectoryMonitor* m_linMonitor;
 	WindowsConfigMonitor* m_windowsConfigMonitor = nullptr;
@@ -682,6 +687,7 @@ private:
 	// 计时器
 	QTimer* m_pendingShellNewTargetTimer = nullptr;
 	QTimer* m_backgroundSelectionThrottleTimer = nullptr;
+	QTimer* m_fsRelayoutTimer = nullptr;
 	QElapsedTimer m_clickTimer;
 	QElapsedTimer m_backgroundSelectionFrameTimer;
 
@@ -714,4 +720,5 @@ private:
 	int m_backgroundSelectionThrottleMs = 8;
 	qreal m_backgroundSelectionRefreshCostMs = 0.0;
 	int m_backgroundSelectionThrottleRelaxFrames = 0;
+	QRect m_imeCursorRect;
 };

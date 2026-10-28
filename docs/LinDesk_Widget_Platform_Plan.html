@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinDesk 组件系统方案（单进程 · 运行时动态加载）</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232b2b2b'/%3E%3Crect x='7' y='9' width='18' height='14' rx='2' fill='none' stroke='%23f5f5f5' stroke-width='2'/%3E%3Ccircle cx='13' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3Ccircle cx='19' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --text:#1f2328;
+    --text-sub:#57606a;
+    --line:#d0d7de;
+    --line-soft:#eaeef2;
+    --bg:#ffffff;
+    --accent:#0969da;
+    --danger:#cf222e;
+    --warn:#9a6700;
+    --ok:#1a7f37;
+    --code-bg:#f6f8fa;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    font-size:15px;line-height:1.75;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:32px 20px 64px;}
+  header.doc-head{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:26px;margin:0 0 8px;font-weight:700;}
+  .meta{color:var(--text-sub);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 16px;}
+  h2{font-size:20px;margin:40px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line-soft);}
+  h3{font-size:16px;margin:26px 0 10px;}
+  h4{font-size:15px;margin:20px 0 8px;}
+  p{margin:10px 0;}
+  ul,ol{margin:10px 0;padding-left:24px;}
+  li{margin:4px 0;}
+  code{
+    font-family:Consolas,"Courier New",monospace;
+    font-size:13px;background:var(--code-bg);
+    border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px;
+    overflow-wrap:anywhere;word-break:break-all;
+  }
+  p,li,td{overflow-wrap:break-word;}
+  pre{
+    background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;
+    padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.6;
+  }
+  pre code{background:none;border:none;padding:0;}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px;table-layout:fixed;}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top;overflow-wrap:break-word;}
+  th{background:var(--code-bg);font-weight:600;}
+  .tbl-scroll{overflow-x:auto;}
+  .note{
+    background:var(--code-bg);border:1px solid var(--line-soft);
+    border-left:3px solid var(--accent);padding:10px 14px;margin:14px 0;font-size:14px;
+  }
+  .note.warn{border-left-color:var(--warn);background:#fff8e5;}
+  .tag{
+    display:inline-block;font-size:12px;border-radius:10px;padding:1px 8px;
+    margin-left:6px;vertical-align:1px;white-space:nowrap;
+  }
+  .tag.runtime{background:#ddf4ff;color:#0969da;border:1px solid #54aeff;}
+  .tag.main{background:#f0f0f0;color:#57606a;border:1px solid #d0d7de;}
+  .tag.pkg{background:#dafbe1;color:#1a7f37;border:1px solid #4ac26b;}
+  .tag.p0{background:#ffebe9;color:#cf222e;border:1px solid #ff8182;}
+  .tag.p1{background:#fff8c5;color:#7d4e00;border:1px solid #d4a72c;}
+  .tag.p2{background:#ddf4ff;color:#0969da;border:1px solid #54aeff;}
+  .tag.p3{background:#dafbe1;color:#1a7f37;border:1px solid #4ac26b;}
+  .arch{display:flex;flex-direction:column;gap:8px;margin:14px 0;}
+  .arch-row{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;}
+  .arch-box{border:1px solid var(--line);border-radius:4px;padding:8px 12px;background:var(--code-bg);font-size:13px;min-width:130px;}
+  .arch-box b{display:block;font-size:13px;}
+  .arch-box span{color:var(--text-sub);font-size:12px;}
+  .arch-arrow{color:var(--text-sub);font-size:13px;align-self:center;white-space:nowrap;}
+  .arch-note{font-size:12px;color:var(--text-sub);margin-top:4px;}
+  footer.doc-foot{margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;}
+  @media (max-width:560px){
+    body{font-size:14px;}
+    h1{font-size:22px;}
+    h2{font-size:18px;}
+    .wrap{padding:24px 14px 48px;}
+    .tbl-scroll table{min-width:540px;}
+  }
+</style>
+<style>
+  .doc-nav{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 24px;padding:10px 12px;background:#f6f8fa;border:1px solid #eaeef2;border-radius:4px;}
+  .doc-nav a{font-size:13px;color:#57606a;text-decoration:none;padding:2px 10px;border-radius:3px;white-space:nowrap;}
+  .doc-nav a:hover{background:#eaeef2;color:#1f2328;}
+  .doc-nav a.active{background:#0969da;color:#fff;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="doc-nav">
+    <a href="LinDesk_Docs_Index.html">文档中心</a>
+    <a href="LinDesk_Product_Intro.html">产品介绍</a>
+    <a href="LinDesk_Module_Guide.html">模块介绍</a>
+    <a href="LinDesk_Architecture_Guide.html">架构指南</a>
+    <a href="LinDesk_Todo.html">任务清单</a>
+    <a href="LinDesk_Widget_Platform_Plan.html" class="active">组件方案</a>
+</nav>
+
+<header class="doc-head">
+  <h1>LinDesk 组件系统方案（单进程 · 运行时动态加载）</h1>
+  <div class="meta">
+    <span>读者：antigravity / 开发者</span>
+    <span>性质：组件平台打磨 + 与主程序集成任务书</span>
+    <span>范围：组件系统运行时经 LinDesk 安装/卸载（动态加载）；组件包独立分发；CEF 缺口；AI 开发闭环；按代码细分的任务清单</span>
+    <span>更新：2026-10-14（已实现项已标记）</span>
+  </div>
+</header>
+
+<section>
+  <h2>0. 实施状态总览（对照代码）</h2>
+  <p>下列任务已对照 <code>src/</code> 源码核实落地，正文相关章节已同步标注：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:8%"><col style="width:38%"><col style="width:30%"><col style="width:24%"></colgroup>
+    <tr><th>状态</th><th>任务</th><th>代码依据</th><th>对应章节</th></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>组件系统运行时拆分（LinWidgetRuntime.dll 独立目标）</td><td>CMakeLists.txt:190-227 <code>add_library(LinWidgetRuntime SHARED)</code>，含 runtime_export 源</td><td>2 / 10.1</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>运行时动态加载桥（LoadLibrary + 导出函数解析）</td><td><code>runtime_export.h/.cpp</code>：<code>LinWidgetRuntimeBridge</code>、<code>loadRuntime/unloadRuntime/init/shutdown</code>、函数指针表</td><td>2.6 / 10.1</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>运行时安装 / 卸载 / 版本管理（卸载保留用户组件与数据）</td><td><code>src/desktop/runtime/RuntimeInstaller.*</code>：install/uninstall/extractZipToDir/runtimeDllPath；卸载仅删 <code>runtime/linwidget/</code></td><td>2.3 / 2.4 / 2.9 / 10.1</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>主程序运行时门控（未安装不触碰 CEF）</td><td><code>main.cpp:140</code> 运行时 shutdown；<code>ListView.cpp:490</code> 加载失败降级；canvas/输入经 bridge 判空调用</td><td>2.7 / 10.1</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>设置页组件系统区（安装/卸载入口与状态）</td><td><code>SettingUI.cpp</code>：SettingsLinWidgetRuntimeTypeRole（:2940）、runtime 状态与操作（:3327 等）</td><td>2.3 / 10.1</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>运行时打包脚本</td><td><code>scripts/package_linwidget_runtime.ps1</code> 已存在</td><td>10.1</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>本地资源 scheme（<code>linwidget://</code> + GetResourceHandler）</td><td><code>CefOsrBrowserInstance.cpp:119</code> GetResourceHandler、:131 linwidget:// 路由；入口 URL 即 <code>linwidget://&lt;id&gt;/&lt;entry&gt;</code>（WidgetManager.cpp:768/1231/2311）</td><td>4.2 / 10.2</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>console 捕获</td><td><code>CefOsrBrowserInstance.cpp:78</code> OnConsoleMessage</td><td>4.3 / 10.2</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>网络权限沙箱</td><td><code>CefOsrBrowserInstance.cpp:222-284</code> OnBeforeResourceLoad：bridge 消息拦截 + 按 allowNetwork() 拦截 http/https/ws/wss/ftp</td><td>4.4 / 7.5 / 10.2</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>IME 输入（组合/提交/取消）</td><td><code>CefOsrBrowserInstance.cpp</code>：sendKeyEvent（:601）、ImeCommitText/ImeSetComposition/ImeCancelComposition（:656-666）、imeCompositionRangeChanged（:448）</td><td>4.1 / 10.2</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>壁纸组件（role=wallpaper）全屏渲染与层级</td><td><code>WidgetManager.cpp:2221</code> startWallpaper 实现；bridge 壁纸接口（runtime_export.h:128-129）；内置包 <code>src/resources/LinWidgets/Wallpaper/</code>；ListView.cpp:667-670 壁纸互动分支</td><td>9 / 10.7</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>组件注册表（registry.json 加载/保存）</td><td><code>WidgetRegistryManager.cpp:22</code> load / save / entries</td><td>10.3</td></tr>
+    <tr><td><span class="tag keep">已完成</span></td><td>协议规范文档</td><td><code>docs/LinWidget_Protocol.md</code> 已存在</td><td>5.1 / 10.4</td></tr>
+    <tr><td><span class="tag check">待办</span></td><td>组件 Ctrl+拖拽移动（WebView2 时代机制，CEF 迁移遗漏）</td><td>ListView 鼠标处理仅转发点击（isWidgetAt），无组件拖动逻辑</td><td>8.1（新增）/ 10.6</td></tr>
+    <tr><td><span class="tag check">待办</span></td><td>IME 候选框查询回调（OnIMECandidateCountToQuery）</td><td>仅组合/提交已实现，候选框回调未接线</td><td>4.1 / 10.2</td></tr>
+  </table>
+  </div>
+  <p class="note"><strong>结论：</strong>P0-1（运行时拆分与安装/卸载）与 CEF 缺口、壁纸组件 P0 项均已落地；剩余工作集中在 P1/P2 平台化（市场、权限申请流、诊断包、设置 UI、组件管理窗口）与本轮新增的<strong>组件 Ctrl+拖拽移动</strong>（见 8.1）。</p>
+</section>
+
+<section>
+  <h2>1. 背景与定位</h2>
+  <p>LinDesk 的差异化价值在于 HTML 组件系统：任何 HTML/CSS/JS 内容都能成为桌面组件。组件系统<strong>运行在主程序进程内（单进程）</strong>，但组件系统本体（运行时）与业务组件都<strong>不捆绑进主程序</strong>：用户经 LinDesk 安装/卸载组件系统运行时，再动态下载/放置组件包即加载。</p>
+  <p class="note warn"><strong>决策记录（2026-10-13）：</strong></p>
+  <ul>
+    <li><strong>决策 1 · 放弃多进程</strong>：此前设计的 <code>LinWidgetHost.exe</code> 独立进程方案已否决（备份于 <code>_backup/LinDesk_Widget_Host_Plan-v1.html</code>）：CEF 本身是多进程架构（渲染进程崩溃不会拖垮主程序，已有 <code>handleBrowserCrashed</code> 自动重建），额外进程隔离收益边际小；而跨进程显示/传帧/事件回传引入的复杂度远大于收益。组件系统的"独立"不由进程隔离实现。</li>
+    <li><strong>决策 2 · 组件系统本身可安装/卸载（动态加载）</strong>：<strong>先实现动态加载</strong>——通过 LinDesk 安装组件系统运行时、卸载组件系统运行时（<strong>是运行时的安装/卸载，不是组件的启用/关闭</strong>）。<span class="tag keep">已实现</span>：组件系统已拆为 <code>LinWidgetRuntime.dll</code>，<code>RuntimeInstaller</code> + <code>LinWidgetRuntimeBridge</code> 完成安装/卸载/动态加载闭环（见第 0 节总览与第 2 节）。</li>
+  </ul>
+  <p>本方案把组件系统从"能用的容器"打磨成"可生长的平台"，并明确与主程序的集成边界——组件系统如何安装/卸载（动态加载）、组件包如何动态加载、运行时如何渲染合成、交互如何路由、数据如何归属。</p>
+  <p><strong>核心开发者是 AI 而不是人</strong>（已拍板）：SDK、TS 类型、API 文档站点等"人向"工具一律不做。平台的三项职责是——</p>
+  <ul>
+    <li><strong>给 AI 清晰的规则</strong>：协议规范极简固定、示例组件可参考；</li>
+    <li><strong>给 AI 及时的反馈</strong>：校验器报错、运行时日志/异常可导出、意图可保留；</li>
+    <li><strong>给 AI 的产物安全兜底</strong>：权限最小化、危险代码拦截、资源限制。</li>
+  </ul>
+  <p class="note"><strong>视觉自由（已拍板）：</strong>不做设计令牌、不做视觉规范强制。组件长什么样由作者和用户决定，平台只管功能、安全与迭代闭环。</p>
+</section>
+
+<section>
+  <h2>2. 组件系统的安装与卸载（动态加载，P0 首要）</h2>
+
+  <h3>2.1 现状与目标</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:40%"><col style="width:40%"></colgroup>
+    <tr><th>维度</th><th>现状</th><th>目标</th></tr>
+    <tr><td>组件系统本体</td><td><span class="tag keep">已实现</span> 组件系统已独立为 <code>LinWidgetRuntime.dll</code>（CMakeLists.txt:190-227 SHARED 目标），经 <code>RuntimeInstaller</code> 安装到 <code>&lt;userData&gt;/runtime/linwidget/</code> 并 <code>LoadLibrary</code> 动态加载；主程序安装包不再强制捆绑（见第 0 节总览）</td><td>组件系统运行时独立为 <code>LinWidgetRuntime.dll</code> + <code>cef/</code> + subprocess + Resources 的运行时包（<code>linwidget-runtime</code>），经 LinDesk 设置页安装 / 更新 / 卸载 —— 已达成</td></tr>
+    <tr><td>主程序安装包</td><td><span class="tag keep">已实现</span> 组件运行时与业务组件均不捆绑进主程序；未安装时主程序经接口判空跳过组件功能、可独立运行；需要时一键安装</td><td>不含组件系统；未安装时主程序无任何组件功能、可独立运行；需要时一键安装 —— 已达成</td></tr>
+    <tr><td>业务组件包</td><td>组件包目录已存在（<code>&lt;userData&gt;/LinWidgets/</code>），注册表 <code>WidgetRegistryManager</code> 已实现读写；目录监听热加载/启动对账待补</td><td>保持独立分发、动态加载（见第 3 节）；依赖"运行时已安装" —— 部分达成（目录监听/对账待补）</td></tr>
+  </table>
+  </div>
+
+  <h3>2.2 运行时包结构（linwidget-runtime）</h3>
+  <div class="arch">
+    <div class="arch-row">
+      <div class="arch-box"><b>&lt;userData&gt;/runtime/linwidget/</b><span>LinWidgetRuntime.dll —— 组件系统本体<br>（WidgetManager / CefManager / CEF OSR /<br>组件包加载器 / 校验器 / 市场 / 权限）</span></div>
+      <div class="arch-box"><b>subprocess.exe</b><span>CEF 渲染/GPU/网络子进程</span></div>
+      <div class="arch-box"><b>cef/</b><span>libcef.dll、chrome_elf.dll、icudtl.dat、<br>snapshot_blob.bin、v8_context_snapshot.bin、<br>Resources/、locales/（CEF 全量）</span></div>
+      <div class="arch-box"><b>manifest.json</b><span>runtimeVersion / protocolVersion /<br>qtVersion / abi / releaseNotes</span></div>
+    </div>
+    <div class="arch-note">发布形态：<code>linwidget-runtime-vX.Y.Z.zip</code> 发布到 GitHub Releases（发布流程复用更新方案：gh CLI + digest 免手算）。主程序安装包不携带该目录。</div>
+  </div>
+
+  <h3>2.3 安装流程（用户经 LinDesk 执行，全程不重启主程序）</h3>
+  <ol>
+    <li><strong>入口</strong>：设置页"组件系统"区显示"未安装"→ 点击 <strong>[下载并安装组件系统]</strong>；</li>
+    <li><strong>获取</strong>：主程序请求 GitHub Releases 最新 <code>linwidget-runtime</code> 包 → 下载 zip → <strong>SHA-256 校验</strong>（失败拒绝安装并提示原因）；</li>
+    <li><strong>落地</strong>：解压到临时目录 → 校验 <code>manifest.json</code> 字段完整 → <strong>原子 move</strong> 到 <code>&lt;userData&gt;/runtime/linwidget/</code>（防止半包残留）；</li>
+    <li><strong>加载</strong>：<code>LoadLibrary(LinWidgetRuntime.dll)</code> → <code>linwidget_init(desktopCtx)</code> → CEF 懒初始化（100ms 延迟策略保留）→ WidgetManager 装配；</li>
+    <li><strong>生效</strong>：组件入口出现（右键菜单组件项、设置页组件区、调试面板组件页）；运行时版本写入 <code>config.ini</code> 组件段；</li>
+    <li><strong>失败处理</strong>：DLL 加载失败 / CEF 初始化失败 → 明确提示原因（版本不匹配、杀软拦截、缺 VC 运行库），<strong>不做静默失败</strong>；已解压目录标记不可用，可重试。</li>
+  </ol>
+
+  <h3>2.4 卸载流程（用户经 LinDesk 执行）</h3>
+  <ol>
+    <li>设置页"组件系统"区 <strong>[卸载组件系统]</strong> → 确认提示（<em>组件数据与组件包保留，重新安装后自动恢复</em>）；</li>
+    <li><strong>停干净</strong>：停止全部组件实例 + 壁纸 → <code>linwidget_shutdown()</code>（释放 CEF、退出消息桥、收尾 registry 原子写）→ <code>FreeLibrary</code>；</li>
+    <li><strong>清目录</strong>：删除 <code>&lt;userData&gt;/runtime/linwidget/</code>；<strong>保留</strong> <code>&lt;userData&gt;/LinWidgets/</code>（组件包）、<code>LinWidgetsData/</code>（组件数据）、<code>LinWallpapers/</code>（壁纸配置）；</li>
+    <li><strong>回到未安装态</strong>：组件入口全部隐藏，仅保留"安装组件系统"入口；主程序全程保持运行，桌面其余功能不受影响。</li>
+  </ol>
+
+  <h3>2.5 更新流程</h3>
+  <ol>
+    <li>设置页 <strong>[检查更新]</strong> → 对比 <code>manifest.json</code> 的 <code>runtimeVersion</code> 与 Releases 最新版（复用 <code>UpdateChecker / compareVersions</code> 数字语义）；</li>
+    <li>下载新版 → SHA-256 校验 → <strong>旧包目录改名保留为备份</strong>（如 <code>runtime/linwidget.old/</code>）；</li>
+    <li>停组件 → <code>linwidget_shutdown</code> → <code>FreeLibrary</code> → 替换为新版目录 → 重新 <code>LoadLibrary</code> + <code>linwidget_init</code>；</li>
+    <li><strong>按 registry 恢复组件实例</strong>；加载失败自动回滚到 <code>.old</code> 备份并提示。</li>
+  </ol>
+
+  <h3>2.6 主程序动态加载设计（DLL 方案）</h3>
+  <ul>
+    <li><strong>导出接口</strong>（新文件 <code>src/desktop/widgets/runtime_export.h</code>，纯 C 接口避免 ABI 耦合；不跨 DLL 边界传 <code>std::string</code> / Qt 对象，指针 + 长度或封装结构体）：
+      <pre><code>extern "C" {
+  bool linwidget_is_loaded();                         // 运行时是否已加载
+  bool linwidget_load();                              // LoadLibrary + 符号解析
+  bool linwidget_unload();                            // FreeLibrary
+  bool linwidget_init(const LinWidgetDesktopCtx* ctx); // CEF 初始化 + WidgetManager 装配
+  void linwidget_shutdown();                          // 停组件 + CEF 收尾
+  void* linwidget_widget_manager();                   // 返回 WidgetManager*（主程序连信号/调用）
+  void linwidget_render_canvas(...);                  // 渲染合成钩子（ListView 调用）
+  bool linwidget_forward_event(...);                  // 输入转发钩子（ListView 调用）
+}</code></pre>
+    </li>
+    <li><strong>未安装态门控</strong>：主程序持有运行时模块句柄（<code>nullptr</code> = 未安装）；<code>ListView.cpp</code> 的 canvas 合成调用（:1344-1345 / :1381-1382）与输入转发点（<code>forwardMouseEvent / forwardWheelEvent / forwardKeyEvent / forwardInputMethodEvent</code> 等 10+ 处）改为<strong>函数指针判空调用</strong>——未安装时桌面渲染与交互零组件开销；</li>
+    <li><strong>事件信号</strong>：主程序经 <code>linwidget_widget_manager()</code> 拿到的指针连接现有信号（<code>widgetError / widgetLaunched / widgetStopped / widgetSettingsRequested / widgetGeometryChanged</code>），与当前单进程行为一致；</li>
+    <li><strong>CEF 子进程</strong>：运行时包内 <code>subprocess.exe</code> 作为 CEF 子进程入口（原 <code>subprocess/main.cpp</code> 产物迁入运行时包）；CEF 在 DLL 内初始化、在主程序进程内运行。</li>
+  </ul>
+
+  <h3>2.7 未安装态与引导</h3>
+  <ul>
+    <li>设置页"组件系统"区：显示<strong>未安装</strong> + 版本说明 + <strong>[下载并安装组件系统]</strong>；</li>
+    <li>右键菜单：无组件相关项；调试面板组件页：提示"组件系统未安装"并给安装入口；</li>
+    <li>验证口径：<strong>主程序安装包不含组件系统，未安装时主程序无组件代码可独立编译运行</strong>（组件源已从主程序目标拆出）。</li>
+  </ul>
+
+  <h3>2.8 代码改造点（摘要；明细见第 10 节任务清单）<span class="tag keep">已全部落地</span></h3>
+  <ol>
+    <li><code>CMakeLists.txt</code>（根）：新增 <code>add_library(LinWidgetRuntime SHARED ...)</code> 目标，收 <code>widgets/linwidget/</code> + <code>widgets/cef/</code> + widgetmanager 源；主程序目标移除组件源与 CEF 链接；CEF 头文件/库只在 runtime 目标使用；</li>
+    <li><code>src/desktop/widgets/runtime_export.h/.cpp</code>：新增，C 导出接口 + LoadLibrary/FreeLibrary 管理；</li>
+    <li><code>main.cpp</code>（:140 <code>CefManager::shutdown()</code>）：组件初始化/收尾改为运行时门控（已加载才 init/shutdown）；</li>
+    <li><code>ListView.cpp</code>（:1344-1345 / :1381-1382 合成；10+ 输入转发点）：改经 runtime 接口判空调用；</li>
+    <li><code>src/desktop/runtime/RuntimeInstaller.h/.cpp</code>：新增，安装/卸载/更新全流程（下载、SHA-256、解压、LoadLibrary、卸载清目录）；</li>
+    <li>设置页组件系统区 UI（未安装/已安装/更新/卸载状态与按钮）；</li>
+    <li><code>scripts/package_linwidget_runtime.ps1</code>：新增，打包运行时 zip 并发布 Releases。</li>
+  </ol>
+
+  <h3>2.9 数据隔离保证（不触碰老版本图标 / box 数据）</h3>
+  <p>检索现有实现（<code>AppPaths</code> / <code>BoxManager</code> / <code>LayoutPersistenceService</code> / <code>ConfigManager</code>）后确认数据归属如下：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:40%"><col style="width:34%"></colgroup>
+    <tr><th>数据</th><th>位置（代码依据）</th><th>读写方与隔离关系</th></tr>
+    <tr><td><strong>桌面图标 + box 布局</strong>（图标位置 / boxId / 排序；box 几何 / 颜色 / 毛玻璃 / 映射文件夹 / 成员；桌面显示规则 viewMode / sortType / autoArrange / showDesktopIcons 等）</td><td><code>%APPDATA%/LinDesk/data.dat</code>（Debug 为 <code>data.json</code>；<code>AppPaths::desktopDataFilePath()</code>，AppPaths.h:113-120）；原子写伴生文件 <code>.tmp / .bak</code></td><td>主程序 <code>BoxManager::saveAll/loadAll</code>（BoxManager.cpp:371-560，JSON：settings / iconPositions / boxArray）+ <code>LayoutPersistenceService</code>；<code>ListView.cpp:401-412</code> 设置持久化路径。<strong>与组件系统零交集</strong>：安装 / 卸载 / 更新组件系统不读写该文件</td></tr>
+    <tr><td>主程序设置（语言、桌面显示等）</td><td><code>%APPDATA%/LinDesk/config.ini</code>（<code>AppPaths::configFilePath()</code>，QSettings IniFormat）</td><td>主程序各模块 QSettings。组件系统安装/卸载仅在 config.ini 维护<strong>独立的组件系统段</strong>（如 <code>[LinWidgetRuntime]</code> 记录运行时版本），不触碰其他段</td></tr>
+    <tr><td>组件注册表 + 组件布局</td><td><code>%APPDATA%/LinDesk/LinWidgets/registry.json</code>（<code>AppPaths::linWidgetRegistryFilePath()</code> = <code>ConfigManager::defaultConfigPath()</code>，ConfigManager.cpp:14-17；结构 <code>version + layout</code>）</td><td>组件运行时（WidgetManager 读写，WidgetManager.cpp:855/:979）。<strong>卸载组件系统时保留</strong>，重新安装自动恢复</td></tr>
+    <tr><td>组件包</td><td><code>%APPDATA%/LinDesk/LinWidgets/&lt;componentId&gt;/</code>（<code>AppPaths::userLinWidgetsDir()</code>）</td><td>组件运行时 / 用户。卸载组件系统时保留</td></tr>
+    <tr><td>组件 storage 数据</td><td><code>%APPDATA%/LinDesk/LinWidgetsData/</code>（<code>AppPaths::linWidgetDataDir()</code>）</td><td>组件运行时。卸载组件系统时保留</td></tr>
+    <tr><td>壁纸配置与媒体</td><td><code>%APPDATA%/LinDesk/LinWallpapers/</code>（<code>AppPaths::userWallpapersDir()</code>）</td><td>组件运行时。卸载组件系统时保留</td></tr>
+  </table>
+  </div>
+  <p>三条硬约束（写进验收）：</p>
+  <ol>
+    <li>组件系统运行时安装 / 卸载 / 更新<strong>只操作</strong> <code>&lt;userData&gt;/runtime/linwidget/</code> 与 config.ini 的组件系统段；</li>
+    <li><strong>图标/box 数据文件</strong>（<code>data.dat / data.json</code>）及其 <code>.tmp / .bak</code> 伴生文件<strong>绝不被组件系统任何流程读写</strong>——含安装、卸载、更新、组件运行期；</li>
+    <li><strong>拆 DLL 时桌面数据逻辑留在主程序</strong>：<code>BoxManager</code> / <code>LayoutPersistenceService</code> / <code>DesktopItemLoader</code>（图标加载与布局持久化）不迁入 LinWidgetRuntime.dll；拆 DLL 只影响渲染合成（ListView.cpp:1344-1345/:1381-1382）与输入转发（10+ 处）两个挂点，且以接口判空跳过实现——未安装组件系统时桌面图标/box 的加载、绘制、持久化行为与老版本完全一致。</li>
+  </ol>
+</section>
+<section>
+  <h2>3. 组件加载与主程序的集成（单进程，运行时已安装）</h2>
+
+  <h3>3.1 加载模型</h3>
+  <div class="arch">
+    <div class="arch-row">
+      <div class="arch-box"><b>LinDesk.exe（主程序）</b><span>桌面/图标/格子/菜单/设置<br>运行时门控（接口指针判空）<br>Canvas 合成与输入转发经接口</span></div>
+      <div class="arch-arrow">◄── LoadLibrary 动态加载 ──►</div>
+      <div class="arch-box"><b>LinWidgetRuntime.dll（组件系统）</b><span>WidgetManager + CEF OSR<br>组件包加载器 / 校验器 / 市场 / 权限<br>壁纸组件</span></div>
+      <div class="arch-arrow">└── 读组件包目录 ──┘</div>
+      <div class="arch-box"><b>组件包（独立分发）</b><span>.lw 包 / 目录<br>manifest.json + HTML/CSS/JS<br>用户下载/放置即加载</span></div>
+    </div>
+    <div class="arch-note">组件系统运行时（LinWidgetRuntime.dll）由主程序在"已安装"时 LoadLibrary 动态加载，同进程运行；业务组件以包为单位独立分发，运行时动态加载。主程序安装包不含组件系统与业务组件。</div>
+  </div>
+
+  <h3>3.2 能力与加载边界</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:24%"><col style="width:46%"><col style="width:30%"></colgroup>
+    <tr><th>能力</th><th>归属与实现口径</th><th>位置</th></tr>
+    <tr><td>组件系统本体</td><td>WidgetManager / CefManager / CEF OSR / 组件包加载器 / 校验器 / 市场 / 权限——全部在 LinWidgetRuntime.dll 内；未安装则主程序无组件能力</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>运行时安装/卸载/更新</td><td>RuntimeInstaller：下载 linwidget-runtime 包 → SHA-256 → 解压 <code>&lt;userData&gt;/runtime/linwidget/</code> → LoadLibrary / FreeLibrary / 清目录（第 2 节）</td><td><span class="tag main">主程序</span></td></tr>
+    <tr><td>渲染合成</td><td>OSR 帧 → <code>LinWidgetCanvasWidget</code> 缓存 → ListView::paintEvent <code>renderCanvas</code> 合成进桌面画布；ListView 经 <code>linwidget_render_canvas</code> 接口调用（未安装跳过）</td><td><span class="tag main">主程序</span>（合成）＋<span class="tag runtime">组件运行时</span>（帧源）</td></tr>
+    <tr><td>输入路由</td><td>ListView 捕获鼠标/滚轮/键盘/IME → <code>linwidget_forward_event</code> → WidgetManager <code>forward*Event</code> → OSR 实例（现有 10+ 处转发点改接口调用）</td><td><span class="tag main">主程序</span>＋<span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>命中测试</td><td><code>isWidgetAt / widgetAt</code> 按组件实例几何命中；透明区域穿透（现有逻辑保留，未安装恒不命中）</td><td><span class="tag runtime">组件运行时</span>（几何表）＋<span class="tag main">主程序</span>（命中调用）</td></tr>
+    <tr><td>组件包加载/卸载</td><td>组件加载器扫描 <code>&lt;userData&gt;/LinWidgets/</code> → 校验 manifest → 注册 → 实例创建/销毁；卸载仅移除代码，保留用户数据</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>权限模型 / 沙箱</td><td>PermissionManager、OnBeforeResourceLoad 拦截、CSP 注入、存储配额（同进程内）</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>校验器 / 诊断包 / 意图保留</td><td>安装 lint、console/异常捕获、一键导出诊断包、manifest 意图记录（调试面板现有入口）</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>组件市场（索引/下载/安装/更新）</td><td>拉取 index.json、SHA-256 校验、解压到组件目录、版本对比——组件运行时执行；设置页给入口与状态</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>组件设置 UI / 开发面板</td><td>WidgetSettingsDialog + DebugPanel 组件开发入口（现有 UI，不迁移）</td><td><span class="tag main">主程序</span>（UI 壳）＋<span class="tag runtime">组件运行时</span>（逻辑）</td></tr>
+    <tr><td>设置页组件系统区</td><td>未安装=[下载并安装组件系统]；已安装=版本 + [检查更新] + [卸载]</td><td><span class="tag main">主程序</span></td></tr>
+    <tr><td>设置页组件区</td><td>组件列表 + 安装状态 + [下载/启用/停用/卸载] + [打开组件管理]（运行时已装才显示）</td><td><span class="tag main">主程序</span></td></tr>
+    <tr><td>右键菜单组件项</td><td>按"运行时已装 + 已装组件"动态显示，命令直调 WidgetManager</td><td><span class="tag main">主程序</span></td></tr>
+    <tr><td>崩溃恢复</td><td>CEF 渲染进程崩溃由 <code>handleBrowserCrashed</code> 自动重建实例（60s 内 3 次，超限提示）——CEF 自身多进程兜底，无需进程级隔离</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td>数据与配置</td><td>registry.json、LinWidgetsData/、LinWallpapers/、config.ini 组件段——组件运行时读写（单进程无双写问题）；主程序仅在安装/卸载时操作 <code>runtime/linwidget/</code></td><td><span class="tag runtime">组件运行时</span>（数据）＋<span class="tag main">主程序</span>（安装目录）</td></tr>
+    <tr><td>组件包内容</td><td>业务组件本体（HTML/CSS/JS + manifest）独立分发，不捆绑进主程序安装包</td><td><span class="tag pkg">组件包</span></td></tr>
+  </table>
+  </div>
+
+  <h3>3.3 组件与主程序的接口面（同进程）</h3>
+  <ul>
+    <li><strong>运行时消息协议</strong>：<code>handleRuntimeMessage</code>（WidgetManager.cpp:1906）收敛固化：geometry、settings、system_info、storage、实例管理（create/list/close）、error——<strong>同进程信号/回调直连，无 IPC 封装</strong>；</li>
+    <li><strong>事件信号</strong>：保留现有 <code>widgetError / widgetLaunched / widgetStopped / widgetSettingsRequested / widgetGeometryChanged</code> 信号，主程序 UI（设置页、右键菜单、命中测试）经 <code>linwidget_widget_manager()</code> 指针直接连接；</li>
+    <li><strong>输入注入</strong>：ListView 事件 → <code>linwidget_forward_event</code> → WidgetManager forward*Event → CefOsrBrowserInstance（现有链路，无跨进程跳转，延迟最低）；</li>
+    <li><strong>高频数据</strong>：system_info 订阅推送、console 流全部在主程序进程内闭环，直接进调试面板日志查看器。</li>
+  </ul>
+
+  <h3>3.4 组件包动态加载集成设计</h3>
+  <ul>
+    <li><strong>组件目录扫描</strong>：运行时初始化时扫描 <code>&lt;userData&gt;/LinWidgets/</code> 下每个组件包目录 → 读取 <code>manifest.json</code> → 校验器 lint → 注册进 registry.json；目录不存在则为空态（无组件不报错）；</li>
+    <li><strong>动态加载/卸载</strong>：新增包目录 → 即时校验注册并可启动实例；删除包目录/卸载 → 停止实例、仅移除代码，storage 数据保留；<strong>无需重启主程序</strong>（加载器监听目录变化或手动刷新）；</li>
+    <li><strong>入口显隐</strong>：右键菜单组件项、设置页组件区按"运行时已装 + 是否已装组件"动态显示；零组件安装时入口正常存在并引导去下载；</li>
+    <li><strong>崩溃恢复</strong>：单个组件 OSR 实例崩溃 → <code>handleBrowserCrashed</code> 自动重建（60s 内 3 次熔断）；桌面其他功能不受影响（CEF 多进程隔离）；</li>
+    <li><strong>版本兼容</strong>：组件包 manifest 声明 <code>runtimeVersion / protocolVersion</code>；不兼容 → 加载器拒绝并提示更新组件包或组件运行时；</li>
+    <li><strong>设置页组件区</strong>：组件列表（名称/版本/启用状态）+ [下载组件]（Releases 直链）+ [检查更新] + [卸载] + [打开组件管理]。</li>
+  </ul>
+
+  <h3>3.5 目录与数据归属</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:34%"><col style="width:40%"><col style="width:26%"></colgroup>
+    <tr><th>路径</th><th>用途</th><th>读写方</th></tr>
+    <tr><td><code>&lt;userData&gt;/runtime/linwidget/</code></td><td>组件系统运行时包（LinWidgetRuntime.dll + cef/ + subprocess + manifest.json）；安装/卸载/更新操作对象</td><td><span class="tag main">主程序</span>（RuntimeInstaller）</td></tr>
+    <tr><td><code>&lt;userData&gt;/LinWidgets/registry.json</code></td><td>组件注册表（已装组件、几何、启停状态）</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td><code>&lt;userData&gt;/LinWidgets/&lt;componentId&gt;/</code></td><td>组件包目录（manifest + HTML/CSS/JS），用户放置/市场安装</td><td><span class="tag runtime">组件运行时</span> / 用户</td></tr>
+    <tr><td><code>&lt;userData&gt;/LinWidgetsData/</code></td><td>组件 storage 数据（按组件隔离；卸载组件系统时保留）</td><td><span class="tag runtime">组件运行时</span></td></tr>
+    <tr><td><code>&lt;userData&gt;/LinWallpapers/</code></td><td>壁纸配置与媒体（role=wallpaper；卸载组件系统时保留）</td><td><span class="tag runtime">组件运行时</span></td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>4. 前置地基：CEF 四项技术缺口 <span class="tag keep">已基本补齐</span></h2>
+  <p>打磨建立在渲染栈完整之上。以下四项是 CEF 迁移遗留的功能缺口，<strong>现已全部落地</strong>（均在 LinWidgetRuntime.dll 内）：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:14%"><col style="width:30%"><col style="width:30%"><col style="width:26%"></colgroup>
+    <tr><th>缺口</th><th>现状（代码依据）</th><th>影响</th><th>实现要点</th></tr>
+    <tr><td>IME 候选窗口</td><td><span class="tag keep">已实现</span> <code>sendKeyEvent</code>（CefOsrBrowserInstance.cpp:601）+ <code>ImeCommitText / ImeSetComposition / ImeCancelComposition</code>（:656-666）+ <code>imeCompositionRangeChanged</code>（:448）</td><td>中文组合/提交输入可用；<span class="tag check">待补</span> 候选框查询回调（OnIMECandidateCountToQuery）未接线</td><td>参考 cefclient <code>osr_ime_handler_win.cpp</code> 补候选框回调（可选 P1）</td></tr>
+    <tr><td>本地资源 scheme</td><td><span class="tag keep">已实现</span> <code>GetResourceHandler</code>（CefOsrBrowserInstance.cpp:119）+ <code>linwidget://</code> 路由（:131）；组件入口 URL = <code>linwidget://&lt;id&gt;/&lt;entry&gt;</code>（WidgetManager.cpp:768/1231/2311）</td><td>组件内图片/字体/相对路径 JS 全部可加载，跨目录 fetch 本地数据可用</td><td>CSP 头随 scheme 响应统一注入（可选强化）</td></tr>
+    <tr><td>console 捕获</td><td><span class="tag keep">已实现</span> <code>OnConsoleMessage</code>（CefOsrBrowserInstance.cpp:78）</td><td>AI 可见组件 console 输出，迭代闭环接通</td><td>转发到调试面板日志查看器（接线确认）</td></tr>
+    <tr><td>网络权限沙箱</td><td><span class="tag keep">已实现</span> <code>OnBeforeResourceLoad</code>（CefOsrBrowserInstance.cpp:222-284）：bridge 消息拦截 + 按 <code>allowNetwork()</code> 拦截 http/https/ws/wss/ftp</td><td>无 network 权限组件发起外联被拦</td><td>权限判定已生效；日志打点已加（:277）</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>5. 作者层：AI 开发闭环（组件运行时内）</h2>
+  <p>AI 不需要 SDK，需要"规范 + 示例 + 校验器 + 反馈"。作者层的五个环节构成闭环：<strong>AI 读规范与示例 → 生成组件包 → 校验器报错 → AI 按错误修 → 安装运行 → 诊断导出再迭代</strong>。校验器与诊断包运行在组件运行时（安装/调试入口在组件管理窗口与调试面板）。</p>
+
+  <h3>5.1 协议规范（定稿）</h3>
+  <ul>
+    <li>以现有 <code>handleRuntimeMessage</code>（WidgetManager.cpp:1906）已支持的消息面为准，<strong>收敛固化，不新增无谓类型</strong>：geometry、settings、system_info、storage、实例管理（create/list/close）、error 等；</li>
+    <li>字段命名统一 snake_case；每类消息配一个请求/响应 JSON 示例；</li>
+    <li>错误码固定 3 个：<code>OK</code> / <code>DENIED</code>（权限拒绝）/ <code>INVALID</code>（参数或格式错误），拒绝与失败必须显式返回错误码而非静默；</li>
+    <li>文档短到能整段放入 AI 上下文，作为组件生成的输入素材。</li>
+  </ul>
+
+  <h3>5.2 示例组件仓库</h3>
+  <ul>
+    <li>GitHub 开源：官方最小组件模板 + 3 个完整参考实现（Clock / Notes / Todo）；</li>
+    <li>既是 AI 生成的 few-shot 素材，也是人工调试的对照物；</li>
+    <li>仓库同时承载组件索引（见第 6 节）。</li>
+  </ul>
+
+  <h3>5.3 组件校验器</h3>
+  <ul>
+    <li>安装时 lint：manifest 字段完整性、权限是否声明、HTML/JS 语法；</li>
+    <li>输出<strong>结构化错误清单</strong>（位置 + 原因 + 修法），可直接反馈给 AI 迭代；</li>
+    <li>危险模式扫描分级：<span class="tag p0">error</span> 确定有害（eval + 远程代码执行、远程脚本注入）；<span class="tag p1">warning</span> 可疑（内联事件、超大包、未声明权限却出现外部请求）；</li>
+    <li><strong>与权限模型联动（防误伤）</strong>：外部请求类代码只有在"manifest 未声明对应权限"时才判为错误——Weather 组件合法请求天气 API 不因出现外联 URL 被拦。</li>
+  </ul>
+
+  <h3>5.4 运行时反馈与诊断包</h3>
+  <ul>
+    <li>console / 未捕获异常 / 网络请求记录转发到调试面板日志查看器（依赖 4.3 缺口）；</li>
+    <li>调试面板提供<strong>一键导出诊断包</strong>：组件 manifest + 运行日志 + 异常 + 最近错误，格式化为可直接粘贴给 AI 的文本；</li>
+    <li><strong>脱敏约束</strong>：诊断包只含组件自身数据，不包含用户桌面其他信息。</li>
+  </ul>
+
+  <h3>5.5 意图保留</h3>
+  <ul>
+    <li>manifest 记录<strong>生成意图</strong>（原始需求描述 + AI 引擎/版本）；</li>
+    <li>组件出问题时，把"旧包 + 意图 + 新需求 + 诊断包"四件套喂给 AI，做<strong>增量修复</strong>而非推倒重写，成功率更高、结果更稳定。</li>
+  </ul>
+
+  <h3>5.6 生成入口（远期可选，不做承诺）</h3>
+  <ul>
+    <li><strong>主路径（现在就用）</strong>：用户在任意 AI 工具（Cursor / 豆包等）里按规范 + 模板生成组件包，LinDesk 负责校验与安装；</li>
+    <li>远期可选：调试面板内"描述式生成"（调大模型 API 返回组件包），仅作探索，不作为本方案交付项。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>6. 市场层：组件包发现与更新（组件运行时执行）</h2>
+  <p>复用此前已完成设计的 GitHub 更新方案思路（客户端请求 GitHub Releases API + gh CLI 发布 + digest 免手算）同构实现，不引入新基建。<strong>下载/校验/安装/卸载由组件运行时执行</strong>，设置页组件区提供入口与安装状态。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:16%"><col style="width:44%"><col style="width:40%"></colgroup>
+    <tr><th>能力</th><th>设计</th><th>要点</th></tr>
+    <tr><td>组件索引</td><td>GitHub 仓库根目录 <code>index.json</code>：组件 id / 名称 / 简介 / 图标 / 最新版本 / 包下载 URL</td><td>与组件示例仓库合并维护，版本号由发布流程统一管理（避免 AI 乱写版本）</td></tr>
+    <tr><td>在线安装 / 卸载</td><td>拉取 index.json → 展示列表 → 下载 .lw 组件包 → SHA-256 校验 → 解压到组件目录 → 注册</td><td>校验失败拒绝安装并提示原因；卸载保留用户数据（storage 按组件隔离，卸载仅移除代码）</td></tr>
+    <tr><td>组件更新</td><td>启动时（或手动）对比已装版本与索引最新版，提示一键更新</td><td>复用 UpdateChecker / <code>compareVersions</code> 数字语义；更新前备份旧包可回滚</td></tr>
+    <tr><td>离线降级</td><td>GitHub 不可达时组件照常运行</td><td>仅不提示更新；安装/更新按钮置灰并说明原因，不做静默失败</td></tr>
+    <tr><td>来源信任</td><td>哈希校验 + 来源白名单（官方仓库固定）</td><td>第三方索引暂不支持，避免供应链风险</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>7. 运行层：权限、推送、生命周期、沙箱（组件运行时内）</h2>
+
+  <h3>7.1 权限模型（收敛，避免过度设计）</h3>
+  <ul>
+    <li>保持三类为主：<code>network</code>（外联请求）/ <code>storage</code>（组件数据读写）/ <code>desktop</code>（桌面集成：拖放、文件、快捷键预留）；可选扩展 <code>clipboard</code>；</li>
+    <li><strong>不做存储读写分离</strong>：拆"读/写"两个权限增加协议复杂度、收益低，组件作者与 AI 都更难理解；</li>
+    <li>安装时<strong>最小化授予</strong>：只授予 manifest 声明且校验器通过的权限。</li>
+  </ul>
+
+  <h3>7.2 运行时申请流</h3>
+  <ul>
+    <li>组件首次调用未授权权限时，主程序弹窗询问；请求<strong>挂起等待用户决策</strong>，避免组件无限重试；</li>
+    <li>拒绝后该 API 返回 <code>DENIED</code> 错误码（协议可见，AI 能据此修）；</li>
+    <li><strong>同组件同权限记住选择</strong>，不重复弹窗；用户可在调试面板权限页随时撤销。</li>
+  </ul>
+
+  <h3>7.3 订阅-推送</h3>
+  <ul>
+    <li><code>system_info</code> 在现有 request/response 基础上增加 <code>subscribe / unsubscribe</code>；</li>
+    <li>推送按 1s 节流，组件挂起时不推送、恢复后补一帧；</li>
+    <li>组件必须显式取消订阅，避免泄漏（组件销毁时平台强制清理）。</li>
+  </ul>
+
+  <h3>7.4 生命周期（定义要克制）</h3>
+  <ul>
+    <li>挂起条件：<strong>窗口最小化 / 组件被显式隐藏</strong>时暂停渲染帧（OSR WasHidden）；<strong>不做窗口遮挡检测</strong>（桌面层级复杂、收益低）；</li>
+    <li>内存压力时按 LRU 卸载挂起组件的 OSR 实例；恢复时重建实例 + 加载组件包 + 从 storage 恢复状态（成本明确：一次实例创建 + reload）；</li>
+    <li>状态恢复依赖 <code>layout.json</code>（geometry，已有）与 storage（组件数据，已持久化）——<strong>不再设计额外的数据快照机制</strong>。</li>
+  </ul>
+
+  <h3>7.5 沙箱</h3>
+  <ul>
+    <li>网络：OnBeforeResourceLoad 按 7.1 权限放行/拦截（补 4.4 缺口）；</li>
+    <li>CSP：随 <code>linwidget://</code> scheme 响应统一注入，锁定远程脚本/外联字体等（随 4.2 缺口一并实现，不单独立项）；</li>
+    <li>资源配额：组件存储上限（如 16MB），超限 API 返回 <code>INVALID</code> 并提示。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>8. 体验层：设置、状态、交互（同进程）</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:18%"><col style="width:44%"><col style="width:38%"></colgroup>
+    <tr><th>能力</th><th>设计</th><th>说明</th></tr>
+    <tr><td>设置 UI</td><td>manifest 声明 <code>settingsSchema</code>（开关/滑块/下拉/颜色），主程序自动渲染设置对话框；<strong>与组件自带 settings.html 并存</strong></td><td>schema 是新组件推荐方式；既有组件（如 Notes 的 settings.html）保留，<strong>不做强制迁移</strong>，避免破坏性改动；设置入口在组件管理窗口</td></tr>
+    <tr><td>状态恢复</td><td>重启恢复组件位置（registry.json）与数据（storage）</td><td>组件运行时内完成；加载器按 registry 恢复组件实例</td></tr>
+    <tr><td>组件内交互</td><td><strong>Ctrl+拖拽移动组件（见 8.1，待补）</strong>、拖拽吸附网格、Shift 锁定、右键层级菜单、多选批量移动</td><td>在现有 geometry 同步（WidgetGeometryChanged）基础上加交互层；同进程直连</td></tr>
+    <tr><td>拖放进组件（桌面→组件）</td><td><strong>边界项</strong>：同进程 OLE drag&amp;drop 可用，但需 <code>desktop</code> 权限 + 命中协议</td><td>列入 P3 探索；组件内拖拽不受影响</td></tr>
+    <tr><td>点击穿透 / 命中测试</td><td>组件区域可交互、区域外穿透；<code>isWidgetAt / widgetAt</code> 按实例几何命中</td><td>现有逻辑保留；透明区域按帧 alpha 判断穿透</td></tr>
+    <tr><td>视觉</td><td>无强制约束</td><td>作者与用户发挥；平台不注入设计令牌、不限制样式</td></tr>
+  </table>
+  </div>
+
+  <h3>8.1 组件 Ctrl+拖拽移动（WebView2 时代机制，CEF 迁移遗漏 <span class="tag check">待补</span>）</h3>
+  <p><strong>现状</strong>：WebView2 时代按住 <kbd>Ctrl</kbd> + 拖动组件即可把组件移动到桌面任意位置；迁移到 CEF OSR 后<strong>该交互未迁移</strong>——当前组件几何只能在设置/组件管理里修改，桌面无法直接拖动组件。</p>
+  <p><strong>原因</strong>：桌面 ListView 的鼠标事件同时承载"图标选择/拖拽"与"组件输入转发"两类语义；组件区域与图标层共存，需要修饰键区分"拖动组件"与"组件内交互"（组件内部元素本身支持拖拽，如便签里拖选文字），Ctrl 即约定为组件移动修饰键。</p>
+
+  <h4>设计（事件分流，主程序 ListView 侧）</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:22%"><col style="width:46%"><col style="width:32%"></colgroup>
+    <tr><th>场景</th><th>行为</th><th>实现要点</th></tr>
+    <tr><td>命中组件 + 按住 Ctrl + 拖动</td><td><strong>进入组件移动模式</strong>：主程序接管鼠标，不转发给 OSR；按偏移实时更新组件 geometry（组件画面跟随光标）</td><td>ListView mousePress/mouseMove/mouseRelease 分支；<code>bridge.isWidgetAt(pos)</code> 命中（runtime_export.h:98-99 已有）</td></tr>
+    <tr><td>命中组件 + 无 Ctrl</td><td>事件转发给 OSR 实例（组件内交互，现状不变）</td><td>现有 <code>forwardMouseEvent</code> 链路</td></tr>
+    <tr><td>未命中组件</td><td>桌面图标选择/拖拽逻辑（现状不变）</td><td>现有 ListView 逻辑</td></tr>
+    <tr><td>Ctrl + 点击（不拖动）</td><td>不进入移动，事件仍转发给组件（保留组件内 Ctrl 快捷键，如多选）</td><td>以 <code>QApplication::startDragDistance()</code> 阈值判定进入移动</td></tr>
+  </table>
+  </div>
+
+  <h4>移动过程与持久化</h4>
+  <ol>
+    <li><strong>按下</strong>：Ctrl + 组件区域按下 → 记录起始鼠标位置与组件原始 geometry（<code>widgetAt</code> 得实例 id → 取 geometry）；切换光标为 <code>SizeAllCursor</code>；</li>
+    <li><strong>移动</strong>：mouseMove 计算 delta → 更新组件 geometry → <code>resizeWidget / setWidgetGeometry</code>（或 <code>update_widget_geometry</code> 消息）→ OSR 实例 <code>setGeometry</code> + CanvasWidget 帧重定位；</li>
+    <li><strong>抬起</strong>：mouseRelease → 结束移动，geometry 落 <code>registry.json</code>（ConfigManager 既有保存路径，重启恢复）；</li>
+    <li><strong>边界</strong>：拖动中跨出桌面视口按视口夹紧；壁纸组件不可拖动（widgetAt 已跳过壁纸）；多组件多选批量移动（按住 Ctrl 连续点选后拖任一组件）列为 P2 探索。</li>
+  </ol>
+
+  <h3>8.2 组件管理窗口（用户侧统一入口）</h3>
+  <p>设置页组件区 <code>[打开组件管理]</code> 打开的独立窗口：<strong>主程序侧薄 UI + 运行时查询接口</strong>，是所有已安装组件的用户侧管理入口（列表 / 启停 / 权限 / 数据 / 日志 / 卸载）。<strong>不引入新窗口框架</strong>，复用现有设置页对话框体系；运行时未安装时不显示入口（2.7 门控）。</p>
+
+  <h4>窗口结构（两栏）</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:44%"><col style="width:36%"></colgroup>
+    <tr><th>区</th><th>内容</th><th>说明</th></tr>
+    <tr><td>左侧 · 组件列表</td><td>已装组件：名称 / 版本 / 启用状态 / role 标记（壁纸）；空态提示"未安装组件" + 去市场入口</td><td>数据来自 <code>widget_manager list</code></td></tr>
+    <tr><td>右侧 · 详情与操作</td><td>选中组件的基础信息、权限面板、数据管理、运行状态、操作按钮</td><td>数据来自 <code>widget_manager info</code></td></tr>
+  </table>
+  </div>
+
+  <h4>每项组件的能力（信息 + 操作）</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:14%"><col style="width:44%"><col style="width:42%"></colgroup>
+    <tr><th>块</th><th>内容</th><th>实现要点</th></tr>
+    <tr><td>基础信息</td><td>名称 / 版本 / 来源（市场 / 本地放置）/ 包大小 / 启用状态</td><td>manifest + 组件目录扫描（加载器已有）</td></tr>
+    <tr><td>权限面板</td><td>manifest 声明权限逐项展示，每项一个开关（当前授予状态）</td><td>开关写 PermissionManager 记忆表；关闭后组件 API 返回 <code>DENIED</code>，打开恢复；与 7.2 申请流一致，不重复弹窗</td></tr>
+    <tr><td>数据管理</td><td>storage 用量（上限 16MB，7.5）+ <code>[清空数据]</code> + <code>[导出备份]</code></td><td>导出 = 复制 <code>LinWidgetsData/&lt;id&gt;/</code> 到用户指定目录，不做压缩格式；清空走 <code>clear_storage</code></td></tr>
+    <tr><td>运行状态</td><td>最后运行状态（正常 / 异常 / 崩溃恢复 N 次）+ 异常记录条数 + <code>[重启组件]</code> + <code>[打开日志]</code></td><td>重启 = 停实例再启动（热重载）；日志进调试面板日志查看器（依赖 4.3 缺口）；只保留最近计数，不建历史库</td></tr>
+    <tr><td>操作</td><td><code>[启用/停用]</code> <code>[更新]</code>（走市场）<code>[卸载]</code>（保留数据，确认提示）</td><td>复用加载器已有动作；与设置页组件区按钮同语义</td></tr>
+  </table>
+  </div>
+
+  <h4>消息面（复用 handleRuntimeMessage 收敛类型，不新增 IPC）</h4>
+  <ul>
+    <li><code>widget_manager list</code>：已装组件元数据 + 状态列表；</li>
+    <li><code>widget_manager info</code>：单组件详情（权限 / storage 用量 / 运行状态计数）；</li>
+    <li><code>widget_manager set_permission</code>：权限开关 → PermissionManager 记忆表；</li>
+    <li><code>widget_manager clear_storage / export_data</code>：数据管理；</li>
+    <li><code>widget_manager restart</code>：停实例 + 重启（热重载）；</li>
+    <li><code>enable / disable / close / create</code>：复用实例管理现有类型。</li>
+  </ul>
+
+  <p class="note"><strong>克制边界：</strong>窗口只做"已安装组件的管理"，不做组件发现（那是市场层 6 章）、不做组件编辑（那是作者层 5 章）。权限开关是唯一新增的持久化面；运行统计不建库、不存历史，仅保留计数与最近状态。</p>
+</section>
+
+<section>
+  <h2>9. 壁纸组件（role: wallpaper，桌面画布合成）</h2>
+  <h3>9.1 定位与设计原则</h3>
+  <p>动态壁纸是组件系统内部的<strong>特殊组件类型</strong>（<code>manifest.role: "wallpaper"</code>），与普通组件共用包规范、CEF OSR 实例、消息桥、权限模型、Canvas 帧合成与注册表/调试面板入口。<strong>不做独立运行时，不复刻 WebView2 时代的 LinWallpaperWebViewRuntime</strong>。组件系统只有一种组件，role 只区分行为。渲染上，壁纸 = 全屏 CEF OSR 实例，帧由 CanvasWidget 合成进桌面画布（与普通组件同管道，层级最低）。</p>
+
+  <h3>9.2 现状盘点（代码依据）</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:14%"><col style="width:44%"><col style="width:42%"></colgroup>
+    <tr><th>层</th><th>现状</th><th>结论</th></tr>
+    <tr><td>包格式</td><td><span class="tag keep">已实现</span> <code>manifest.role</code> 默认 <code>"widget"</code>；<code>launchWidgetInstance</code> 对 <code>role=="wallpaper"</code> 分流 → <code>startWallpaper</code>（WidgetManager.cpp:498/2409）</td><td>格式已定义且分流已接线</td></tr>
+    <tr><td>持久化</td><td><code>filterWallpapers</code> 按 role 过滤，壁纸不落 layout.json，走独立壁纸配置（<code>LinWallpapers/</code>）</td><td>隔离持久化已设计（恢复流程待 P1 完善）</td></tr>
+    <tr><td>绘制</td><td>ListView 壁纸互动分支（ListView.cpp:667-670 <code>isWallpaperActive / isWallpaperInteractive</code>）+ 透明遮底预留；壁纸帧由 CanvasWidget 合成进桌面画布</td><td>层级挂点保留在桌面画布合成（壁纸帧最先画）</td></tr>
+    <tr><td>运行时</td><td><span class="tag keep">已实现</span> <code>startWallpaper</code>（WidgetManager.cpp:2221）不再返回 "not yet supported"；bridge 暴露 <code>hasActiveWallpaper / isWallpaperInteractive / activeWallpaperPackagePath</code>（runtime_export.h:128-129）；内置壁纸包 <code>src/resources/LinWidgets/Wallpaper/</code> 已存在</td><td>壁纸 P0 核心已落地；剩余：设置 UI / 本地文件选择 / 视频性能治理（P1）</td></tr>
+  </table>
+  </div>
+
+  <h3>9.3 特殊化设计（与普通组件的六项差异）</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:13%"><col style="width:30%"><col style="width:31%"><col style="width:26%"></colgroup>
+    <tr><th>维度</th><th>普通组件</th><th>壁纸组件</th><th>实现要点</th></tr>
+    <tr><td>尺寸</td><td>包内 width/height，可拖拽缩放</td><td>= 桌面视口（桌面窗口客户区），不可拖拽</td><td>geometry 绑定桌面尺寸，resize 跟随；不走 LayoutManager</td></tr>
+    <tr><td>层级</td><td>zOrder 参与排序</td><td>强制最低（普通组件之下、系统壁纸之上）</td><td>CanvasWidget 合成时壁纸帧最先画</td></tr>
+    <tr><td>交互</td><td>鼠标正常路由</td><td>点击穿透（不命中 widgetAt）；仅设置模式例外</td><td>widgetAt/hitTest 跳过壁纸实例；<code>isWallpaperInteractive</code> 已预留</td></tr>
+    <tr><td>生命周期</td><td>可关可停</td><td>单例（同时仅一个活动壁纸），启动自动恢复</td><td>切换先停旧实例；load/saveWallpaperConfig 落地</td></tr>
+    <tr><td>渲染</td><td>小区域按需</td><td>全屏常驻；视频按内容帧率、图片静止低耗</td><td>复用 OSR OnPaint 按需重绘；最小化暂停帧</td></tr>
+    <tr><td>权限</td><td>network / storage / desktop</td><td>本地媒体免权限；在线 URL 需 network</td><td>复用 PermissionManager</td></tr>
+  </table>
+  </div>
+
+  <h3>9.4 绘制层级（自上而下）</h3>
+  <ol>
+    <li>桌面图标 + 文件名（ListView::paintEvent；浮动模式组件在其上 / 嵌入模式在其下）</li>
+    <li>普通组件帧（zOrder 排序合成）</li>
+    <li><strong>壁纸组件帧</strong>（全屏 OSR 实例，合成最先画）</li>
+    <li>透明遮底（壁纸激活时遮系统壁纸底图，ListView.cpp:1303 已预留）</li>
+    <li>系统壁纸（LinDesktop <code>m_scaledBackImagePixmap</code>，壁纸停止时恢复）</li>
+  </ol>
+
+  <h3>9.5 消息扩展（协议新增 2 类型）</h3>
+  <ul>
+    <li><code>wallpaper_set_source</code>：主程序弹文件对话框（C++ 侧）→ 返回本地路径 / 经 scheme 注入 → 组件渲染图片、视频；</li>
+    <li><code>wallpaper_get_source</code>：恢复时组件读取已选媒体源。</li>
+  </ul>
+
+  <h3>9.6 功能点清单</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:8%"><col style="width:48%"><col style="width:44%"></colgroup>
+    <tr><th>级别</th><th>任务</th><th>说明</th></tr>
+    <tr><td><span class="tag p0">P0</span></td><td><code>startWallpaper</code> 实现：role=wallpaper 包 → 全屏 CEF OSR 实例 + Canvas 合成</td><td>复用 create 流程，geometry=桌面视口，instanceId=<code>wallpaper:{id}</code></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>桌面视口绑定：壁纸实例 resize 跟随桌面尺寸</td><td>复用 osr-&gt;setGeometry</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>层级：壁纸帧合成在普通组件之下</td><td>CanvasWidget 合成顺序调整（1 处）</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>交互穿透：widgetAt / hitTest 跳过壁纸实例</td><td><code>isWallpaperInteractive</code> 语义落地</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>单例与持久化：切换停旧、启动恢复、load/saveWallpaperConfig 落地</td><td>骨架已空置，填实现</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>内置壁纸组件包：HTML（图片/视频/轮播/本地文件选择）+ manifest role=wallpaper</td><td>新包 <code>src/resources/LinWidgets/Wallpaper/</code>（组件包独立分发）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>本地文件选择通道（wallpaper_set_source + 主程序文件对话框）</td><td>壁纸设置的本地选文件</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>壁纸设置 UI（组件管理窗口内）+ 遮底/恢复系统壁纸联动完善</td><td>设置入口；停止时恢复系统壁纸</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>视频性能治理（帧率、最小化暂停）</td><td>与 7.4 生命周期策略一致</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>在线 URL 壁纸（network 权限验证）</td><td>权限模型的实战用例</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>多屏 / 多壁纸（可选）</td><td>暂不承诺</td></tr>
+  </table>
+  </div>
+
+  <h3>9.7 复用与新增边界</h3>
+  <p>复用：OSR 实例、消息桥、权限模型、Canvas 帧管理、filterWallpapers、role 分流、遮底逻辑（ListView.cpp:1303 已预留）。从零新增仅：<code>startWallpaper</code> 运行时实现、桌面视口绑定、穿透跳过、单例管理、文件选择消息、内置壁纸包。</p>
+</section>
+<section>
+  <h2>10. 按代码细分的任务清单</h2>
+  <p>任务按代码文件/模块分组，给 antigravity 直接排期执行。级别：<span class="tag p0">P0</span> 动态加载闭环与渲染基础 → <span class="tag p1">P1</span> 平台化 → <span class="tag p2">P2</span> 体验完善 → <span class="tag p3">P3</span> 扩展探索。</p>
+
+  <h3>10.1 组件系统运行时拆分与安装/卸载（P0-1，动态加载闭环）<span class="tag keep">已落地</span></h3>
+  <p class="note keep">本组任务<strong>已全部实现</strong>：CMakeLists.txt:190-227 已建 <code>LinWidgetRuntime SHARED</code> 目标；<code>runtime_export.h/.cpp</code> 动态加载桥已实现（<code>loadRuntime/unloadRuntime/init/shutdown</code>）；<code>src/desktop/runtime/RuntimeInstaller.*</code> 安装/卸载/版本管理已实现；<code>main.cpp</code> 运行时门控与 <code>ListView</code> bridge 判空调用已接入；设置页组件系统区已有安装/卸载入口；<code>scripts/package_linwidget_runtime.ps1</code> 已存在。下表为落地清单（验收项均已达成），无需再排期。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td><code>CMakeLists.txt</code>（根，:117-138 收源、:157-215 CEF 条件编译）</td><td>新增 <code>add_library(LinWidgetRuntime SHARED ...)</code> 目标，收 <code>widgets/linwidget/</code> + <code>widgets/cef/</code> + WidgetManager 源；主程序目标移除组件源与 CEF 链接；CEF 头文件/库只在 runtime 目标使用</td><td>主程序可脱离组件源独立编译；运行时产 <code>LinWidgetRuntime.dll</code></td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>src/desktop/widgets/runtime_export.h/.cpp</code>（新增）</td><td>C 导出接口：<code>linwidget_is_loaded / load / unload / init / shutdown / widget_manager / render_canvas / forward_event</code>（2.6 接口表）</td><td>主程序与运行时仅经 C 接口通信，无 ABI 耦合</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>main.cpp</code>（:140 <code>CefManager::shutdown()</code>）</td><td>组件初始化/收尾改运行时门控：安装后 init、退出时已加载才 shutdown；未安装跳过</td><td>未安装时启动/退出路径不触碰 CEF</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>ListView.cpp</code>（:1344-1345 / :1381-1382 <code>renderCanvas</code>；10+ 输入转发点）</td><td>canvas 合成与 <code>forwardMouseEvent / forwardWheelEvent / forwardKeyEvent / forwardInputMethodEvent</code> 调用改经 <code>linwidget_render_canvas / linwidget_forward_event</code>，函数指针判空</td><td>未安装时桌面渲染与交互零组件开销；已安装行为与现状一致</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>src/desktop/runtime/RuntimeInstaller.h/.cpp</code>（新增）</td><td>安装器：GitHub Releases 拉取 <code>linwidget-runtime</code> → SHA-256 校验 → 解压临时目录 → 原子 move 到 <code>&lt;userData&gt;/runtime/linwidget/</code> → LoadLibrary → <code>linwidget_init</code>；卸载：停组件 → shutdown → FreeLibrary → 删目录（保留组件数据）；更新：版本对比 → 备份旧包 → 替换 → 失败回滚</td><td>设置页 [下载并安装组件系统] / [卸载] / [检查更新] 全流程可用，全程不重启主程序</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td>设置页组件系统区（SettingsWidget）</td><td>未安装 = [下载并安装组件系统] + 版本说明；已安装 = 版本 + [检查更新] + [卸载]；安装失败明确提示原因</td><td>安装/卸载状态实时反映入口显隐</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>scripts/package_linwidget_runtime.ps1</code>（新增）</td><td>打包 <code>LinWidgetRuntime.dll</code> + <code>subprocess.exe</code> + <code>cef/</code> + <code>Resources/</code> + <code>manifest.json</code> → <code>linwidget-runtime-vX.Y.Z.zip</code>；发布 GitHub Releases（复用更新方案 gh CLI + digest）</td><td>Releases 资产与 manifest 版本一致</td><td><span class="tag p0">P0</span></td></tr>
+  </table>
+  </div>
+
+  <h3>10.2 CEF 四项缺口（P0-2，渲染基础）<span class="tag keep">已基本补齐</span></h3>
+  <p class="note keep">scheme（GetResourceHandler + <code>linwidget://</code>）、console（OnConsoleMessage）、网络权限沙箱（OnBeforeResourceLoad + allowNetwork）<strong>均已实现</strong>；IME 组合/提交/取消已实现，仅<strong>候选框查询回调</strong>（OnIMECandidateCountToQuery）待接线（P1 可选）。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td><code>CefOsrBrowserInstance.cpp:487-513</code></td><td>补 IME 回调（<code>OnIMECandidateCountToQuery / OnIMECompositionRangeChanged</code> 等），参考 cefclient <code>osr_ime_handler_win.cpp</code></td><td>组件内中文输入候选框/组合框正常</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>WidgetManager.cpp:737/809/1179</code></td><td>实现 <code>linwidget://</code> scheme + GetResourceHandler，按组件包目录映射；CSP 头随 scheme 响应注入</td><td>组件内图片/字体/相对路径 JS 全部可加载；跨目录 fetch 本地数据可用</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>CefOsrBrowserInstance.cpp</code>（DisplayHandler）</td><td>实现 <code>OnConsoleMessage</code> → 转发调试面板日志查看器</td><td>AI 可见组件 console 输出</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>CefOsrBrowserInstance.cpp:98</code>（<code>OnBeforeResourceLoad</code>）</td><td>按 manifest 权限声明放行/拦截非本地请求（判定规则见 7.1）</td><td>无 network 权限组件发起外联被拦</td><td><span class="tag p0">P0</span></td></tr>
+  </table>
+  </div>
+
+  <h3>10.3 组件包加载与市场</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td><code>linwidget/WidgetPackageLoader.cpp</code>（新增）</td><td>组件目录扫描 <code>&lt;userData&gt;/LinWidgets/</code> → manifest 校验（5.3）→ registry.json 注册 → 目录监听热加载；启动对账清失效条目</td><td>组件包目录可扫描、注册并启动实例；手动删包后注册表不残留</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>LinWidgetTypes.h</code>（registry 结构扩展）</td><td>记录组件 id / 版本 / role / 权限声明 / 启用状态 / 几何</td><td>现有 registry.json 结构兼容扩展</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>linwidget/WidgetMarket.cpp</code>（新增）</td><td>组件市场：index.json 拉取 / SHA-256 校验 / 解压注册 / 版本对比（复用 UpdateChecker / <code>compareVersions</code>）；离线降级</td><td>在线装/卸/更新组件全流程可用</td><td><span class="tag p1">P1</span></td></tr>
+  </table>
+  </div>
+
+  <h3>10.4 作者层（AI 开发闭环）</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td>协议规范文档（新，docs/LinWidget_Protocol.md）</td><td>5.1 定稿：消息面收敛、snake_case、错误码 OK/DENIED/INVALID、请求/响应示例</td><td>文档可整段放入 AI 上下文</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td>GitHub 示例组件仓库（Clock / Notes / Todo + 模板）</td><td>5.2：官方参考实现 + 组件索引承载</td><td>AI few-shot 素材与调试对照物</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td><code>linwidget/WidgetValidator.cpp</code>（新增）</td><td>5.3：安装 lint（manifest 字段/权限声明/语法）+ 危险模式分级扫描 + 与权限模型联动</td><td>结构化错误清单可回喂 AI；合法外联不被误伤</td><td><span class="tag p0">P0</span>（静态部分）</td></tr>
+    <tr><td>调试面板诊断包导出（DebugPanel）</td><td>5.4：manifest + 运行日志 + 异常 + 最近错误一键导出（脱敏）</td><td>诊断包可直接喂 AI 完成一次增量修复</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>manifest 意图字段 + 增量修复流程</td><td>5.5：记录生成意图（需求描述 + AI 引擎/版本）</td><td>"旧包 + 意图 + 新需求 + 诊断包"四件套闭环</td><td><span class="tag p1">P1</span></td></tr>
+  </table>
+  </div>
+
+  <h3>10.5 运行层</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td>PermissionManager（申请流）</td><td>7.2：首次调用弹窗询问、挂起等待、拒绝返回 DENIED、记住选择、调试面板可撤销</td><td>拒绝权限后组件 API 返回 DENIED 且不重复弹窗</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>system_info 订阅-推送</td><td>7.3：subscribe / unsubscribe、1s 节流、挂起不推送、销毁强制清理</td><td>高频数据闭环在进程内</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>生命周期（OSR WasHidden + LRU）</td><td>7.4：最小化/隐藏暂停帧；内存压力按 LRU 卸载挂起实例并恢复</td><td>最小化后组件渲染帧暂停</td><td><span class="tag p2">P2</span></td></tr>
+    <tr><td>沙箱收尾（配额）</td><td>7.5：组件存储上限（16MB），超限返回 INVALID</td><td>与 4.x 缺口联动</td><td><span class="tag p2">P2</span></td></tr>
+  </table>
+  </div>
+
+  <h3>10.6 体验层</h3>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td><code>ListView.cpp</code>（鼠标事件）</td><td><strong>组件 Ctrl+拖拽移动</strong>：命中组件（<code>bridge.isWidgetAt</code>）+ Ctrl → 进入移动模式（不转发 OSR）→ 实时更新 geometry（<code>resizeWidget / setWidgetGeometry</code> / OSR setGeometry + Canvas 重定位）→ 抬起持久化 registry.json；Ctrl+点击（未拖动）仍转发组件；壁纸不可拖动</td><td>按住 Ctrl 可拖动任意组件到桌面任意位置，重启恢复；组件内拖拽与 Ctrl 快捷键不受影响</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>settings schema 渲染</td><td>8 章：manifest <code>settingsSchema</code> → 自动渲染设置对话框；与 settings.html 并存</td><td>schema 设置项自动生成对话框</td><td><span class="tag p2">P2</span></td></tr>
+    <tr><td>设置页组件区完善</td><td>3.4：组件列表 + [下载组件] + [检查更新] + [卸载] + [打开组件管理]；入口按运行时/组件显隐</td><td>全新机器"装主程序 → 安装组件系统 → 下载组件包 → 启用 → 卸载"全流程可用</td><td><span class="tag p2">P2</span></td></tr>
+    <tr><td>组件管理窗口</td><td>8.2：两栏窗口（列表 + 详情），权限开关 / 数据管理（清空/导出）/ 运行状态 / 重启 / 日志；消息走 widget_manager 收敛类型</td><td>设置页 [打开组件管理] 可用，权限 / 数据 / 日志入口闭环</td><td><span class="tag p2">P2</span></td></tr>
+  </table>
+  </div>
+
+  <h3>10.7 壁纸组件（与功能打磨并行）<span class="tag keep">P0 已落地</span></h3>
+  <p class="note keep"><code>startWallpaper</code>（WidgetManager.cpp:2221）、bridge 壁纸接口（hasActiveWallpaper / isWallpaperInteractive / activeWallpaperPackagePath）、内置 <code>Wallpaper</code> 组件包均已实现；下表 P0 行全部达成。<span class="tag check">剩余 P1</span>：壁纸设置 UI + 本地文件选择 + 视频性能治理。</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:26%"><col style="width:44%"><col style="width:22%"><col style="width:8%"></colgroup>
+    <tr><th>文件 / 位置</th><th>任务</th><th>说明 / 验收</th><th>级别</th></tr>
+    <tr><td><code>WidgetManager.cpp:2172</code> <code>startWallpaper</code></td><td>role=wallpaper 包 → 全屏 OSR 实例 + Canvas 合成；视口绑定（resize 跟随）、层级（合成顺序）、穿透（widgetAt 跳过）</td><td>壁纸包可加载为全屏背景并跟随桌面尺寸；不拦截鼠标</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td><code>load/saveWallpaperConfig</code> + 单例管理</td><td>切换停旧、启动自动恢复</td><td>重启自动恢复；切换/停止恢复系统壁纸</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td>内置壁纸组件包 <code>src/resources/LinWidgets/Wallpaper/</code></td><td>HTML（图片/视频/轮播/本地文件选择）+ manifest role=wallpaper</td><td>组件包独立分发，随组件市场安装</td><td><span class="tag p0">P0</span></td></tr>
+    <tr><td>壁纸设置 UI + 文件选择 + 视频性能治理</td><td>9.6 的 P1 项：wallpaper_set_source、设置窗口、帧率/最小化暂停</td><td>本地选文件；视频壁纸低耗</td><td><span class="tag p1">P1</span></td></tr>
+    <tr><td>在线 URL 壁纸 / 多屏多壁纸</td><td>9.6 的 P2 项：network 权限验证、多屏（可选）</td><td>权限模型实战用例</td><td><span class="tag p2">P2</span></td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>11. 设计决策记录（明确不做）</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
+    <tr><th>不做项</th><th>原因</th></tr>
+    <tr><td>linwidget SDK / TS 类型 / API 文档站点</td><td>开发者是 AI，不需要人向的编程拐杖；规范 + 示例 + 校验器已覆盖</td></tr>
+    <tr><td>设计令牌 / 视觉规范强制</td><td>用户决策：视觉自由，作者发挥</td></tr>
+    <tr><td>存储权限读写分离</td><td>过度设计，协议复杂度上升而收益低</td></tr>
+    <tr><td>窗口遮挡检测挂起</td><td>桌面层级复杂，实现成本高、收益低；挂起只由最小化/隐藏触发</td></tr>
+    <tr><td>settings.html 强制迁移到 schema</td><td>破坏既有组件；两种方式并存，新组件推荐 schema</td></tr>
+    <tr><td>组件数据快照机制</td><td>storage 已持久化，快照是重复设计</td></tr>
+    <tr><td>内嵌 AI 生成功能承诺</td><td>主路径是外部 AI 工具生成 + 本地校验安装；内嵌生成仅远期探索</td></tr>
+    <tr><td>第三方组件索引</td><td>供应链风险，只信任官方仓库</td></tr>
+    <tr><td>独立壁纸运行时（LinWallpaperWebViewRuntime 模式）</td><td>壁纸是组件系统内的 role=wallpaper 特殊组件类型，不复刻独立子系统（见第 9 节）</td></tr>
+    <tr><td>拖放进组件（桌面→组件）</td><td>同进程 OLE drag&amp;drop 可用，但需 <code>desktop</code> 权限 + 命中协议；P3 探索，组件内拖拽不受影响</td></tr>
+    <tr><td>多进程方案（LinWidgetHost.exe）</td><td>2026-10-13 已否决：收益（瘦身/进程隔离）对本场景有限，IPC/跨进程显示/事件回传复杂度高；组件"独立"由运行时动态加载 + 组件包动态加载实现（见第 1 节决策记录）</td></tr>
+    <tr><td>组件运行时二次启停开关</td><td>安装/卸载（第 2 节）已覆盖"要不要组件系统"；运行期再给启停开关是重复设计，入口显隐随安装状态即可</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>12. 优先级路线与验收要点</h2>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:8%"><col style="width:42%"><col style="width:50%"></colgroup>
+    <tr><th>级别</th><th>内容</th><th>验收要点</th></tr>
+    <tr><td><span class="tag p0">P0-1</span></td><td><strong>组件系统运行时拆分 + 安装/卸载/更新</strong>（第 2 节 + 10.1）<span class="tag keep">已落地</span></td><td>已达成：设置页可安装/卸载组件系统；未安装时主程序无组件能力可独立运行；重启后状态恢复；主程序安装包不含组件系统（打包脚本已存在）；全程不重启主程序</td></tr>
+    <tr><td><span class="tag p0">P0-2</span></td><td>CEF 四项缺口（第 4 节）+ 组件包加载器与注册表（10.3）+ 协议规范定稿（5.1）+ 校验器静态部分（5.3）+ 壁纸 P0 项（10.7）<span class="tag keep">基本落地</span></td><td>scheme / console / 网络权限沙箱 / IME 组合输入已实现（候选框回调待补）；注册表与协议文档已落地；壁纸 P0 已落地；组件目录扫描/注册已可用，<strong>目录监听热加载与启动对账待补</strong></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>组件市场（索引/安装/更新，第 6 节）+ 诊断包导出与意图保留（5.4/5.5）+ 权限申请流与订阅推送（7.2/7.3）</td><td>在线装/卸/更新组件全流程可用；卸载后组件实例停止且用户数据保留；拒绝权限后组件 API 返回 DENIED 且不重复弹窗；一键导出的诊断包可直接喂 AI 完成一次增量修复</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>生命周期挂起/恢复（7.4）+ settings schema（第 8 节）+ 危险扫描强化（5.3）+ 设置页组件区完善（3.4）</td><td>最小化后组件渲染帧暂停；内存压力下挂起组件可卸载并恢复；schema 设置项自动生成对话框；全新机器"装主程序 → 安装组件系统 → 下载组件包 → 启用 → 卸载"全流程可用</td></tr>
+    <tr><td><span class="tag p3">P3</span></td><td>组件间通信 + 桌面集成扩展点（拖放/文件/快捷键）</td><td>组件间通信按来源隔离并需用户授权；拖放/文件 API 走 <code>desktop</code> 权限申请流</td></tr>
+  </table>
+  </div>
+  <p class="note">依赖顺序：<strong>P0-1（运行时拆分与安装/卸载）是全部组件能力的前置</strong>——组件运行时未拆出，后续所有"组件系统"能力都随主程序捆绑、无法独立安装；P0-2 中 CEF 缺口（第 4 节）是校验器/沙箱/市场层的共同前置；组件包加载器依赖协议定稿（5.1）与校验器静态部分（5.3）；市场层依赖 scheme（4.2）。组件运行时与主程序同仓库构建（一个 CMake 工程产出 <code>LinDesk.exe</code> + <code>LinWidgetRuntime.dll</code> + subprocess），无独立工程拆分。</p>
+</section>
+
+<section>
+  <h2>13. 风险与依赖</h2>
+  <ul>
+    <li><strong>DLL 加载 / CEF 初始化失败</strong>：版本不匹配、杀软拦截、缺 VC 运行库都可能使安装后加载失败——安装流程必须显式报错（原因 + 建议），不做静默失败；失败目录标记不可用可重试；</li>
+    <li><strong>运行时更新中断</strong>：下载半包 / 替换中断——解压先落临时目录 + 原子 move，旧包 <code>.old</code> 备份保留，加载失败自动回滚；</li>
+    <li><strong>卸载数据语义</strong>：卸载组件系统<strong>不删</strong>组件包/组件数据/壁纸配置（<code>LinWidgets/</code>、<code>LinWidgetsData/</code>、<code>LinWallpapers/</code>），重新安装后自动恢复；确认弹窗需写明该语义，避免用户误以为数据丢失；</li>
+    <li><strong>数据隔离红线</strong>：组件系统安装/卸载/更新流程<strong>禁止读写</strong> <code>%APPDATA%/LinDesk/data.dat|data.json</code>（桌面图标/box 布局）及 <code>.tmp/.bak</code> 伴生文件；拆 DLL 时 <code>BoxManager</code> / <code>LayoutPersistenceService</code> / <code>DesktopItemLoader</code> 必须留在主程序侧（2.9 三条硬约束列入验收）；</li>
+    <li><strong>校验器规则质量</strong>：与权限模型的联动判定（5.3）是防误伤关键，规则需随真实组件反馈迭代，起步宁严勿松（error 集小、warning 集大）；</li>
+    <li><strong>scheme 是多项能力的共同前置</strong>：资源映射、CSP 注入都依赖 4.2，应优先于 P1 市场层完成；</li>
+    <li><strong>GitHub 可达性</strong>：运行时安装与组件索引/更新依赖网络，离线降级（第 6 节）必须随市场层一同交付；运行时已安装后离线不影响组件使用；</li>
+    <li><strong>协议冻结</strong>：5.1 定稿后新增消息类型需评审，防止协议膨胀稀释 AI 生成正确率；</li>
+    <li><strong>命中测试细节</strong>：组件透明区域点击穿透到图标层需按帧 alpha 判断（isWidgetAt/widgetAt 扩展）；</li>
+    <li><strong>组件包目录一致性</strong>：用户手动删除/替换包目录时注册表可能残留——加载器启动时对账，失效条目自动清理或标记不可用；</li>
+    <li><strong>崩溃风暴</strong>：组件实例反复崩溃 → 60s 内 3 次熔断 + 用户提示；CEF crash-dumps-dir 日志辅助定位；</li>
+    <li><strong>AI 生成质量下限</strong>：由校验器 + 沙箱兜底，不承诺"生成即正确"；坏组件在安装前被拦、运行中被治理。</li>
+  </ul>
+</section>
+
+<footer class="doc-foot">
+  组件系统方案（单进程 · 运行时动态加载）由多轮设计讨论收敛定稿：P0-1（运行时拆分与安装/卸载）、CEF 缺口、壁纸 P0 均已落地（见第 0 节总览）；剩余 P1/P2 平台化任务与新增的组件 Ctrl+拖拽移动（8.1）供 antigravity / 开发者排期执行；多进程方案已否决（决策记录见第 1 节）。
+</footer>
+
+
+</div>
+</body>
+</html>

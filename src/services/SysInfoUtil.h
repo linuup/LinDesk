@@ -129,6 +129,12 @@ namespace SysInfoUtil{
 
     // 文件夹图标背景清理
     QPixmap sanitizeFolderPreviewMatte(const QPixmap& source);
+
+    // 微软商店应用 (UWP/MSIX) 与 Shell 项图标兼容加载及空白文件兜底
+    QIcon LoadShellItemIcon(const QString& path, int side = 48);
+    QString GetAumidFromShortcut(const QString& lnkPath);
+    QIcon LoadUwpAppIconFromAumid(const QString& aumid, int side = 48);
+    QIcon GetBlankFileFallbackIcon(int side = 48);
 }
 
 /* General helper functions. */

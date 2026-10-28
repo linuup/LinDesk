@@ -14,10 +14,23 @@
 #include <QImageReader>
 #include <QtWinExtras/qwinfunctions.h>
 #include <shellapi.h>
+#include <QSet>
+#include <QRegularExpression>
 #include "services/IconCacheManager.h"
 #include "services/SysInfoUtil.h"
 
 namespace {
+
+bool isPreviewableImageSuffix(const QString& ext)
+{
+    static const QSet<QString> s_imageExts = {
+        QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("png"),
+        QStringLiteral("webp"), QStringLiteral("bmp"), QStringLiteral("gif"),
+        QStringLiteral("ico"), QStringLiteral("jfif"), QStringLiteral("tif"),
+        QStringLiteral("tiff")
+    };
+    return s_imageExts.contains(ext.toLower());
+}
 
 int scalePxByDpi(qreal dpiScale, int logicalPx)
 {
@@ -104,22 +117,51 @@ QStringList buildDesktopRootLines(const QString& text, const QFontMetrics& metri
     return lines;
 }
 
+static QString normalizeDisplayNameTitleCase(const QString& rawName)
+{
+    if (rawName.isEmpty()) return rawName;
+
+    const int dotIndex = rawName.lastIndexOf(QLatin1Char('.'));
+    const QString base = (dotIndex > 0) ? rawName.left(dotIndex) : rawName;
+    const QString ext = (dotIndex > 0) ? rawName.mid(dotIndex) : QString();
+
+    static const QRegularExpression newTextDocRegex(
+        QStringLiteral("^([Nn]ew)\\s+([Tt]ext)\\s+([Dd]ocument)(\\s*\\(\\d+\\))?$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto textMatch = newTextDocRegex.match(base);
+    if (textMatch.hasMatch()) {
+        const QString suffixNum = textMatch.captured(4);
+        return QStringLiteral("New Text Document") + suffixNum + ext;
+    }
+
+    static const QRegularExpression newFolderRegex(
+        QStringLiteral("^([Nn]ew)\\s+([Ff]older)(\\s*\\(\\d+\\))?$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto folderMatch = newFolderRegex.match(base);
+    if (folderMatch.hasMatch()) {
+        const QString suffixNum = folderMatch.captured(3);
+        return QStringLiteral("New Folder") + suffixNum + ext;
+    }
+
+    return rawName;
+}
+
 QString buildDisplayName(const ListItemData& data, const QFileInfo& fileInfo, ObjectType type, const QString& filePath)
 {
-    if (type == ObjectType::SpecialFolder) return data.fullName();
+    if (type == ObjectType::SpecialFolder) return normalizeDisplayNameTitleCase(data.fullName());
     if (type == ObjectType::DiskLetter) {
         const QString fullName = data.fullName().trimmed();
         return fullName.isEmpty() ? QDir::toNativeSeparators(filePath) : fullName;
     }
     if (isShortcutSuffix(fileInfo)) {
         const QString shortcutName = fileInfo.completeBaseName();
-        return shortcutName.isEmpty() ? data.fullName() : shortcutName;
+        return normalizeDisplayNameTitleCase(shortcutName.isEmpty() ? data.fullName() : shortcutName);
     }
     if (fileInfo.isFile() || fileInfo.isDir()) {
         const QString name = fileInfo.fileName();
-        return name.isEmpty() ? data.fullName() : name;
+        return normalizeDisplayNameTitleCase(name.isEmpty() ? data.fullName() : name);
     }
-    return data.fullName();
+    return normalizeDisplayNameTitleCase(data.fullName());
 }
 
 QString buildIconIdentityKey(const ListItemData& data, ObjectType type, const QFileInfo& fileInfo, const QString& normalizedPath)
@@ -205,6 +247,7 @@ void initDesktopRootItemModel(DesktopRootItemModel& model, const ListItemData& d
     while (model.normalizedPath.endsWith('\\')) model.normalizedPath.chop(1);
     model.fileInfo = QFileInfo(model.filePath);
     model.displayName = buildDisplayName(data, model.fileInfo, model.objectType, model.filePath);
+    model.displayName = DesktopItemLoader::applyDisplayNameOverride(model.filePath, model.displayName);
     model.isShortcut = isShortcutSuffix(model.fileInfo);
     if (context.getBoxId) model.boxId = context.getBoxId(model.filePath);
     const QString iconKey = buildIconIdentityKey(data, model.objectType, model.fileInfo, model.normalizedPath);
@@ -253,10 +296,20 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
         rd.textRect = QRect(model.position.x() + sp(2), textTop, textWidth, qMax(sp(18), itemHeight - (textTop - model.position.y())));
     }
     QPixmap rawPix;
-    if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isFile() && !model.isShortcut) {
-        const QString pKey = QString("image_preview:%1|%2|%3").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(model.fileInfo.lastModified().toMSecsSinceEpoch()).arg(clampedIconSide);
+    if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isFile() && !model.isShortcut && isPreviewableImageSuffix(model.fileInfo.suffix())) {
+        const QString pKey = QString("image_preview:%1|%2").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(clampedIconSide);
         rawPix = IconCacheManager::instance().getPixmap(pKey, [&]() {
-            QImageReader r(model.fileInfo.absoluteFilePath()); r.setAutoTransform(true); if (!r.canRead()) return QPixmap();
+            QImageReader r(model.fileInfo.absoluteFilePath());
+            r.setAutoTransform(true);
+            if (!r.canRead()) return QPixmap();
+            const QSize origSize = r.size();
+            const QSize targetThumbSize(clampedIconSide, clampedIconSide);
+            if (origSize.isValid() && origSize.width() > 0 && origSize.height() > 0) {
+                const QSize scaledReadSize = origSize.scaled(targetThumbSize, Qt::KeepAspectRatio);
+                if (scaledReadSize.isValid() && !scaledReadSize.isEmpty()) {
+                    r.setScaledSize(scaledReadSize);
+                }
+            }
             QImage img = r.read(); if (img.isNull()) return QPixmap();
             img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
             const QSize ts(clampedIconSide, clampedIconSide);
@@ -267,15 +320,22 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
     }
     if (rawPix.isNull()) rawPix = IconCacheManager::instance().getPixmap(QString("%1|render|%2").arg(model.iconCacheKey).arg(clampedIconSide), [&]() { return buildCroppedRenderPix(model.sourceIcon, clampedIconSide); });
     if (rawPix.isNull()) rawPix = buildCroppedRenderPix(SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll"), clampedIconSide);
-    if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isDir() && !rawPix.isNull()) rawPix = SysInfoUtil::sanitizeFolderPreviewMatte(rawPix);
+    if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isDir() && !rawPix.isNull()) {
+        rawPix = IconCacheManager::instance().getPixmap(QString("%1|matte|%2").arg(model.iconCacheKey).arg(clampedIconSide), [&]() {
+            QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPix);
+            return !sanitized.isNull() ? sanitized : rawPix;
+        });
+    }
     if (model.objectType == ObjectType::DiskLetter && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.8);
     if (model.isHiddenFileVisual && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.45);
+    rd.iconImage = rawPix.toImage();
     rd.iconPixmap = rawPix;
     if (model.isShortcut && params.showShortcutArrow) {
         const int as = listMode ? sp(12) : sp(32);
         rd.shortcutArrowPixmap = IconCacheManager::instance().getPixmap(QString("shortcut_arrow|%1").arg(as), [as]() {
             QIcon ai = SysInfoUtil::SysFileIconByDLL(155, 32, "imageres.dll"); if (ai.isNull()) ai = SysInfoUtil::SysFileIconByDLL(30, 32, "shell32.dll"); return ai.pixmap(as, as);
         });
+        rd.shortcutArrowImage = rd.shortcutArrowPixmap.toImage();
         if (listMode) {
             rd.shortcutArrowRect = QRect(rd.iconRect.right() - as + 1, rd.iconRect.bottom() - as + 1, as, as);
         } else {

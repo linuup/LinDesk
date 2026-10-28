@@ -1,22 +1,13 @@
 #include "app/AppLaunchOptions.h"
 #include "desktop/LinDesktop.h"
+#include "services/AppPaths.h"
 #include <QDir>
 #include <QFile>
 
 namespace {
 void ensureDesktopDebugLogExists()
 {
-    const QString localAppDataPath = qEnvironmentVariable("LOCALAPPDATA");
-    if (localAppDataPath.isEmpty()) {
-        return;
-    }
-
-    QDir dir(localAppDataPath);
-    if (!dir.mkpath(QStringLiteral("LinDesk"))) {
-        return;
-    }
-
-    const QString logFilePath = dir.filePath(QStringLiteral("LinDesk/desktop.log"));
+    const QString logFilePath = QDir(AppPaths::userLogsDir()).filePath(QStringLiteral("desktop.log"));
     QFile logFile(logFilePath);
     if (logFile.exists()) {
         return;

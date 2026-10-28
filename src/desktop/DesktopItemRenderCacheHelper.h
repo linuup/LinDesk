@@ -12,21 +12,23 @@ inline void paintDesktopRootItemStaticElements(QPainter& painter, const DesktopR
     if (data.cutMarked) {
         painter.setOpacity(0.55);
     }
-    if (!data.iconPixmap.isNull()) {
+    QPixmap iconPix = !data.iconPixmap.isNull() ? data.iconPixmap : (!data.iconImage.isNull() ? QPixmap::fromImage(data.iconImage) : QPixmap());
+    if (!iconPix.isNull()) {
         QPoint iconPos = data.iconRect.topLeft();
-        if (data.iconPixmap.width() < data.iconRect.width()) {
-            iconPos.setX(data.iconRect.x() + (data.iconRect.width() - data.iconPixmap.width()) / 2);
+        if (iconPix.width() < data.iconRect.width()) {
+            iconPos.setX(data.iconRect.x() + (data.iconRect.width() - iconPix.width()) / 2);
         }
-        if (data.iconPixmap.height() < data.iconRect.height()) {
-            iconPos.setY(data.iconRect.y() + (data.iconRect.height() - data.iconPixmap.height()) / 2);
+        if (iconPix.height() < data.iconRect.height()) {
+            iconPos.setY(data.iconRect.y() + (data.iconRect.height() - iconPix.height()) / 2);
         }
-        painter.drawPixmap(iconPos, data.iconPixmap);
+        painter.drawPixmap(iconPos, iconPix);
     }
     if (data.cutMarked) {
         painter.setOpacity(1.0);
     }
-    if (!data.shortcutArrowPixmap.isNull()) {
-        painter.drawPixmap(data.shortcutArrowRect.topLeft(), data.shortcutArrowPixmap);
+    QPixmap arrowPix = !data.shortcutArrowPixmap.isNull() ? data.shortcutArrowPixmap : (!data.shortcutArrowImage.isNull() ? QPixmap::fromImage(data.shortcutArrowImage) : QPixmap());
+    if (!arrowPix.isNull()) {
+        painter.drawPixmap(data.shortcutArrowRect.topLeft(), arrowPix);
     }
     if (!data.textLines.isEmpty()) {
         SoftDesktopTextRenderer::drawText(&painter, data.textRect, data.textLines, data.labelFont, data.textOptions);

@@ -253,7 +253,6 @@ bool ResolveShortcutTarget(const wchar_t* shortcutPath, std::wstring& targetPars
         for (auto& c : extension) c = towlower(c);
     }
     if (extension != L"lnk") {
-        qDebug() << "[ResolveShortcutTarget] Skipping non-lnk file:" << QString::fromWCharArray(shortcutPath) << "(ext:" << QString::fromStdWString(extension) << ")";
         return false;
     }
 

@@ -62,8 +62,6 @@
 #include "box/BoxManager.h"
 #include "desktop/ListViewDebugPanel.h"
 #include "desktop/DesktopSnakeGame.h"
-#include "desktop/widgets/linwidget/WidgetManager.h"
-#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
 #include "desktop/ListView_Helpers.h"
 
@@ -604,11 +602,9 @@ int ListView::desktopCustomInsertionIndexForPos(const QPoint& pos, const QString
 
 void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const QStringList& draggedPaths)
 {
-    const int nextIndex = desktopCustomInsertionIndexForPos(pos, draggedPaths);
     QVector<DesktopRootItemState*> allOrderedStates = collectAutoArrangeStates();
     sortAutoArrangeStates(allOrderedStates, SortOrderType::SortByCustom);
-    QVector<DesktopRootItemState*> orderedStates = collectAutoArrangeStates();
-    sortAutoArrangeStates(orderedStates, SortOrderType::SortByCustom);
+    QVector<DesktopRootItemState*> orderedStates = allOrderedStates;
     QSet<QString> draggedPathSet;
     for (const QString& path : draggedPaths) {
         draggedPathSet.insert(normalizeDesktopItemPath(path));
@@ -616,6 +612,40 @@ void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const Q
     orderedStates.erase(std::remove_if(orderedStates.begin(), orderedStates.end(), [&](DesktopRootItemState* state) {
         return state && draggedPathSet.contains(normalizeDesktopItemPath(state->model.filePath));
     }), orderedStates.end());
+
+    int nextIndex = 0;
+    bool foundHoverIndex = false;
+    for (int i = 0; i < orderedStates.size(); ++i) {
+        const QRect itemRect = orderedStates[i]->model.renderData.itemRect;
+        if (itemRect.contains(pos)) {
+            nextIndex = pos.y() <= itemRect.center().y() ? i : i + 1;
+            foundHoverIndex = true;
+            break;
+        }
+    }
+    if (!foundHoverIndex) {
+        int bestIndex = 0;
+        qint64 bestScore = LLONG_MAX;
+        for (int i = 0; i <= orderedStates.size(); ++i) {
+            const QRect rect = desktopAutoArrangeInsertionIndicatorRectForIndex(i, orderedStates);
+            if (rect.isNull()) {
+                continue;
+            }
+
+            const int dx = pos.x() < rect.left()
+                ? rect.left() - pos.x()
+                : (pos.x() > rect.right() ? pos.x() - rect.right() : 0);
+            const int dy = pos.y() < rect.top()
+                ? rect.top() - pos.y()
+                : (pos.y() > rect.bottom() ? pos.y() - rect.bottom() : 0);
+            const qint64 score = static_cast<qint64>(dx) * dx + static_cast<qint64>(dy) * dy;
+            if (score < bestScore) {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+        nextIndex = qBound(0, bestIndex, orderedStates.size());
+    }
 
     QRect nextIndicatorRect;
     const int lineHeight = 2;
@@ -734,10 +764,19 @@ void ListView::updateDesktopAutoArrangeReorderPreview(const QPoint& pos, const Q
         return;
     }
 
+    const QRect oldIndicatorRect = m_desktopReorderIndicatorRect;
     m_desktopReorderInsertIndex = nextIndex;
     m_desktopReorderDraggedPaths = draggedPaths;
     m_desktopReorderIndicatorRect = nextIndicatorRect;
-    update();
+
+    const QRect dirtyRect = oldIndicatorRect.isNull()
+        ? nextIndicatorRect.adjusted(-8, -8, 8, 8)
+        : oldIndicatorRect.united(nextIndicatorRect).adjusted(-8, -8, 8, 8);
+    if (!dirtyRect.isNull()) {
+        update(dirtyRect);
+    } else {
+        update();
+    }
 }
 
 void ListView::clearDesktopAutoArrangeReorderPreview()
@@ -748,10 +787,15 @@ void ListView::clearDesktopAutoArrangeReorderPreview()
         return;
     }
 
+    const QRect oldIndicatorRect = m_desktopReorderIndicatorRect;
     m_desktopReorderInsertIndex = -1;
     m_desktopReorderDraggedPaths.clear();
     m_desktopReorderIndicatorRect = QRect();
-    update();
+    if (!oldIndicatorRect.isNull()) {
+        update(oldIndicatorRect.adjusted(-8, -8, 8, 8));
+    } else {
+        update();
+    }
 }
 
 QRect ListView::desktopAutoArrangeInsertionIndicatorRect() const
@@ -1007,12 +1051,10 @@ QPoint ListView::generateItemPosition()
     qDebug() << "[generateItemPosition] gridAlignment=" << m_iconShowRule.gridAlignment 
              << "m_lastRightClickPos=" << m_lastRightClickPos;
     
-    // 闂傚倸鍊搁悧濠囧礄閻ョ牫d闂佹眹鍩勯崹浼村疮椤愶附鍎戞い鎺嶈兌閳绘棃鏌￠崘銊モ偓褰掑汲閻曠枠闂備胶鎳撻悘婵堢矓瀹曞洨绀婇柡鍐ㄥ€归崰鍡涙煥閺囨浜鹃悷婊勬緲閸婂潡骞嗛崘顔肩闁告挷鑳堕ˇ鈺呮⒑閸涘﹦鎳勫┑鐐诧躬瀵偊顢橀姀鈥虫濠电姴锕ら崯顐ょ矆鐎ｎ喗鐓涢柛灞剧⊕缁惰尙绱撻崒娑欏磳闁轰礁绉靛鍕槈濮橀硸妲烽梻浣哄劦閺呮盯鎮洪妸褎鏆滈悗娑櫳戞刊鎾偣閹帒濡介柡鍡楃箰椤顦村┑顔炬暬閹儵鏁愭径濠勭厬闂佽鍎兼慨銈夊汲濞戞◤褰掓晲閸涱垍銈夋煟?
+    // 如果未开启对齐网格且存在右键位置，则优先在右键位置放置新项
     if (!m_iconShowRule.gridAlignment && m_lastRightClickPos != QPoint(-1, -1)) {
         QPoint pos = m_lastRightClickPos;
         qDebug() << "[generateItemPosition] Using right-click position:" << pos;
-        // 闂傚倷鐒﹁ぐ鍐矓閸洘鍋?m_lastRightClickPos闂備焦瀵х粙鎴︽儗閸屾锝囨嫚瀹割喗妗ㄩ梺闈涚箞閸婃牗鎱ㄥǎ鐤橀梻浣告啞鐢绮欓幋鐘电＝闁瑰墽绮崕宥夋煕閺囥劌澧柣搴枛闇夐柣妯挎珪閺嬪嫮绱掗垾鍐叉殲闁瑰嘲鎳愰幑鍕Ω閿旇姤顓归梺鑽ゅТ濞层垽宕曢崡鐑嗙劷婵°倕鎳庨崘鈧?
-        m_lastRightClickPos = QPoint(-1, -1);
         return resolveCreatePosition(pos);
     }
     
@@ -1061,7 +1103,7 @@ QPoint ListView::generateItemPosition()
     const QPoint overflowCell = gridIndexToCell(desktopItemCount % visibleCapacity, maxRows);
     return gridCellToPoint(overflowCell.x(), overflowCell.y(), layoutLeft, layoutTop, strideX, strideY);
 
-    return QPoint(0, 0); // 闂備胶顭堢换鎴犲垝瀹€鈧懞閬嶆惞椤愶絼姘﹂梺鍝勫€圭€笛呯矆閳?
+    return QPoint(0, 0); // 兜底返回默认坐标
 }
 
 void ListView::updateAllItemRenderData()
@@ -1296,7 +1338,12 @@ void ListView::applyBoxAssignmentsFromConfig(const QVector<QMap<QString, QVarian
 void ListView::applySavedPositionsToItems(const QMap<QString, QMap<QString, QVariant>>& iconPositions) {
     for (auto it = iconPositions.begin(); it != iconPositions.end(); ++it) {
         const QMap<QString, QVariant>& posInfo = it.value();
-        const QString boxIdFromConfig = posInfo.value("boxId").toString();
+        const QString rawBoxId = posInfo.value("boxId").toString();
+        QString boxIdFromConfig = rawBoxId;
+        if (!boxIdFromConfig.isEmpty() && !BoxManager::instance()->findBoxById(boxIdFromConfig)) {
+            qWarning() << "[ListView] Dangling boxId in saved position for" << it.key() << ":" << boxIdFromConfig << "- clearing boxId";
+            boxIdFromConfig.clear();
+        }
         const QPoint savedPos(posInfo.value("x").toInt(), posInfo.value("y").toInt());
 
         if (DesktopRootItemState* state = findDesktopStateByPath(it.key())) {
@@ -1445,6 +1492,12 @@ void ListView::loadBoxes(bool autoUpdateState) {
     }
     selectionSnapshot.restore(*this, false);
 
+    if (state.droppedCount > 0) {
+        qWarning() << "[ListView] Persistence load sanitized" << state.droppedCount
+                   << "corrupt or dangling entries. Performing clean save to update file.";
+        saveBoxes();
+    }
+
     qDebug() << "Loaded. Persistence:" << m_enablePersistence;
 }
 
@@ -1453,7 +1506,7 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     const QRect safeGeometry = clampedRestoredBoxGeometry(geom);
     const float safeOpacity = clampedRestoredBoxOpacity(opacity);
     const LinBox::BoxShowType safeShowType = restoredBoxShowType(showType);
-    if (explicitId.isEmpty()) {
+    if (explicitId.isEmpty() || BoxManager::instance()->findBoxById(explicitId) != nullptr) {
         box->setBoxId(QUuid::createUuid().toString());
     } else {
         box->setBoxId(explicitId);
@@ -1470,9 +1523,16 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
         box->setBoxTitle(title);
     }
     
-    if (color.isValid()) box->setBackgroundColor(color);
+    if (color.isValid()) {
+        box->setBackgroundColor(color);
+        BoxManager::instance()->setUnifiedBackgroundColor(color);
+    }
     box->setBackgroundOpacity(safeOpacity);
+    if (safeOpacity > 0.01f) {
+        BoxManager::instance()->setUnifiedBackgroundOpacity(safeOpacity);
+    }
     box->setGlassEffect(glass);
+    BoxManager::instance()->setUnifiedGlassEffect(glass);
     
     // Connect to BoxManager and ListView
     BoxManager::instance()->setupConnections(box, this);
@@ -1602,8 +1662,9 @@ void ListView::clearDestroyedBoxRuntimeState(LinBox* box)
 }
 
 void ListView::onMenuCustomBox(LinBox* box) {
-    // Placeholder for color customizations
-    qDebug() << "Customize box requested:" << box->boxTitle();
+    if (box) {
+        showSettings(box);
+    }
 }
 
 void ListView::moveItemToBox(const QString& filePath, LinBox* targetBox, bool refresh, int insertIndex) {

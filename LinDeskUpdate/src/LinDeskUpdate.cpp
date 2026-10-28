@@ -63,7 +63,7 @@ std::filesystem::path updaterRuntimeDir()
 
 void initLog()
 {
-    const std::filesystem::path logDir = std::filesystem::path(localAppDataPath()) / L"LinDesk" / L"Logs";
+    const std::filesystem::path logDir = std::filesystem::path(localAppDataPath()) / L"LinDesk" / L"logs";
     std::error_code ec;
     std::filesystem::create_directories(logDir, ec);
     g_log.open(logDir / L"updater.log", std::ios::app);
@@ -74,9 +74,11 @@ void logLine(const std::wstring& text)
     SYSTEMTIME st = {};
     GetLocalTime(&st);
     if (g_log.is_open()) {
-        g_log << L"[" << st.wYear << L"-" << st.wMonth << L"-" << st.wDay
-              << L" " << st.wHour << L":" << st.wMinute << L":" << st.wSecond
-              << L"] " << text << std::endl;
+        wchar_t prefix[128] = {};
+        swprintf_s(prefix, L"[%04u-%02u-%02u %02u:%02u:%02u.%03u] [info] [updater] [%lu] [%lu] ",
+            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+            GetCurrentProcessId(), GetCurrentThreadId());
+        g_log << prefix << text << std::endl;
     }
 }
 

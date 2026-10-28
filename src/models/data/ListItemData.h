@@ -62,6 +62,24 @@ class ListItemData {
 public:
 	static int s_targetIconSize;
 	static void setTargetIconSize(int size) { s_targetIconSize = size; }
+
+	// 档位常量与计算规则 (显示像素判断，含 DPI 缩放)
+	static constexpr int kIconTierSmallThreshold = 62;   // 物理像素 <= 62 时使用 48px 原生小图标
+	static constexpr int kIconTierMediumThreshold = 100; // 物理像素 62~100 时使用 96px 源图标；> 100 时使用 256px Jumbo 图标
+
+	static constexpr int kIconTierSmallSourceSize = 48;  // SHIL_EXTRALARGE (2) 原生 48px
+	static constexpr int kIconTierMediumSourceSize = 96; // JUMBO 256 提取后降采样 96px
+	static constexpr int kIconTierLargeSourceSize = 256; // JUMBO 256 原样
+
+	static int calculateIconSourceTier(int targetPx) {
+		if (targetPx <= kIconTierSmallThreshold) {
+			return kIconTierSmallSourceSize; // 48
+		} else if (targetPx <= kIconTierMediumThreshold) {
+			return kIconTierMediumSourceSize; // 96
+		} else {
+			return kIconTierLargeSourceSize; // 256
+		}
+	}
 	/*using unique_pidl = wil::unique_<LPITEMIDLIST, decltype(&ILFree), ILFree>;*/
 
 	//移动构造函数，禁止复制
@@ -263,33 +281,46 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 public:
 	int m_iconSizeCached = -1;
 	void initIcon() {
-		// Only re-initialize if the target size significantly changed or we have no icon
-		if (m_iconSizeCached == s_targetIconSize && !m_icon.isNull()) {
+		const int tierSourceSize = calculateIconSourceTier(s_targetIconSize);
+		// 仅在档位源尺寸改变或尚无图标时重新初始化
+		if (m_iconSizeCached == tierSourceSize && !m_icon.isNull()) {
 			return;
 		}
 
-		m_iconSizeCached = s_targetIconSize;
+		m_iconSizeCached = tierSourceSize;
 		QIcon newIcon;
-		
+
+		// 辅助 lambda：按档位获取系统 ImageList 图标
+		auto extractIconFromSysIndex = [tierSourceSize](int iIcon) -> QIcon {
+			static const GUID IID_IImageList_Local = { 0x46EB5926, 0x582E, 0x4017, { 0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50 } };
+			IImageList* imageList = nullptr;
+			// <=62 走 SHGetImageList(2) (SHIL_EXTRALARGE 48px 原生)
+			// >62 走 SHGetImageList(4) (SHIL_JUMBO 256px 临时中转)
+			const int imageListType = (tierSourceSize <= kIconTierSmallSourceSize) ? 2 : 4;
+			if (SUCCEEDED(SHGetImageList(imageListType, IID_IImageList_Local, (void**)&imageList))) {
+				HICON hIcon = nullptr;
+				if (SUCCEEDED(imageList->GetIcon(iIcon, ILD_TRANSPARENT, &hIcon))) {
+					QPixmap pix = QtWin::fromHICON(hIcon);
+					DestroyIcon(hIcon);
+					if (tierSourceSize == kIconTierMediumSourceSize && !pix.isNull()) {
+						if (pix.width() > 96 || pix.height() > 96) {
+							pix = pix.scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+						}
+					}
+					imageList->Release();
+					return QIcon(pix);
+				}
+				imageList->Release();
+			}
+			return QIcon();
+		};
+
 		if (m_type == ObjectType::SpecialFolder) {
-			// 1. 终极高清方案：使用 Windows Shell Jumbo Image List (支持 256x256 及以上)
+			// 1. 终极方案：按档位使用 Windows Shell Image List (48px 原生 / 256px 降采样 96px / 256px 原样)
 			if (m_pidl) {
 				SHFILEINFO sfi = { 0 };
-				// 获取系统图标索引
 				if (SHGetFileInfoW((LPCWSTR)m_pidl, 0, &sfi, sizeof(sfi), SHGFI_PIDL | SHGFI_SYSICONINDEX)) {
-					// 显式定义 IID_IImageList 以解决编译错误
-					static const GUID IID_IImageList_Local = { 0x46EB5926, 0x582E, 0x4017, { 0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50 } };
-					
-					IImageList* imageList = nullptr;
-					// 请求 JUMBO (256x256) 图标列表 (SHIL_JUMBO = 4)
-					if (SUCCEEDED(SHGetImageList(4, IID_IImageList_Local, (void**)&imageList))) {
-						HICON hIcon = nullptr;
-						if (SUCCEEDED(imageList->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &hIcon))) {
-							newIcon = QtWin::fromHICON(hIcon);
-							DestroyIcon(hIcon);
-						}
-						imageList->Release();
-					}
+					newIcon = extractIconFromSysIndex(sfi.iIcon);
 				}
 			}
 
@@ -309,27 +340,44 @@ public:
 			if (newIcon.isNull()) {
 				switch (m_specialFolderType) {
 				case SpecialFolders::ThisPc:
-					newIcon = SysInfoUtil::SysFileIconByDLL(16, s_targetIconSize, "shell32.dll");
+					newIcon = SysInfoUtil::SysFileIconByDLL(16, tierSourceSize, "shell32.dll");
 					break;
 				case SpecialFolders::Network:
-					newIcon = SysInfoUtil::SysFileIconByDLL(18, s_targetIconSize, "shell32.dll");
+					newIcon = SysInfoUtil::SysFileIconByDLL(18, tierSourceSize, "shell32.dll");
 					break;
 				case SpecialFolders::RecycleBin:
-					newIcon = SysInfoUtil::SysFileIconByDLL(32, s_targetIconSize, "shell32.dll");
+					newIcon = SysInfoUtil::SysFileIconByDLL(32, tierSourceSize, "shell32.dll");
 					break;
 				case SpecialFolders::UserFolder:
-					newIcon = SysInfoUtil::SysFileIconByDLL(118, s_targetIconSize, "imageres.dll");
+					newIcon = SysInfoUtil::SysFileIconByDLL(118, tierSourceSize, "imageres.dll");
 					break;
 				default:
 					break;
 				}
 			}
-			if (!newIcon.isNull()) m_icon = newIcon;
+			if (!newIcon.isNull()) {
+				QSize availableSize = newIcon.actualSize(QSize(tierSourceSize, tierSourceSize));
+				QPixmap pixmap = newIcon.pixmap(availableSize);
+				if (!pixmap.isNull()) {
+					if (tierSourceSize == kIconTierMediumSourceSize && (pixmap.width() > 96 || pixmap.height() > 96)) {
+						pixmap = pixmap.scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+					}
+					bool wasCropped = false;
+					QImage img = pixmap.toImage();
+					QImage cropped = SysInfoUtil::autoCropImage(img, &wasCropped);
+					m_icon = wasCropped ? QIcon(QPixmap::fromImage(cropped)) : QIcon(pixmap);
+				} else {
+					m_icon = newIcon;
+				}
+			}
 			return;
 		}
 
-		// 特殊处理 .appref-ms 文件获取图标
-		if (m_fileInfo.suffix().toLower() == "appref-ms") {
+		const QString fileSuffix = m_fileInfo.suffix().toLower();
+		const bool isShortcut = (fileSuffix == "lnk" || fileSuffix == "appref-ms" || m_fileInfo.isSymLink());
+
+		// 1. 特殊处理 .appref-ms 文件传统提取
+		if (fileSuffix == "appref-ms") {
 			SHFILEINFO sfi = { 0 };
 			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path).toStdWString();
 			if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_ICON | SHGFI_LARGEICON)) {
@@ -340,59 +388,79 @@ public:
 			}
 		}
 
+		// 2. 常规提取（针对快捷方式目标实体文件、普通文件、普通文件夹）
 		if (newIcon.isNull()) {
 			QFileIconProvider icon_provider;
-			QString targetPath = m_fileInfo.symLinkTarget();
-			if (!targetPath.isEmpty()) {
-				QFileInfo targetData(targetPath);
-				newIcon = icon_provider.icon(targetData);
-			}
-			if (newIcon.isNull()) {
-				if (m_fileInfo.isFile()) {
-					newIcon = icon_provider.icon(m_fileInfo);
+
+			// 检查是否为文件夹，或快捷方式指向有效文件夹
+			QString resolvedDirPath;
+			if (!isShortcut && !m_fileInfo.isFile()) {
+				resolvedDirPath = m_iconItem.path;
+			} else if (isShortcut) {
+				QString symTarget = m_fileInfo.symLinkTarget();
+				if (!symTarget.isEmpty() && QFileInfo(symTarget).isDir()) {
+					resolvedDirPath = symTarget;
+				} else if (!m_iconItem.shortcutTargetPath.isEmpty() && QFileInfo(m_iconItem.shortcutTargetPath).isDir()) {
+					resolvedDirPath = m_iconItem.shortcutTargetPath;
 				}
-				else {
-					// --- 文件夹预览图 (Live Preview) ---
-					QString nativePath = QDir::toNativeSeparators(m_iconItem.path);
-					// 使用固定的 256px 高素质预览图，避免缩放时产生撕裂 (Fix for bug: tearing after resize)
-					HBITMAP hBmp = CSystemApi::GetShellThumbnail(nativePath, 256, 256);
+			}
+
+			if (!resolvedDirPath.isEmpty()) {
+				// --- 文件夹分支：有内容显示 Live Preview 内容缩略图，空文件夹显示纯净空文件夹图标 ---
+				const QString nativeDirPath = QDir::toNativeSeparators(resolvedDirPath);
+				const bool isDirEmpty = QDir(resolvedDirPath).isEmpty();
+				if (!isDirEmpty) {
+					// 核心关键：必须向 Windows Shell 请求 256x256 高清尺寸，才会触发合成内部文档缩略图 (Live Preview)
+					HBITMAP hBmp = CSystemApi::GetShellThumbnail(nativeDirPath, 256, 256);
 					if (hBmp) {
-						newIcon = QIcon(QtWin::fromHBITMAP(hBmp, QtWin::HBitmapAlpha));
+						QPixmap rawPreview = QtWin::fromHBITMAP(hBmp, QtWin::HBitmapAlpha);
 						DeleteObject(hBmp);
+						// 抠除纯色背景并去杂色
+						QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPreview);
+						QPixmap finalPreview = !sanitized.isNull() ? sanitized : rawPreview;
+						if (tierSourceSize <= kIconTierSmallSourceSize) {
+							finalPreview = finalPreview.scaled(48, 48, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+						} else if (tierSourceSize == kIconTierMediumSourceSize && (finalPreview.width() > 96 || finalPreview.height() > 96)) {
+							finalPreview = finalPreview.scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+						}
+						newIcon = QIcon(finalPreview);
 					}
-					
-					// 如果获取失败（例如空文件夹），则显示默认文件夹图标
+				}
+
+				// 如果为空文件夹或缩略图生成失败，则显示原生高清系统默认空文件夹图标
+				if (newIcon.isNull()) {
+					std::wstring wPath = nativeDirPath.toStdWString();
+					SHFILEINFOW sfi = { 0 };
+					if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX)) {
+						newIcon = extractIconFromSysIndex(sfi.iIcon);
+					}
 					if (newIcon.isNull()) {
-						newIcon = SysInfoUtil::SysFileIconByDLL(4, s_targetIconSize, "shell32.dll");
+						newIcon = icon_provider.icon(QFileInfo(resolvedDirPath));
 					}
+					if (newIcon.isNull()) {
+						newIcon = SysInfoUtil::SysFileIconByDLL(4, tierSourceSize, "shell32.dll");
+					}
+				}
+			} else {
+				// 普通文件 / 普通文件快捷方式
+				QString targetPath = m_fileInfo.symLinkTarget();
+				if (!targetPath.isEmpty()) {
+					QFileInfo targetData(targetPath);
+					newIcon = icon_provider.icon(targetData);
+				}
+				if (newIcon.isNull() && !isShortcut) {
+					newIcon = icon_provider.icon(m_fileInfo);
 				}
 			}
 		}
 
-		// --- Win32 SHGetFileInfo fallback (Win11 compatibility) ---
-		// QFileIconProvider can fail on Win11 for certain file types.
-		// Try the Windows Shell Jumbo Image List first for high-quality icons,
-		// then fall back to standard SHGetFileInfo.
+		// 3. Win32 系统图标索引回退 (SHGFI_SYSICONINDEX / LARGEICON)
 		if (newIcon.isNull()) {
 			std::wstring wPath = QDir::toNativeSeparators(m_iconItem.path).toStdWString();
 			SHFILEINFOW sfi = { 0 };
 
-			// Attempt 1: Jumbo (256x256) via IImageList
 			if (SHGetFileInfoW(wPath.c_str(), 0, &sfi, sizeof(sfi), SHGFI_SYSICONINDEX)) {
-				static const GUID IID_IImageList_Local = {
-					0x46EB5926, 0x582E, 0x4017,
-					{ 0x9F, 0xDF, 0xE8, 0x99, 0x8D, 0xAA, 0x09, 0x50 }
-				};
-				IImageList* imageList = nullptr;
-				// SHIL_JUMBO = 4
-				if (SUCCEEDED(SHGetImageList(4, IID_IImageList_Local, (void**)&imageList))) {
-					HICON hIcon = nullptr;
-					if (SUCCEEDED(imageList->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &hIcon))) {
-						newIcon = QtWin::fromHICON(hIcon);
-						DestroyIcon(hIcon);
-					}
-					imageList->Release();
-				}
+				newIcon = extractIconFromSysIndex(sfi.iIcon);
 			}
 
 			// Attempt 2: Standard SHGetFileInfo LARGEICON
@@ -407,17 +475,33 @@ public:
 			}
 		}
 
-		// Ultimate fallback: blank file icon from shell32.dll
+		// 4. --- 专属补偿：针对无本地物理目标的 Store/UWP 应用快捷方式 ---
+		if (newIcon.isNull() && isShortcut) {
+			// 优先尝试读取 AUMID 解析 AppxManifest 原始高清透明 Logo（100% 纯净无黑边）
+			const QString aumid = SysInfoUtil::GetAumidFromShortcut(m_iconItem.path);
+			if (!aumid.isEmpty()) {
+				newIcon = SysInfoUtil::LoadUwpAppIconFromAumid(aumid, tierSourceSize);
+			}
+			// 兜底尝试 Shell Item 提取
+			if (newIcon.isNull()) {
+				newIcon = SysInfoUtil::LoadShellItemIcon(m_iconItem.path, tierSourceSize);
+			}
+		}
+
+		// --- L4 终极兜底：当所有提取链路均失败时，提供标准优雅的空白文件图标防线 ---
 		if (newIcon.isNull()) {
-			newIcon = SysInfoUtil::SysFileIconByDLL(0, s_targetIconSize, "shell32.dll");
+			newIcon = SysInfoUtil::GetBlankFileFallbackIcon(tierSourceSize);
 		}
 		
 		if (!newIcon.isNull()) {
 			// 对提取的图标进行视觉自动裁剪 (Visual Auto-Crop)
-			// 获取最大尺寸图进行裁剪计算，目前上限 256px
-			QSize availableSize = newIcon.actualSize(QSize(256, 256));
+			// 获取当前档位尺寸进行裁剪计算，避免无意义的 256px 放大
+			QSize availableSize = newIcon.actualSize(QSize(tierSourceSize, tierSourceSize));
 			QPixmap pixmap = newIcon.pixmap(availableSize);
 			if (!pixmap.isNull()) {
+				if (tierSourceSize == kIconTierMediumSourceSize && (pixmap.width() > 96 || pixmap.height() > 96)) {
+					pixmap = pixmap.scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+				}
 				bool wasCropped = false;
 				QImage img = pixmap.toImage();
 				QImage cropped = SysInfoUtil::autoCropImage(img, &wasCropped);
@@ -426,12 +510,16 @@ public:
 				if (wasCropped) {
 					m_icon = QIcon(QPixmap::fromImage(cropped));
 				} else {
-					m_icon = newIcon;
+					m_icon = QIcon(pixmap);
 				}
 			} else {
 				m_icon = newIcon;
 			}
-			
+		}
+
+		// 终极保证：m_icon 绝对不为空
+		if (m_icon.isNull()) {
+			m_icon = SysInfoUtil::GetBlankFileFallbackIcon(tierSourceSize);
 		}
 	}
 	bool updatePropertiesFromPIDL() {

@@ -2,22 +2,37 @@
 #include "box/LinBox.h"
 #include "desktop/ListView.h"
 #include "monitor/LinDirectoryMonitor.h"
+#include "services/DpiScaleHelper.h"
 #include <QWidget>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonValue>
-#include <QDataStream>
 #include <QDir>
 #include <QUuid>
 #include <QDebug>
 #include <QSet>
+#include <QDateTime>
+#include <QtConcurrent/qtconcurrentrun>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 namespace {
 
 constexpr int kMaxPersistedBoxes = 4096;
 constexpr int kMaxPersistedIconPositions = 100000;
+
+static const char kLinDeskMagic[4] = {'L', 'D', 'B', 'X'};
+static const quint8 kLinDeskVersion = 1;
+static const quint8 kLinDeskFlagEncrypted = 0x01;
+static const quint8 kXorMask[] = {
+    0x5A, 0xA5, 0x6C, 0xC6, 0x73, 0x37, 0x8F, 0xF8,
+    0x24, 0x42, 0x1E, 0xE1, 0x9B, 0xB9, 0x3D, 0xD3
+};
 
 QString normalizeMappedFolderPathValue(const QString& path)
 {
@@ -28,17 +43,21 @@ QString normalizeMappedFolderPathValue(const QString& path)
     return normalized;
 }
 
-QVector<LinBox*> liveBoxesFrom(const QVector<QPointer<LinBox>>& boxes)
-{
-    QVector<LinBox*> liveBoxes;
-    liveBoxes.reserve(boxes.size());
-    for (const QPointer<LinBox>& ptr : boxes) {
-        if (LinBox* box = ptr.data()) {
-            liveBoxes.append(box);
-        }
-    }
-    return liveBoxes;
-}
+struct PersistedBoxSnapshot {
+    QString id;
+    QString title;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+    bool collapsed = false;
+    int showType = 0;
+    QString color;
+    int opacity = 0;
+    bool glass = false;
+    QString mappedFolderPath;
+    QStringList files;
+};
 
 }
 
@@ -54,38 +73,77 @@ BoxManager::BoxManager(QObject* parent)
 }
 
 BoxManager::~BoxManager() {
-    saveAll();
 }
 
 void BoxManager::setPersistencePath(const QString& path) {
     m_persistencePath = path;
 }
 
+void BoxManager::applyUnifiedStyleToBox(LinBox* box) {
+    if (!box) return;
+
+    QColor targetColor = m_unifiedBackgroundColor;
+    float targetOpacity = m_unifiedBackgroundOpacity;
+    bool targetGlass = m_unifiedGlassEffect;
+    int targetShowType = 0; // Icon_ShowType
+
+    // 优先从现有存量 box 查找有效外观配置
+    for (const auto& ptr : m_boxes) {
+        if (LinBox* existing = ptr.data()) {
+            if (existing != box) {
+                if (existing->backgroundColor().isValid() && (!targetColor.isValid() || targetColor == QColor(40, 40, 40))) {
+                    targetColor = existing->backgroundColor();
+                }
+                if (existing->backgroundOpacity() > 0.01f && targetOpacity <= 0.01f) {
+                    targetOpacity = existing->backgroundOpacity();
+                }
+                targetShowType = static_cast<int>(existing->showType());
+                targetGlass = existing->glassEffect();
+                break;
+            }
+        }
+    }
+
+    if (!targetColor.isValid()) {
+        targetColor = QColor("#63A8F5");
+    }
+    if (targetOpacity < 0.01f) {
+        targetOpacity = 0.28f;
+    }
+
+    m_unifiedBackgroundColor = targetColor;
+    m_unifiedBackgroundOpacity = targetOpacity;
+    m_unifiedGlassEffect = targetGlass;
+
+    box->setShowType(targetShowType == 1 ? LinBox::BoxShowType::List_ShowType : LinBox::BoxShowType::Icon_ShowType);
+    box->setBackgroundColor(targetColor);
+    box->setBackgroundOpacity(targetOpacity);
+    box->setGlassEffect(targetGlass);
+    box->refreshStyles();
+}
+
 LinBox* BoxManager::createBox(const QPoint& pos, QWidget* parent) {
     LinBox* box = new LinBox(parent);
     box->setBoxId(QUuid::createUuid().toString());
-    box->move(pos);
 
-    LinBox* templateBox = nullptr;
-    for (const auto& ptr : m_boxes) {
-        if (LinBox* existing = ptr.data()) {
-            templateBox = existing;
-            break;
-        }
-    }
-    if (templateBox) {
-        box->setShowType(templateBox->showType());
-        box->setBackgroundColor(templateBox->backgroundColor());
-        box->setBackgroundOpacity(templateBox->backgroundOpacity());
-        box->setGlassEffect(templateBox->glassEffect());
-    }
+    const int defaultW = DpiScaleHelper::scalePx(parent ? parent : box, 300);
+    const int defaultH = DpiScaleHelper::scalePx(parent ? parent : box, 400);
+    box->setGeometry(pos.x(), pos.y(), defaultW, defaultH);
+
+    applyUnifiedStyleToBox(box);
     
     setupBoxConnections(box);
     box->show();
+    box->refreshLayout();
     box->raise();
+    box->update();
+    if (parent) {
+        parent->update(box->geometry().adjusted(-16, -16, 16, 16));
+    }
     
     m_boxes.append(QPointer<LinBox>(box));
-    requestSave();
+    m_boxIdIndex.insert(box->boxId(), box);
+    requestImmediateSave();
     
     emit boxCreated(box);
     return box;
@@ -95,32 +153,43 @@ void BoxManager::destroyBox(LinBox* box, ListView* listView) {
     if (!box) return;
     Q_UNUSED(listView);
 
-    // 閫氱煡澶栭儴澶勭悊锛堟仮澶嶅浘鏍囧埌妗岄潰绛夛級
+    // 通知外部处理（恢复图标到桌面等）
     emit boxDestroyed(box);
     if (LinDirectoryMonitor* monitor = box->mappedFolderMonitor()) {
         monitor->stopListening();
         box->setMappedFolderMonitor(nullptr);
     }
     
+    m_boxIdIndex.remove(box->boxId());
     m_boxes.removeAll(QPointer<LinBox>(box));
     box->hide();
     box->setParent(nullptr);
     box->deleteLater();
     
-    requestSave();
+    requestImmediateSave();
 }
 
 void BoxManager::setupConnections(LinBox* box, ListView* listView) {
     if (!box) return;
     
-    // 甯冨眬鍙樺寲鏃惰姹備繚瀛?
-    connect(box, &LinBox::geometryChanged, this, &BoxManager::requestSave, Qt::UniqueConnection);
+    setupBoxConnections(box);
     
     if (listView) {
-        // 鎷栨斁鏂囦欢鍒?Box
+        // 拖放与菜单操作连接
         connect(box, &LinBox::destroyRequested, listView, &ListView::onMenuDestroyBox, Qt::UniqueConnection);
         connect(box, &LinBox::customRequested, listView, &ListView::onMenuCustomBox, Qt::UniqueConnection);
     }
+}
+
+void BoxManager::setupBoxConnections(LinBox* box) {
+    if (!box) return;
+    
+    // 布局几何变化走 150ms 节流保存
+    connect(box, &LinBox::geometryChanged, this, [this]() {
+        if (m_saveTimer) {
+            m_saveTimer->start();
+        }
+    }, Qt::UniqueConnection);
 }
 
 void BoxManager::addBox(LinBox* box) {
@@ -129,16 +198,19 @@ void BoxManager::addBox(LinBox* box) {
         if (ptr == box) return;  // Already exists
     }
     m_boxes.append(QPointer<LinBox>(box));
+    m_boxIdIndex.insert(box->boxId(), box);
     setupBoxConnections(box);
 }
 
 void BoxManager::removeBox(LinBox* box) {
     if (box) {
+        m_boxIdIndex.remove(box->boxId());
         m_boxes.removeAll(QPointer<LinBox>(box));
     }
 }
 
 void BoxManager::clearBoxes() {
+    m_boxIdIndex.clear();
     m_boxes.clear();
 }
 
@@ -153,6 +225,13 @@ LinBox* BoxManager::findBoxAt(const QPoint& pos) const {
 }
 
 LinBox* BoxManager::findBoxById(const QString& boxId) const {
+    if (boxId.isEmpty()) return nullptr;
+    auto it = m_boxIdIndex.find(boxId);
+    if (it != m_boxIdIndex.end()) {
+        if (LinBox* box = it.value().data()) {
+            return box;
+        }
+    }
     for (auto& ptr : m_boxes) {
         LinBox* box = ptr.data();
         if (box && box->boxId() == boxId) {
@@ -182,201 +261,355 @@ void BoxManager::bringToFront(LinBox* box) {
     raiseAllBoxes();
 }
 
-void BoxManager::setupBoxConnections(LinBox* box) {
-    if (!box) return;
-    
-    // 甯冨眬鍙樺寲鏃惰姹備繚瀛?
-    connect(box, &LinBox::geometryChanged, this, &BoxManager::requestSave, Qt::UniqueConnection);
+void BoxManager::requestSave() {
+    // 节流请求保存
+    if (m_saveTimer) {
+        m_saveTimer->start();
+    } else {
+        emit saveRequested();
+    }
 }
 
-void BoxManager::requestSave() {
-    // 瑙﹀彂 saveRequested 淇″彿锛岃 ListView 鏉ヤ繚瀛橈紙鍖呮嫭鍥炬爣浣嶇疆锛?
+void BoxManager::requestImmediateSave() {
+    // 显式立即保存（低频操作如新建、销毁、净化）
+    if (m_saveTimer && m_saveTimer->isActive()) {
+        m_saveTimer->stop();
+    }
     emit saveRequested();
 }
 
 void BoxManager::saveAll() {
-    QFile file(m_persistencePath);
-    if (!file.open(QIODevice::WriteOnly)) {
-        qDebug() << "[BoxManager] Failed to open file for writing:" << m_persistencePath;
-        return;
-    }
-
-#ifdef QT_DEBUG
-    QJsonObject rootObj;
-    QJsonObject settingsObj;
-    // Default settings for new files
-    settingsObj["viewMode"] = 1;  // Medium icon
-    settingsObj["sortType"] = 0;
-    settingsObj["iconPosMode"] = 0;
-    settingsObj["autoArrange"] = false;
-    settingsObj["gridAlignment"] = false;
-    settingsObj["showDesktopIcons"] = true;
-    settingsObj["doubleClickHideIcons"] = false;
-    settingsObj["showShortCutArrow"] = true;
-    settingsObj["enablePersistence"] = false;
-    rootObj["settings"] = settingsObj;
-    
-    QJsonObject iconPosObj;
-    rootObj["iconPositions"] = iconPosObj;
-    
-    QJsonArray boxArray;
-    for (auto& ptr : m_boxes) {
-        LinBox* box = ptr.data();
-        if (!box) continue;
-        QJsonObject b;
-        b["id"] = box->boxId();
-        b["title"] = box->boxTitle();
-        b["x"] = box->x();
-        b["y"] = box->y();
-        b["w"] = box->width();
-        b["h"] = box->isCollapsed() ? box->originalHeight() : box->height();
-        b["collapsed"] = box->isCollapsed();
-        b["showType"] = (int)box->showType();
-        b["color"] = box->backgroundColor().name();
-        b["opacity"] = qRound(box->backgroundOpacity() * 100);
-        b["glass"] = box->glassEffect();
-        b["mappedFolderPath"] = box->mappedFolderPath();
-        
-        QJsonArray files;
-        QSet<QString> seenPaths;
-        for (const QString& filePath : box->itemPaths()) {
-            if (seenPaths.contains(filePath)) continue;
-            seenPaths.insert(filePath);
-            files.append(filePath);
-        }
-        b["files"] = files;
-        boxArray.append(b);
-    }
-    rootObj["box-datas"] = boxArray;
-    
-    file.write(QJsonDocument(rootObj).toJson());
-#else
-    QDataStream out(&file);
-    const QVector<LinBox*> boxesToSave = liveBoxesFrom(m_boxes);
-    out << boxesToSave.size();
-    for (LinBox* box : boxesToSave) {
-        out << box->boxId() << box->boxTitle() << box->geometry() 
-            << box->isCollapsed() << box->originalHeight() << (int)box->showType() 
-            << box->backgroundColor() << (double)box->backgroundOpacity() << box->glassEffect()
-            << box->mappedFolderPath();
-        QStringList files;
-        QSet<QString> seenPaths;
-        for (const QString& filePath : box->itemPaths()) {
-            if (seenPaths.contains(filePath)) continue;
-            seenPaths.insert(filePath);
-            files << filePath;
-        }
-        out << files;
-    }
-#endif
-    
-    file.close();
-    qDebug() << "[BoxManager] Saved" << m_boxes.size() << "boxes to:" << m_persistencePath;
+    saveAll(m_persistencePath, false, QMap<QString, QMap<QString, QVariant>>(),
+            1, 0, 0, 0, false, false, true, false, true, true);
 }
 
-void BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
-                         const QMap<QString, QMap<QString, QVariant>>& iconPositions,
-                         int viewMode, int sortType, int preAutoSort, int iconPosMode,
-                         bool autoArrange, bool gridAlignment,
-                         bool showDesktopIcons, bool doubleClickHideIcons,
-                         bool showShortCutArrow) {
-    QFile file(persistencePath);
-    if (!file.open(QIODevice::WriteOnly)) {
-        qDebug() << "[BoxManager] Failed to open file for writing:" << persistencePath;
-        return;
+bool BoxManager::validateBoxData(const QJsonObject& b, QSet<QString>& seenBoxIds, QMap<QString, QVariant>& outData, int& droppedCount)
+{
+    QString id = b.value(QStringLiteral("id")).toString().trimmed();
+    if (id.isEmpty()) {
+        qWarning() << "[BoxManager] Validation failed: box has empty id";
+        ++droppedCount;
+        return false;
     }
 
-#ifdef QT_DEBUG
-    QJsonObject rootObj;
-    QJsonObject settingsObj;
-    settingsObj["viewMode"] = viewMode;
-    settingsObj["sortType"] = sortType;
-    settingsObj["preAutoSort"] = preAutoSort;
-    settingsObj["iconPosMode"] = iconPosMode;
-    settingsObj["autoArrange"] = autoArrange;
-    settingsObj["gridAlignment"] = gridAlignment;
-    settingsObj["showDesktopIcons"] = showDesktopIcons;
-    settingsObj["doubleClickHideIcons"] = doubleClickHideIcons;
-    settingsObj["showShortCutArrow"] = showShortCutArrow;
-    settingsObj["enablePersistence"] = enablePersistence;
-    rootObj["settings"] = settingsObj;
-    
-    QJsonArray iconPosArray;
-    for (auto it = iconPositions.begin(); it != iconPositions.end(); ++it) {
-        QJsonObject posObj;
-        posObj["path"] = it.key();
-        for (auto pit = it.value().begin(); pit != it.value().end(); ++pit) {
-            posObj[pit.key()] = QJsonValue::fromVariant(pit.value());
+    if (seenBoxIds.contains(id)) {
+        qWarning() << "[BoxManager] Validation failed: duplicate box id:" << id;
+        ++droppedCount;
+        return false;
+    }
+
+    int w = b.value(QStringLiteral("w")).toInt();
+    int h = b.value(QStringLiteral("h")).toInt();
+    if (w <= 0 || h <= 0) {
+        qWarning() << "[BoxManager] Validation failed: non-positive box dimensions (w:" << w << "h:" << h << ") id:" << id;
+        ++droppedCount;
+        return false;
+    }
+
+    QString colorStr = b.value(QStringLiteral("color")).toString().trimmed();
+    if (!colorStr.isEmpty() && !QColor(colorStr).isValid()) {
+        qWarning() << "[BoxManager] Sanitizing invalid color" << colorStr << "for box:" << id;
+        colorStr = QStringLiteral("#2b2b2b");
+        ++droppedCount;
+    }
+
+    int showType = b.value(QStringLiteral("showType")).toInt();
+    if (showType < 0 || showType > 2) {
+        qWarning() << "[BoxManager] Sanitizing out-of-range showType" << showType << "for box:" << id;
+        showType = qBound(0, showType, 2);
+        ++droppedCount;
+    }
+
+    seenBoxIds.insert(id);
+
+    outData["id"] = id;
+    outData["title"] = b.value(QStringLiteral("title")).toString();
+    outData["x"] = b.value(QStringLiteral("x")).toInt();
+    outData["y"] = b.value(QStringLiteral("y")).toInt();
+    outData["w"] = w;
+    outData["h"] = h;
+    outData["collapsed"] = b.value(QStringLiteral("collapsed")).toBool();
+    outData["showType"] = showType;
+    outData["color"] = colorStr.isEmpty() ? QStringLiteral("#2b2b2b") : colorStr;
+    outData["opacity"] = b.value(QStringLiteral("opacity")).toDouble();
+    outData["glass"] = b.value(QStringLiteral("glass")).toBool(false);
+    outData["mappedFolderPath"] = b.value(QStringLiteral("mappedFolderPath")).toString();
+
+    QStringList files;
+    QSet<QString> seenFiles;
+    QJsonArray fArr = b.value(QStringLiteral("files")).toArray();
+    for (int j = 0; j < fArr.size(); ++j) {
+        const QString fPath = fArr[j].toString().trimmed();
+        if (fPath.isEmpty()) {
+            continue;
         }
-        iconPosArray.append(posObj);
+        if (seenFiles.contains(fPath)) {
+            ++droppedCount;
+            continue;
+        }
+        seenFiles.insert(fPath);
+        files << fPath;
     }
-    rootObj["iconPositions"] = iconPosArray;
+    outData["files"] = files;
+    return true;
+}
 
-    QJsonArray boxArray;
+bool BoxManager::validateIconPosition(const QJsonObject& posObj, const QSet<QString>& validBoxIds, QString& outPath, QMap<QString, QVariant>& outPos, int& droppedCount)
+{
+    outPath = posObj.value(QStringLiteral("path")).toString().trimmed();
+    if (outPath.isEmpty()) {
+        qWarning() << "[BoxManager] Validation failed: icon position has empty path";
+        ++droppedCount;
+        return false;
+    }
+
+    QString boxId = posObj.value(QStringLiteral("boxId")).toString().trimmed();
+    if (!boxId.isEmpty() && !validBoxIds.contains(boxId)) {
+        qWarning() << "[BoxManager] Sanitizing dangling boxId" << boxId << "for icon:" << outPath;
+        boxId.clear();
+        ++droppedCount;
+    }
+
+    outPos["x"] = posObj.value(QStringLiteral("x")).toInt();
+    outPos["y"] = posObj.value(QStringLiteral("y")).toInt();
+    outPos["boxId"] = boxId;
+    outPos["ord"] = posObj.value(QStringLiteral("ord")).toInt();
+    return true;
+}
+
+QByteArray BoxManager::encodePersistenceData(const QByteArray& jsonData) {
+    if (jsonData.isEmpty()) {
+        return QByteArray();
+    }
+
+    // 1. zlib 压缩
+    QByteArray compressed = qCompress(jsonData, 9);
+    // 2. 循环异或混淆
+    for (int i = 0; i < compressed.size(); ++i) {
+        compressed[i] = static_cast<char>(static_cast<quint8>(compressed[i]) ^ kXorMask[i % sizeof(kXorMask)]);
+    }
+    // 3. 添加包头 (Magic 4B + Version 1B + Flags 1B)
+    QByteArray result;
+    result.reserve(6 + compressed.size());
+    result.append(kLinDeskMagic, 4);
+    result.append(static_cast<char>(kLinDeskVersion));
+    result.append(static_cast<char>(kLinDeskFlagEncrypted));
+    result.append(compressed);
+    return result;
+}
+
+QByteArray BoxManager::decodePersistenceData(const QByteArray& rawData) {
+    if (rawData.isEmpty()) {
+        return QByteArray();
+    }
+
+    // Tier 1: 检查 LinDesk 二进制加密包头 (LDBX)
+    if (rawData.size() >= 6 &&
+        memcmp(rawData.constData(), kLinDeskMagic, 4) == 0 &&
+        static_cast<quint8>(rawData[4]) == kLinDeskVersion) {
+
+        const quint8 flags = static_cast<quint8>(rawData[5]);
+        QByteArray payload = rawData.mid(6);
+        if (flags & kLinDeskFlagEncrypted) {
+            for (int i = 0; i < payload.size(); ++i) {
+                payload[i] = static_cast<char>(static_cast<quint8>(payload[i]) ^ kXorMask[i % sizeof(kXorMask)]);
+            }
+        }
+        QByteArray uncompressed = qUncompress(payload);
+        if (!uncompressed.isEmpty()) {
+            return uncompressed;
+        }
+    }
+
+    // Tier 2: 尝试直接纯 qCompress 压缩流
+    QByteArray uncompressed = qUncompress(rawData);
+    if (!uncompressed.isEmpty()) {
+        return uncompressed;
+    }
+
+    // Tier 3: 原始明文（回落到后续的 JSON / QDataStream 解析）
+    return rawData;
+}
+
+QFuture<bool> BoxManager::saveAll(const QString& persistencePath, bool enablePersistence,
+                                  const QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                                  int viewMode, int sortType, int preAutoSort, int iconPosMode,
+                                  bool autoArrange, bool gridAlignment,
+                                  bool showDesktopIcons, bool doubleClickHideIcons,
+                                  bool showShortCutArrow,
+                                  bool async) {
+    if (persistencePath.isEmpty()) {
+        qWarning() << "[BoxManager] Cannot save to empty persistence path";
+        emit saveFinished(false);
+        return QtConcurrent::run([]() { return false; });
+    }
+
+    // 主线程收集 QWidget / LinBox 状态快照
+    QVector<PersistedBoxSnapshot> snapshots;
+    snapshots.reserve(m_boxes.size());
     for (auto& ptr : m_boxes) {
         LinBox* box = ptr.data();
         if (!box) continue;
-        QJsonObject b;
-        b["id"] = box->boxId();
-        b["title"] = box->boxTitle();
-        b["x"] = box->x();
-        b["y"] = box->y();
-        b["w"] = box->width();
-        b["h"] = box->isCollapsed() ? box->originalHeight() : box->height();
-        b["collapsed"] = box->isCollapsed();
-        b["showType"] = (int)box->showType();
-        b["color"] = box->backgroundColor().name();
-        b["opacity"] = qRound(box->backgroundOpacity() * 100);
-        b["glass"] = box->glassEffect();
-        b["mappedFolderPath"] = box->mappedFolderPath();
+        PersistedBoxSnapshot s;
+        s.id = box->boxId();
+        s.title = box->boxTitle();
+        s.x = box->x();
+        s.y = box->y();
+        s.w = box->width();
+        s.h = box->isCollapsed() ? box->originalHeight() : box->height();
+        s.collapsed = box->isCollapsed();
+        s.showType = (int)box->showType();
+        s.color = box->backgroundColor().name();
+        s.opacity = qRound(box->backgroundOpacity() * 100);
+        s.glass = box->glassEffect();
+        s.mappedFolderPath = box->mappedFolderPath();
         
-        QJsonArray files;
         QSet<QString> seenPaths;
         for (const QString& filePath : box->itemPaths()) {
-            if (seenPaths.contains(filePath)) continue;
+            if (filePath.isEmpty() || seenPaths.contains(filePath)) continue;
             seenPaths.insert(filePath);
-            files.append(filePath);
+            s.files.append(filePath);
         }
-        b["files"] = files;
-        boxArray.append(b);
+        snapshots.append(s);
     }
-    rootObj["box-datas"] = boxArray;
-    
-    file.write(QJsonDocument(rootObj).toJson());
-#else
-    QDataStream out(&file);
-    const QVector<LinBox*> boxesToSave = liveBoxesFrom(m_boxes);
-    out << boxesToSave.size();
-    for (LinBox* box : boxesToSave) {
-        out << box->boxId() << box->boxTitle() << box->geometry() 
-            << box->isCollapsed() << box->originalHeight() << (int)box->showType() 
-            << box->backgroundColor() << (double)box->backgroundOpacity() << box->glassEffect()
-            << box->mappedFolderPath();
-        QStringList files;
-        QSet<QString> seenPaths;
-        for (const QString& filePath : box->itemPaths()) {
-            if (seenPaths.contains(filePath)) continue;
-            seenPaths.insert(filePath);
-            files << filePath;
+
+    auto performSave = [persistencePath, enablePersistence, iconPositions,
+                        viewMode, sortType, preAutoSort, iconPosMode,
+                        autoArrange, gridAlignment, showDesktopIcons,
+                        doubleClickHideIcons, showShortCutArrow,
+                        snapshots]() -> bool {
+        const QString tmpPath = persistencePath + QStringLiteral(".tmp");
+        const QString bakPath = persistencePath + QStringLiteral(".bak");
+
+        QFileInfo fi(persistencePath);
+        QDir().mkpath(fi.absolutePath());
+
+        QJsonObject rootObj;
+        QJsonObject settingsObj;
+        settingsObj["viewMode"] = viewMode;
+        settingsObj["sortType"] = sortType;
+        settingsObj["preAutoSort"] = preAutoSort;
+        settingsObj["iconPosMode"] = iconPosMode;
+        settingsObj["autoArrange"] = autoArrange;
+        settingsObj["gridAlignment"] = gridAlignment;
+        settingsObj["showDesktopIcons"] = showDesktopIcons;
+        settingsObj["doubleClickHideIcons"] = doubleClickHideIcons;
+        settingsObj["showShortCutArrow"] = showShortCutArrow;
+        settingsObj["enablePersistence"] = enablePersistence;
+        rootObj["settings"] = settingsObj;
+        
+        QJsonArray iconPosArray;
+        for (auto it = iconPositions.begin(); it != iconPositions.end(); ++it) {
+            if (it.key().trimmed().isEmpty()) continue;
+            QJsonObject posObj;
+            posObj["path"] = it.key();
+            for (auto pit = it.value().begin(); pit != it.value().end(); ++pit) {
+                posObj[pit.key()] = QJsonValue::fromVariant(pit.value());
+            }
+            iconPosArray.append(posObj);
         }
-        out << files;
-    }
-    // Save settings
-    out << enablePersistence << viewMode << sortType << preAutoSort << iconPosMode
-        << autoArrange << gridAlignment << showDesktopIcons 
-        << doubleClickHideIcons << showShortCutArrow;
-    out << iconPositions.size();
-    for (auto it = iconPositions.constBegin(); it != iconPositions.constEnd(); ++it) {
-        out << it.key()
-            << it.value().value("x").toInt()
-            << it.value().value("y").toInt()
-            << it.value().value("boxId").toString()
-            << it.value().value("ord").toInt();
-    }
+        rootObj["iconPositions"] = iconPosArray;
+
+        QJsonArray boxArray;
+        for (const auto& s : snapshots) {
+            QJsonObject b;
+            b["id"] = s.id;
+            b["title"] = s.title;
+            b["x"] = s.x;
+            b["y"] = s.y;
+            b["w"] = s.w;
+            b["h"] = s.h;
+            b["collapsed"] = s.collapsed;
+            b["showType"] = s.showType;
+            b["color"] = s.color;
+            b["opacity"] = s.opacity;
+            b["glass"] = s.glass;
+            b["mappedFolderPath"] = s.mappedFolderPath;
+            
+            QJsonArray fArr;
+            for (const QString& f : s.files) {
+                fArr.append(f);
+            }
+            b["files"] = fArr;
+            boxArray.append(b);
+        }
+        rootObj["box-datas"] = boxArray;
+
+        QFile tmpFile(tmpPath);
+        if (!tmpFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            qWarning() << "[BoxManager] Failed to open temp file for atomic writing:" << tmpPath;
+            return false;
+        }
+
+        const QByteArray jsonData = QJsonDocument(rootObj).toJson(QJsonDocument::Compact);
+        const QByteArray binaryPayload = encodePersistenceData(jsonData);
+        if (tmpFile.write(binaryPayload) != binaryPayload.size()) {
+            qWarning() << "[BoxManager] Failed to write complete binary data to:" << tmpPath;
+            tmpFile.close();
+            QFile::remove(tmpPath);
+            return false;
+        }
+
+        tmpFile.flush();
+        tmpFile.close();
+
+#ifdef QT_DEBUG
+        // Debug 模式下同步写出一份格式化明文 JSON 伴随文件，方便开发人员直接查看与调试
+        const QString debugJsonPath = persistencePath + QStringLiteral(".debug.json");
+        QFile debugFile(debugJsonPath);
+        if (debugFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            debugFile.write(QJsonDocument(rootObj).toJson(QJsonDocument::Indented));
+            debugFile.close();
+            qDebug() << "[BoxManager] [DEBUG] Plaintext JSON snapshot updated at:" << debugJsonPath;
+        }
 #endif
-    
-    file.close();
-    qDebug() << "[BoxManager] Saved" << m_boxes.size() << "boxes and settings to:" << persistencePath;
+
+        bool replaced = false;
+#ifdef Q_OS_WIN
+        const std::wstring wTmp = QDir::toNativeSeparators(tmpPath).toStdWString();
+        const std::wstring wTarget = QDir::toNativeSeparators(persistencePath).toStdWString();
+        if (MoveFileExW(wTmp.c_str(), wTarget.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            replaced = true;
+        }
+#endif
+        if (!replaced) {
+            if (QFile::exists(persistencePath)) {
+                QFile::remove(persistencePath);
+            }
+            replaced = QFile::rename(tmpPath, persistencePath);
+            if (!replaced) {
+                if (QFile::copy(tmpPath, persistencePath)) {
+                    QFile::remove(tmpPath);
+                    replaced = true;
+                }
+            }
+        }
+
+        if (QFile::exists(tmpPath)) {
+            QFile::remove(tmpPath);
+        }
+
+        if (!replaced) {
+            qWarning() << "[BoxManager] Atomic commit failed to replace" << tmpPath << "with" << persistencePath;
+            return false;
+        }
+
+        return true;
+    };
+
+    if (async) {
+        return QtConcurrent::run([this, performSave]() -> bool {
+            const bool ok = performSave();
+            QMetaObject::invokeMethod(this, [this, ok]() {
+                emit saveFinished(ok);
+            }, Qt::QueuedConnection);
+            return ok;
+        });
+    }
+
+    const bool ok = performSave();
+    emit saveFinished(ok);
+    return QtConcurrent::run([ok]() { return ok; });
 }
 
 void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
@@ -386,242 +619,180 @@ void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,
                          bool& showDesktopIcons, bool& doubleClickHideIcons,
                          bool& showShortCutArrow,
                          QVector<QMap<QString, QVariant>>& boxData,
-                         QMap<QString, QMap<QString, QVariant>>& iconPositions) {
-    QFile file(persistencePath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-        qDebug() << "[BoxManager] No persistence file found:" << persistencePath;
-        return;
+                         QMap<QString, QMap<QString, QVariant>>& iconPositions,
+                         int* droppedCount) {
+    if (droppedCount) {
+        *droppedCount = 0;
     }
 
-#ifdef QT_DEBUG
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    QJsonObject rootObj = doc.object();
-    if (doc.isNull() || doc.isEmpty() || !rootObj.contains("settings") || !rootObj.contains("box-datas") || !rootObj.contains("iconPositions")) {
-        qWarning() << "[BoxManager] Invalid persistence format. Expected keys: settings, iconPositions, box-datas.";
-        file.close();
-        return;
-    }
-    
-    // Load settings
-    QJsonObject settingsObj = rootObj["settings"].toObject();
-    enablePersistence = settingsObj["enablePersistence"].toBool();
-    viewMode = settingsObj["viewMode"].toInt();
-    sortType = settingsObj["sortType"].toInt();
-    preAutoSort = settingsObj["preAutoSort"].toInt();
-    iconPosMode = settingsObj["iconPosMode"].toInt();
-    autoArrange = settingsObj["autoArrange"].toBool();
-    gridAlignment = settingsObj["gridAlignment"].toBool();
-    showDesktopIcons = settingsObj["showDesktopIcons"].toBool();
-    doubleClickHideIcons = settingsObj["doubleClickHideIcons"].toBool();
-    showShortCutArrow = settingsObj["showShortCutArrow"].toBool();
-    
-    // Load icon positions (array format)
-    QJsonArray iconPosArray = rootObj["iconPositions"].toArray();
-    for (const QJsonValue& val : iconPosArray) {
-        QJsonObject posObj = val.toObject();
-        QString path = posObj["path"].toString();
-        QMap<QString, QVariant> posMap;
-        posMap["x"] = posObj["x"].toInt();
-        posMap["y"] = posObj["y"].toInt();
-        posMap["boxId"] = posObj["boxId"].toString();
-        posMap["ord"] = posObj["ord"].toInt();
-        iconPositions[path] = posMap;
+    const QString tmpPath = persistencePath + QStringLiteral(".tmp");
+    if (QFile::exists(tmpPath)) {
+        QFile::remove(tmpPath);
     }
 
-    // Load boxes
-    QJsonArray boxArray = rootObj["box-datas"].toArray();
-    for (int i = 0; i < boxArray.size(); ++i) {
-        QJsonObject b = boxArray[i].toObject();
-        QMap<QString, QVariant> data;
-        data["id"] = b["id"].toString();
-        data["title"] = b["title"].toString();
-        data["x"] = b["x"].toInt();
-        data["y"] = b["y"].toInt();
-        data["w"] = b["w"].toInt();
-        data["h"] = b["h"].toInt();
-        data["collapsed"] = b["collapsed"].toBool();
-        data["showType"] = b["showType"].toInt();
-        data["color"] = b["color"].toString();
-        data["opacity"] = b["opacity"].toDouble();
-        data["glass"] = b["glass"].toBool();
-        data["mappedFolderPath"] = b["mappedFolderPath"].toString();
-        
-        QStringList files;
-        QJsonArray fArr = b["files"].toArray();
-        for (int j = 0; j < fArr.size(); ++j) {
-            files << fArr[j].toString();
+    auto tryLoadFile = [&](const QString& filePath, int& localDropped) -> bool {
+        QFile file(filePath);
+        if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+            return false;
         }
-        data["files"] = files;
-        boxData.append(data);
-    }
-#else
-    QDataStream in(&file);
-    int count = 0;
-    in >> count;
-    if (in.status() != QDataStream::Ok || count < 0 || count > kMaxPersistedBoxes) {
-        qWarning() << "[BoxManager] Invalid persisted box count:" << count << "path:" << persistencePath;
+
+        const QByteArray content = file.readAll();
         file.close();
-        return;
+
+        if (content.trimmed().isEmpty()) {
+            qWarning() << "[BoxManager] File is empty:" << filePath;
+            return false;
+        }
+
+        const QByteArray decodedContent = decodePersistenceData(content);
+
+        QJsonParseError parseError;
+        QJsonDocument doc = QJsonDocument::fromJson(decodedContent, &parseError);
+        if (parseError.error == QJsonParseError::NoError && !doc.isNull() && doc.isObject()) {
+            QJsonObject rootObj = doc.object();
+            if (rootObj.contains("settings") && rootObj.contains("box-datas") && rootObj.contains("iconPositions")) {
+                // 加载设置
+                QJsonObject settingsObj = rootObj["settings"].toObject();
+                enablePersistence = settingsObj.value("enablePersistence").toBool(true);
+                viewMode = settingsObj.value("viewMode").toInt(1);
+                sortType = settingsObj.value("sortType").toInt(0);
+                preAutoSort = settingsObj.value("preAutoSort").toInt(0);
+                iconPosMode = settingsObj.value("iconPosMode").toInt(0);
+                autoArrange = settingsObj.value("autoArrange").toBool(false);
+                gridAlignment = settingsObj.value("gridAlignment").toBool(false);
+                showDesktopIcons = settingsObj.value("showDesktopIcons").toBool(true);
+                doubleClickHideIcons = settingsObj.value("doubleClickHideIcons").toBool(false);
+                showShortCutArrow = settingsObj.value("showShortCutArrow").toBool(true);
+
+                // 加载 Box 并做条目级校验与上限控制
+                QJsonArray boxArray = rootObj["box-datas"].toArray();
+                if (boxArray.size() > kMaxPersistedBoxes) {
+                    qWarning() << "[BoxManager] Persisted box count exceeds max limit:" << boxArray.size() << ">" << kMaxPersistedBoxes;
+                    localDropped += (boxArray.size() - kMaxPersistedBoxes);
+                }
+                const int boxLimit = qMin(boxArray.size(), kMaxPersistedBoxes);
+
+                QSet<QString> seenBoxIds;
+                boxData.clear();
+                for (int i = 0; i < boxLimit; ++i) {
+                    const QJsonValue val = boxArray[i];
+                    if (!val.isObject()) {
+                        qWarning() << "[BoxManager] Dropping non-object box at index:" << i;
+                        ++localDropped;
+                        continue;
+                    }
+                    QMap<QString, QVariant> bData;
+                    if (validateBoxData(val.toObject(), seenBoxIds, bData, localDropped)) {
+                        boxData.append(bData);
+                    }
+                }
+
+                // 加载图标位置并做条目级校验与上限控制
+                QJsonArray iconPosArray = rootObj["iconPositions"].toArray();
+                if (iconPosArray.size() > kMaxPersistedIconPositions) {
+                    qWarning() << "[BoxManager] Persisted icon count exceeds limit:" << iconPosArray.size() << ">" << kMaxPersistedIconPositions;
+                    localDropped += (iconPosArray.size() - kMaxPersistedIconPositions);
+                }
+                const int iconLimit = qMin(iconPosArray.size(), kMaxPersistedIconPositions);
+
+                iconPositions.clear();
+                for (int i = 0; i < iconLimit; ++i) {
+                    const QJsonValue val = iconPosArray[i];
+                    if (!val.isObject()) {
+                        qWarning() << "[BoxManager] Dropping non-object icon position at index:" << i;
+                        ++localDropped;
+                        continue;
+                    }
+                    QString path;
+                    QMap<QString, QVariant> posMap;
+                    if (validateIconPosition(val.toObject(), seenBoxIds, path, posMap, localDropped)) {
+                        iconPositions[path] = posMap;
+                    }
+                }
+                return true;
+            } else {
+                qWarning() << "[BoxManager] Missing required keys in JSON" << filePath << "(needs settings, box-datas, iconPositions)";
+                return false;
+            }
+        } else {
+            qWarning() << "[BoxManager] Persistence parse error in" << filePath << ":" << parseError.errorString();
+            return false;
+        }
+    };
+
+    int totalDropped = 0;
+    bool loaded = false;
+
+    if (QFile::exists(persistencePath)) {
+        loaded = tryLoadFile(persistencePath, totalDropped);
     }
-    for (int i = 0; i < count; ++i) {
-        QString boxId, title;
-        QRect geom;
-        bool collapsed, glass;
-        int origH, showType;
-        QStringList files;
-        QString mappedFolderPath;
-        QColor color;
-        double opacity;
-        in >> boxId >> title >> geom >> collapsed >> origH >> showType >> color >> opacity >> glass >> mappedFolderPath >> files;
-        if (in.status() != QDataStream::Ok) {
-            qWarning() << "[BoxManager] Stopped loading boxes due to invalid stream at index:" << i;
+
+    if (!loaded) {
+        // 绝不抹除用户坏文件：如果主文件存在且非空，但解析失败，立即自动重命名隔离为 .corrupted_yyyyMMdd_hhmmss 保留案发现场！
+        if (QFile::exists(persistencePath) && QFile(persistencePath).size() > 0) {
+            const QString timeStamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss"));
+            const QString quarantinePath = persistencePath + QStringLiteral(".corrupted_") + timeStamp;
+
+            bool quarantined = QFile::rename(persistencePath, quarantinePath);
+            if (!quarantined) {
+                if (QFile::copy(persistencePath, quarantinePath)) {
+                    QFile::remove(persistencePath);
+                    quarantined = true;
+                }
+            }
+            qCritical() << "[BoxManager] CRITICAL: Persistence file corrupted! Quarantined to:" << quarantinePath
+                        << "(Original user file preserved. Launching with clean layout without overwriting corrupted data)";
+        } else {
+            qDebug() << "[BoxManager] No persistence file found at:" << persistencePath;
+        }
+
+        qWarning() << "[BoxManager] Starting with clean default layout.";
+        boxData.clear();
+        iconPositions.clear();
+        totalDropped = 0; // 严禁设置 dirty，防止启动立即写空文件破坏现场！
+    }
+
+    if (droppedCount) {
+        *droppedCount = totalDropped;
+    }
+
+    for (const auto& bMap : boxData) {
+        if (bMap.contains("color")) {
+            const QColor c = QColor(bMap.value("color").toString());
+            if (c.isValid()) {
+                m_unifiedBackgroundColor = c;
+            }
+        }
+        if (bMap.contains("opacity")) {
+            const double op = bMap.value("opacity").toDouble();
+            const float parsedOpacity = static_cast<float>(op > 1.0 ? qBound(0.0, op / 100.0, 1.0) : qBound(0.0, op, 1.0));
+            if (parsedOpacity > 0.01f) {
+                m_unifiedBackgroundOpacity = parsedOpacity;
+            }
+        }
+        if (bMap.contains("glass")) {
+            m_unifiedGlassEffect = bMap.value("glass").toBool();
+        }
+        if (m_unifiedBackgroundColor.isValid() && m_unifiedBackgroundOpacity > 0.01f) {
             break;
         }
-        
-        QMap<QString, QVariant> data;
-        data["id"] = boxId;
-        data["title"] = title;
-        data["x"] = geom.x();
-        data["y"] = geom.y();
-        data["w"] = geom.width();
-        data["h"] = geom.height();
-        data["collapsed"] = collapsed;
-        data["showType"] = showType;
-        data["color"] = color.name();
-        data["opacity"] = opacity;
-        data["glass"] = glass;
-        data["mappedFolderPath"] = mappedFolderPath;
-        data["files"] = files;
-        boxData.append(data);
-    }
-    // Load settings
-    if (in.status() == QDataStream::Ok && !in.atEnd()) {
-        in >> enablePersistence >> viewMode >> sortType >> preAutoSort >> iconPosMode
-           >> autoArrange >> gridAlignment >> showDesktopIcons
-           >> doubleClickHideIcons >> showShortCutArrow;
-        if (in.status() != QDataStream::Ok) {
-            qWarning() << "[BoxManager] Invalid settings stream. Keeping default settings.";
-        }
     }
 
-    if (in.status() == QDataStream::Ok && !in.atEnd()) {
-        int iconPosCount = 0;
-        in >> iconPosCount;
-        if (in.status() != QDataStream::Ok || iconPosCount < 0 || iconPosCount > kMaxPersistedIconPositions) {
-            qWarning() << "[BoxManager] Invalid icon position count:" << iconPosCount;
-            iconPosCount = 0;
-        }
-        for (int i = 0; i < iconPosCount; ++i) {
-            QString path;
-            int x = 0;
-            int y = 0;
-            int customSortOrder = -1;
-            QString boxId;
-            in >> path >> x >> y >> boxId >> customSortOrder;
-            if (in.status() != QDataStream::Ok) {
-                qWarning() << "[BoxManager] Stopped loading icon positions at index:" << i;
-                break;
-            }
-            if (path.isEmpty()) {
-                continue;
-            }
-
-            QMap<QString, QVariant> posMap;
-            posMap["x"] = x;
-            posMap["y"] = y;
-            posMap["boxId"] = boxId;
-            posMap["ord"] = customSortOrder;
-            iconPositions[path] = posMap;
-        }
-    }
-#endif
-    
-    file.close();
-    qDebug() << "[BoxManager] Loaded" << boxData.size() << "boxes from:" << persistencePath;
+    qDebug() << "[BoxManager] Loaded" << boxData.size() << "boxes and" << iconPositions.size()
+             << "icon positions (sanitized/dropped:" << totalDropped << ") from:" << persistencePath;
 }
 
 void BoxManager::loadAll(bool autoUpdateState) {
-    QFile file(m_persistencePath);
-    if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
-        qDebug() << "[BoxManager] No persistence file found:" << m_persistencePath;
-        return;
-    }
-
-#ifdef QT_DEBUG
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    QJsonObject rootObj = doc.object();
-    QJsonArray boxArray = rootObj["box-datas"].toArray();
-    
-    for (int i = 0; i < boxArray.size(); ++i) {
-        QJsonObject b = boxArray[i].toObject();
-        QStringList files;
-        QJsonArray fArr = b["files"].toArray();
-        for (int j = 0; j < fArr.size(); ++j) {
-            files << fArr[j].toString();
-        }
-        
-        QRect geom(b["x"].toInt(), b["y"].toInt(), b["w"].toInt(), b["h"].toInt());
-        QColor color = QColor(b["color"].toString());
-        float opacity = b["opacity"].toDouble() / 100.0f;
-        if (opacity <= 0) opacity = 0.45f;
-        bool glass = b.contains("glass") ? b["glass"].toBool() : true;
-        QString mappedFolderPath = b["mappedFolderPath"].toString();
-        QString boxId = b.contains("id") ? b["id"].toString() : QUuid::createUuid().toString();
-        
-        // 閫氱煡澶栭儴鍒涘缓 Box 骞跺姞杞芥暟鎹?
-        // ListView 搴旇杩炴帴 boxCreated 淇″彿骞跺垱寤哄搴旂殑 Box
-        emit boxCreated(nullptr); // Placeholder
-        Q_UNUSED(boxId);
-        Q_UNUSED(geom);
-        Q_UNUSED(color);
-        Q_UNUSED(opacity);
-        Q_UNUSED(glass);
-        Q_UNUSED(mappedFolderPath);
-        Q_UNUSED(files);
-        Q_UNUSED(b);
-    }
-#else
-    QDataStream in(&file);
-    int count = 0;
-    in >> count;
-    if (in.status() != QDataStream::Ok || count < 0 || count > kMaxPersistedBoxes) {
-        qWarning() << "[BoxManager] Invalid persisted box count:" << count << "path:" << m_persistencePath;
-        file.close();
-        return;
-    }
-    for (int i = 0; i < count; ++i) {
-        QString boxId;
-        QString title;
-        QRect geom;
-        bool collapsed;
-        int origH;
-        int showType;
-        QStringList files;
-        QString mappedFolderPath;
-        QColor color;
-        double opacity;
-        bool glass;
-        in >> boxId >> title >> geom >> collapsed >> origH >> showType >> color >> opacity >> glass >> mappedFolderPath >> files;
-        if (in.status() != QDataStream::Ok) {
-            qWarning() << "[BoxManager] Stopped loading boxes due to invalid stream at index:" << i;
-            break;
-        }
-        emit boxCreated(nullptr); // Placeholder
-        Q_UNUSED(boxId);
-        Q_UNUSED(title);
-        Q_UNUSED(geom);
-        Q_UNUSED(collapsed);
-        Q_UNUSED(origH);
-        Q_UNUSED(showType);
-        Q_UNUSED(files);
-        Q_UNUSED(color);
-        Q_UNUSED(opacity);
-        Q_UNUSED(glass);
-        Q_UNUSED(mappedFolderPath);
-    }
-#endif
-    
-    file.close();
+    bool enablePersistence = true;
+    QMap<QString, QString> rules;
+    int viewMode = 1, sortType = 0, preAutoSort = 0, iconPosMode = 0;
+    bool autoArrange = false, gridAlignment = false, showDesktopIcons = true, doubleClickHideIcons = false, showShortCutArrow = true;
+    QVector<QMap<QString, QVariant>> boxData;
+    QMap<QString, QMap<QString, QVariant>> iconPositions;
+    loadAll(m_persistencePath, autoUpdateState, enablePersistence, rules,
+            viewMode, sortType, preAutoSort, iconPosMode,
+            autoArrange, gridAlignment, showDesktopIcons, doubleClickHideIcons, showShortCutArrow,
+            boxData, iconPositions);
 }
 
 QString BoxManager::getBoxIdForItem(const QString& filePath) const {
@@ -690,6 +861,7 @@ void BoxManager::refreshAllBoxesLayout() {
 }
 
 void BoxManager::setAllBoxesGlassEffect(bool enabled) {
+    m_unifiedGlassEffect = enabled;
     for (auto& ptr : m_boxes) {
         if (LinBox* box = ptr.data()) box->setGlassEffect(enabled);
     }
@@ -697,6 +869,7 @@ void BoxManager::setAllBoxesGlassEffect(bool enabled) {
 }
 
 void BoxManager::setAllBoxesBackgroundColor(const QColor& color) {
+    m_unifiedBackgroundColor = color;
     for (auto& ptr : m_boxes) {
         if (LinBox* box = ptr.data()) box->setBackgroundColor(color);
     }
@@ -704,9 +877,9 @@ void BoxManager::setAllBoxesBackgroundColor(const QColor& color) {
 }
 
 void BoxManager::setAllBoxesBackgroundOpacity(float opacity) {
+    m_unifiedBackgroundOpacity = opacity;
     for (auto& ptr : m_boxes) {
         if (LinBox* box = ptr.data()) box->setBackgroundOpacity(opacity);
     }
     requestSave();
 }
-

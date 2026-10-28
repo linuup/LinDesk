@@ -3,6 +3,7 @@
 #include "ui/SoftDesktopTextRenderer.h"
 
 #include <QFont>
+#include <QImage>
 #include <QPixmap>
 #include <QRect>
 #include <QString>
@@ -31,6 +32,8 @@ struct DesktopRootItemRenderData
     qreal selectionBorderWidth = 1.0;
     qreal hoverBorderWidth = 1.0;
 
+    QImage iconImage;
+    QImage shortcutArrowImage;
     QPixmap iconPixmap;
     QPixmap shortcutArrowPixmap;
     QPixmap staticContentPixmap;

@@ -21,11 +21,7 @@ class QResizeEvent;
 class QSlider;
 class QTimer;
 class ListView;
-class SoftDesktopTextPreview;
 class FluentToggleSwitch;
-namespace LinWidget {
-class WidgetManager;
-}
 namespace AI {
 class AICoreService;
 struct ChatRequest;
@@ -43,8 +39,6 @@ private:
     void updateAdaptiveLayout();
     void updateLabels();
     void updateOpenGLStatus();
-    void applyTextPreviewOptions();
-    LinWidget::WidgetManager* linWidgetManager();
     void reloadLinWidgetsList();
     void updateLinWidgetsButtons();
     void updateLinWidgetLogViewer();
@@ -64,6 +58,7 @@ private:
     QWidget* createLinWidgetItemWidget(QListWidgetItem* item);
     bool loadSelectedLinWidget();
     bool unloadSelectedLinWidget();
+    void exportLinWidgetDiagnostics();
     QListWidget* activeLinWidgetList() const;
     QString linWidgetPackageKey(const QString& packagePath) const;
     QString linWidgetRegistryKey(const QString& id, bool isDevelopment) const;
@@ -83,8 +78,6 @@ private:
     QWidget* createLinWidgetsPage();
     QWidget* createAIPage();
     QWidget* createLayoutPage();
-    QWidget* createTextDiagnosticsPage();
-    QWidget* createZOrderPage();
     QWidget* wrapScrollablePage(QWidget* content);
     void loadAIConfig();
     void saveAIConfig();
@@ -111,6 +104,11 @@ private:
     class QTabBar* m_tabBar = nullptr;
     class QStackedWidget* m_contentStack = nullptr;
     QGridLayout* m_generalGrid = nullptr;
+    struct GeneralSection {
+        QWidget* header = nullptr;
+        QList<QWidget*> cards;
+    };
+    QList<GeneralSection> m_generalSections;
     QList<QWidget*> m_generalCards;
     QHash<QWidget*, bool> m_generalWideCards;
     QGridLayout* m_linWidgetsContentGrid = nullptr;
@@ -128,7 +126,6 @@ private:
     FluentToggleSwitch* m_linWidgetBoundsToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBlockedCellsToggle = nullptr;
     FluentToggleSwitch* m_defaultWallpaperToggle = nullptr;
-    FluentToggleSwitch* m_widgetEmbeddedToggle = nullptr;
     QCheckBox* m_linWidgetNetworkPermissionCheck = nullptr;
     QCheckBox* m_linWidgetStoragePermissionCheck = nullptr;
     QCheckBox* m_linWidgetDesktopPermissionCheck = nullptr;
@@ -142,6 +139,8 @@ private:
     QString m_currentLinWidgetLogPath;
     QListWidget* m_installedLinWidgetsList = nullptr;
     QListWidget* m_developmentLinWidgetsList = nullptr;
+    class QTabBar* m_linWidgetListTabBar = nullptr;
+    class QStackedWidget* m_linWidgetListStack = nullptr;
     QPushButton* m_linWidgetsOpenFolderButton = nullptr;
     QPushButton* m_linWidgetsOpenLogsButton = nullptr;
     QPushButton* m_linWidgetsAddDevButton = nullptr;
@@ -149,7 +148,6 @@ private:
     QPushButton* m_linWidgetsResetBundledButton = nullptr;
     QPushButton* m_linWidgetsRemoveDevButton = nullptr;
     QPushButton* m_linWidgetsDeleteButton = nullptr;
-    LinWidget::WidgetManager* m_linWidgetManager = nullptr;
     QString m_lastLinWidgetInstanceId;
     QHash<QString, QString> m_linWidgetInstancesByPackage;
     QHash<QString, QString> m_linWidgetInstancesById;
@@ -173,23 +171,4 @@ private:
     QList<AI::ChatMessage> m_aiConversationMessages;
     QString m_aiStreamingAssistantText;
     int m_aiCurrentProviderIndex = 0;
-
-    // Text preview
-    SoftDesktopTextPreview* m_textPreview = nullptr;
-    QSlider* m_largeGlowSlider = nullptr;
-    QSlider* m_tightGlowSlider = nullptr;
-    QSlider* m_glowAlphaSlider = nullptr;
-    QSlider* m_innerAlphaSlider = nullptr;
-    QSlider* m_glowOffsetXSlider = nullptr;
-    QSlider* m_glowOffsetYSlider = nullptr;
-    QSlider* m_innerOffsetXSlider = nullptr;
-    QSlider* m_innerOffsetYSlider = nullptr;
-    QLabel* m_largeGlowValueLabel = nullptr;
-    QLabel* m_tightGlowValueLabel = nullptr;
-    QLabel* m_glowAlphaValueLabel = nullptr;
-    QLabel* m_innerAlphaValueLabel = nullptr;
-    QLabel* m_glowOffsetXValueLabel = nullptr;
-    QLabel* m_glowOffsetYValueLabel = nullptr;
-    QLabel* m_innerOffsetXValueLabel = nullptr;
-    QLabel* m_innerOffsetYValueLabel = nullptr;
 };

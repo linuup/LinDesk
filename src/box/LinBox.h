@@ -77,6 +77,8 @@ public:
     void clearMappedFolderPath();
     void setMappedFolderMonitor(LinDirectoryMonitor* monitor);
     LinDirectoryMonitor* mappedFolderMonitor() const { return m_mappedFolderMonitor.data(); }
+    void setMappedFolderLoading(bool loading);
+    bool isMappedFolderLoading() const { return m_isMappedFolderLoading; }
 
     void setBackgroundColor(const QColor& color);
     void setBackgroundOpacity(float opacity);
@@ -85,6 +87,8 @@ public:
     
     bool glassEffect() const { return m_glassEffect; }
     void setGlassEffect(bool enabled);
+    void scheduleBlurRefresh();
+    void updateBlurCache();
 
     void refreshStyles();
     void refreshSelectionOverlayColor();
@@ -147,8 +151,6 @@ private:
                                        bool copyMode,
                                        bool preferShortcut,
                                        QDropEvent* event);
-    void scheduleBlurRefresh();
-    void updateBlurCache();
     QPixmap captureBackgroundPixmap() const;
     void beginItemSelection(const QPoint& contentPos);
     void updateItemSelection(const QPoint& contentPos);
@@ -208,19 +210,21 @@ private:
     int m_minBoxHeight = 120;
     int m_maxCustomTitleLength = 64;
 
-    QColor m_bgColor = QColor(40, 40, 40); // Standard dark gray instead of pure black
-    float m_bgOpacity = 0.45f;            // Default opacity
+    QColor m_bgColor = QColor("#63A8F5"); // Unified default
+    float m_bgOpacity = 0.28f;            // Unified default (28%)
     bool m_glassEffect = false;
     QString m_id; 
     QString m_mappedFolderPath;
     MappedFolderState m_mappedFolderState = MappedFolderState::Normal;
     qreal m_dpiScale = 1.0;
+    bool m_isMappedFolderLoading = false;
 
 private:
     QPointer<class FluentDragTip> m_dragTip;
     void updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut = false);
     class QTimer* m_blurRefreshTimer = nullptr;
     class QTimer* m_mappedFolderStateTimer = nullptr;
+    class QTimer* m_moveRefreshTimer = nullptr;
     QPixmap m_blurCache;
     bool m_isCapturingBackground = false;
     bool m_isRefreshingLayout = false;

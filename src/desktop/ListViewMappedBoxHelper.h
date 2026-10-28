@@ -10,6 +10,7 @@
 #include <QObject>
 #include <QThread>
 #include <QTimer>
+#include <QDateTime>
 
 #include "desktop/ListView.h"
 #include "box/LinBox.h"
@@ -107,7 +108,7 @@ public:
 
         static quint64 s_nextMappedLoadRequestId = 1;
         box->setMappedFolderPath(box->mappedFolderPath());
-        clearMappedFolderItemsForBox(view, box);
+        box->setMappedFolderLoading(true);
 
         const QFileInfo mappedInfo(box->mappedFolderPath());
         if (!mappedInfo.exists() || !mappedInfo.isDir() || !mappedInfo.isReadable()) {
@@ -115,32 +116,57 @@ public:
                 oldMonitor->stopListening();
                 box->setMappedFolderMonitor(nullptr);
             }
+            clearMappedFolderItemsForBox(view, box);
             view.m_mappedBoxFilePaths.remove(box->boxId());
+            box->setMappedFolderLoading(false);
             box->refreshLayout();
+            box->show();
             box->raise();
+            box->update();
             return;
         }
 
-        if (LinDirectoryMonitor* oldMonitor = box->mappedFolderMonitor()) {
-            oldMonitor->stopListening();
-        }
+        LinDirectoryMonitor* monitor = box->mappedFolderMonitor();
+        const QString monitoredPath = box->property("_monitoredPath").toString();
+        if (!monitor || monitoredPath != box->mappedFolderPath()) {
+            if (monitor) {
+                monitor->stopListening();
+            }
+            monitor = new LinDirectoryMonitor(box->mappedFolderPath(), false, box);
+            box->setProperty("_monitoredPath", box->mappedFolderPath());
+            QPointer<ListView> monitorViewPtr(&view);
+            QPointer<LinBox> monitorBoxPtr(box);
+            QObject::connect(monitor, &LinDirectoryMonitor::fileSystemChanged, &view, [monitorViewPtr, monitorBoxPtr](const FileSystemEventInfo&) {
+                if (!monitorViewPtr || !monitorBoxPtr) {
+                    return;
+                }
+                if (monitorBoxPtr->isMappedFolderLoading()) {
+                    return;
+                }
 
-        auto* monitor = new LinDirectoryMonitor(box->mappedFolderPath(), false, box);
-        QPointer<ListView> monitorViewPtr(&view);
-        QPointer<LinBox> monitorBoxPtr(box);
-        QObject::connect(monitor, &LinDirectoryMonitor::fileSystemChanged, &view, [monitorViewPtr, monitorBoxPtr](const FileSystemEventInfo&) {
-            if (!monitorViewPtr || !monitorBoxPtr) {
-                return;
-            }
-            ListViewMappedBoxHelper::loadMappedFolderItemsForBox(*monitorViewPtr, monitorBoxPtr.data());
-            if (!monitorBoxPtr) {
-                return;
-            }
-            monitorBoxPtr->refreshLayout();
-            monitorBoxPtr->raise();
-        }, Qt::UniqueConnection);
-        monitor->startListening();
-        box->setMappedFolderMonitor(monitor);
+                const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                const qint64 lastReload = monitorBoxPtr->property("_lastMappedReloadTime").toLongLong();
+                if (now - lastReload < 2000) {
+                    return;
+                }
+
+                QTimer* timer = monitorBoxPtr->findChild<QTimer*>("_mappedReloadTimer");
+                if (!timer) {
+                    timer = new QTimer(monitorBoxPtr.data());
+                    timer->setObjectName("_mappedReloadTimer");
+                    timer->setSingleShot(true);
+                    QObject::connect(timer, &QTimer::timeout, monitorBoxPtr.data(), [monitorViewPtr, monitorBoxPtr]() {
+                        if (monitorViewPtr && monitorBoxPtr && !monitorBoxPtr->isMappedFolderLoading()) {
+                            monitorBoxPtr->setProperty("_lastMappedReloadTime", QDateTime::currentMSecsSinceEpoch());
+                            ListViewMappedBoxHelper::loadMappedFolderItemsForBox(*monitorViewPtr, monitorBoxPtr.data());
+                        }
+                    });
+                }
+                timer->start(800);
+            }, Qt::UniqueConnection);
+            monitor->startListening();
+            box->setMappedFolderMonitor(monitor);
+        }
 
         const QString boxId = box->boxId();
         const QString mappedFolderPath = box->mappedFolderPath();
@@ -163,16 +189,30 @@ public:
                         return;
                     }
                     if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
+                        boxPtr->show();
+                        boxPtr->update();
                         return;
                     }
                     if (!boxPtr->isFolderMapped()) {
+                        boxPtr->show();
+                        boxPtr->update();
                         return;
                     }
 
-                    viewPtr->m_mappedBoxFilePaths[boxId] = paths;
                     if (paths.isEmpty()) {
+                        clearMappedFolderItemsForBox(*viewPtr, boxPtr.data());
+                        viewPtr->m_mappedBoxFilePaths[boxId] = paths;
+                        boxPtr->setMappedFolderLoading(false);
                         boxPtr->refreshLayout();
+                        boxPtr->show();
                         boxPtr->raise();
+                        boxPtr->update();
+                        if (viewPtr) {
+                            viewPtr->update(boxPtr->geometry().adjusted(-16, -16, 16, 16));
+                        }
+                        if (boxPtr->glassEffect()) {
+                            boxPtr->updateBlurCache();
+                        }
                         return;
                     }
 
@@ -180,37 +220,40 @@ public:
                     const QSize baseSize(viewPtr->m_iconWidth, viewPtr->m_iconHeight);
                     auto pathsPtr = std::make_shared<QStringList>(paths);
                     auto nextIndex = std::make_shared<int>(0);
+                    auto accumulatedStates = std::make_shared<QVector<DesktopRootItemState>>();
                     auto processChunk = std::make_shared<std::function<void()>>();
+                    auto loader = std::make_shared<DesktopItemLoader>();
 
-                    *processChunk = [viewPtr, boxPtr, boxId, requestId, context, baseSize, pathsPtr, nextIndex, processChunk]() mutable {
+                    *processChunk = [viewPtr, boxPtr, boxId, requestId, context, baseSize, pathsPtr, nextIndex, accumulatedStates, processChunk, loader]() mutable {
                         if (!viewPtr || !boxPtr) {
                             return;
                         }
                         if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
+                            boxPtr->show();
+                            boxPtr->update();
                             return;
                         }
                         if (!boxPtr->isFolderMapped()) {
+                            boxPtr->show();
+                            boxPtr->update();
                             return;
                         }
 
-                        const int chunkSize = 24;
+                        const int chunkSize = 64;
                         const int end = qMin(*nextIndex + chunkSize, pathsPtr->size());
                         for (int i = *nextIndex; i < end; ++i) {
                             const QString& path = pathsPtr->at(i);
                             DesktopRootItemState state;
-                            initDesktopRootItemModel(state.model, DesktopItemLoader().loadItem(path), context);
+                            initDesktopRootItemModel(state.model, loader->loadItem(path), context);
                             state.model.layoutMode = DesktopLayoutMode::IconMode;
                             state.model.baseSize = baseSize;
                             state.model.effectiveSize = state.model.baseSize;
                             state.model.boxId = boxId;
                             state.model.visible = true;
                             state.model.position = QPoint(0, 0);
-                            boxPtr->addItemState(state, false);
+                            accumulatedStates->append(state);
                         }
                         *nextIndex = end;
-
-                        boxPtr->refreshLayout();
-                        boxPtr->raise();
 
                         if (*nextIndex < pathsPtr->size()) {
                             LinBox* timerContext = boxPtr.data();
@@ -222,6 +265,24 @@ public:
                                     (*processChunk)();
                                 }
                             });
+                        } else {
+                            clearMappedFolderItemsForBox(*viewPtr, boxPtr.data());
+                            for (const DesktopRootItemState& state : *accumulatedStates) {
+                                boxPtr->addItemState(state, false);
+                            }
+                            viewPtr->m_mappedBoxFilePaths[boxId] = *pathsPtr;
+
+                            boxPtr->setMappedFolderLoading(false);
+                            boxPtr->refreshLayout();
+                            boxPtr->show();
+                            boxPtr->raise();
+                            boxPtr->update();
+                            if (viewPtr) {
+                                viewPtr->update(boxPtr->geometry().adjusted(-16, -16, 16, 16));
+                            }
+                            if (boxPtr->glassEffect()) {
+                                boxPtr->updateBlurCache();
+                            }
                         }
                     };
 

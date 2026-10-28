@@ -2,114 +2,125 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en_US">
 <context>
+    <name>CefManager</name>
+    <message>
+        <source>CEF SDK is not integrated in this build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CefInitialize failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LinBox</name>
     <message>
         <source>New Box</source>
-        <translation>新建盒子</translation>
+        <translation type="vanished">新建盒子</translation>
     </message>
     <message>
         <source>Move to</source>
-        <translation>移动到</translation>
+        <translation type="vanished">移动到</translation>
     </message>
     <message>
         <source>Copy to</source>
-        <translation>复制到</translation>
+        <translation type="vanished">复制到</translation>
     </message>
     <message>
         <source>Open with</source>
-        <translation>打开方式</translation>
+        <translation type="vanished">打开方式</translation>
     </message>
     <message>
         <source>Rename Box</source>
-        <translation>重命名盒子</translation>
+        <translation type="vanished">重命名盒子</translation>
     </message>
     <message>
         <source>List View</source>
-        <translation>列表视图</translation>
+        <translation type="vanished">列表视图</translation>
     </message>
     <message>
         <source>Icon View</source>
-        <translation>图标视图</translation>
+        <translation type="vanished">图标视图</translation>
     </message>
     <message>
         <source>Box Settings</source>
-        <translation>盒子设置</translation>
+        <translation type="vanished">盒子设置</translation>
     </message>
     <message>
         <source>Destroy Box</source>
-        <translation>删除盒子</translation>
+        <translation type="vanished">删除盒子</translation>
     </message>
     <message>
         <source>this Box</source>
-        <translation>此盒子</translation>
+        <translation type="vanished">此盒子</translation>
     </message>
     <message>
         <source>[Missing] %1</source>
-        <translation>[缺失] %1</translation>
+        <translation type="vanished">[缺失] %1</translation>
     </message>
     <message>
         <source>[No Access] %1</source>
-        <translation>[无访问权限] %1</translation>
+        <translation type="vanished">[无访问权限] %1</translation>
     </message>
     <message>
         <source>Mapped Folder Missing</source>
-        <translation>[映射文件夹缺失]</translation>
+        <translation type="vanished">[映射文件夹缺失]</translation>
     </message>
     <message>
         <source>The mapped folder &quot;%1&quot; is still missing.
 
 Do you want to re map this box to another folder?</source>
-        <translation>%1 映射文件夹仍然缺失。
+        <translation type="vanished">%1 映射文件夹仍然缺失。
 
 您是否要将此盒子重新映射到另一个文件夹？</translation>
     </message>
     <message>
         <source>ReMap Folder</source>
-        <translation>重新映射文件夹</translation>
+        <translation type="vanished">重新映射文件夹</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation>取消</translation>
+        <translation type="vanished">取消</translation>
     </message>
     <message>
         <source>Mapped Folder Unavailable</source>
-        <translation>映射文件夹不可用</translation>
+        <translation type="vanished">映射文件夹不可用</translation>
     </message>
     <message>
         <source>The mapped folder &quot;%1&quot; is still unavailable because access is denied.
 
 Do you want to re map this box to another folder?</source>
-        <translation>%1 映射文件夹仍然不可用，因为访问被拒绝。
+        <translation type="vanished">%1 映射文件夹仍然不可用，因为访问被拒绝。
 
 您是否要将此盒子重新映射到另一个文件夹？</translation>
     </message>
     <message>
         <source>Select Folder to Map</source>
-        <translation>选择要映射的文件夹</translation>
+        <translation type="vanished">选择要映射的文件夹</translation>
     </message>
     <message>
         <source>This folder is already on the desktop.</source>
-        <translation>此文件夹已经映射在了桌面.</translation>
+        <translation type="vanished">此文件夹已经映射在了桌面.</translation>
     </message>
     <message>
         <source>Create shortcut in</source>
-        <translation>在...中创建快捷方式</translation>
+        <translation type="vanished">在...中创建快捷方式</translation>
     </message>
     <message>
         <source>Move to %1</source>
-        <translation>移动到 %1</translation>
+        <translation type="vanished">移动到 %1</translation>
     </message>
     <message>
         <source>Create shortcut in %1</source>
-        <translation>在 %1 中创建快捷方式</translation>
+        <translation type="vanished">在 %1 中创建快捷方式</translation>
     </message>
     <message>
         <source>Open with %1</source>
-        <translation>用 %1 打开</translation>
+        <translation type="vanished">用 %1 打开</translation>
     </message>
     <message>
         <source>Change Mapped Folder</source>
-        <translation>更改映射文件夹</translation>
+        <translation type="vanished">更改映射文件夹</translation>
     </message>
 </context>
 <context>
@@ -169,59 +180,6 @@ Do you want to re map this box to another folder?</source>
     <message>
         <source>LinDesk is already running.</source>
         <translation>LinDesk 正在运行中。</translation>
-    </message>
-</context>
-<context>
-    <name>LinWidgetWebViewRuntime</name>
-    <message>
-        <source>Native Widget
-%1</source>
-        <translation>原生控件
-%1</translation>
-    </message>
-    <message>
-        <source>WebView2 SDK is not enabled in this build.</source>
-        <translation>此版本未启用 WebView2 SDK。</translation>
-    </message>
-    <message>
-        <source>Entry file is missing: %1</source>
-        <translation>入口文件缺失：%1</translation>
-    </message>
-    <message>
-        <source>Cannot create native widget window.</source>
-        <translation>无法创建原生控件窗口。</translation>
-    </message>
-    <message>
-        <source>Failed to initialize WebView2 environment.</source>
-        <translation>无法初始化 WebView2 环境。</translation>
-    </message>
-    <message>
-        <source>Failed to create WebView2 controller.</source>
-        <translation>无法创建 WebView2 控制器。</translation>
-    </message>
-    <message>
-        <source>Failed to start WebView2 environment.</source>
-        <translation>无法启动 WebView2 环境。</translation>
-    </message>
-    <message>
-        <source>Shared runtime page is missing: %1</source>
-        <translation>共享运行时页面缺失：%1</translation>
-    </message>
-    <message>
-        <source>network: %1
-storage: %2
-desktop: %3</source>
-        <translation>网络：%1
-存储：%2
-桌面：%3</translation>
-    </message>
-    <message>
-        <source>HTML Widget Host
-%1
-%2%3</source>
-        <translation>HTML 控件宿主
-%1
-%2%3</translation>
     </message>
 </context>
 <context>
@@ -530,6 +488,49 @@ desktop: %3</source>
     <message>
         <source>New Timer</source>
         <translation type="vanished">新建计时器</translation>
+    </message>
+</context>
+<context>
+    <name>RuntimeInstaller</name>
+    <message>
+        <source>Failed to completely remove runtime directory: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully uninstalled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction timed out.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unsupported platform</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Zip file does not exist: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extracting...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Extraction failed.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid runtime package: LinWidgetRuntime.dll not found.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to move extracted runtime to destination: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully installed.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1518,19 +1519,19 @@ Manifest 错误:
     </message>
     <message>
         <source>Added widget instance: %1</source>
-        <translation>添加了 widget 实例: %1</translation>
+        <translation type="vanished">添加了 widget 实例: %1</translation>
     </message>
     <message>
-        <source>Loaded into WebView: %1</source>
-        <translation>已加载到 WebView: %1</translation>
+        <source>Loaded widget: %1</source>
+        <translation>已加载小组件: %1</translation>
     </message>
     <message>
-        <source>Unloaded from WebView: %1</source>
-        <translation>已从 WebView 卸载: %1</translation>
+        <source>Unloaded widget: %1</source>
+        <translation>已卸载小组件: %1</translation>
     </message>
     <message>
         <source>Reloaded widget iframe: %1</source>
-        <translation>已重新加载 widget iframe: %1</translation>
+        <translation type="vanished">已重新加载 widget iframe: %1</translation>
     </message>
     <message>
         <source>Uninstall widget</source>
@@ -1578,7 +1579,7 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>LinWidget manager is not available.</source>
-        <translation>LinWidget 管理器不可用。</translation>
+        <translation type="vanished">LinWidget 管理器不可用。</translation>
     </message>
     <message>
         <source>Official reset failed: %1</source>
@@ -1689,6 +1690,26 @@ Load skipped: %2</source>
         <source>取消</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Runtime not loaded</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load failed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reloaded widget: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime is not available.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to launch widget package.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UpdateChecker</name>
@@ -1708,6 +1729,14 @@ Load skipped: %2</source>
         <source>Update installer URL is invalid.</source>
         <translation>更新安装程序 URL 无效。</translation>
     </message>
+    <message>
+        <source>Draft release cannot be used for update.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Release asset for current architecture is missing.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>WidgetSettingsDialog</name>
@@ -1724,28 +1753,8 @@ Load skipped: %2</source>
         <translation>设置页面缺失: %1</translation>
     </message>
     <message>
-        <source>WebView2 SDK is not enabled in this build.</source>
-        <translation>此版本未启用 WebView2 SDK。</translation>
-    </message>
-    <message>
-        <source>Cannot create native settings window.</source>
-        <translation>无法创建原生设置窗口。</translation>
-    </message>
-    <message>
-        <source>Failed to initialize WebView2 environment.</source>
-        <translation>初始化 WebView2 环境失败。</translation>
-    </message>
-    <message>
-        <source>Failed to create WebView2 controller.</source>
-        <translation>创建 WebView2 控制器失败。</translation>
-    </message>
-    <message>
-        <source>Failed to map widget settings host.</source>
-        <translation>映射小组件设置宿主失败。</translation>
-    </message>
-    <message>
-        <source>Failed to start WebView2 environment.</source>
-        <translation>启动 WebView2 环境失败。</translation>
+        <source>Widget settings page will be rendered in CEF OSR mode.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

@@ -22,8 +22,11 @@
 #include "services/AppPaths.h"
 #include "services/LinDeskHoveredItemServer.h"
 #include "plugins/PluginManager.h"
+#include "desktop/widgets/runtime_export.h"
 #include "services/CrashHandler.h"
 #include "services/LogManager.h"
+#include "desktop/RightMenu.h"
+#include "desktop/Win11MenuBridge.h"
 using namespace ShortcutArrowManager;
 
 #ifdef LINDESK_SOURCE_DIR
@@ -50,7 +53,6 @@ static bool copyDirRecursively(const QString& sourcePath, const QString& targetP
         const QString name = entry.fileName();
         // Skip common version control or cache files/folders
         if (name == QStringLiteral(".git") ||
-            name == QStringLiteral(".webview2") ||
             name == QStringLiteral("node_modules") ||
             name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
             name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
@@ -130,8 +132,12 @@ int main(int argc, char *argv[])
     launchOptions.apply(&linDesktop);
     linDesktop.show();
     hoveredItemServer.startListening();
+    if (RightMenu::isWindows11SystemContextMenuSupported()) {
+        Win11MenuBridge::warmupHost();
+    }
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         PluginManager::shutdown();
+        LinWidgetRuntimeBridge::instance().shutdown();
     });
     qDebug() << isShortcutArrowEnabled();
     qDebug() << isUACShieldEnabled();

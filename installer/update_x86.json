@@ -1,0 +1,9 @@
+{
+  "version": "1.2.0",
+  "channel": "stable",
+  "url": "https://github.com/linuup/LinDesk_Update/releases/download/v1.2.0/LinDesk_Setup_1.2.0_x86.exe",
+  "sha256": "4c881373cb4dc1bdec078983f114ea608c488baf7ac3d0a482cf71ec1646fbc3",
+  "notes": "fix bugs",
+  "publishedAt": "2026-10-14T08:23:32Z",
+  "minSupportedVersion": "1.0.0"
+}

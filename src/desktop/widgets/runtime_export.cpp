@@ -1,0 +1,778 @@
+#include "desktop/widgets/runtime_export.h"
+
+#ifdef LINWIDGET_RUNTIME_EXPORTS
+
+#include "desktop/widgets/linwidget/WidgetManager.h"
+#include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
+#include "desktop/widgets/linwidget/WidgetPackage.h"
+#include "desktop/widgets/linwidget/WidgetValidator.h"
+#include "desktop/widgets/cef/CefManager.h"
+#include "desktop/widgets/cef/LinWidgetCanvasWidget.h"
+#include <QCoreApplication>
+#include <QDebug>
+
+static LinWidget::WidgetManager* s_runtimeWidgetManager = nullptr;
+static LinWidgetDesktopCtx s_desktopCtx = {};
+
+LINWIDGET_EXPORT bool linwidget_is_loaded()
+{
+    return true;
+}
+
+LINWIDGET_EXPORT bool linwidget_init(const LinWidgetDesktopCtx* ctx)
+{
+    if (!ctx) {
+        return false;
+    }
+    s_desktopCtx = *ctx;
+
+    if (!s_runtimeWidgetManager) {
+        s_runtimeWidgetManager = new LinWidget::WidgetManager(nullptr);
+    }
+
+    s_runtimeWidgetManager->setDesktopLayerWindow((WId)ctx->desktopWindowHwnd);
+
+    if (ctx->onWidgetSettingsRequested) {
+        QObject::connect(s_runtimeWidgetManager, &LinWidget::WidgetManager::widgetSettingsRequested,
+                         [ctx](const QString& instanceId) {
+                             if (ctx->onWidgetSettingsRequested) {
+                                 const QByteArray utf8 = instanceId.toUtf8();
+                                 ctx->onWidgetSettingsRequested(utf8.constData(), ctx->userData);
+                             }
+                         });
+    }
+
+    if (ctx->onImeCursorRectChanged) {
+        QObject::connect(s_runtimeWidgetManager, &LinWidget::WidgetManager::imeCursorRectChanged,
+                         [ctx](const QRect& r) {
+                             if (ctx->onImeCursorRectChanged) {
+                                 ctx->onImeCursorRectChanged(r.x(), r.y(), r.width(), r.height(), ctx->userData);
+                             }
+                         });
+    }
+
+    if (ctx->desktopWidgetPtr) {
+        LinCef::LinWidgetCanvasWidget::setHostWidget(static_cast<QWidget*>(ctx->desktopWidgetPtr));
+    }
+
+    // 启动组件管理器
+    s_runtimeWidgetManager->start();
+    return true;
+}
+
+LINWIDGET_EXPORT void linwidget_shutdown()
+{
+    LinCef::LinWidgetCanvasWidget::setHostWidget(nullptr);
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->stopAll(true);
+        delete s_runtimeWidgetManager;
+        s_runtimeWidgetManager = nullptr;
+    }
+    LinCef::CefManager::instance()->shutdown();
+}
+
+LINWIDGET_EXPORT void* linwidget_widget_manager()
+{
+    return s_runtimeWidgetManager;
+}
+
+LINWIDGET_EXPORT void linwidget_render_canvas(QPainter* painter, const QRegion* dirtyRegion)
+{
+    if (s_runtimeWidgetManager && s_runtimeWidgetManager->canvasWidget() && painter && dirtyRegion) {
+        s_runtimeWidgetManager->canvasWidget()->renderCanvas(*painter, *dirtyRegion);
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_mouse_event(QMouseEvent* event)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardMouseEvent(event) : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_wheel_event(QWheelEvent* event)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardWheelEvent(event) : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_key_event(QKeyEvent* event)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardKeyEvent(event) : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_input_method_event(QInputMethodEvent* event)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardInputMethodEvent(event) : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_is_widget_at(int clientX, int clientY)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->isWidgetAt(QPoint(clientX, clientY)) : false;
+}
+
+LINWIDGET_EXPORT int linwidget_widget_at(int clientX, int clientY, char* outBuffer, int bufferSize)
+{
+    if (!s_runtimeWidgetManager || !outBuffer || bufferSize <= 0) {
+        return 0;
+    }
+    const QString id = s_runtimeWidgetManager->widgetAt(QPoint(clientX, clientY));
+    if (id.isEmpty()) {
+        outBuffer[0] = '\0';
+        return 0;
+    }
+    const QByteArray utf8 = id.toUtf8();
+    const int copyLen = qMin(utf8.size(), bufferSize - 1);
+    memcpy(outBuffer, utf8.constData(), copyLen);
+    outBuffer[copyLen] = '\0';
+    return copyLen;
+}
+
+LINWIDGET_EXPORT void linwidget_clear_widget_focus()
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->clearWidgetFocus();
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_is_widget_layer_embedded()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->isWidgetLayerEmbedded() : true;
+}
+
+LINWIDGET_EXPORT void linwidget_set_widget_layer_embedded(bool embedded)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setWidgetLayerEmbedded(embedded);
+    }
+}
+
+LINWIDGET_EXPORT int linwidget_get_occupied_rects(int* outRects, int maxRects)
+{
+    if (!s_runtimeWidgetManager || !s_runtimeWidgetManager->isEnabled() ||
+        !s_runtimeWidgetManager->isCefOsrEnabled() || !outRects || maxRects <= 0) {
+        return 0;
+    }
+    int count = 0;
+    for (const auto& state : s_runtimeWidgetManager->layoutStates()) {
+        if (!state.visible || state.geometry.isEmpty() || !state.geometry.isValid()) {
+            continue;
+        }
+        if (!s_runtimeWidgetManager->hasRunningWidget(state.instanceId)) {
+            continue;
+        }
+        if (count < maxRects) {
+            outRects[count * 4 + 0] = state.geometry.x();
+            outRects[count * 4 + 1] = state.geometry.y();
+            outRects[count * 4 + 2] = state.geometry.width();
+            outRects[count * 4 + 3] = state.geometry.height();
+            ++count;
+        }
+    }
+    return count;
+}
+
+LINWIDGET_EXPORT bool linwidget_is_cef_osr_enabled()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->isCefOsrEnabled() : false;
+}
+
+LINWIDGET_EXPORT void linwidget_set_cef_osr_enabled(bool enabled)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setCefOsrEnabled(enabled);
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_is_enabled()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->isEnabled() : false;
+}
+
+LINWIDGET_EXPORT void linwidget_set_enabled(bool enabled)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setEnabled(enabled);
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_restore_from_config(const char* configPath)
+{
+    if (!s_runtimeWidgetManager) return false;
+    return s_runtimeWidgetManager->restoreFromConfig(configPath ? QString::fromUtf8(configPath) : QString());
+}
+
+LINWIDGET_EXPORT bool linwidget_save_to_config(const char* configPath)
+{
+    if (!s_runtimeWidgetManager) return false;
+    return s_runtimeWidgetManager->saveToConfig(configPath ? QString::fromUtf8(configPath) : QString());
+}
+
+LINWIDGET_EXPORT bool linwidget_start_widget_package(const char* packagePath, const char* instanceId)
+{
+    if (!s_runtimeWidgetManager || !packagePath) return false;
+    QString outId;
+    return s_runtimeWidgetManager->launchWidgetPackage(
+        QString::fromUtf8(packagePath),
+        QRect(),
+        &outId);
+}
+
+LINWIDGET_EXPORT bool linwidget_create_widget_instance(const char* sourceInstanceId, int posX, int posY)
+{
+    if (!s_runtimeWidgetManager || !sourceInstanceId) return false;
+    return s_runtimeWidgetManager->createWidgetInstance(
+        QString::fromUtf8(sourceInstanceId),
+        QRect(posX, posY, 0, 0));
+}
+
+LINWIDGET_EXPORT bool linwidget_remove_widget_state(const char* instanceId)
+{
+    if (!s_runtimeWidgetManager || !instanceId) return false;
+    return s_runtimeWidgetManager->removeWidgetState(QString::fromUtf8(instanceId));
+}
+
+LINWIDGET_EXPORT bool linwidget_show_widget_bounds()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->showWidgetBounds() : false;
+}
+
+LINWIDGET_EXPORT void linwidget_set_show_widget_bounds(bool show)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setShowWidgetBounds(show);
+    }
+}
+
+LINWIDGET_EXPORT void linwidget_sync_all_widget_window_layers()
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->syncAllWidgetWindowLayers();
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_start_wallpaper(const char* packagePath)
+{
+    if (!s_runtimeWidgetManager || !packagePath) return false;
+    return s_runtimeWidgetManager->startWallpaper(QString::fromUtf8(packagePath), false, false);
+}
+
+LINWIDGET_EXPORT bool linwidget_stop_widget(const char* instanceId)
+{
+    if (!s_runtimeWidgetManager || !instanceId) return false;
+    s_runtimeWidgetManager->stopWidget(QString::fromUtf8(instanceId));
+    return true;
+}
+
+LINWIDGET_EXPORT bool linwidget_restart_widget(const char* instanceId)
+{
+    if (!s_runtimeWidgetManager || !instanceId) return false;
+    return s_runtimeWidgetManager->restartWidget(QString::fromUtf8(instanceId));
+}
+
+LINWIDGET_EXPORT void linwidget_stop_wallpaper(bool restoreSystemWallpaper)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->stopWallpaper(restoreSystemWallpaper);
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_has_active_wallpaper()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->hasActiveWallpaper() : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_is_wallpaper_interactive()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->isWallpaperInteractive() : false;
+}
+
+LINWIDGET_EXPORT int linwidget_active_wallpaper_package_path(char* outBuffer, int bufferSize)
+{
+    if (!s_runtimeWidgetManager || !outBuffer || bufferSize <= 0) return 0;
+    const QString p = s_runtimeWidgetManager->activeWallpaperPackagePath();
+    const QByteArray utf8 = p.toUtf8();
+    const int copyLen = qMin(utf8.size(), bufferSize - 1);
+    memcpy(outBuffer, utf8.constData(), copyLen);
+    outBuffer[copyLen] = '\0';
+    return copyLen;
+}
+
+LINWIDGET_EXPORT int linwidget_active_wallpaper_id(char* outBuffer, int bufferSize)
+{
+    if (!s_runtimeWidgetManager || !outBuffer || bufferSize <= 0) return 0;
+    const QString id = s_runtimeWidgetManager->activeWallpaperId();
+    const QByteArray utf8 = id.toUtf8();
+    const int copyLen = qMin(utf8.size(), bufferSize - 1);
+    memcpy(outBuffer, utf8.constData(), copyLen);
+    outBuffer[copyLen] = '\0';
+    return copyLen;
+}
+
+LINWIDGET_EXPORT bool linwidget_active_wallpaper_is_development()
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->activeWallpaperIsDevelopment() : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_open_widget_settings(const char* packagePath, const char* instanceId)
+{
+    if (!packagePath) return false;
+    QString pkg = QString::fromUtf8(packagePath);
+    QString inst = instanceId ? QString::fromUtf8(instanceId) : QString();
+    LinWidget::WidgetManifest manifest;
+    QString err;
+    if (!LinWidget::WidgetPackage::loadManifest(pkg, &manifest, &err)) {
+        return false;
+    }
+    bool isDev = inst.startsWith(QStringLiteral("dev:"));
+    QStringList granted = { QStringLiteral("network"), QStringLiteral("storage"), QStringLiteral("desktop") };
+    auto* dialog = LinWidget::WidgetSettingsDialog::openOrCreate(
+        pkg, manifest, granted, isDev, inst, nullptr, &err);
+    return dialog != nullptr;
+}
+
+LINWIDGET_EXPORT bool linwidget_validate_package(const char* packagePath, char* outReportBuffer, int bufferSize)
+{
+    if (!packagePath) return false;
+    const QString pkg = QString::fromUtf8(packagePath);
+    LinWidget::ValidationResult res = LinWidget::WidgetValidator::validatePackage(pkg);
+    if (outReportBuffer && bufferSize > 0) {
+        const QString report = res.toFormattedReport();
+        const QByteArray utf8 = report.toUtf8();
+        const int copyLen = qMin(utf8.size(), bufferSize - 1);
+        memcpy(outReportBuffer, utf8.constData(), copyLen);
+        outReportBuffer[copyLen] = '\0';
+    }
+    return res.ok && !res.hasErrors();
+}
+
+#endif // LINWIDGET_RUNTIME_EXPORTS
+
+// ==============================================================================
+// 主程序侧 LinWidgetRuntimeBridge 实现
+// ==============================================================================
+
+#include <QDir>
+#include <QCoreApplication>
+#include <QFileInfo>
+#include <QDebug>
+#include "services/AppPaths.h"
+
+LinWidgetRuntimeBridge::LinWidgetRuntimeBridge()
+{
+    resetFunctionPointers();
+}
+
+LinWidgetRuntimeBridge::~LinWidgetRuntimeBridge()
+{
+    unloadRuntime();
+}
+
+LinWidgetRuntimeBridge& LinWidgetRuntimeBridge::instance()
+{
+    static LinWidgetRuntimeBridge s_instance;
+    return s_instance;
+}
+
+void LinWidgetRuntimeBridge::resetFunctionPointers()
+{
+    m_pfnIsLoaded = nullptr;
+    m_pfnInit = nullptr;
+    m_pfnShutdown = nullptr;
+    m_pfnWidgetManager = nullptr;
+    m_pfnRenderCanvas = nullptr;
+    m_pfnForwardMouseEvent = nullptr;
+    m_pfnForwardWheelEvent = nullptr;
+    m_pfnForwardKeyEvent = nullptr;
+    m_pfnForwardInputMethodEvent = nullptr;
+    m_pfnIsWidgetAt = nullptr;
+    m_pfnWidgetAt = nullptr;
+    m_pfnClearWidgetFocus = nullptr;
+    m_pfnIsWidgetLayerEmbedded = nullptr;
+    m_pfnSetWidgetLayerEmbedded = nullptr;
+    m_pfnGetOccupiedRects = nullptr;
+    m_pfnIsCefOsrEnabled = nullptr;
+    m_pfnSetCefOsrEnabled = nullptr;
+    m_pfnIsEnabled = nullptr;
+    m_pfnSetEnabled = nullptr;
+    m_pfnRestoreFromConfig = nullptr;
+    m_pfnSaveToConfig = nullptr;
+    m_pfnStartWidgetPackage = nullptr;
+    m_pfnStopWidget = nullptr;
+    m_pfnRestartWidget = nullptr;
+    m_pfnCreateWidgetInstance = nullptr;
+    m_pfnRemoveWidgetState = nullptr;
+    m_pfnShowWidgetBounds = nullptr;
+    m_pfnSetShowWidgetBounds = nullptr;
+    m_pfnSyncAllWidgetWindowLayers = nullptr;
+    m_pfnStartWallpaper = nullptr;
+    m_pfnStopWallpaper = nullptr;
+    m_pfnHasActiveWallpaper = nullptr;
+    m_pfnIsWallpaperInteractive = nullptr;
+    m_pfnActiveWallpaperPackagePath = nullptr;
+    m_pfnActiveWallpaperId = nullptr;
+    m_pfnActiveWallpaperIsDevelopment = nullptr;
+    m_pfnOpenWidgetSettings = nullptr;
+    m_pfnValidatePackage = nullptr;
+}
+
+bool LinWidgetRuntimeBridge::isLoaded() const
+{
+    return m_hModule != nullptr && m_pfnIsLoaded != nullptr && m_pfnIsLoaded();
+}
+
+bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
+{
+    if (isLoaded()) {
+        return true;
+    }
+
+    QString targetPath = dllPath;
+    if (targetPath.isEmpty()) {
+        const QString localRuntimePath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("runtime/linwidget/LinWidgetRuntime.dll"));
+        if (QFileInfo::exists(localRuntimePath)) {
+            targetPath = localRuntimePath;
+        } else {
+            const QString localAppPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("LinWidgetRuntime.dll"));
+            if (QFileInfo::exists(localAppPath)) {
+                targetPath = localAppPath;
+            } else {
+                const QString runtimeUserPath = QDir(AppPaths::appDataDir()).filePath(QStringLiteral("runtime/linwidget/LinWidgetRuntime.dll"));
+                if (QFileInfo::exists(runtimeUserPath)) {
+#ifdef QT_DEBUG
+                    qWarning() << "[LinWidgetRuntimeBridge] Running in Debug mode; skipping AppData release runtime DLL to avoid Qt ABI crash.";
+#else
+                    targetPath = runtimeUserPath;
+#endif
+                }
+            }
+        }
+    }
+
+    if (targetPath.isEmpty() || !QFileInfo::exists(targetPath)) {
+        return false;
+    }
+
+#ifdef Q_OS_WIN
+    // 添加运行时目录到 DLL 搜索路径，确保 CEF 依赖的 libcef.dll 能被正确定位
+    const QString runtimeDir = QFileInfo(targetPath).absolutePath();
+    SetDllDirectoryW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(runtimeDir).utf16()));
+
+    HMODULE hMod = LoadLibraryW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(targetPath).utf16()));
+    if (!hMod) {
+        qWarning() << "[LinWidgetRuntimeBridge] Failed to load DLL:" << targetPath << "GetLastError:" << GetLastError();
+        return false;
+    }
+
+    m_hModule = hMod;
+
+    // 解析符号
+    #define RESOLVE_FN(name, field) \
+        field = reinterpret_cast<decltype(field)>(GetProcAddress(m_hModule, name)); \
+        if (!field) { qWarning() << "[LinWidgetRuntimeBridge] Missing symbol:" << name; }
+
+    RESOLVE_FN("linwidget_is_loaded", m_pfnIsLoaded);
+    RESOLVE_FN("linwidget_init", m_pfnInit);
+    RESOLVE_FN("linwidget_shutdown", m_pfnShutdown);
+    RESOLVE_FN("linwidget_widget_manager", m_pfnWidgetManager);
+    RESOLVE_FN("linwidget_render_canvas", m_pfnRenderCanvas);
+    RESOLVE_FN("linwidget_forward_mouse_event", m_pfnForwardMouseEvent);
+    RESOLVE_FN("linwidget_forward_wheel_event", m_pfnForwardWheelEvent);
+    RESOLVE_FN("linwidget_forward_key_event", m_pfnForwardKeyEvent);
+    RESOLVE_FN("linwidget_forward_input_method_event", m_pfnForwardInputMethodEvent);
+    RESOLVE_FN("linwidget_is_widget_at", m_pfnIsWidgetAt);
+    RESOLVE_FN("linwidget_widget_at", m_pfnWidgetAt);
+    RESOLVE_FN("linwidget_clear_widget_focus", m_pfnClearWidgetFocus);
+    RESOLVE_FN("linwidget_is_widget_layer_embedded", m_pfnIsWidgetLayerEmbedded);
+    RESOLVE_FN("linwidget_set_widget_layer_embedded", m_pfnSetWidgetLayerEmbedded);
+    RESOLVE_FN("linwidget_get_occupied_rects", m_pfnGetOccupiedRects);
+    RESOLVE_FN("linwidget_is_cef_osr_enabled", m_pfnIsCefOsrEnabled);
+    RESOLVE_FN("linwidget_set_cef_osr_enabled", m_pfnSetCefOsrEnabled);
+    RESOLVE_FN("linwidget_is_enabled", m_pfnIsEnabled);
+    RESOLVE_FN("linwidget_set_enabled", m_pfnSetEnabled);
+    RESOLVE_FN("linwidget_restore_from_config", m_pfnRestoreFromConfig);
+    RESOLVE_FN("linwidget_save_to_config", m_pfnSaveToConfig);
+    RESOLVE_FN("linwidget_start_widget_package", m_pfnStartWidgetPackage);
+    RESOLVE_FN("linwidget_stop_widget", m_pfnStopWidget);
+    RESOLVE_FN("linwidget_restart_widget", m_pfnRestartWidget);
+    RESOLVE_FN("linwidget_create_widget_instance", m_pfnCreateWidgetInstance);
+    RESOLVE_FN("linwidget_remove_widget_state", m_pfnRemoveWidgetState);
+    RESOLVE_FN("linwidget_show_widget_bounds", m_pfnShowWidgetBounds);
+    RESOLVE_FN("linwidget_set_show_widget_bounds", m_pfnSetShowWidgetBounds);
+    RESOLVE_FN("linwidget_sync_all_widget_window_layers", m_pfnSyncAllWidgetWindowLayers);
+    RESOLVE_FN("linwidget_start_wallpaper", m_pfnStartWallpaper);
+    RESOLVE_FN("linwidget_stop_wallpaper", m_pfnStopWallpaper);
+    RESOLVE_FN("linwidget_has_active_wallpaper", m_pfnHasActiveWallpaper);
+    RESOLVE_FN("linwidget_is_wallpaper_interactive", m_pfnIsWallpaperInteractive);
+    RESOLVE_FN("linwidget_active_wallpaper_package_path", m_pfnActiveWallpaperPackagePath);
+    RESOLVE_FN("linwidget_active_wallpaper_id", m_pfnActiveWallpaperId);
+    RESOLVE_FN("linwidget_active_wallpaper_is_development", m_pfnActiveWallpaperIsDevelopment);
+    RESOLVE_FN("linwidget_open_widget_settings", m_pfnOpenWidgetSettings);
+    RESOLVE_FN("linwidget_validate_package", m_pfnValidatePackage);
+
+    #undef RESOLVE_FN
+#endif
+
+    qInfo() << "[LinWidgetRuntimeBridge] Successfully loaded runtime from:" << targetPath;
+    return true;
+}
+
+bool LinWidgetRuntimeBridge::unloadRuntime()
+{
+    if (!m_hModule) {
+        return false;
+    }
+    shutdown();
+#ifdef Q_OS_WIN
+    FreeLibrary(m_hModule);
+#endif
+    m_hModule = nullptr;
+    resetFunctionPointers();
+    return true;
+}
+
+bool LinWidgetRuntimeBridge::init(const LinWidgetDesktopCtx& ctx)
+{
+    return m_pfnInit ? m_pfnInit(&ctx) : false;
+}
+
+void LinWidgetRuntimeBridge::shutdown()
+{
+    if (m_pfnShutdown) {
+        m_pfnShutdown();
+    }
+}
+
+void* LinWidgetRuntimeBridge::widgetManager()
+{
+    return m_pfnWidgetManager ? m_pfnWidgetManager() : nullptr;
+}
+
+void LinWidgetRuntimeBridge::renderCanvas(QPainter* painter, const QRegion& dirtyRegion)
+{
+    if (m_pfnRenderCanvas) {
+        m_pfnRenderCanvas(painter, &dirtyRegion);
+    }
+}
+
+bool LinWidgetRuntimeBridge::forwardMouseEvent(QMouseEvent* event)
+{
+    return m_pfnForwardMouseEvent ? m_pfnForwardMouseEvent(event) : false;
+}
+
+bool LinWidgetRuntimeBridge::forwardWheelEvent(QWheelEvent* event)
+{
+    return m_pfnForwardWheelEvent ? m_pfnForwardWheelEvent(event) : false;
+}
+
+bool LinWidgetRuntimeBridge::forwardKeyEvent(QKeyEvent* event)
+{
+    return m_pfnForwardKeyEvent ? m_pfnForwardKeyEvent(event) : false;
+}
+
+bool LinWidgetRuntimeBridge::forwardInputMethodEvent(QInputMethodEvent* event)
+{
+    return m_pfnForwardInputMethodEvent ? m_pfnForwardInputMethodEvent(event) : false;
+}
+
+bool LinWidgetRuntimeBridge::isWidgetAt(const QPoint& clientPos)
+{
+    return m_pfnIsWidgetAt ? m_pfnIsWidgetAt(clientPos.x(), clientPos.y()) : false;
+}
+
+QString LinWidgetRuntimeBridge::widgetAt(const QPoint& clientPos)
+{
+    if (!m_pfnWidgetAt) return QString();
+    char buf[256] = {0};
+    const int len = m_pfnWidgetAt(clientPos.x(), clientPos.y(), buf, sizeof(buf));
+    return len > 0 ? QString::fromUtf8(buf, len) : QString();
+}
+
+void LinWidgetRuntimeBridge::clearWidgetFocus()
+{
+    if (m_pfnClearWidgetFocus) {
+        m_pfnClearWidgetFocus();
+    }
+}
+
+bool LinWidgetRuntimeBridge::isWidgetLayerEmbedded() const
+{
+    return m_pfnIsWidgetLayerEmbedded ? m_pfnIsWidgetLayerEmbedded() : true;
+}
+
+void LinWidgetRuntimeBridge::setWidgetLayerEmbedded(bool embedded)
+{
+    if (m_pfnSetWidgetLayerEmbedded) {
+        m_pfnSetWidgetLayerEmbedded(embedded);
+    }
+}
+
+QVector<QRect> LinWidgetRuntimeBridge::occupiedRects()
+{
+    QVector<QRect> result;
+    if (!m_pfnGetOccupiedRects) return result;
+    int rectData[400] = {0}; // 最多支持 100 个小组件
+    const int count = m_pfnGetOccupiedRects(rectData, 100);
+    result.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        result.append(QRect(rectData[i * 4 + 0], rectData[i * 4 + 1], rectData[i * 4 + 2], rectData[i * 4 + 3]));
+    }
+    return result;
+}
+
+bool LinWidgetRuntimeBridge::isCefOsrEnabled() const
+{
+    return m_pfnIsCefOsrEnabled ? m_pfnIsCefOsrEnabled() : false;
+}
+
+void LinWidgetRuntimeBridge::setCefOsrEnabled(bool enabled)
+{
+    if (m_pfnSetCefOsrEnabled) {
+        m_pfnSetCefOsrEnabled(enabled);
+    }
+}
+
+bool LinWidgetRuntimeBridge::isEnabled() const
+{
+    return m_pfnIsEnabled ? m_pfnIsEnabled() : false;
+}
+
+void LinWidgetRuntimeBridge::setEnabled(bool enabled)
+{
+    if (m_pfnSetEnabled) {
+        m_pfnSetEnabled(enabled);
+    }
+}
+
+bool LinWidgetRuntimeBridge::restoreFromConfig(const QString& configPath)
+{
+    if (!m_pfnRestoreFromConfig) return false;
+    const QByteArray utf8 = configPath.toUtf8();
+    return m_pfnRestoreFromConfig(utf8.isEmpty() ? nullptr : utf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::saveToConfig(const QString& configPath)
+{
+    if (!m_pfnSaveToConfig) return false;
+    const QByteArray utf8 = configPath.toUtf8();
+    return m_pfnSaveToConfig(utf8.isEmpty() ? nullptr : utf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::startWidgetPackage(const QString& packagePath, const QString& instanceId)
+{
+    if (!m_pfnStartWidgetPackage) return false;
+    const QByteArray pkgUtf8 = packagePath.toUtf8();
+    const QByteArray idUtf8 = instanceId.toUtf8();
+    return m_pfnStartWidgetPackage(pkgUtf8.constData(), idUtf8.isEmpty() ? nullptr : idUtf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::createWidgetInstance(const QString& sourceInstanceId, const QPoint& pos)
+{
+    if (!m_pfnCreateWidgetInstance) return false;
+    const QByteArray idUtf8 = sourceInstanceId.toUtf8();
+    return m_pfnCreateWidgetInstance(idUtf8.constData(), pos.x(), pos.y());
+}
+
+bool LinWidgetRuntimeBridge::removeWidgetState(const QString& instanceId)
+{
+    if (!m_pfnRemoveWidgetState) return false;
+    const QByteArray idUtf8 = instanceId.toUtf8();
+    return m_pfnRemoveWidgetState(idUtf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::showWidgetBounds() const
+{
+    return m_pfnShowWidgetBounds ? m_pfnShowWidgetBounds() : false;
+}
+
+void LinWidgetRuntimeBridge::setShowWidgetBounds(bool show)
+{
+    if (m_pfnSetShowWidgetBounds) {
+        m_pfnSetShowWidgetBounds(show);
+    }
+}
+
+void LinWidgetRuntimeBridge::syncAllWidgetWindowLayers()
+{
+    if (m_pfnSyncAllWidgetWindowLayers) {
+        m_pfnSyncAllWidgetWindowLayers();
+    }
+}
+
+bool LinWidgetRuntimeBridge::startWallpaper(const QString& packagePath)
+{
+    if (!m_pfnStartWallpaper) return false;
+    const QByteArray utf8 = packagePath.toUtf8();
+    return m_pfnStartWallpaper(utf8.constData());
+}
+
+void LinWidgetRuntimeBridge::stopWallpaper(bool restoreSystemWallpaper)
+{
+    if (m_pfnStopWallpaper) {
+        m_pfnStopWallpaper(restoreSystemWallpaper);
+    }
+}
+
+bool LinWidgetRuntimeBridge::stopWidget(const QString& instanceId)
+{
+    if (!m_pfnStopWidget) return false;
+    const QByteArray utf8 = instanceId.toUtf8();
+    return m_pfnStopWidget(utf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::restartWidget(const QString& instanceId)
+{
+    if (!m_pfnRestartWidget) return false;
+    const QByteArray utf8 = instanceId.toUtf8();
+    return m_pfnRestartWidget(utf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::hasActiveWallpaper() const
+{
+    return m_pfnHasActiveWallpaper ? m_pfnHasActiveWallpaper() : false;
+}
+
+bool LinWidgetRuntimeBridge::isWallpaperInteractive() const
+{
+    return m_pfnIsWallpaperInteractive ? m_pfnIsWallpaperInteractive() : false;
+}
+
+QString LinWidgetRuntimeBridge::activeWallpaperPackagePath() const
+{
+    if (!m_pfnActiveWallpaperPackagePath) return QString();
+    char buf[1024] = {0};
+    m_pfnActiveWallpaperPackagePath(buf, sizeof(buf));
+    return QString::fromUtf8(buf);
+}
+
+QString LinWidgetRuntimeBridge::activeWallpaperId() const
+{
+    if (!m_pfnActiveWallpaperId) return QString();
+    char buf[512] = {0};
+    m_pfnActiveWallpaperId(buf, sizeof(buf));
+    return QString::fromUtf8(buf);
+}
+
+bool LinWidgetRuntimeBridge::activeWallpaperIsDevelopment() const
+{
+    return m_pfnActiveWallpaperIsDevelopment ? m_pfnActiveWallpaperIsDevelopment() : false;
+}
+
+bool LinWidgetRuntimeBridge::openWidgetSettings(const QString& packagePath, const QString& instanceId)
+{
+    if (!m_pfnOpenWidgetSettings) return false;
+    const QByteArray pkgUtf8 = packagePath.toUtf8();
+    const QByteArray instUtf8 = instanceId.toUtf8();
+    return m_pfnOpenWidgetSettings(pkgUtf8.constData(), instUtf8.isEmpty() ? nullptr : instUtf8.constData());
+}
+
+bool LinWidgetRuntimeBridge::validatePackage(const QString& packagePath, QString* outReport)
+{
+    if (!m_pfnValidatePackage) {
+        if (outReport) *outReport = QStringLiteral("Runtime is not loaded.");
+        return false;
+    }
+    char buf[8192] = {0};
+    const bool ok = m_pfnValidatePackage(packagePath.toUtf8().constData(), buf, sizeof(buf));
+    if (outReport) {
+        *outReport = QString::fromUtf8(buf);
+    }
+    return ok;
+}

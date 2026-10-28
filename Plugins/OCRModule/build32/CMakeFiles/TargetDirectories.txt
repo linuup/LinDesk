@@ -1,3 +1,0 @@
-D:/Desktop/LinDesk/Plugins/OCRModule/build32/CMakeFiles/OCRPlugin.dir
-D:/Desktop/LinDesk/Plugins/OCRModule/build32/CMakeFiles/ALL_BUILD.dir
-D:/Desktop/LinDesk/Plugins/OCRModule/build32/CMakeFiles/ZERO_CHECK.dir

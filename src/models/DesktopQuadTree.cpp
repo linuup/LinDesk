@@ -1,4 +1,5 @@
 #include "models/DesktopQuadTree.h"
+#include <algorithm>
 
 DesktopQuadTree::DesktopQuadTree(const QRect& bounds, int maxDepth, int maxItemsPerNode)
     : m_bounds(bounds),
@@ -34,17 +35,22 @@ void DesktopQuadTree::rebuild(const QVector<DesktopRootItemState*>& states)
         return;
     }
 
-    for (DesktopRootItemState* state : states) {
-        if (!state || !state->model.visible || !state->model.boxId.isEmpty()) {
+    for (int i = 0; i < states.size(); ++i) {
+        DesktopRootItemState* state = states[i];
+        if (!state || !state->model.visible) {
             continue;
         }
 
-        const QRect rect = state->model.renderData.selectionContentRect;
+        QRect rect = state->model.renderData.itemRect;
+        if (!state->model.renderData.selectionContentRect.isEmpty()) {
+            rect = rect.isEmpty() ? state->model.renderData.selectionContentRect
+                                  : rect.united(state->model.renderData.selectionContentRect);
+        }
         if (rect.isEmpty() || !m_bounds.intersects(rect)) {
             continue;
         }
 
-        insert(m_root.get(), Entry{ state, rect }, 0);
+        insert(m_root.get(), Entry{ state, rect, i }, 0);
     }
 }
 
@@ -57,6 +63,43 @@ QVector<DesktopRootItemState*> DesktopQuadTree::query(const QRect& area) const
 
     QHash<DesktopRootItemState*, bool> seen;
     query(m_root.get(), area, results, seen);
+    return results;
+}
+
+QVector<DesktopRootItemState*> DesktopQuadTree::queryPoint(const QPoint& pos) const
+{
+    if (!m_root || !m_bounds.contains(pos)) {
+        return {};
+    }
+
+    QVector<Entry> matchingEntries;
+    const Node* current = m_root.get();
+    while (current) {
+        for (const Entry& entry : current->entries) {
+            if (entry.state && entry.rect.contains(pos)) {
+                matchingEntries.append(entry);
+            }
+        }
+        if (current->isLeaf()) {
+            break;
+        }
+        const int idx = childIndexForPoint(pos, current->bounds);
+        if (idx == 0) current = current->topLeft.get();
+        else if (idx == 1) current = current->topRight.get();
+        else if (idx == 2) current = current->bottomLeft.get();
+        else if (idx == 3) current = current->bottomRight.get();
+        else break;
+    }
+
+    std::sort(matchingEntries.begin(), matchingEntries.end(), [](const Entry& a, const Entry& b) {
+        return a.zOrder > b.zOrder;
+    });
+
+    QVector<DesktopRootItemState*> results;
+    results.reserve(matchingEntries.size());
+    for (const Entry& e : matchingEntries) {
+        results.append(e.state);
+    }
     return results;
 }
 
@@ -88,6 +131,19 @@ int DesktopQuadTree::childIndexForRect(const QRect& rect, const QRect& parent) c
         }
     }
     return -1;
+}
+
+int DesktopQuadTree::childIndexForPoint(const QPoint& pos, const QRect& parent) const
+{
+    const int midX = parent.left() + parent.width() / 2;
+    const int midY = parent.top() + parent.height() / 2;
+    const bool top = (pos.y() < midY);
+    const bool left = (pos.x() < midX);
+
+    if (top && left) return 0;
+    if (top && !left) return 1;
+    if (!top && left) return 2;
+    return 3;
 }
 
 void DesktopQuadTree::subdivide(Node* node)
@@ -168,4 +224,3 @@ void DesktopQuadTree::query(const Node* node, const QRect& area, QVector<Desktop
     query(node->bottomLeft.get(), area, results, seen);
     query(node->bottomRight.get(), area, results, seen);
 }
-

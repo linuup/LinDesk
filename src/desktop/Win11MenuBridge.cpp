@@ -10,6 +10,7 @@
 #include <QUuid>
 
 #include <Windows.h>
+#include <thread>
 
 namespace {
 constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\LinDesk.Win11MenuHost";
@@ -235,4 +236,11 @@ void Win11MenuBridge::shutdownHost()
 
     QByteArray response;
     sendRequest(QJsonDocument(request).toJson(QJsonDocument::Compact), &response);
+}
+
+void Win11MenuBridge::warmupHost()
+{
+    std::thread([]() {
+        ensureHostRunning();
+    }).detach();
 }

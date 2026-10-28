@@ -1,9 +1,9 @@
-﻿{
-    "version":  "1.0.8",
-    "channel":  "stable",
-    "url":  "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.8/LinDesk_Setup_1.0.8.exe",
-    "sha256":  "e2d490eb9ffd66c224cade8d9bfd6b0177af3bfe2f08f1f15ad5f89a97f4c845",
-    "notes":  "修复图标显示异常问题",
-    "publishedAt":  "2026-06-18T01:34:56Z",
-    "minSupportedVersion":  "1.0.0"
+{
+  "version": "1.2.0",
+  "channel": "stable",
+  "url": "https://github.com/linuup/LinDesk_Update/releases/download/v1.2.0/LinDesk_Setup_1.2.0_x64.exe",
+  "sha256": "750416be2f2ead7b73fd013ca1d22e0d954ae310bbe63ab0b91c96ce2f769742",
+  "notes": "fix bugs",
+  "publishedAt": "2026-10-14T08:21:20Z",
+  "minSupportedVersion": "1.0.0"
 }
