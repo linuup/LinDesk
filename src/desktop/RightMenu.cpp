@@ -40,6 +40,7 @@ const char kWindows11ContextMenuConfigKey[] = "Desktop/UseWindows11SystemContext
 const char kShowNewBoxMenuConfigKey[] = "Desktop/ShowNewBoxMenu";
 const char kShowLinDeskMenuConfigKey[] = "Desktop/ShowLinDeskMenu";
 const char kShowThirdPartyShellMenuConfigKey[] = "Desktop/ShowThirdPartyShellMenu";
+const char kEnableShellMenuExclusionConfigKey[] = "Desktop/EnableShellMenuExclusion";
 
 QString rightMenuConfigPath()
 {
@@ -312,6 +313,25 @@ bool RightMenu::isThirdPartyShellMenuEnabled()
 void RightMenu::setThirdPartyShellMenuEnabled(bool enabled)
 {
     setBoolMenuSetting(kShowThirdPartyShellMenuConfigKey, enabled);
+}
+
+bool RightMenu::isShellMenuExclusionEnabled()
+{
+    return boolMenuSetting(kEnableShellMenuExclusionConfigKey, true);
+}
+
+void RightMenu::setShellMenuExclusionEnabled(bool enabled)
+{
+    setBoolMenuSetting(kEnableShellMenuExclusionConfigKey, enabled);
+    getInstance()->invalidateCustomMenuCaches();
+}
+
+void RightMenu::prewarmWin11DesktopSession() const
+{
+    if (!isWindows11SystemContextMenuSupported() || !isWindows11SystemContextMenuEnabled()) {
+        return;
+    }
+    Win11MenuBridge::warmupHost();
 }
   
 QMenu* RightMenu::createSortBySubMenu()
@@ -1264,7 +1284,7 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool ext
     if (this->fileType == ObjectType::SpecialFolder && isSupportedSpecialFolderMenu(model.specialFolder)) {
         scm.DisplaySpecialFolderContextMenu(model.specialFolder);
     } else {
-        scm.DisplayItemContextMenu(model.itemData.pidl());
+        scm.DisplayItemContextMenu(model.itemData.pidl(), this->hwnd);
     }
     scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeysForModel(model)));
     scm.ShowMenu(this->hwnd, position, nullptr,

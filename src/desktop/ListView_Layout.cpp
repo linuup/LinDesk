@@ -1497,6 +1497,7 @@ void ListView::loadBoxes(bool autoUpdateState) {
                    << "corrupt or dangling entries. Performing clean save to update file.";
         saveBoxes();
     }
+    syncBoxVisibilityWithDesktopIcons();
 
     qDebug() << "Loaded. Persistence:" << m_enablePersistence;
 }
@@ -1542,13 +1543,19 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     box->setShowType(safeShowType);
     if (collapsed) box->toggleCollapse();
 
-    box->show();
+    if (m_iconShowRule.showDesktopIcons) {
+        box->show();
+    } else {
+        box->hide();
+    }
     box->setGlassEffect(glass); // Apply blur AFTER window is fully visible to prevent black screen
     if (box->isFolderMapped()) {
         loadMappedFolderItemsForBox(box);
     }
     box->refreshLayout(); // Force initial tight packing
-    box->raise();
+    if (m_iconShowRule.showDesktopIcons) {
+        box->raise();
+    }
 
     if (refresh) {
         loadIconLayer();

@@ -1175,7 +1175,7 @@ void ListViewDebugPanel::reloadLinWidgetsList()
     }
     updateLinWidgetsButtons();
     updateLinWidgetPermissionControls();
-    updateLinWidgetLogViewer();
+    updateLinWidgetDetailsPanel();
 }
 
 void ListViewDebugPanel::updateLinWidgetsButtons()
@@ -1241,60 +1241,77 @@ void ListViewDebugPanel::updateLinWidgetPermissionControls()
         .arg(isDevelopment || missing.isEmpty() ? QStringLiteral("none") : missing.join(QStringLiteral(", "))));
 }
 
-void ListViewDebugPanel::updateLinWidgetLogViewer()
+void ListViewDebugPanel::updateLinWidgetDetailsPanel()
 {
-    if (!m_linWidgetsLogView || !m_linWidgetsLogWatcher) {
+    const QString packagePath = selectedLinWidgetPackagePath();
+    const QString registryId = selectedLinWidgetRegistryId();
+    const bool isDevelopment = selectedLinWidgetIsDevelopment();
+    const bool isRunning = selectedLinWidgetIsRunning();
+    const QString instanceId = selectedLinWidgetRunningInstanceId();
+
+    if (!m_linWidgetDetailsLabel) {
         return;
     }
 
-    const QString instanceId = selectedLinWidgetInstanceIdForLog();
-    const QString logPath = linWidgetLogFilePathForInstance(instanceId);
-    if (m_currentLinWidgetLogPath != logPath) {
-        const QStringList watchedFiles = m_linWidgetsLogWatcher->files();
-        if (!watchedFiles.isEmpty()) {
-            m_linWidgetsLogWatcher->removePaths(watchedFiles);
-        }
-        m_currentLinWidgetLogPath = logPath;
-        if (!logPath.isEmpty() && QFileInfo::exists(logPath)) {
-            m_linWidgetsLogWatcher->addPath(logPath);
-        }
-    }
-
-    if (m_linWidgetsLogTitleLabel) {
-        m_linWidgetsLogTitleLabel->setText(instanceId.isEmpty()
-            ? QStringLiteral("Live Log")
-            : QStringLiteral("Live Log: %1").arg(instanceId));
-    }
-
-    if (logPath.isEmpty()) {
-        m_linWidgetsLogView->setPlainText(QStringLiteral("Select or start a widget to view its instance log."));
+    if (packagePath.isEmpty()) {
+        m_linWidgetDetailsLabel->setText(QStringLiteral(
+            "<div style='color: #64748b; padding: 12px; font-size: 13px;'>"
+            "No widget selected. Select a widget from the left list to view details and debug actions."
+            "</div>"));
+        if (m_linWidgetsDevToolsButton) m_linWidgetsDevToolsButton->setEnabled(false);
+        if (m_linWidgetsRestartButton) m_linWidgetsRestartButton->setEnabled(false);
+        if (m_linWidgetsSettingsButton) m_linWidgetsSettingsButton->setEnabled(false);
         return;
     }
 
-    QFile file(logPath);
-    if (!file.exists()) {
-        const QString sharedLogPath = linWidgetLogFilePathForInstance(QStringLiteral("__shared__"));
-        if (instanceId != QStringLiteral("__shared__") && QFileInfo::exists(sharedLogPath)) {
-            file.setFileName(sharedLogPath);
-        } else {
-            m_linWidgetsLogView->setPlainText(QStringLiteral("Log file has not been created yet:\n%1").arg(logPath));
-            return;
-        }
-    }
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        m_linWidgetsLogView->setPlainText(QStringLiteral("Cannot open log file:\n%1").arg(logPath));
-        return;
+    LinWidget::WidgetManifest manifest;
+    LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, nullptr);
+    QString name = manifest.name.isEmpty() ? registryId : manifest.name;
+    QString version = manifest.version.isEmpty() ? QStringLiteral("1.0.0") : manifest.version;
+    QString author = manifest.author.isEmpty() ? QStringLiteral("LinDesk") : manifest.author;
+    QString entry = manifest.entry.isEmpty() ? QStringLiteral("index.html") : manifest.entry;
+
+    QString statusBadge;
+    if (isRunning) {
+        QRect geom = LinWidgetRuntimeBridge::instance().widgetGeometry(instanceId);
+        statusBadge = QStringLiteral(
+            "<span style='background: #dcfce7; color: #15803d; font-weight: 600; padding: 2px 8px; border-radius: 4px;'>"
+            "● Running</span> &nbsp; <span style='color: #475569;'>Geometry: %1,%2 %3x%4</span>")
+            .arg(geom.x()).arg(geom.y()).arg(geom.width()).arg(geom.height());
+    } else {
+        statusBadge = QStringLiteral(
+            "<span style='background: #f1f5f9; color: #64748b; font-weight: 600; padding: 2px 8px; border-radius: 4px;'>"
+            "○ Stopped</span>");
     }
 
-    QByteArray content = file.readAll();
-    constexpr int maxLogBytes = 200 * 1024;
-    if (content.size() > maxLogBytes) {
-        content = content.right(maxLogBytes);
+    QString detailsHtml = QStringLiteral(
+        "<div style='line-height: 1.6; font-size: 12px; color: #1e293b;'>"
+        "  <div style='font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px;'>%1 "
+        "    <span style='font-size: 12px; font-weight: normal; color: #64748b;'>v%2 by %3</span>"
+        "  </div>"
+        "  <div style='margin-bottom: 8px;'>%4</div>"
+        "  <table style='width: 100%; font-size: 11px; color: #475569;'>"
+        "    <tr><td style='width: 100px; font-weight: 600;'>Widget ID:</td><td><code>%5</code></td></tr>"
+        "    <tr><td style='font-weight: 600;'>Project Mode:</td><td>%6</td></tr>"
+        "    <tr><td style='font-weight: 600;'>Entry File:</td><td>%7</td></tr>"
+        "    <tr><td style='font-weight: 600;'>Package Path:</td><td style='word-break: break-all;'>%8</td></tr>"
+        "  </table>"
+        "</div>"
+    ).arg(name, version, author, statusBadge, registryId,
+         isDevelopment ? QStringLiteral("<b style='color: #0284c7;'>Development (Live Reload)</b>") : QStringLiteral("Installed Package"),
+         entry, packagePath);
+
+    m_linWidgetDetailsLabel->setText(detailsHtml);
+
+    if (m_linWidgetsDevToolsButton) {
+        m_linWidgetsDevToolsButton->setEnabled(isRunning);
     }
-    m_linWidgetsLogView->setPlainText(QString::fromUtf8(content));
-    QTextCursor cursor = m_linWidgetsLogView->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    m_linWidgetsLogView->setTextCursor(cursor);
+    if (m_linWidgetsRestartButton) {
+        m_linWidgetsRestartButton->setEnabled(isRunning);
+    }
+    if (m_linWidgetsSettingsButton) {
+        m_linWidgetsSettingsButton->setEnabled(true);
+    }
 }
 
 void ListViewDebugPanel::refreshLinWidgetRunningMaps()
@@ -1302,21 +1319,53 @@ void ListViewDebugPanel::refreshLinWidgetRunningMaps()
     m_linWidgetInstancesByPackage.clear();
     m_linWidgetInstancesById.clear();
 
-    QVector<LinWidget::WidgetLayoutState> states;
-    LinWidget::ConfigManager::loadLayout(LinWidget::ConfigManager::defaultConfigPath(), &states, nullptr);
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    bool loadedFromRuntime = false;
+    if (bridge.isLoaded()) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("list"));
+        const QJsonObject resp = bridge.queryWidgetManager(req);
+        const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+        if (!widgets.isEmpty()) {
+            loadedFromRuntime = true;
+            for (const QJsonValue& val : widgets) {
+                const QJsonObject obj = val.toObject();
+                const QString regId = obj.value(QStringLiteral("id")).toString().trimmed().toLower();
+                const QString packagePath = obj.value(QStringLiteral("packagePath")).toString();
+                const bool isDev = obj.value(QStringLiteral("isDevelopment")).toBool();
+                const QString key = linWidgetRegistryKey(regId, isDev);
+                const QJsonArray runningIds = obj.value(QStringLiteral("runningInstanceIds")).toArray();
+                if (!runningIds.isEmpty()) {
+                    for (const QJsonValue& idVal : runningIds) {
+                        const QString instId = idVal.toString();
+                        m_linWidgetInstancesById.insert(key, instId);
+                        if (!packagePath.isEmpty()) {
+                            m_linWidgetInstancesByPackage.insert(linWidgetPackageKey(packagePath), instId);
+                        }
+                        m_lastLinWidgetInstanceId = instId;
+                    }
+                }
+            }
+        }
+    }
 
-    for (const LinWidget::WidgetLayoutState& state : states) {
-        if (!state.visible) {
-            continue;
+    if (!loadedFromRuntime) {
+        QVector<LinWidget::WidgetLayoutState> states;
+        LinWidget::ConfigManager::loadLayout(LinWidget::ConfigManager::defaultConfigPath(), &states, nullptr);
+
+        for (const LinWidget::WidgetLayoutState& state : states) {
+            if (!state.visible) {
+                continue;
+            }
+            m_linWidgetInstancesByPackage.insert(linWidgetPackageKey(state.packagePath), state.instanceId);
+            LinWidget::WidgetManifest manifest;
+            if (LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
+                m_linWidgetInstancesById.insert(
+                    linWidgetRegistryKey(manifest.id, state.instanceId.startsWith(QStringLiteral("dev:"))),
+                    state.instanceId);
+            }
+            m_lastLinWidgetInstanceId = state.instanceId;
         }
-        m_linWidgetInstancesByPackage.insert(linWidgetPackageKey(state.packagePath), state.instanceId);
-        LinWidget::WidgetManifest manifest;
-        if (LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
-            m_linWidgetInstancesById.insert(
-                linWidgetRegistryKey(manifest.id, state.instanceId.startsWith(QStringLiteral("dev:"))),
-                state.instanceId);
-        }
-        m_lastLinWidgetInstanceId = state.instanceId;
     }
 }
 
@@ -1548,7 +1597,7 @@ bool ListViewDebugPanel::loadSelectedLinWidget()
     }
     updateSelectedLinWidgetItemText();
     updateLinWidgetsButtons();
-    updateLinWidgetLogViewer();
+    updateLinWidgetDetailsPanel();
     return true;
 }
 
@@ -1559,20 +1608,37 @@ bool ListViewDebugPanel::unloadSelectedLinWidget()
     const bool isDevelopment = selectedLinWidgetIsDevelopment();
     const QString registryKey = linWidgetRegistryKey(registryId, isDevelopment);
 
-    // Check that at least one running instance exists for this widget
     const QString primaryInstanceId = m_linWidgetInstancesById.value(
         registryKey,
         m_linWidgetInstancesByPackage.value(linWidgetPackageKey(packagePath)));
-    if (primaryInstanceId.isEmpty()) {
-        updateLinWidgetsButtons();
-        return false;
-    }
 
     auto& bridge = LinWidgetRuntimeBridge::instance();
     QStringList stoppedIds;
     if (bridge.isLoaded()) {
-        bridge.stopWidget(primaryInstanceId);
-        stoppedIds.append(primaryInstanceId);
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("list"));
+        const QJsonObject resp = bridge.queryWidgetManager(req);
+        const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+        for (const QJsonValue& val : widgets) {
+            const QJsonObject obj = val.toObject();
+            if (obj.value(QStringLiteral("id")).toString().compare(registryId, Qt::CaseInsensitive) == 0 &&
+                obj.value(QStringLiteral("isDevelopment")).toBool() == isDevelopment) {
+                const QJsonArray runningIds = obj.value(QStringLiteral("runningInstanceIds")).toArray();
+                for (const QJsonValue& idVal : runningIds) {
+                    const QString id = idVal.toString();
+                    bridge.stopWidget(id);
+                    stoppedIds.append(id);
+                }
+            }
+        }
+        if (stoppedIds.isEmpty() && !primaryInstanceId.isEmpty()) {
+            bridge.stopWidget(primaryInstanceId);
+            stoppedIds.append(primaryInstanceId);
+        }
+        if (stoppedIds.isEmpty() && !registryKey.isEmpty()) {
+            bridge.stopWidget(registryKey);
+            stoppedIds.append(registryKey);
+        }
     }
 
     auto& registry = LinWidget::WidgetRegistryManager::instance();
@@ -1586,11 +1652,11 @@ bool ListViewDebugPanel::unloadSelectedLinWidget()
         m_linWidgetsPageStatusLabel->setText(
             stoppedIds.size() > 1
                 ? QStringLiteral("Unloaded %1 instance(s) of widget: %2").arg(stoppedIds.size()).arg(registryId)
-                : QStringLiteral("Unloaded widget: %1").arg(stoppedIds.value(0, primaryInstanceId)));
+                : QStringLiteral("Unloaded widget: %1").arg(!stoppedIds.isEmpty() ? stoppedIds.value(0) : registryId));
     }
     updateSelectedLinWidgetItemText();
     updateLinWidgetsButtons();
-    updateLinWidgetLogViewer();
+    updateLinWidgetDetailsPanel();
     return true;
 }
 
@@ -1600,7 +1666,7 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     const QString registryId = selectedLinWidgetRegistryId();
     if (packagePath.isEmpty() && registryId.isEmpty()) {
         if (m_linWidgetsPageStatusLabel) {
-            m_linWidgetsPageStatusLabel->setText(QStringLiteral("请先在左侧选择需要导出诊断包的组件。"));
+            m_linWidgetsPageStatusLabel->setText(QStringLiteral("Please select a widget from the list to export diagnostics."));
         }
         return;
     }
@@ -1609,7 +1675,7 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     const bool isRunning = selectedLinWidgetIsRunning();
     const bool isDev = selectedLinWidgetIsDevelopment();
 
-    // 1. 读取 Manifest
+    // 1. Load Manifest
     QString manifestContent;
     const QString manifestPath = QDir(packagePath).filePath(QStringLiteral("manifest.json"));
     QFile manifestFile(manifestPath);
@@ -1620,7 +1686,7 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
         manifestContent = QStringLiteral("{\n  \"error\": \"manifest.json not found\"\n}");
     }
 
-    // 2. 读取控制台日志与运行状态
+    // 2. Capture runtime diagnostic state
     QString logs = m_linWidgetsLogView ? m_linWidgetsLogView->toPlainText() : QString();
     if (logs.isEmpty()) {
         const QString logFile = linWidgetLogFilePathForInstance(instanceId.isEmpty() ? registryId : instanceId);
@@ -1635,14 +1701,14 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     if (logs.isEmpty()) {
         logs = QStringLiteral("[No recent log output captured]");
     } else {
-        // 如果日志过长，取最后 200 行
+        // Keep the last 200 lines if the log is too long
         const QStringList lines = logs.split(QLatin1Char('\n'));
         if (lines.size() > 200) {
             logs = lines.mid(lines.size() - 200).join(QLatin1Char('\n'));
         }
     }
 
-    // 3. 脱敏处理 (Masking sensitive paths)
+    // 3. Mask sensitive paths
     auto sanitize = [](QString text) {
         const QString userHome = QDir::homePath();
         const QString appData = AppPaths::userConfigDir();
@@ -1662,41 +1728,41 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     manifestContent = sanitize(manifestContent);
     logs = sanitize(logs);
 
-    // 4. 生成标准化 Markdown 诊断包文本
+    // 4. Format Markdown diagnostic report
     QString report;
     QTextStream ts(&report);
-    ts << QStringLiteral("# LinWidget 诊断包 (Diagnostic Package)\n\n");
-    ts << QStringLiteral("- 导出时间: %1 UTC\n").arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-    ts << QStringLiteral("- LinDesk 宿主版本: 1.0.0 (Qt 5.15.2, CEF OSR 动态加载)\n");
-    ts << QStringLiteral("- 目标组件 ID: `%1`\n").arg(registryId);
-    ts << QStringLiteral("- 运行模式: %1\n").arg(isDev ? QStringLiteral("开发项目 (Dev)") : QStringLiteral("已安装组件 (Installed)"));
-    ts << QStringLiteral("- 运行状态: %1\n").arg(isRunning ? QStringLiteral("运行中 (Running)") : QStringLiteral("未运行 (Stopped)"));
+    ts << QStringLiteral("# LinWidget Diagnostic Package\n\n");
+    ts << QStringLiteral("- Exported At: %1 UTC\n").arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    ts << QStringLiteral("- LinDesk Host Version: 1.0.0 (Qt 5.15.2, CEF OSR Dynamic Runtime)\n");
+    ts << QStringLiteral("- Target Widget ID: `%1`\n").arg(registryId);
+    ts << QStringLiteral("- Project Mode: %1\n").arg(isDev ? QStringLiteral("Development Project (Dev)") : QStringLiteral("Installed Widget"));
+    ts << QStringLiteral("- Runtime Status: %1\n").arg(isRunning ? QStringLiteral("Running") : QStringLiteral("Stopped"));
     if (!instanceId.isEmpty()) {
-        ts << QStringLiteral("- 活跃实例 ID: `%1`\n").arg(instanceId);
+        ts << QStringLiteral("- Active Instance ID: `%1`\n").arg(instanceId);
     }
-    ts << QStringLiteral("- 申请权限: %1\n").arg(selectedLinWidgetRequestedPermissions().join(QStringLiteral(", ")));
-    ts << QStringLiteral("- 授予权限: %1\n\n").arg(selectedLinWidgetGrantedPermissions().join(QStringLiteral(", ")));
+    ts << QStringLiteral("- Requested Permissions: %1\n").arg(selectedLinWidgetRequestedPermissions().join(QStringLiteral(", ")));
+    ts << QStringLiteral("- Granted Permissions: %1\n\n").arg(selectedLinWidgetGrantedPermissions().join(QStringLiteral(", ")));
 
-    ts << QStringLiteral("## 1. 组件配置 (Manifest)\n```json\n");
+    ts << QStringLiteral("## 1. Widget Manifest\n```json\n");
     ts << manifestContent.trimmed() << QStringLiteral("\n```\n\n");
 
-    ts << QStringLiteral("## 2. 最近运行与控制台日志 (Console / Runtime Logs)\n```log\n");
+    ts << QStringLiteral("## 2. Recent Runtime & Diagnostic Logs\n```log\n");
     ts << logs.trimmed() << QStringLiteral("\n```\n\n");
 
-    ts << QStringLiteral("## 3. 诊断与增量修复指引 (AI Instruction)\n");
-    ts << QStringLiteral("请依据上述组件 Manifest 配置、运行时权限和控制台异常日志进行排查：\n");
-    ts << QStringLiteral("1. 分析组件异常或功能失效的根本原因；\n");
-    ts << QStringLiteral("2. 针对报错点进行增量修复，提供修复后的代码片段或补丁说明；\n");
-    ts << QStringLiteral("3. 检查 permissions 权限是否满足组件 API 调用需求。\n");
+    ts << QStringLiteral("## 3. AI Diagnostic & Troubleshooting Guidance\n");
+    ts << QStringLiteral("Please inspect the manifest settings, runtime permissions, and diagnostic report:\n");
+    ts << QStringLiteral("1. Analyze the root cause of any widget crash or malfunction;\n");
+    ts << QStringLiteral("2. Provide targeted fixes or code patches for the identified issue;\n");
+    ts << QStringLiteral("3. Verify that the requested permissions match the used APIs.\n");
 
-    // 5. 复制到系统剪贴板
+    // 5. Copy to system clipboard
     QClipboard* clipboard = QGuiApplication::clipboard();
     if (clipboard) {
         clipboard->setText(report);
     }
 
     if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText(QStringLiteral("诊断包已成功生成并复制到剪贴板！可直接粘贴给 AI 进行增量排查修复。"));
+        m_linWidgetsPageStatusLabel->setText(QStringLiteral("Diagnostic package copied to clipboard! You can paste it into an AI chat for troubleshooting."));
     }
 }
 
@@ -1907,7 +1973,7 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText("Reloaded widget iframe: " + instanceId);
         }
-        updateLinWidgetLogViewer();
+        updateLinWidgetDetailsPanel();
         updateLinWidgetsButtons();
     });
     connect(settingsButton, &QToolButton::clicked, this, [this, item, selectItem]() {
@@ -2040,7 +2106,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
 
     m_linWidgetsPageStatusLabel = new QLabel(page);
     m_linWidgetsPageStatusLabel->setWordWrap(true);
-    m_linWidgetsPageStatusLabel->setText(QStringLiteral("CEF OSR 小组件引擎已就绪。所有小组件均运行在安全隔离沙箱中，支持多实例与热重载。"));
+    m_linWidgetsPageStatusLabel->setText(QStringLiteral("CEF OSR widget engine ready. All widgets run in an isolated sandbox with hot-reload support."));
     m_linWidgetsPageStatusLabel->setStyleSheet(QStringLiteral(
         "background: #eff6ff;"
         "border: 1px solid #bfdbfe;"
@@ -2107,10 +2173,10 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             if (m_linWidgetsPageStatusLabel) {
                 if (checked) {
                     m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("CEF OSR 小组件系统已启用。"));
+                        QStringLiteral("CEF OSR widget system enabled."));
                 } else {
                     m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("小组件系统已彻底关闭，CEF OSR 已卸载隐藏，仅显示原生桌面图标。"));
+                        QStringLiteral("Widget system disabled. CEF OSR unmounted, showing native desktop icons only."));
                 }
             }
         }
@@ -2118,7 +2184,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         refreshLinWidgetRunningMaps();
         updateSelectedLinWidgetItemText();
         updateLinWidgetsButtons();
-        updateLinWidgetLogViewer();
+        updateLinWidgetDetailsPanel();
         if (m_listView) {
             m_listView->update();
         }
@@ -2137,8 +2203,8 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("小组件边界框可视化已开启 (青色边框及 [CEF OSR] 标签)。")
-                : QStringLiteral("小组件边界框可视化已关闭。"));
+                ? QStringLiteral("Widget boundary visualization enabled (cyan border and [CEF OSR] tag).")
+                : QStringLiteral("Widget boundary visualization disabled."));
         }
     });
 
@@ -2153,14 +2219,14 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("桌面占用网格高亮已开启。")
-                : QStringLiteral("桌面占用网格高亮已关闭。"));
+                ? QStringLiteral("Desktop occupied grid highlighting enabled.")
+                : QStringLiteral("Desktop occupied grid highlighting disabled."));
         }
     });
 
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("CEF OSR"), QStringLiteral("切换小组件引擎"), m_linWidgetEnabledToggle));
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Show Bounds"), QStringLiteral("绘制小组件外边框"), m_linWidgetBoundsToggle));
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Occupied Cells"), QStringLiteral("绘制占用网格单元格"), m_linWidgetBlockedCellsToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("CEF OSR"), QStringLiteral("Toggle CEF OSR widget engine"), m_linWidgetEnabledToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Show Bounds"), QStringLiteral("Draw widget bounding boxes"), m_linWidgetBoundsToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Occupied Cells"), QStringLiteral("Highlight grid cells blocked by widgets"), m_linWidgetBlockedCellsToggle));
     controlBarLayout->addStretch(1);
 
     auto* refreshButton = createActionButton(QStringLiteral("Refresh"), false, false);
@@ -2242,122 +2308,140 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
 
     connect(m_linWidgetListTabBar, &QTabBar::currentChanged, m_linWidgetListStack, &QStackedWidget::setCurrentIndex);
 
-    // Right Column: Inspector & Live Console Log
+    // Right Column: Inspector & Developer Live Controller
     m_linWidgetsLogPanel = new QWidget(page);
     auto* rightColLayout = new QVBoxLayout(m_linWidgetsLogPanel);
     rightColLayout->setContentsMargins(0, 0, 0, 0);
-    rightColLayout->setSpacing(12);
+    rightColLayout->setSpacing(14);
 
-    // Inspector Card
-    auto* inspectorCard = new QWidget(m_linWidgetsLogPanel);
-    inspectorCard->setObjectName(QStringLiteral("linWidgetInspectorCard"));
-    inspectorCard->setStyleSheet(QStringLiteral(
-        "QWidget#linWidgetInspectorCard {"
+    const QString cardStyle = QStringLiteral(
+        "QWidget {"
         "  background: #ffffff;"
         "  border: 1px solid rgba(15, 23, 42, 0.08);"
         "  border-radius: 10px;"
-        "}"));
-    auto* inspectorLayout = new QVBoxLayout(inspectorCard);
-    inspectorLayout->setContentsMargins(14, 12, 14, 12);
-    inspectorLayout->setSpacing(8);
+        "}");
 
-    auto* inspectorHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7B5"), QStringLiteral("Widget Inspector & Permissions"), QStringLiteral("Selected widget details"));
-    inspectorLayout->addWidget(inspectorHeader);
+    // Card 1: Widget Details & Metadata Inspector
+    auto* detailsCard = new QWidget(m_linWidgetsLogPanel);
+    detailsCard->setStyleSheet(cardStyle);
+    auto* detailsLayout = new QVBoxLayout(detailsCard);
+    detailsLayout->setContentsMargins(16, 14, 16, 14);
+    detailsLayout->setSpacing(10);
 
-    m_linWidgetPermissionsLabel = new QLabel(inspectorCard);
+    auto* detailsHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7B5"), QStringLiteral("Widget Inspector"), QStringLiteral("Live metadata, geometry, and instance state"));
+    detailsLayout->addWidget(detailsHeader);
+
+    m_linWidgetDetailsLabel = new QLabel(detailsCard);
+    m_linWidgetDetailsLabel->setTextFormat(Qt::RichText);
+    m_linWidgetDetailsLabel->setWordWrap(true);
+    m_linWidgetDetailsLabel->setStyleSheet(QStringLiteral(
+        "font-family: %1; background: transparent; border: none; padding: 4px 0px;"
+    ).arg(AppFonts::uiCssFamily()));
+    detailsLayout->addWidget(m_linWidgetDetailsLabel);
+    rightColLayout->addWidget(detailsCard);
+
+    // Card 2: Permissions Configuration
+    auto* permissionCard = new QWidget(m_linWidgetsLogPanel);
+    permissionCard->setStyleSheet(cardStyle);
+    auto* permLayout = new QVBoxLayout(permissionCard);
+    permLayout->setContentsMargins(16, 14, 16, 14);
+    permLayout->setSpacing(10);
+
+    auto* permHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE72E"), QStringLiteral("Sandbox & Permissions"), QStringLiteral("Dynamic sandbox permission controls"));
+    permLayout->addWidget(permHeader);
+
+    m_linWidgetPermissionsLabel = new QLabel(permissionCard);
     m_linWidgetPermissionsLabel->setWordWrap(true);
     m_linWidgetPermissionsLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 11px; color: #475569;"
+        "font-family: %1; font-size: 11px; color: #475569; background: transparent; border: none;"
     ).arg(AppFonts::uiCssFamily()));
-    inspectorLayout->addWidget(m_linWidgetPermissionsLabel);
+    permLayout->addWidget(m_linWidgetPermissionsLabel);
 
     auto* permissionRow = new QHBoxLayout();
     permissionRow->setContentsMargins(0, 0, 0, 0);
-    permissionRow->setSpacing(12);
-    m_linWidgetNetworkPermissionCheck = new QCheckBox(QStringLiteral("network"), inspectorCard);
-    m_linWidgetStoragePermissionCheck = new QCheckBox(QStringLiteral("storage"), inspectorCard);
-    m_linWidgetDesktopPermissionCheck = new QCheckBox(QStringLiteral("desktop"), inspectorCard);
+    permissionRow->setSpacing(14);
+    m_linWidgetNetworkPermissionCheck = new QCheckBox(QStringLiteral("Network (network)"), permissionCard);
+    m_linWidgetStoragePermissionCheck = new QCheckBox(QStringLiteral("Storage (storage)"), permissionCard);
+    m_linWidgetDesktopPermissionCheck = new QCheckBox(QStringLiteral("Desktop API (desktop)"), permissionCard);
     permissionRow->addWidget(m_linWidgetNetworkPermissionCheck);
     permissionRow->addWidget(m_linWidgetStoragePermissionCheck);
     permissionRow->addWidget(m_linWidgetDesktopPermissionCheck);
     permissionRow->addStretch(1);
+    permLayout->addLayout(permissionRow);
+    rightColLayout->addWidget(permissionCard);
 
-    permissionRow->addWidget(m_linWidgetsPackageButton);
-    permissionRow->addWidget(m_linWidgetsRemoveDevButton);
-    permissionRow->addWidget(m_linWidgetsDeleteButton);
-    inspectorLayout->addLayout(permissionRow);
+    // Card 3: Developer Live Actions & Tools
+    auto* actionsCard = new QWidget(m_linWidgetsLogPanel);
+    actionsCard->setStyleSheet(cardStyle);
+    auto* actionsLayout = new QVBoxLayout(actionsCard);
+    actionsLayout->setContentsMargins(16, 14, 16, 14);
+    actionsLayout->setSpacing(12);
 
-    rightColLayout->addWidget(inspectorCard);
+    auto* actionsHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7BE"), QStringLiteral("Developer Tools & Actions"), QStringLiteral("Inspection, configuration, and maintenance"));
+    actionsLayout->addWidget(actionsHeader);
 
-    // Live Console Log Card
-    auto* logCard = new QWidget(m_linWidgetsLogPanel);
-    logCard->setObjectName(QStringLiteral("linWidgetLogCard"));
-    logCard->setStyleSheet(QStringLiteral(
-        "QWidget#linWidgetLogCard {"
-        "  background: #ffffff;"
-        "  border: 1px solid rgba(15, 23, 42, 0.08);"
-        "  border-radius: 10px;"
-        "}"));
-    auto* logCardLayout = new QVBoxLayout(logCard);
-    logCardLayout->setContentsMargins(14, 12, 14, 12);
-    logCardLayout->setSpacing(8);
+    // Row 1: Primary Debug Actions
+    auto* primaryActionRow = new QHBoxLayout();
+    primaryActionRow->setContentsMargins(0, 0, 0, 0);
+    primaryActionRow->setSpacing(10);
 
-    auto* logHeaderRow = new QHBoxLayout();
-    logHeaderRow->setContentsMargins(0, 0, 0, 0);
-    logHeaderRow->setSpacing(8);
-    m_linWidgetsLogTitleLabel = createPageSubtitleLabel("Live Console Log");
-    logHeaderRow->addWidget(m_linWidgetsLogTitleLabel);
-    logHeaderRow->addStretch(1);
-
-    auto* exportDiagBtn = createActionButton(QStringLiteral("导出诊断包"), true, false);
-    exportDiagBtn->setFixedHeight(26);
-    exportDiagBtn->setMinimumWidth(88);
-    connect(exportDiagBtn, &QPushButton::clicked, this, &ListViewDebugPanel::exportLinWidgetDiagnostics);
-    logHeaderRow->addWidget(exportDiagBtn);
-
-    auto* clearLogBtn = createActionButton(QStringLiteral("Clear View"), false, false);
-    clearLogBtn->setFixedHeight(26);
-    clearLogBtn->setMinimumWidth(72);
-    connect(clearLogBtn, &QPushButton::clicked, this, [this]() {
-        if (m_linWidgetsLogView) {
-            m_linWidgetsLogView->clear();
+    m_linWidgetsDevToolsButton = createActionButton(QStringLiteral("Open DevTools (F12)"), true, false);
+    m_linWidgetsDevToolsButton->setMinimumHeight(32);
+    m_linWidgetsDevToolsButton->setToolTip(QStringLiteral("Open Chromium DevTools for this widget (Console, Elements, Network)"));
+    connect(m_linWidgetsDevToolsButton, &QPushButton::clicked, this, [this]() {
+        const QString instanceId = selectedLinWidgetRunningInstanceId();
+        if (!instanceId.isEmpty()) {
+            LinWidgetRuntimeBridge::instance().showDevTools(instanceId);
         }
     });
-    logHeaderRow->addWidget(clearLogBtn);
-    logCardLayout->addLayout(logHeaderRow);
+    primaryActionRow->addWidget(m_linWidgetsDevToolsButton);
 
-    m_linWidgetsLogView = new QPlainTextEdit(logCard);
-    m_linWidgetsLogView->setReadOnly(true);
-    m_linWidgetsLogView->setMinimumHeight(280);
-    m_linWidgetsLogView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_linWidgetsLogView->setStyleSheet(QStringLiteral(
-        "QPlainTextEdit {"
-        "  background: #0f172a;"
-        "  color: #e2e8f0;"
-        "  border: 1px solid rgba(15, 23, 42, 0.20);"
-        "  border-radius: 8px;"
-        "  padding: 10px;"
-        "  font-family: Consolas, 'Cascadia Mono', monospace;"
-        "  font-size: 12px;"
-        "}"));
-    logCardLayout->addWidget(m_linWidgetsLogView, 1);
-    rightColLayout->addWidget(logCard, 1);
+    m_linWidgetsSettingsButton = createActionButton(QStringLiteral("Settings"), false, false);
+    m_linWidgetsSettingsButton->setMinimumHeight(32);
+    connect(m_linWidgetsSettingsButton, &QPushButton::clicked, this, [this]() {
+        const QString packagePath = selectedLinWidgetPackagePath();
+        const QString instanceId = selectedLinWidgetRunningInstanceId();
+        if (!packagePath.isEmpty()) {
+            LinWidgetRuntimeBridge::instance().openWidgetSettings(packagePath, instanceId);
+        }
+    });
+    primaryActionRow->addWidget(m_linWidgetsSettingsButton);
+
+    m_linWidgetsRestartButton = createActionButton(QStringLiteral("Restart"), false, false);
+    m_linWidgetsRestartButton->setMinimumHeight(32);
+    connect(m_linWidgetsRestartButton, &QPushButton::clicked, this, [this]() {
+        const QString instanceId = selectedLinWidgetRunningInstanceId();
+        if (!instanceId.isEmpty()) {
+            LinWidgetRuntimeBridge::instance().restartWidget(instanceId);
+            updateLinWidgetDetailsPanel();
+        }
+    });
+    primaryActionRow->addWidget(m_linWidgetsRestartButton);
+    actionsLayout->addLayout(primaryActionRow);
+
+    // Row 2: Secondary Project Actions
+    auto* secondaryActionRow = new QHBoxLayout();
+    secondaryActionRow->setContentsMargins(0, 0, 0, 0);
+    secondaryActionRow->setSpacing(10);
+
+    secondaryActionRow->addWidget(m_linWidgetsOpenFolderButton);
+    secondaryActionRow->addWidget(m_linWidgetsPackageButton);
+
+    auto* exportDiagBtn = createActionButton(QStringLiteral("Export Diag"), false, false);
+    exportDiagBtn->setMinimumHeight(28);
+    connect(exportDiagBtn, &QPushButton::clicked, this, &ListViewDebugPanel::exportLinWidgetDiagnostics);
+    secondaryActionRow->addWidget(exportDiagBtn);
+
+    secondaryActionRow->addWidget(m_linWidgetsRemoveDevButton);
+    secondaryActionRow->addWidget(m_linWidgetsDeleteButton);
+    secondaryActionRow->addStretch(1);
+    actionsLayout->addLayout(secondaryActionRow);
+
+    rightColLayout->addWidget(actionsCard);
+    rightColLayout->addStretch(1);
 
     layout->addLayout(m_linWidgetsContentGrid, 1);
 
-    m_linWidgetsLogWatcher = new QFileSystemWatcher(page);
-    m_linWidgetsLogReloadTimer = new QTimer(page);
-    m_linWidgetsLogReloadTimer->setSingleShot(true);
-    m_linWidgetsLogReloadTimer->setInterval(120);
-    connect(m_linWidgetsLogWatcher, &QFileSystemWatcher::fileChanged, this, [this](const QString& path) {
-        if (!path.isEmpty() && QFileInfo::exists(path) && !m_linWidgetsLogWatcher->files().contains(path)) {
-            m_linWidgetsLogWatcher->addPath(path);
-        }
-        if (m_linWidgetsLogReloadTimer) {
-            m_linWidgetsLogReloadTimer->start();
-        }
-    });
-    connect(m_linWidgetsLogReloadTimer, &QTimer::timeout, this, &ListViewDebugPanel::updateLinWidgetLogViewer);
     connect(m_linWidgetNetworkPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
         setSelectedLinWidgetGrantedPermission(QStringLiteral("network"), checked);
     });
@@ -2376,7 +2460,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         updateLinWidgetsButtons();
         updateLinWidgetPermissionControls();
-        updateLinWidgetLogViewer();
+        updateLinWidgetDetailsPanel();
     });
     connect(m_developmentLinWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* current) {
         if (current && m_installedLinWidgetsList) {
@@ -2385,7 +2469,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         updateLinWidgetsButtons();
         updateLinWidgetPermissionControls();
-        updateLinWidgetLogViewer();
+        updateLinWidgetDetailsPanel();
     });
     connect(m_linWidgetsAddDevButton, &QPushButton::clicked, this, [this]() {
         const QString dir = QFileDialog::getExistingDirectory(this, "Select LinWidget development project");
@@ -2502,7 +2586,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
 
     updateAdaptiveLayout();
     reloadLinWidgetsList();
-    updateLinWidgetLogViewer();
+    updateLinWidgetDetailsPanel();
     return page;
 }
 

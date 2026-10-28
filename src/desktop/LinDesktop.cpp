@@ -8,6 +8,8 @@
 #include "services/DpiCoordinateHelper.h"
 #include <QCoreApplication>
 #include <QFutureWatcher>
+#include <QImageReader>
+#include <QtMath>
 #include <QSettings>
 #include <QAction>
 #include <QMenu>
@@ -18,6 +20,26 @@
 
 namespace {
 QPointer<LinDesktop> g_desktopHostWindowMonitorOwner;
+
+// 解码壁纸：若原图大于目标尺寸，解码阶段直接缩到"刚好覆盖目标"的大小，避免先解出整张原图（如 4K 约 33MB）造成内存峰值。
+QImage loadWallpaperImageScaled(const QString& path, const QSize& targetSize)
+{
+    QImageReader reader(path);
+    if (targetSize.isValid()) {
+        const QSize original = reader.size();
+        if (original.isValid() && !original.isEmpty()
+            && (original.width() > targetSize.width() || original.height() > targetSize.height())) {
+            const double scale = qMax(double(targetSize.width()) / original.width(),
+                                      double(targetSize.height()) / original.height());
+            if (scale < 1.0) {
+                const QSize scaledSize(qMax(1, qCeil(original.width() * scale)),
+                                       qMax(1, qCeil(original.height() * scale)));
+                reader.setScaledSize(scaledSize);
+            }
+        }
+    }
+    return reader.read();
+}
 
 void showAlreadyRunningTipAndQuit()
 {
@@ -291,10 +313,9 @@ void LinDesktop::loadBackImage()
 
         applyLoadedWallpaper(path, image);
     });
-    watcher->setFuture(QtConcurrent::run([path]() {
-        QImage image;
-        image.load(path);
-        return image;
+    const QSize wallpaperTargetSize = size();
+    watcher->setFuture(QtConcurrent::run([path, wallpaperTargetSize]() {
+        return loadWallpaperImageScaled(path, wallpaperTargetSize);
     }));
 }
 
@@ -379,8 +400,8 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
             fallback.fill(Qt::black);
             m_backImagePixmap = fallback;
         } else {
-            QImage img;
-            if (img.load(m_currentWallpaperPath)) {
+            const QImage img = loadWallpaperImageScaled(m_currentWallpaperPath, targetSize);
+            if (!img.isNull()) {
                 m_backImagePixmap = QPixmap::fromImage(img);
             }
         }

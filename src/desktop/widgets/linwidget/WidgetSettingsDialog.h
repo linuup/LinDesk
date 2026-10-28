@@ -36,6 +36,11 @@ public:
     static QMap<QString, QPointer<WidgetSettingsDialog>>& openSettingsDialogs();
 
     bool initialize(QString* errorMessage = nullptr);
+    bool hasSchemaControls() const { return !m_schemaEditors.isEmpty(); }
+    int schemaControlCount() const { return m_schemaEditors.size(); }
+    QJsonObject currentSchemaValues() const;
+    bool applySchemaValues(const QJsonObject& values, QString* errorMessage = nullptr);
+    bool resetSchemaToDefaults(QString* errorMessage = nullptr);
 
 private:
     static QString dialogKey(const QString& packagePath,
@@ -45,6 +50,11 @@ private:
 
     void renderPlaceholder(const QString& message);
     void renderSettingsPage(const QString& settingsPath);
+    QWidget* createSchemaSettingsPanel(QWidget* parentWidget);
+    QWidget* createCustomHtmlSettingsPanel(const QString& settingsPath, QWidget* parentWidget);
+    QString widgetStorageFilePath() const;
+    QJsonObject loadStoredSettings() const;
+    bool saveSchemaSettings(const QJsonObject& values, QString* errorMessage = nullptr);
     void appendLog(const QString& level, const QString& message) const;
     void handleSettingsWebMessage(const QJsonObject& object);
 
@@ -53,6 +63,7 @@ private:
     QStringList m_grantedPermissions;
     bool m_isDevelopment = false;
     QString m_instanceId;
+    QMap<QString, QPointer<QWidget>> m_schemaEditors;
 };
 
 }

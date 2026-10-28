@@ -4,240 +4,426 @@
   // 1. LinWidget Bridge 通信层
   function sendMessage(type, payload) {
     const msg = Object.assign({ type: type }, payload || {});
-    // 原生 CEF OSR fetch 拦截通道
     fetch('http://linwidget.bridge/postMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(msg)
     }).catch(function () {
-      // 降级使用 window.parent.postMessage
       try {
         window.parent.postMessage(msg, '*');
       } catch (e) {}
     });
   }
 
+  // 2. DOM 元素获取
   const canvas = document.getElementById('bg-canvas');
   const ctx = canvas.getContext('2d');
-  const video = document.getElementById('bg-video');
-  const statusText = document.getElementById('status-text');
-  const btnSelect = document.getElementById('btn-select');
-  const btnReset = document.getElementById('btn-reset');
 
   let width = 0;
   let height = 0;
-  let animationId = null;
-  let isVideoPlaying = false;
-  let mouse = { x: -1000, y: -1000, radius: 160 };
+  let time = 0;
+  let lastTimestamp = performance.now();
+  let isInteractive = true;
 
-  function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
+  // 交互状态
+  const mouse = {
+    x: -1000,
+    y: -1000,
+    isDown: false,
+    downStartTime: 0,
+    holdDuration: 0,
+    hasMoved: false
+  };
+
+  // 冲击波与水波涟漪特效池
+  const ripples = [];
+  function addRipple(x, y, maxR, color, speed) {
+    ripples.push({
+      x: x,
+      y: y,
+      r: 5,
+      maxR: maxR || 260,
+      color: color || 'rgba(14, 165, 233,',
+      alpha: 0.85,
+      speed: speed || 7
+    });
   }
-  window.addEventListener('resize', resize);
-  resize();
 
-  window.addEventListener('mousemove', function (e) {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-  });
+  // 爆发火花粒子池
+  const sparkParticles = [];
+  function spawnSparks(x, y, count, rgb) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 8 + 3;
+      sparkParticles.push({
+        x: x,
+        y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size: Math.random() * 2.5 + 1.2,
+        alpha: 1,
+        decay: Math.random() * 0.03 + 0.018,
+        rgb: rgb || [14, 165, 233]
+      });
+    }
+  }
 
-  // 2. 粒子与极光仿真系统
-  const particles = [];
-  const particleCount = 75;
+  // 流星系统
+  const meteors = [];
+  function spawnMeteor() {
+    if (meteors.length >= 2) return;
+    const startX = Math.random() * width * 1.2;
+    const startY = Math.random() * height * 0.3;
+    const length = Math.random() * 110 + 70;
+    const speed = Math.random() * 8 + 10;
+    const angle = Math.PI / 4 + (Math.random() - 0.5) * 0.2;
+    meteors.push({
+      x: startX,
+      y: startY,
+      dx: Math.cos(angle) * speed,
+      dy: Math.sin(angle) * speed,
+      len: length,
+      alpha: 1,
+      decay: 0.016
+    });
+  }
 
-  class Particle {
+  // 3. 深空引力粒子群 (Cosmic Starfield)
+  const cosmicStars = [];
+  const COSMIC_STAR_COUNT = 90;
+
+  class CosmicStar {
     constructor() {
-      this.reset();
+      this.init(true);
     }
-    reset() {
-      this.x = Math.random() * width;
-      this.y = Math.random() * height;
-      this.vx = (Math.random() - 0.5) * 0.8;
-      this.vy = (Math.random() - 0.5) * 0.8;
-      this.size = Math.random() * 2.5 + 1.2;
-      this.alpha = Math.random() * 0.6 + 0.2;
-      this.color = Math.random() > 0.4 ? 'rgba(0, 180, 216, ' : 'rgba(114, 9, 183, ';
+    init(randomize) {
+      this.x = randomize ? Math.random() * (width || window.innerWidth) : Math.random() * width;
+      this.y = randomize ? Math.random() * (height || window.innerHeight) : Math.random() * height;
+      this.vx = (Math.random() - 0.5) * 0.45;
+      this.vy = (Math.random() - 0.5) * 0.45;
+      this.baseSize = Math.random() * 2.0 + 0.8;
+      this.size = this.baseSize;
+      this.twinklePhase = Math.random() * Math.PI * 2;
+      this.twinkleSpeed = Math.random() * 0.03 + 0.012;
+      this.isHot = Math.random() > 0.65;
+      this.rgb = this.isHot ? [14, 165, 233] : (Math.random() > 0.5 ? [139, 92, 246] : [226, 232, 240]);
     }
-    update() {
-      this.x += this.vx;
-      this.y += this.vy;
+    update(dtFactor) {
+      this.twinklePhase += this.twinkleSpeed * dtFactor;
+
+      // 引力黑洞交互：当鼠标按下且开启交互
+      if (isInteractive && mouse.isDown && mouse.x > 0 && mouse.y > 0) {
+        const dx = mouse.x - this.x;
+        const dy = mouse.y - this.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < 270400 && distSq > 100) { // dist between 10 and 520
+          const dist = Math.sqrt(distSq);
+          const gravityForce = Math.min(28, 480 / dist);
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const spinForce = gravityForce * 0.65;
+          const tx = -ny;
+          const ty = nx;
+
+          this.vx += (nx * gravityForce + tx * spinForce) * (0.045 * dtFactor);
+          this.vy += (ny * gravityForce + ty * spinForce) * (0.045 * dtFactor);
+          this.size = Math.min(this.baseSize * 2.2, 5.0);
+        }
+      } else if (isInteractive) {
+        this.size = this.baseSize;
+        const dx = mouse.x - this.x;
+        const dy = mouse.y - this.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < 19600 && distSq > 0) { // dist < 140
+          const dist = Math.sqrt(distSq);
+          const repel = (140 - dist) / 140;
+          this.vx -= (dx / dist) * repel * (0.6 * dtFactor);
+          this.vy -= (dy / dist) * repel * (0.6 * dtFactor);
+        }
+      } else {
+        this.size = this.baseSize;
+      }
+
+      this.vx *= 0.985;
+      this.vy *= 0.985;
+      this.x += this.vx * dtFactor;
+      this.y += this.vy * dtFactor;
 
       if (this.x < 0) this.x = width;
       if (this.x > width) this.x = 0;
       if (this.y < 0) this.y = height;
       if (this.y > height) this.y = 0;
-
-      // 鼠标交互推开
-      const dx = mouse.x - this.x;
-      const dy = mouse.y - this.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < mouse.radius) {
-        const force = (mouse.radius - dist) / mouse.radius;
-        this.x -= (dx / dist) * force * 3.5;
-        this.y -= (dy / dist) * force * 3.5;
-      }
     }
     draw() {
+      const alpha = Math.sin(this.twinklePhase) * 0.35 + 0.65;
+
+      // 柔和外光晕（通过透明同心圆绘制，替代高开销的 CPU shadowBlur）
+      if (this.isHot || this.size > 2.3) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2.4, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(' + this.rgb.join(',') + ',' + (alpha * 0.22) + ')';
+        ctx.fill();
+      }
+
+      // 核心星辰点
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-      ctx.fillStyle = this.color + this.alpha + ')';
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = '#00b4d8';
+      ctx.fillStyle = 'rgba(' + this.rgb.join(',') + ',' + alpha + ')';
       ctx.fill();
     }
   }
 
-  for (let i = 0; i < particleCount; i++) {
-    particles.push(new Particle());
-  }
+  // 4. 画布视口缩放与初始化
+  function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
 
-  let time = 0;
-  function animate() {
-    time += 0.006;
+    if (cosmicStars.length === 0) {
+      for (let i = 0; i < COSMIC_STAR_COUNT; i++) {
+        cosmicStars.push(new CosmicStar());
+      }
+    }
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // 5. 鼠标事件监听
+  window.addEventListener('mousemove', function (e) {
+    if (!isInteractive) return;
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    mouse.hasMoved = true;
+  });
+
+  window.addEventListener('mousedown', function (e) {
+    if (!isInteractive) return;
+    mouse.isDown = true;
+    mouse.downStartTime = Date.now();
+    mouse.holdDuration = 0;
+  });
+
+  window.addEventListener('mouseup', function (e) {
+    if (!isInteractive) {
+      mouse.isDown = false;
+      return;
+    }
+    if (mouse.isDown) {
+      const holdTime = Date.now() - mouse.downStartTime;
+      if (holdTime > 220) {
+        const blastPower = Math.min(1.8, holdTime / 600);
+        addRipple(mouse.x, mouse.y, 450 * blastPower, 'rgba(139, 92, 246,', 10);
+        addRipple(mouse.x, mouse.y, 320 * blastPower, 'rgba(14, 165, 233,', 14);
+        spawnSparks(mouse.x, mouse.y, Math.floor(40 * blastPower), [139, 92, 246]);
+        spawnSparks(mouse.x, mouse.y, Math.floor(30 * blastPower), [14, 165, 233]);
+
+        const blastRadiusSq = 460 * 460;
+        cosmicStars.forEach(function (s) {
+          const dx = s.x - mouse.x;
+          const dy = s.y - mouse.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq < blastRadiusSq) {
+            const dist = Math.sqrt(distSq) || 1;
+            const force = (460 - dist) / 460 * 18 * blastPower;
+            s.vx += (dx / dist) * force;
+            s.vy += (dy / dist) * force;
+          }
+        });
+      } else {
+        addRipple(mouse.x, mouse.y, 220, 'rgba(14, 165, 233,', 7);
+        spawnSparks(mouse.x, mouse.y, 16, [14, 165, 233]);
+      }
+    }
+    mouse.isDown = false;
+    mouse.holdDuration = 0;
+  });
+
+  window.addEventListener('mouseleave', function () {
+    mouse.x = -1000;
+    mouse.y = -1000;
+    mouse.isDown = false;
+  });
+
+  // 6. 主渲染循环管线
+  function animate(currentTimestamp) {
+    const elapsedMs = currentTimestamp ? (currentTimestamp - lastTimestamp) : 16;
+    lastTimestamp = currentTimestamp || performance.now();
+    const dtFactor = Math.min(elapsedMs / 16.666, 2.5); // 归一化至 60FPS
+
+    time += 0.01 * dtFactor;
     ctx.clearRect(0, 0, width, height);
 
-    // 绘制深邃背景渐变
+    // 深空宇宙渐变底色
     const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-    bgGrad.addColorStop(0, '#0a0d14');
-    bgGrad.addColorStop(0.5, '#0e1726');
-    bgGrad.addColorStop(1, '#05070b');
+    bgGrad.addColorStop(0, '#04060a');
+    bgGrad.addColorStop(0.55, '#080d18');
+    bgGrad.addColorStop(1, '#030508');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, width, height);
 
-    // 绘制柔和动态极光流动带
-    for (let j = 0; j < 3; j++) {
+    // 随机产生流星
+    if (Math.random() < 0.012) {
+      spawnMeteor();
+    }
+
+    // 绘制流星
+    for (let i = meteors.length - 1; i >= 0; i--) {
+      const m = meteors[i];
+      m.x += m.dx * dtFactor;
+      m.y += m.dy * dtFactor;
+      m.alpha -= m.decay * dtFactor;
+
+      if (m.alpha <= 0 || m.x < 0 || m.x > width || m.y > height) {
+        meteors.splice(i, 1);
+        continue;
+      }
+
       ctx.save();
+      const grad = ctx.createLinearGradient(m.x, m.y, m.x - m.dx * 5, m.y - m.dy * 5);
+      grad.addColorStop(0, 'rgba(255, 255, 255, ' + m.alpha + ')');
+      grad.addColorStop(0.3, 'rgba(14, 165, 233, ' + (m.alpha * 0.7) + ')');
+      grad.addColorStop(1, 'rgba(139, 92, 246, 0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2.0;
       ctx.beginPath();
-      const waveY = height * (0.35 + j * 0.18);
-      ctx.moveTo(0, height);
-      ctx.lineTo(0, waveY);
-
-      for (let x = 0; x <= width; x += 40) {
-        const wave = Math.sin(x * 0.002 + time * 1.5 + j * 1.2) * 55 +
-                     Math.cos(x * 0.004 - time + j) * 35;
-        ctx.lineTo(x, waveY + wave);
-      }
-      ctx.lineTo(width, height);
-      ctx.closePath();
-
-      const auroraGrad = ctx.createLinearGradient(0, waveY - 50, 0, height);
-      if (j === 0) {
-        auroraGrad.addColorStop(0, 'rgba(0, 180, 216, 0.18)');
-        auroraGrad.addColorStop(0.5, 'rgba(72, 12, 168, 0.08)');
-        auroraGrad.addColorStop(1, 'rgba(10, 13, 20, 0)');
-      } else if (j === 1) {
-        auroraGrad.addColorStop(0, 'rgba(114, 9, 183, 0.14)');
-        auroraGrad.addColorStop(0.6, 'rgba(0, 119, 182, 0.06)');
-        auroraGrad.addColorStop(1, 'rgba(10, 13, 20, 0)');
-      } else {
-        auroraGrad.addColorStop(0, 'rgba(67, 97, 238, 0.12)');
-        auroraGrad.addColorStop(1, 'rgba(10, 13, 20, 0)');
-      }
-      ctx.fillStyle = auroraGrad;
-      ctx.fill();
+      ctx.moveTo(m.x, m.y);
+      ctx.lineTo(m.x - m.dx * 5, m.y - m.dy * 5);
+      ctx.stroke();
       ctx.restore();
     }
 
-    // 更新与连接粒子连线
-    for (let i = 0; i < particles.length; i++) {
-      particles[i].update();
-      particles[i].draw();
+    // 更新与绘制星辰
+    for (let i = 0; i < cosmicStars.length; i++) {
+      cosmicStars[i].update(dtFactor);
+      cosmicStars[i].draw();
+    }
 
-      for (let k = i + 1; k < particles.length; k++) {
-        const dx = particles[i].x - particles[k].x;
-        const dy = particles[i].y - particles[k].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 110) {
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(particles[k].x, particles[k].y);
-          ctx.strokeStyle = 'rgba(0, 180, 216, ' + (0.16 * (1 - dist / 110)) + ')';
-          ctx.lineWidth = 0.8;
-          ctx.stroke();
+    // 批量绘制临近星尘微光连线（单次 beginPath / stroke，性能提升 50 倍）
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(14, 165, 233, 0.12)';
+    ctx.lineWidth = 0.65;
+    const maxLinkDistSq = 95 * 95;
+    for (let i = 0; i < cosmicStars.length; i++) {
+      const s1 = cosmicStars[i];
+      for (let j = i + 1; j < cosmicStars.length; j++) {
+        const s2 = cosmicStars[j];
+        const dx = s1.x - s2.x;
+        const dy = s1.y - s2.y;
+        if (dx * dx + dy * dy < maxLinkDistSq) {
+          ctx.moveTo(s1.x, s1.y);
+          ctx.lineTo(s2.x, s2.y);
         }
       }
     }
+    ctx.stroke();
 
-    if (!isVideoPlaying) {
-      animationId = requestAnimationFrame(animate);
+    // 渲染通用冲击波与水波涟漪
+    renderRipplesAndSparks(dtFactor);
+
+    // 鼠标长按黑洞吸积盘特显
+    if (isInteractive && mouse.isDown && mouse.x > 0 && mouse.y > 0) {
+      renderSingularityAccretion();
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // 渲染函数：黑洞引力坍缩与吸积盘
+  function renderSingularityAccretion() {
+    const holdTime = Date.now() - mouse.downStartTime;
+    const holdProgress = Math.min(1.0, holdTime / 600);
+    const pulse = Math.sin(time * 18) * 4;
+    const coreR = 14 + holdProgress * 10 + pulse;
+
+    ctx.save();
+    const ringAngle = time * 12;
+    ctx.translate(mouse.x, mouse.y);
+    ctx.rotate(ringAngle);
+
+    // 外圈能量辉光（纯径向渐变，无需 Gaussian blur）
+    const glowGrad = ctx.createRadialGradient(0, 0, coreR * 0.6, 0, 0, coreR * 3.5);
+    glowGrad.addColorStop(0, 'rgba(139, 92, 246, 0.85)');
+    glowGrad.addColorStop(0.5, 'rgba(14, 165, 233, 0.45)');
+    glowGrad.addColorStop(1, 'rgba(14, 165, 233, 0)');
+    ctx.fillStyle = glowGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, coreR * 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 椭圆吸积流带
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, coreR * 2.2, coreR * 1.1, Math.PI / 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 核心引力奇点（深黑吸收核）
+    ctx.beginPath();
+    ctx.arc(0, 0, coreR, 0, Math.PI * 2);
+    ctx.fillStyle = '#020305';
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // 渲染函数：通用波纹与溅射粒子
+  function renderRipplesAndSparks(dtFactor) {
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rip = ripples[i];
+      rip.r += rip.speed * dtFactor;
+      rip.alpha -= 0.016 * dtFactor;
+
+      if (rip.alpha <= 0 || rip.r >= rip.maxR) {
+        ripples.splice(i, 1);
+        continue;
+      }
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(rip.x, rip.y, rip.r, 0, Math.PI * 2);
+      ctx.strokeStyle = rip.color + rip.alpha + ')';
+      ctx.lineWidth = Math.max(1, 2.8 * rip.alpha);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (let i = sparkParticles.length - 1; i >= 0; i--) {
+      const p = sparkParticles[i];
+      p.x += p.vx * dtFactor;
+      p.y += p.vy * dtFactor;
+      p.vx *= 0.94;
+      p.vy *= 0.94;
+      p.alpha -= p.decay * dtFactor;
+
+      if (p.alpha <= 0) {
+        sparkParticles.splice(i, 1);
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(' + p.rgb.join(',') + ',' + p.alpha + ')';
+      ctx.fill();
     }
   }
 
-  animate();
-
-  // 3. 媒体源设置与响应
-  function applyMediaSource(sourcePath) {
-    if (!sourcePath || sourcePath.trim() === '') {
-      isVideoPlaying = false;
-      video.pause();
-      video.classList.remove('active');
-      video.src = '';
-      statusText.textContent = 'Aurora Particles Active';
-      if (!animationId) {
-        animate();
-      }
-      return;
-    }
-
-    const ext = sourcePath.split('.').pop().toLowerCase();
-    const isVideo = ['mp4', 'webm', 'ogg'].indexOf(ext) !== -1;
-    const mediaUrl = 'linwidget://wallpaper:lindesk.wallpaper/_media?path=' + encodeURIComponent(sourcePath);
-
-    if (isVideo) {
-      video.src = mediaUrl;
-      video.play().then(function () {
-        isVideoPlaying = true;
-        video.classList.add('active');
-        statusText.textContent = sourcePath.split(/[\\/]/).pop();
-        if (animationId) {
-          cancelAnimationFrame(animationId);
-          animationId = null;
-        }
-      }).catch(function (err) {
-        console.warn('Video play error:', err);
-        statusText.textContent = 'Play Error: ' + err.message;
-      });
-    } else {
-      // 图片直接作为视频海报背景或覆盖画布
-      video.pause();
-      video.classList.remove('active');
-      isVideoPlaying = false;
-      const img = new Image();
-      img.onload = function () {
-        ctx.drawImage(img, 0, 0, width, height);
-        statusText.textContent = sourcePath.split(/[\\/]/).pop();
-      };
-      img.src = mediaUrl;
-    }
-  }
-
-  // 4. 监听 C++ 主机消息响应
-  window.addEventListener('message', function (event) {
-    const data = event.data;
-    if (!data || typeof data !== 'object') return;
-
-    if (data.type === 'wallpaper_source_response' || data.type === 'wallpaper_source_changed') {
-      if (data.ok && data.sourcePath) {
-        applyMediaSource(data.sourcePath);
-      } else if (data.type === 'wallpaper_source_changed' && !data.ok) {
-        if (data.error) {
-          console.log('Wallpaper select cancelled or failed:', data.error);
+  // 7. 接收宿主消息响应
+  window.addEventListener('message', function (e) {
+    const data = e.data || {};
+    if (data.type === 'wallpaper_interactive_response' || data.type === 'wallpaper_interactive_changed') {
+      if (data.ok && typeof data.interactive === 'boolean') {
+        isInteractive = data.interactive;
+        if (!isInteractive) {
+          mouse.x = -1000;
+          mouse.y = -1000;
+          mouse.isDown = false;
         }
       }
     }
   });
 
-  // UI 按钮绑定
-  btnSelect.addEventListener('click', function () {
-    sendMessage('wallpaper_set_source', { dialog: true });
-  });
+  // 启动初始化
+  sendMessage('wallpaper_get_interactive', {});
+  requestAnimationFrame(animate);
 
-  btnReset.addEventListener('click', function () {
-    sendMessage('wallpaper_set_source', { filePath: '' });
-    applyMediaSource('');
-  });
-
-  // 初始化时请求已持久化的壁纸配置
-  sendMessage('wallpaper_get_source', {});
 })();

@@ -14,6 +14,15 @@ QStringList PermissionManager::normalizePermissions(const QStringList& permissio
     return result;
 }
 
+bool PermissionManager::isPermissionSupported(const QString& permission) const
+{
+    const QString p = permission.trimmed().toLower();
+    return p == QStringLiteral("network") ||
+           p == QStringLiteral("storage") ||
+           p == QStringLiteral("desktop") ||
+           p == QStringLiteral("clipboard");
+}
+
 bool PermissionManager::hasPermission(const QStringList& grantedPermissions, const QString& permission) const
 {
     return normalizePermissions(grantedPermissions).contains(permission.trimmed().toLower());

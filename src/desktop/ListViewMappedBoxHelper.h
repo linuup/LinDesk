@@ -100,6 +100,26 @@ public:
         view.m_mappedBoxFilePaths.remove(box->boxId());
     }
 
+    static inline void syncBoxVisibility(ListView* view, LinBox* box, bool raiseIfVisible = false)
+    {
+        if (!box) {
+            return;
+        }
+        const bool show = view ? view->desktopIconsVisible() : true;
+        if (show) {
+            if (!box->isVisible()) {
+                box->show();
+            }
+            if (raiseIfVisible) {
+                box->raise();
+            }
+        } else {
+            if (box->isVisible()) {
+                box->hide();
+            }
+        }
+    }
+
     static inline void loadMappedFolderItemsForBox(ListView& view, LinBox* box)
     {
         if (!box || !box->isFolderMapped()) {
@@ -120,8 +140,7 @@ public:
             view.m_mappedBoxFilePaths.remove(box->boxId());
             box->setMappedFolderLoading(false);
             box->refreshLayout();
-            box->show();
-            box->raise();
+            syncBoxVisibility(&view, box, true);
             box->update();
             return;
         }
@@ -189,12 +208,12 @@ public:
                         return;
                     }
                     if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
-                        boxPtr->show();
+                        syncBoxVisibility(viewPtr.data(), boxPtr.data(), false);
                         boxPtr->update();
                         return;
                     }
                     if (!boxPtr->isFolderMapped()) {
-                        boxPtr->show();
+                        syncBoxVisibility(viewPtr.data(), boxPtr.data(), false);
                         boxPtr->update();
                         return;
                     }
@@ -204,8 +223,7 @@ public:
                         viewPtr->m_mappedBoxFilePaths[boxId] = paths;
                         boxPtr->setMappedFolderLoading(false);
                         boxPtr->refreshLayout();
-                        boxPtr->show();
-                        boxPtr->raise();
+                        syncBoxVisibility(viewPtr.data(), boxPtr.data(), true);
                         boxPtr->update();
                         if (viewPtr) {
                             viewPtr->update(boxPtr->geometry().adjusted(-16, -16, 16, 16));
@@ -229,12 +247,12 @@ public:
                             return;
                         }
                         if (viewPtr->m_mappedBoxLoadRequestIds.value(boxId) != requestId) {
-                            boxPtr->show();
+                            syncBoxVisibility(viewPtr.data(), boxPtr.data(), false);
                             boxPtr->update();
                             return;
                         }
                         if (!boxPtr->isFolderMapped()) {
-                            boxPtr->show();
+                            syncBoxVisibility(viewPtr.data(), boxPtr.data(), false);
                             boxPtr->update();
                             return;
                         }
@@ -274,8 +292,7 @@ public:
 
                             boxPtr->setMappedFolderLoading(false);
                             boxPtr->refreshLayout();
-                            boxPtr->show();
-                            boxPtr->raise();
+                            syncBoxVisibility(viewPtr.data(), boxPtr.data(), true);
                             boxPtr->update();
                             if (viewPtr) {
                                 viewPtr->update(boxPtr->geometry().adjusted(-16, -16, 16, 16));

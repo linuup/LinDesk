@@ -28,7 +28,7 @@ LinDesk 是一款专为 Windows 平台打造的现代化桌面整理与 HTML 桌
    - **独立运行时与动态加载**：核心功能剥离为独立的 `LinWidgetRuntime.dll`，主程序 `LinDesk.exe` 零静态 CEF 链接，支持无组件裸跑或按需安装/卸载；
    - **CEF OSR 离屏合成**：彻底移除 WebView2，基于 Chromium Embedded Framework 实现每组件独立 OSR 离屏渲染实例，通过 `QPainter` 统一绘制管线直接将像素帧合成到底层，无任何子窗口 HWND 遮挡与黑边闪烁；
    - **双向通信协议**：支持原生 Bridge 拦截通道与兼容标准 `postMessage`，提供 `storage`（隔离持久化存储）、`systemInfo`（CPU/GPU/内存实时监控快照与推送）、`instance`（多实例管理）等能力，内置 `window.chrome.webview` 兼容垫片；
-   - **丰富内置组件**：内置 Clock（极简时钟）、SysMonitor（系统监控）、Weather（天气）、Notes（便签）、Timer（计时器）、Todo（待办清单）、NewsFeed（新闻订阅）、WaterTracker（饮水提醒）、CyberFan（赛博风扇）、ApiTester（接口测试），以及 **Wallpaper（全屏动态壁纸组件）**；
+   - **丰富内置组件**：内置 Clock（极简时钟）、SysMonitor（系统监控）、Weather（天气）、Notes（便签）、Timer（计时器）、Todo（待办清单）、WaterTracker（饮水提醒），以及 **Wallpaper（全屏动态壁纸组件）**；
    - **开发模式与热重载**：组件支持目录监听热刷新与工程一键打包安装。
 4. **系统级集成与扩展**
    - **Win11 原生右键菜单适配**：通过 `Win11MenuIsland` 独立宿主进程与 `Win11MenuBridge` 命名管道实现现代 Win11 桌面右键菜单原生呈现，无缝衔接 Shell New 与第三方菜单项；

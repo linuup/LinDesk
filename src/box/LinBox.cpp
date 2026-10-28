@@ -13,6 +13,7 @@
 #include <QApplication>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QWindow>
 #include <QStyleFactory>
@@ -1211,7 +1212,9 @@ void LinBox::moveEvent(QMoveEvent* event) {
             const QRect newRect(pos(), size());
             const QRect dirty = oldRect.united(newRect).adjusted(-12, -12, 12, 12);
             parent->update(dirty);
-            parent->repaint(dirty);
+            if (QWidget* host = parent->window(); host && host != parent) {
+                host->update(QRect(parent->mapTo(host, dirty.topLeft()), dirty.size()));
+            }
 
             // 追加：移动停止后强制同步刷新父窗口，消除半透明残影
             if (!m_moveRefreshTimer) {
@@ -1222,17 +1225,17 @@ void LinBox::moveEvent(QMoveEvent* event) {
                     if (QWidget* p = parentWidget()) {
                         const QRect d = geometry().adjusted(-16, -16, 16, 16);
                         p->update(d);
-                        p->repaint(d);   // 同步重绘，立即刷新合成缓冲
+                        if (QWidget* host = p->window(); host && host != p) {
+                            host->update(QRect(p->mapTo(host, d.topLeft()), d.size()));
+                        }
                     }
                     update();
-                    repaint();
                 });
             }
             m_moveRefreshTimer->start();
         }
     }
 
-    raise();
     QWidget::moveEvent(event);
     if (!m_isCapturingBackground && m_glassEffect && event->oldPos() != pos()) {
         scheduleBlurRefresh();
@@ -1756,6 +1759,7 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
 
                 if (isDragArea(mappedPos)) {
                     m_isMoving = true;
+                    raise();
                     m_dragStartPos = mouseEvent->globalPos();
                     m_dragStartGeometry = geometry();
                     m_geometryChangedDuringInteraction = false;
@@ -1853,6 +1857,7 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
         m_resizeDir = getResizeDir(event->pos());
         if (isDragArea(event->pos())) {
             m_isMoving = true;
+            raise();
             m_dragStartPos = event->globalPos();
             m_dragStartGeometry = geometry();
             m_geometryChangedDuringInteraction = false;
@@ -1911,18 +1916,16 @@ void LinBox::mouseMoveEvent(QMouseEvent* event) {
             }
         }
     } else if (m_isMoving) {
-        // 闂佽楠稿﹢閬嶅磻閻愬樊娓婚柛灞剧矋瀹曞鏌ｉ弬鍨倯妞ゆ挾鎳撻～妤勵槾濠殿喚鏁婚幃銉╂晲閸モ晝鐓嬮柣鐘叉处瑜板啳顤?
+        // 计算鼠标移动增量并更新盒子位置
         QPoint delta = event->globalPos() - m_dragStartPos;
         QPoint newPos = m_dragStartGeometry.topLeft() + delta;
         
-        // 缂傚倷绀侀ˇ鎶筋敋瑜庨幈銊╁煛閸涱厾顦梺缁橆殔閻楀﹪鎮￠埀顒佺箾鏉堝墽鍒扮紒澶婄埣閹?
+        // 仅在位置实际发生变化时触发移动与重绘
         if (pos() != newPos) {
             move(newPos);
             m_geometryChangedDuringInteraction = true;
             update();
         }
-        
-        // 闂備礁鎲￠悷顖涚濠靛枹娲锤濡も偓濡﹢鏌ｈ濡剧闂備礁鎼悧婊堝礈濠靛顥婇柍鍝勬噺閺咁剛鈧厜鍋撻柛鏇ㄤ簽缁辨岸姊虹粙璺ㄧ缂佸鎸抽幆鍥箥椤旂偓锛忛悷婊冪Х閵囨劖寰勯幇顒傤槺?
     } else {
         updateCursorShape(event->pos());
     }
@@ -1949,9 +1952,9 @@ void LinBox::mouseReleaseEvent(QMouseEvent* event) {
     if (shouldRefreshBlur) {
         updateBlurCache();
         if (QWidget* p = parentWidget()) {
-            p->repaint(geometry().adjusted(-16, -16, 16, 16));
+            p->update(geometry().adjusted(-16, -16, 16, 16));
         }
-        repaint();
+        update();
     }
     updateCursorShape(event->pos());
 }
@@ -2184,6 +2187,9 @@ bool LinBox::handleItemContextMenu(const QPoint& globalPos, const QPoint& boxPos
 }
 
 void LinBox::paintEvent(QPaintEvent* event) {
+    if (m_flashingForRefresh) {
+        return;
+    }
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     const QRegion dirtyRegion = event->region();
@@ -2276,6 +2282,21 @@ void LinBox::paintEvent(QPaintEvent* event) {
         p.restore();
     }
 
+}
+
+void LinBox::setRefreshFlashing(bool flashing)
+{
+    if (m_flashingForRefresh == flashing) {
+        return;
+    }
+    m_flashingForRefresh = flashing;
+    if (m_titleBar) {
+        m_titleBar->setVisible(!flashing);
+    }
+    if (m_scrollArea) {
+        m_scrollArea->setVisible(!flashing);
+    }
+    update();
 }
 
 void LinBox::beginItemSelection(const QPoint& contentPos)
@@ -4053,8 +4074,14 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
     } else {
         scm.DisplayBoxBackgroundContextMenu();
     }
-    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::boxBackground, nullptr);
-    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+    const bool filterEnabled = RightMenu::isShellMenuExclusionEnabled();
+    QElapsedTimer filterTimer;
+    filterTimer.start();
+    if (filterEnabled) {
+        const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::boxBackground, nullptr);
+        scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+    }
+    const qint64 filterLoadMs = filterTimer.elapsed();
     if (!contextPath.isEmpty()) {
         scm.setFilesystemDirectory(contextPath.toStdString());
     }
@@ -4136,7 +4163,7 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
     boxItems.push_back(destroyItem);
 
     // 2. Get shared actions from RightMenu and convert them
-    const auto sharedItems = RightMenu::getInstance()->filteredSharedBoxCustomMenuItems();
+    const auto& sharedItems = RightMenu::getInstance()->sharedBoxCustomMenuItems();
     if (!sharedItems.empty()) {
         items.insert(items.end(), sharedItems.begin(), sharedItems.end());
     }
@@ -4152,7 +4179,16 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
     }
 
     // Set custom items and show the native menu
-    scm.setCustomMenuItems(RightMenu::filterCustomItemsForExclusionKey(items, L"box_background"));
+    filterTimer.restart();
+    scm.setCustomMenuItems(filterEnabled
+        ? RightMenu::filterCustomItemsForExclusionKey(items, L"box_background")
+        : items);
+    const qint64 customFilterMs = filterTimer.elapsed();
+    qInfo() << "[LinBox] showCustomContextMenu prepared:"
+            << "contextPath=" << contextPath
+            << "filterEnabled=" << filterEnabled
+            << "filterLoadMs=" << filterLoadMs
+            << "customFilterMs=" << customFilterMs;
     scm.ShowMenu(ownerHwnd, position, nullptr,
         extendedVerbs ? ShellContextMenu::Flags::ExtendedVerbs : ShellContextMenu::Flags::Standard);
 }

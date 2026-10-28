@@ -334,19 +334,19 @@ QString shellMenuTypeTitle(const QList<ShellMenuRuleTypeOption>& options, const 
 int shellMenuDesktopPriority(const ShellMenuSnapshotItem& item)
 {
     const QString normalized = QString::fromStdWString(item.normalizedText).trimmed().toLower();
-    if (normalized == QStringLiteral("view") || normalized == QString::fromWCharArray(L"鏌ョ湅") || normalized == QString::fromWCharArray(L"瑙嗗浘")) {
+    if (normalized == QStringLiteral("view") || normalized == QString::fromWCharArray(L"查看") || normalized == QString::fromWCharArray(L"视图")) {
         return 0;
     }
-    if (normalized == QStringLiteral("sort by") || normalized == QString::fromWCharArray(L"鎺掑簭鏂瑰紡") || normalized == QString::fromWCharArray(L"鎺掑簭")) {
+    if (normalized == QStringLiteral("sort by") || normalized == QString::fromWCharArray(L"排序方式") || normalized == QString::fromWCharArray(L"排序")) {
         return 1;
     }
-    if (normalized == QStringLiteral("refresh") || normalized == QString::fromWCharArray(L"鍒锋柊")) {
+    if (normalized == QStringLiteral("refresh") || normalized == QString::fromWCharArray(L"刷新")) {
         return 2;
     }
-    if (normalized == QStringLiteral("paste") || normalized == QString::fromWCharArray(L"绮樿创")) {
+    if (normalized == QStringLiteral("paste") || normalized == QString::fromWCharArray(L"粘贴")) {
         return 3;
     }
-    if (normalized == QStringLiteral("paste shortcut") || normalized == QString::fromWCharArray(L"绮樿创蹇嵎鏂瑰紡")) {
+    if (normalized == QStringLiteral("paste shortcut") || normalized == QString::fromWCharArray(L"粘贴快捷方式")) {
         return 4;
     }
     return 100;
@@ -1057,7 +1057,12 @@ void SettingUI::initUI() {
     mainLayout->addWidget(sidebarContainer, 15);
     mainLayout->addWidget(rightArea, 85);
 
-    connect(m_sidebar, &QListWidget::currentRowChanged, m_contentStack, &QStackedWidget::setCurrentIndex);
+    connect(m_sidebar, &QListWidget::currentRowChanged, this, [this](int row) {
+        m_contentStack->setCurrentIndex(row);
+        if (row == 2 && m_shellTypeList && !m_shellTypeList->currentItem() && m_shellTypeList->count() > 0) {
+            m_shellTypeList->setCurrentRow(0);
+        }
+    });
     m_sidebar->setCurrentRow(0);
     updateSidebarItemHeights();
 }
@@ -1838,6 +1843,22 @@ QWidget* SettingUI::createContextMenuPage() {
     layout->addWidget(m_contextMenuPageTitle, 0, Qt::AlignLeft);
     layout->addSpacing(8);
 
+    QWidget* filterTogglePanel = createPanel(page);
+    filterTogglePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* filterToggleLayout = new QVBoxLayout(filterTogglePanel);
+    filterToggleLayout->setContentsMargins(22, 10, 22, 10);
+    filterToggleLayout->setSpacing(0);
+    FluentToggleSwitch* enableFilterToggle = new FluentToggleSwitch(filterTogglePanel);
+    enableFilterToggle->setChecked(RightMenu::isShellMenuExclusionEnabled());
+    filterToggleLayout->addWidget(createSwitchRow(
+        glyph(0xE71C),
+        tr("Enable Context Menu Filtering"),
+        tr("Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering."),
+        enableFilterToggle,
+        filterTogglePanel));
+    layout->addWidget(filterTogglePanel, 0);
+    layout->addSpacing(12);
+
     QWidget* shellExcludePanel = createPanel(page);
     shellExcludePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     shellExcludePanel->setMinimumHeight(620);
@@ -2195,6 +2216,7 @@ QWidget* SettingUI::createContextMenuPage() {
                         ShellMenuExclusionStore::add(key, entry);
                     }
                 }
+                RightMenu::getInstance()->invalidateCustomMenuCaches();
 
                 for (const int childRow : childRowsForParent(shellMenuTreeList, clickedRow)) {
                     QListWidgetItem* childItem = shellMenuTreeList->item(childRow);
@@ -2210,6 +2232,23 @@ QWidget* SettingUI::createContextMenuPage() {
             });
         }
     };
+
+    auto applyExclusionFilterAvailability = [=](bool filterEnabled) {
+        shellBody->setEnabled(filterEnabled);
+        addExtensionButton->setEnabled(filterEnabled);
+        copyRulesButton->setEnabled(filterEnabled);
+        applyRulesButton->setEnabled(filterEnabled);
+        QListWidgetItem* current = shellTypeList->currentItem() ? shellTypeList->currentItem() : customTypeList->currentItem();
+        const QString currentKey = current ? current->data(Qt::UserRole).toString() : QString();
+        const bool canRemoveType = isCustomExtensionKey(currentKey);
+        removeExtensionButton->setVisible(canRemoveType);
+        removeExtensionButton->setEnabled(filterEnabled && canRemoveType);
+    };
+
+    connect(enableFilterToggle, &FluentToggleSwitch::toggled, this, [=](bool checked) {
+        RightMenu::setShellMenuExclusionEnabled(checked);
+        applyExclusionFilterAvailability(checked);
+    });
 
     auto selectTypeKey = [=](QListWidgetItem* item) {
         if (!item) {
@@ -2227,7 +2266,7 @@ QWidget* SettingUI::createContextMenuPage() {
         refreshTypeTitle(key, item->text());
         const bool canRemoveType = isCustomExtensionKey(key);
         removeExtensionButton->setVisible(canRemoveType);
-        removeExtensionButton->setEnabled(canRemoveType);
+        removeExtensionButton->setEnabled(enableFilterToggle->checked() && canRemoveType);
         (*scanShellMenu)(key);
     };
 
@@ -2272,6 +2311,7 @@ QWidget* SettingUI::createContextMenuPage() {
 
         const QString targetKey = current->data(Qt::UserRole).toString();
         const int addedCount = ShellMenuExclusionStore::merge(targetKey, sourceEntries);
+        RightMenu::getInstance()->invalidateCustomMenuCaches();
         updateTreeFromExclusions(ShellMenuExclusionStore::load(targetKey));
         updateTreeStatusLabel(targetKey);
         shellExcludeStatusLabel->setText(tr("Copied %1 rules from %2.")
@@ -2361,6 +2401,7 @@ QWidget* SettingUI::createContextMenuPage() {
         for (const QString& targetKey : targetKeys) {
             addedCount += ShellMenuExclusionStore::merge(targetKey, sourceEntries);
         }
+        RightMenu::getInstance()->invalidateCustomMenuCaches();
         shellExcludeStatusLabel->setText(tr("Applied %1 rules to %2 types.")
             .arg(addedCount)
             .arg(targetKeys.size()));
@@ -2491,7 +2532,8 @@ QWidget* SettingUI::createContextMenuPage() {
         }
     });
 
-    shellTypeList->setCurrentRow(0);
+    m_shellTypeList = shellTypeList;
+    applyExclusionFilterAvailability(enableFilterToggle->checked());
     layout->addWidget(shellExcludePanel, 0);
     return page;
 }
@@ -3134,12 +3176,100 @@ QWidget* SettingUI::createLinWidgetsPage()
     topCardsLayout->addWidget(runtimePanel, 1);
 
     layout->addWidget(topCards);
-    layout->addSpacing(18);
+    layout->addSpacing(14);
 
-    m_linWidgetsTabs = new QTabWidget(page);
+    auto* subNavContainer = new QWidget(page);
+    subNavContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto* subNavLayout = new QHBoxLayout(subNavContainer);
+    subNavLayout->setContentsMargins(0, 0, 0, 0);
+    subNavLayout->setSpacing(8);
+
+    auto* segmentedBar = new QWidget(subNavContainer);
+    segmentedBar->setObjectName(QStringLiteral("linWidgetSubsystemBar"));
+    segmentedBar->setFixedHeight(38);
+    segmentedBar->setStyleSheet(QStringLiteral(
+        "QWidget#linWidgetSubsystemBar {"
+        "  background: #f1f5f9;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "}"));
+    auto* segmentedLayout = new QHBoxLayout(segmentedBar);
+    segmentedLayout->setContentsMargins(3, 3, 3, 3);
+    segmentedLayout->setSpacing(4);
+
+    m_subsystemWidgetsBtn = new QPushButton(tr("Desktop Widgets"), segmentedBar);
+    m_subsystemWidgetsBtn->setCursor(Qt::PointingHandCursor);
+    m_subsystemWidgetsBtn->setFixedHeight(30);
+
+    m_subsystemWallpaperBtn = new QPushButton(tr("Live Wallpaper"), segmentedBar);
+    m_subsystemWallpaperBtn->setCursor(Qt::PointingHandCursor);
+    m_subsystemWallpaperBtn->setFixedHeight(30);
+
+    auto updateSubsystemButtons = [this](int activeIndex) {
+        auto styleBtn = [](QPushButton* btn, bool active) {
+            btn->setStyleSheet(active ? QStringLiteral(
+                "QPushButton {"
+                "  background: #ffffff;"
+                "  color: #0f172a;"
+                "  font-weight: 700;"
+                "  font-size: 13px;"
+                "  border: 1px solid #cbd5e1;"
+                "  border-radius: 6px;"
+                "  padding: 0 16px;"
+                "}"
+            ) : QStringLiteral(
+                "QPushButton {"
+                "  background: transparent;"
+                "  color: #64748b;"
+                "  font-weight: 500;"
+                "  font-size: 13px;"
+                "  border: none;"
+                "  border-radius: 6px;"
+                "  padding: 0 16px;"
+                "}"
+                "QPushButton:hover {"
+                "  background: rgba(255, 255, 255, 0.6);"
+                "  color: #1e293b;"
+                "}"
+            ));
+        };
+        styleBtn(m_subsystemWidgetsBtn, activeIndex == 0);
+        styleBtn(m_subsystemWallpaperBtn, activeIndex == 1);
+        if (m_linWidgetSubsystemStack) {
+            m_linWidgetSubsystemStack->setCurrentIndex(activeIndex);
+        }
+        if (activeIndex == 1) {
+            refreshWallpaperSubsystemState();
+        }
+    };
+
+    connect(m_subsystemWidgetsBtn, &QPushButton::clicked, this, [updateSubsystemButtons]() {
+        updateSubsystemButtons(0);
+    });
+    connect(m_subsystemWallpaperBtn, &QPushButton::clicked, this, [updateSubsystemButtons]() {
+        updateSubsystemButtons(1);
+    });
+
+    segmentedLayout->addWidget(m_subsystemWidgetsBtn);
+    segmentedLayout->addWidget(m_subsystemWallpaperBtn);
+    subNavLayout->addWidget(segmentedBar);
+    subNavLayout->addStretch();
+
+    layout->addWidget(subNavContainer);
+    layout->addSpacing(10);
+
+    m_linWidgetSubsystemStack = new QStackedWidget(page);
+    layout->addWidget(m_linWidgetSubsystemStack, 1);
+
+    m_linWidgetsTabs = new QTabWidget(m_linWidgetSubsystemStack);
     m_linWidgetsTabs->setDocumentMode(true);
     m_linWidgetsTabs->setObjectName(QStringLiteral("linWidgetsTabs"));
-    layout->addWidget(m_linWidgetsTabs, 1);
+    m_linWidgetSubsystemStack->addWidget(m_linWidgetsTabs);
+
+    m_wallpaperSubsystemPage = createWallpaperSubsystemPage(m_linWidgetSubsystemStack);
+    m_linWidgetSubsystemStack->addWidget(m_wallpaperSubsystemPage);
+
+    updateSubsystemButtons(0);
 
     auto createListPage = [this, page](QListWidget*& list, const QString& title, const QString& subtitle) {
         auto* tab = new QWidget(page);
@@ -3396,6 +3526,126 @@ QWidget* SettingUI::createLinWidgetsPage()
     return page;
 }
 
+QWidget* SettingUI::createWallpaperSubsystemPage(QWidget* parent)
+{
+    auto* page = new QWidget(parent);
+    auto* layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 10, 0, 0);
+    layout->setSpacing(16);
+
+    auto* activePanel = createPanel(page);
+    activePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto* activeLayout = new QVBoxLayout(activePanel);
+    activeLayout->setContentsMargins(22, 18, 22, 18);
+    activeLayout->setSpacing(12);
+
+    auto* activeTopRow = new QHBoxLayout();
+    activeTopRow->setContentsMargins(0, 0, 0, 0);
+    activeTopRow->setSpacing(14);
+
+    m_wallpaperPreviewLabel = new QLabel(activePanel);
+    m_wallpaperPreviewLabel->setAlignment(Qt::AlignCenter);
+    m_wallpaperPreviewLabel->setFixedSize(52, 52);
+    m_wallpaperPreviewLabel->setStyleSheet(QStringLiteral(
+        "QLabel {"
+        "  color: #7c3aed;"
+        "  background: #f5f3ff;"
+        "  border: 1px solid #ddd6fe;"
+        "  border-radius: 12px;"
+        "  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+        "  font-size: 24px;"
+        "}"));
+    m_wallpaperPreviewLabel->setText(glyph(0xEB9F));
+    activeTopRow->addWidget(m_wallpaperPreviewLabel, 0, Qt::AlignVCenter);
+
+    auto* activeTextLayout = new QVBoxLayout();
+    activeTextLayout->setContentsMargins(0, 0, 0, 0);
+    activeTextLayout->setSpacing(3);
+
+    m_wallpaperActiveTitle = createCardTitle(tr("Live Wallpaper"), activePanel);
+    m_wallpaperActiveDesc = createCardSubtitle(tr("No live wallpaper currently active."), activePanel);
+    activeTextLayout->addWidget(m_wallpaperActiveTitle);
+    activeTextLayout->addWidget(m_wallpaperActiveDesc);
+    activeTopRow->addLayout(activeTextLayout, 1);
+
+    m_wallpaperStopBtn = createSettingsActionButton(tr("Stop Wallpaper"), activePanel, false, true);
+    m_wallpaperStopBtn->setEnabled(false);
+    connect(m_wallpaperStopBtn, &QPushButton::clicked, this, &SettingUI::stopActiveWallpaper);
+    activeTopRow->addWidget(m_wallpaperStopBtn, 0, Qt::AlignVCenter);
+    activeLayout->addLayout(activeTopRow);
+
+    layout->addWidget(activePanel, 0);
+
+    auto* galleryPanel = createPanel(page);
+    galleryPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto* galleryLayout = new QVBoxLayout(galleryPanel);
+    galleryLayout->setContentsMargins(22, 18, 22, 18);
+    galleryLayout->setSpacing(10);
+
+    galleryLayout->addWidget(createCardTitle(tr("Wallpaper Library"), galleryPanel));
+    galleryLayout->addWidget(createCardSubtitle(tr("Select an official or imported live wallpaper to apply to your desktop."), galleryPanel));
+
+    m_wallpaperList = new QListWidget(galleryPanel);
+    m_wallpaperList->setObjectName(QStringLiteral("linWidgetSettingsList"));
+    m_wallpaperList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_wallpaperList->setMinimumHeight(280);
+    m_wallpaperList->setWordWrap(true);
+    m_wallpaperList->setMouseTracking(true);
+    galleryLayout->addWidget(m_wallpaperList, 1);
+
+    layout->addWidget(galleryPanel, 1);
+    return page;
+}
+
+void SettingUI::refreshWallpaperSubsystemState()
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    const bool hasActive = bridge.isLoaded() && bridge.hasActiveWallpaper();
+    const QString activeId = hasActive ? bridge.activeWallpaperId() : QString();
+    const QString activePath = hasActive ? bridge.activeWallpaperPackagePath() : QString();
+
+    if (m_wallpaperStopBtn) {
+        m_wallpaperStopBtn->setEnabled(hasActive);
+    }
+
+    if (m_wallpaperActiveTitle && m_wallpaperActiveDesc) {
+        if (hasActive) {
+            LinWidget::WidgetManifest manifest;
+            QString name = activeId;
+            if (!activePath.isEmpty() && LinWidget::WidgetPackage::loadManifest(activePath, &manifest, nullptr)) {
+                name = manifest.name.isEmpty() ? activeId : manifest.name;
+            }
+            m_wallpaperActiveTitle->setText(tr("%1 (Active)").arg(name));
+            m_wallpaperActiveDesc->setText(tr("Live wallpaper is currently running on the background layer."));
+        } else {
+            m_wallpaperActiveTitle->setText(tr("Live Wallpaper (Inactive)"));
+            m_wallpaperActiveDesc->setText(tr("No live wallpaper currently active. Your desktop uses Windows wallpaper."));
+        }
+    }
+}
+
+void SettingUI::applyWallpaperPackage(const QString& packagePath, bool isDevelopment)
+{
+    Q_UNUSED(isDevelopment);
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
+        return;
+    }
+    bridge.startWallpaper(packagePath);
+    refreshWallpaperSubsystemState();
+    reloadLinWidgetsSettingsPage();
+}
+
+void SettingUI::stopActiveWallpaper()
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        bridge.stopWallpaper(true);
+    }
+    refreshWallpaperSubsystemState();
+    reloadLinWidgetsSettingsPage();
+}
+
 void SettingUI::reloadLinWidgetsSettingsPage()
 {
     if (!m_officialLinWidgetsList || !m_marketplaceLinWidgetsList || !m_installedLinWidgetsList || !m_developmentLinWidgetsList) {
@@ -3412,10 +3662,14 @@ void SettingUI::reloadLinWidgetsSettingsPage()
     m_marketplaceLinWidgetsList->clear();
     m_installedLinWidgetsList->clear();
     m_developmentLinWidgetsList->clear();
+    if (m_wallpaperList) {
+        m_wallpaperList->clear();
+    }
 
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
     registry.load(&registryError);
+    registry.syncOfficialWidgetsIfOutdated(runtimeLinWidgetsDirForSettings(), AppPaths::userLinWidgetsDir());
     registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
     registry.save(&registryError);
 
@@ -3477,6 +3731,68 @@ void SettingUI::reloadLinWidgetsSettingsPage()
             : tr("%1\nManifest error: %2\n%3").arg(entry.name.isEmpty() ? entry.id : entry.name, manifestError, entry.packagePath);
         item->setText(QString());
         item->setToolTip(displayText);
+
+        const bool isWallpaper = (entry.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) ||
+                                 (manifestOk && manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0);
+        if (isWallpaper) {
+            // Avoid letting stale AppData copy shadow the official bundled wallpaper gallery item
+            if (entry.id.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0 &&
+                !entry.isDevelopment &&
+                !entry.packagePath.contains(QStringLiteral("resources/LinWidgets"), Qt::CaseInsensitive)) {
+                continue;
+            }
+            if (m_wallpaperList) {
+                m_wallpaperList->addItem(item);
+                auto* row = createSettingsLinWidgetRow(m_wallpaperList,
+                                                       item,
+                                                       entry.id,
+                                                       entry.name,
+                                                       entry.version,
+                                                       entry.description,
+                                                       iconPath,
+                                                       entry.isDevelopment ? tr("Development") : tr("Installed"),
+                                                       m_wallpaperList,
+                                                       nullptr);
+                auto* rowLayout = qobject_cast<QHBoxLayout*>(row->layout());
+                auto& bridge = LinWidgetRuntimeBridge::instance();
+                const bool isCurrentlyActive = bridge.isLoaded() && bridge.hasActiveWallpaper() &&
+                    (bridge.activeWallpaperId().compare(entry.id, Qt::CaseInsensitive) == 0 ||
+                     bridge.activeWallpaperId().compare(QStringLiteral("wallpaper:") + entry.id, Qt::CaseInsensitive) == 0);
+
+                auto* applyButton = createSettingsActionButton(isCurrentlyActive ? tr("Active") : tr("Apply Wallpaper"), row, !isCurrentlyActive);
+                applyButton->setEnabled(!isCurrentlyActive);
+                rowLayout->addWidget(applyButton);
+                connect(applyButton, &QPushButton::clicked, this, [this, path = entry.packagePath, isDev = entry.isDevelopment]() {
+                    applyWallpaperPackage(path, isDev);
+                });
+
+                if (!entry.packagePath.contains(QStringLiteral("resources/LinWidgets"), Qt::CaseInsensitive)) {
+                    auto* uninstallButton = createSettingsActionButton(tr("Uninstall"), row, false, true);
+                    rowLayout->addWidget(uninstallButton);
+                    connect(uninstallButton, &QPushButton::clicked, this, [this, id = entry.id, path = entry.packagePath]() {
+                        auto& bridge = LinWidgetRuntimeBridge::instance();
+                        if (bridge.isLoaded() && bridge.hasActiveWallpaper()) {
+                            const QString activeId = bridge.activeWallpaperId();
+                            if (activeId.compare(id, Qt::CaseInsensitive) == 0 ||
+                                activeId.compare(QStringLiteral("wallpaper:") + id, Qt::CaseInsensitive) == 0) {
+                                bridge.stopWallpaper(true);
+                            }
+                        }
+                        auto& reg = LinWidget::WidgetRegistryManager::instance();
+                        reg.load();
+                        reg.removeById(id);
+                        reg.save();
+                        QString error;
+                        settingsRemoveDirectory(path, &error);
+                        reloadLinWidgetsSettingsPage();
+                    });
+                }
+
+                item->setSizeHint(QSize(0, 88));
+                m_wallpaperList->setItemWidget(item, row);
+            }
+            continue;
+        }
 
         if (entry.isDevelopment) {
             m_developmentLinWidgetsList->addItem(item);
@@ -3569,6 +3885,54 @@ void SettingUI::reloadLinWidgetsSettingsPage()
         LinWidget::WidgetManifest manifest;
         QString errorMessage;
         if (!LinWidget::WidgetPackage::loadManifest(entry.absoluteFilePath(), &manifest, &errorMessage)) {
+            continue;
+        }
+        if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            if (m_wallpaperList) {
+                bool alreadyInWallpaperList = false;
+                for (int i = 0; i < m_wallpaperList->count(); ++i) {
+                    if (m_wallpaperList->item(i)->data(SettingsLinWidgetRegistryIdRole).toString().compare(manifest.id, Qt::CaseInsensitive) == 0) {
+                        alreadyInWallpaperList = true;
+                        break;
+                    }
+                }
+                if (!alreadyInWallpaperList) {
+                    const QString wallIconPath = settingsResolveWidgetIconPath(entry.absoluteFilePath(), manifest.icon);
+                    auto* wallItem = new QListWidgetItem();
+                    wallItem->setData(SettingsLinWidgetPackagePathRole, entry.absoluteFilePath());
+                    wallItem->setData(SettingsLinWidgetRegistryIdRole, manifest.id);
+                    wallItem->setData(SettingsLinWidgetNameRole, manifest.name);
+                    wallItem->setData(SettingsLinWidgetVersionRole, manifest.version);
+                    wallItem->setData(SettingsLinWidgetAuthorRole, manifest.author);
+                    wallItem->setData(SettingsLinWidgetDescriptionRole, manifest.description);
+                    wallItem->setData(SettingsLinWidgetIconPathRole, wallIconPath);
+                    m_wallpaperList->addItem(wallItem);
+                    auto* row = createSettingsLinWidgetRow(m_wallpaperList,
+                                                           wallItem,
+                                                           manifest.id,
+                                                           manifest.name,
+                                                           manifest.version,
+                                                           manifest.description,
+                                                           wallIconPath,
+                                                           tr("Official"),
+                                                           m_wallpaperList,
+                                                           nullptr);
+                    auto* rowLayout = qobject_cast<QHBoxLayout*>(row->layout());
+                    auto& bridge = LinWidgetRuntimeBridge::instance();
+                    const bool isCurrentlyActive = bridge.isLoaded() && bridge.hasActiveWallpaper() &&
+                        (bridge.activeWallpaperId().compare(manifest.id, Qt::CaseInsensitive) == 0 ||
+                         bridge.activeWallpaperId().compare(QStringLiteral("wallpaper:") + manifest.id, Qt::CaseInsensitive) == 0);
+
+                    auto* applyButton = createSettingsActionButton(isCurrentlyActive ? tr("Active") : tr("Apply Wallpaper"), row, !isCurrentlyActive);
+                    applyButton->setEnabled(!isCurrentlyActive);
+                    rowLayout->addWidget(applyButton);
+                    connect(applyButton, &QPushButton::clicked, this, [this, path = entry.absoluteFilePath()]() {
+                        applyWallpaperPackage(path, false);
+                    });
+                    wallItem->setSizeHint(QSize(0, 88));
+                    m_wallpaperList->setItemWidget(wallItem, row);
+                }
+            }
             continue;
         }
         const QString iconPath = settingsResolveWidgetIconPath(entry.absoluteFilePath(), manifest.icon);
@@ -3779,6 +4143,7 @@ void SettingUI::reloadLinWidgetsSettingsPage()
 void SettingUI::refreshLinWidgetSettingsButtons()
 {
     refreshLinWidgetSettingsRunningMaps();
+    refreshWallpaperSubsystemState();
     const QString packagePath = selectedSettingsLinWidgetPackagePath();
     const bool hasSelection = !packagePath.isEmpty();
     const bool running = !selectedSettingsLinWidgetInstanceId().isEmpty();
@@ -4369,28 +4734,59 @@ void SettingUI::refreshLinWidgetSettingsRunningMaps()
     m_linWidgetInstancesById.clear();
     m_linWidgetInstanceCountsById.clear();
 
-    QVector<LinWidget::WidgetLayoutState> states;
-    LinWidget::ConfigManager::loadLayout(LinWidget::ConfigManager::defaultConfigPath(), &states, nullptr);
-
-    for (const LinWidget::WidgetLayoutState& state : states) {
-        if (!state.visible) {
-            continue;
-        }
-        m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(state.packagePath), state.instanceId);
-        const bool isDevelopment = state.isDevelopment || state.instanceId.startsWith(QStringLiteral("dev:"));
-        QString registryId = state.registryId;
-        LinWidget::WidgetManifest manifest;
-        if (registryId.isEmpty() && LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
-            registryId = manifest.id;
-        }
-        if (!registryId.isEmpty()) {
-            const QString key = settingsLinWidgetRegistryKey(registryId, isDevelopment);
-            m_linWidgetInstancesById.insert(key, state.instanceId);
-            m_linWidgetInstanceCountsById.insert(key, m_linWidgetInstanceCountsById.value(key, 0) + 1);
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    bool loadedFromRuntime = false;
+    if (bridge.isLoaded()) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("list"));
+        const QJsonObject resp = bridge.queryWidgetManager(req);
+        const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+        if (!widgets.isEmpty()) {
+            loadedFromRuntime = true;
+            for (const QJsonValue& val : widgets) {
+                const QJsonObject obj = val.toObject();
+                const QString regId = obj.value(QStringLiteral("id")).toString().trimmed().toLower();
+                const QString packagePath = obj.value(QStringLiteral("packagePath")).toString();
+                const bool isDev = obj.value(QStringLiteral("isDevelopment")).toBool();
+                const QString key = settingsLinWidgetRegistryKey(regId, isDev);
+                const QJsonArray runningIds = obj.value(QStringLiteral("runningInstanceIds")).toArray();
+                if (!runningIds.isEmpty()) {
+                    for (const QJsonValue& idVal : runningIds) {
+                        const QString instId = idVal.toString();
+                        m_linWidgetInstancesById.insert(key, instId);
+                        if (!packagePath.isEmpty()) {
+                            m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(packagePath), instId);
+                        }
+                    }
+                    m_linWidgetInstanceCountsById.insert(key, runningIds.size());
+                }
+            }
         }
     }
 
-    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!loadedFromRuntime) {
+        QVector<LinWidget::WidgetLayoutState> states;
+        LinWidget::ConfigManager::loadLayout(LinWidget::ConfigManager::defaultConfigPath(), &states, nullptr);
+
+        for (const LinWidget::WidgetLayoutState& state : states) {
+            if (!state.visible) {
+                continue;
+            }
+            m_linWidgetInstancesByPackage.insert(settingsLinWidgetPackageKey(state.packagePath), state.instanceId);
+            const bool isDevelopment = state.isDevelopment || state.instanceId.startsWith(QStringLiteral("dev:"));
+            QString registryId = state.registryId;
+            LinWidget::WidgetManifest manifest;
+            if (registryId.isEmpty() && LinWidget::WidgetPackage::loadManifest(state.packagePath, &manifest, nullptr)) {
+                registryId = manifest.id;
+            }
+            if (!registryId.isEmpty()) {
+                const QString key = settingsLinWidgetRegistryKey(registryId, isDevelopment);
+                m_linWidgetInstancesById.insert(key, state.instanceId);
+                m_linWidgetInstanceCountsById.insert(key, m_linWidgetInstanceCountsById.value(key, 0) + 1);
+            }
+        }
+    }
+
     if (bridge.isLoaded() && bridge.hasActiveWallpaper()) {
         const QString activePath = bridge.activeWallpaperPackagePath();
         const QString activeId = bridge.activeWallpaperId();
@@ -4460,24 +4856,56 @@ void SettingUI::loadSelectedSettingsLinWidget()
 
 void SettingUI::unloadSelectedSettingsLinWidget()
 {
-    const QString instanceId = selectedSettingsLinWidgetInstanceId();
-    if (instanceId.isEmpty()) {
-        refreshLinWidgetSettingsButtons();
-        return;
-    }
     const QString registryId = selectedSettingsLinWidgetRegistryId();
     const bool isDevelopment = selectedSettingsLinWidgetIsDevelopment();
+    const QString registryKey = selectedSettingsLinWidgetRegistryKey();
+    QString instanceId = selectedSettingsLinWidgetInstanceId();
+    const QString packagePath = selectedSettingsLinWidgetPackagePath();
 
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (bridge.isLoaded()) {
-        bridge.stopWidget(instanceId);
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("list"));
+        const QJsonObject resp = bridge.queryWidgetManager(req);
+        const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+        QStringList instancesToStop;
+        for (const QJsonValue& val : widgets) {
+            const QJsonObject obj = val.toObject();
+            if (obj.value(QStringLiteral("id")).toString().compare(registryId, Qt::CaseInsensitive) == 0 &&
+                obj.value(QStringLiteral("isDevelopment")).toBool() == isDevelopment) {
+                const QJsonArray runningIds = obj.value(QStringLiteral("runningInstanceIds")).toArray();
+                for (const QJsonValue& idVal : runningIds) {
+                    instancesToStop.append(idVal.toString());
+                }
+            }
+        }
+        if (instancesToStop.isEmpty() && !instanceId.isEmpty()) {
+            instancesToStop.append(instanceId);
+        }
+        if (instancesToStop.isEmpty() && !registryKey.isEmpty()) {
+            instancesToStop.append(registryKey);
+        }
+
+        for (const QString& id : instancesToStop) {
+            bridge.stopWidget(id);
+        }
     }
+
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     registry.load();
-    registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
-    registry.save();
+    if (!registryId.isEmpty()) {
+        registry.setLastRunState(registryId, isDevelopment, QStringLiteral("stopped"));
+        registry.save();
+    }
+
+    m_linWidgetInstancesById.remove(registryKey);
+    m_linWidgetInstanceCountsById.remove(registryKey);
+    if (!packagePath.isEmpty()) {
+        m_linWidgetInstancesByPackage.remove(settingsLinWidgetPackageKey(packagePath));
+    }
+
     if (m_linWidgetsStatusLabel) {
-        m_linWidgetsStatusLabel->setText(tr("Unloaded widget: %1").arg(instanceId));
+        m_linWidgetsStatusLabel->setText(tr("Unloaded widget: %1").arg(!registryId.isEmpty() ? registryId : instanceId));
     }
     reloadLinWidgetsSettingsPage();
 }
@@ -4886,24 +5314,53 @@ void SettingUI::setSettingsLinWidgetPermission(const QString& registryId,
 
 QListWidget* SettingUI::activeSettingsLinWidgetList() const
 {
+    if (m_linWidgetSubsystemStack && m_linWidgetSubsystemStack->currentIndex() == 1) {
+        if (m_wallpaperList && m_wallpaperList->currentItem()) {
+            return m_wallpaperList;
+        }
+    }
+
     const int tabIndex = m_linWidgetsTabs ? m_linWidgetsTabs->currentIndex() : -1;
+    if (tabIndex == 0 && m_officialLinWidgetsList && m_officialLinWidgetsList->currentItem()) {
+        return m_officialLinWidgetsList;
+    }
+    if (tabIndex == 1 && m_marketplaceLinWidgetsList && m_marketplaceLinWidgetsList->currentItem()) {
+        return m_marketplaceLinWidgetsList;
+    }
     if (tabIndex == 2 && m_installedLinWidgetsList && m_installedLinWidgetsList->currentItem()) {
         return m_installedLinWidgetsList;
     }
     if (tabIndex == 3 && m_developmentLinWidgetsList && m_developmentLinWidgetsList->currentItem()) {
         return m_developmentLinWidgetsList;
     }
+
     if (m_installedLinWidgetsList && !m_installedLinWidgetsList->selectedItems().isEmpty() && m_installedLinWidgetsList->currentItem()) {
         return m_installedLinWidgetsList;
+    }
+    if (m_officialLinWidgetsList && !m_officialLinWidgetsList->selectedItems().isEmpty() && m_officialLinWidgetsList->currentItem()) {
+        return m_officialLinWidgetsList;
     }
     if (m_developmentLinWidgetsList && !m_developmentLinWidgetsList->selectedItems().isEmpty() && m_developmentLinWidgetsList->currentItem()) {
         return m_developmentLinWidgetsList;
     }
+    if (m_wallpaperList && !m_wallpaperList->selectedItems().isEmpty() && m_wallpaperList->currentItem()) {
+        return m_wallpaperList;
+    }
+    if (m_marketplaceLinWidgetsList && !m_marketplaceLinWidgetsList->selectedItems().isEmpty() && m_marketplaceLinWidgetsList->currentItem()) {
+        return m_marketplaceLinWidgetsList;
+    }
+
     if (m_installedLinWidgetsList && m_installedLinWidgetsList->currentItem()) {
         return m_installedLinWidgetsList;
     }
+    if (m_officialLinWidgetsList && m_officialLinWidgetsList->currentItem()) {
+        return m_officialLinWidgetsList;
+    }
     if (m_developmentLinWidgetsList && m_developmentLinWidgetsList->currentItem()) {
         return m_developmentLinWidgetsList;
+    }
+    if (m_wallpaperList && m_wallpaperList->currentItem()) {
+        return m_wallpaperList;
     }
     return nullptr;
 }

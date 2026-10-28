@@ -91,6 +91,183 @@ bool isSafeRelativePath(const QString& path)
     }
     return true;
 }
+
+QString normalizeSettingFieldType(const QString& rawType, bool hasEnumOptions)
+{
+    const QString lowered = rawType.trimmed().toLower();
+    if (lowered == QStringLiteral("bool") || lowered == QStringLiteral("boolean") || lowered == QStringLiteral("switch")) {
+        return QStringLiteral("boolean");
+    }
+    if (lowered == QStringLiteral("int") || lowered == QStringLiteral("integer")) {
+        return QStringLiteral("integer");
+    }
+    if (lowered == QStringLiteral("number") || lowered == QStringLiteral("float") || lowered == QStringLiteral("double")) {
+        return QStringLiteral("number");
+    }
+    if (lowered == QStringLiteral("select") || lowered == QStringLiteral("enum") || (hasEnumOptions && lowered == QStringLiteral("string"))) {
+        return QStringLiteral("select");
+    }
+    if (lowered == QStringLiteral("color") || lowered == QStringLiteral("colour")) {
+        return QStringLiteral("color");
+    }
+    if (lowered == QStringLiteral("string") || lowered == QStringLiteral("text") || lowered.isEmpty()) {
+        return hasEnumOptions ? QStringLiteral("select") : QStringLiteral("string");
+    }
+    return QString();
+}
+
+bool parseSingleSettingField(const QJsonObject& itemObj, const QString& fallbackKey, WidgetSettingField* outField, QString* errorMessage)
+{
+    if (!outField) {
+        return false;
+    }
+    WidgetSettingField field;
+    field.key = itemObj.value(QStringLiteral("key")).toString().trimmed();
+    if (field.key.isEmpty()) {
+        field.key = itemObj.value(QStringLiteral("id")).toString().trimmed();
+    }
+    if (field.key.isEmpty()) {
+        field.key = fallbackKey.trimmed();
+    }
+    if (field.key.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget manifest settingsSchema field is missing key.");
+        }
+        return false;
+    }
+
+    const QJsonValue optionsVal = itemObj.contains(QStringLiteral("options"))
+        ? itemObj.value(QStringLiteral("options"))
+        : itemObj.value(QStringLiteral("enum"));
+    if (optionsVal.isArray()) {
+        const QJsonArray optArray = optionsVal.toArray();
+        const QJsonArray enumNames = itemObj.value(QStringLiteral("enumNames")).toArray();
+        for (int i = 0; i < optArray.size(); ++i) {
+            const QJsonValue& opt = optArray.at(i);
+            WidgetSettingOption option;
+            if (opt.isObject()) {
+                const QJsonObject optObj = opt.toObject();
+                option.value = optObj.value(QStringLiteral("value")).toVariant().toString();
+                option.label = optObj.value(QStringLiteral("label")).toString(option.value);
+            } else {
+                option.value = opt.toVariant().toString();
+                if (i < enumNames.size() && enumNames.at(i).isString()) {
+                    option.label = enumNames.at(i).toString();
+                } else {
+                    option.label = option.value;
+                }
+            }
+            if (!option.value.isEmpty()) {
+                field.options.append(option);
+            }
+        }
+    }
+
+    const QString rawType = itemObj.value(QStringLiteral("type")).toString();
+    field.type = normalizeSettingFieldType(rawType, !field.options.isEmpty());
+    if (field.type.isEmpty()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget manifest settingsSchema field '%1' has unsupported type '%2'.").arg(field.key, rawType);
+        }
+        return false;
+    }
+
+    field.title = itemObj.value(QStringLiteral("title")).toString().trimmed();
+    if (field.title.isEmpty()) {
+        field.title = itemObj.value(QStringLiteral("label")).toString().trimmed();
+    }
+    if (field.title.isEmpty()) {
+        field.title = field.key;
+    }
+    field.description = itemObj.value(QStringLiteral("description")).toString().trimmed();
+    field.defaultValue = itemObj.contains(QStringLiteral("default"))
+        ? itemObj.value(QStringLiteral("default"))
+        : itemObj.value(QStringLiteral("defaultValue"));
+
+    const QJsonValue minVal = itemObj.contains(QStringLiteral("minimum"))
+        ? itemObj.value(QStringLiteral("minimum"))
+        : itemObj.value(QStringLiteral("min"));
+    if (minVal.isDouble()) {
+        field.minimum = minVal.toDouble();
+        field.hasMin = true;
+    }
+
+    const QJsonValue maxVal = itemObj.contains(QStringLiteral("maximum"))
+        ? itemObj.value(QStringLiteral("maximum"))
+        : itemObj.value(QStringLiteral("max"));
+    if (maxVal.isDouble()) {
+        field.maximum = maxVal.toDouble();
+        field.hasMax = true;
+    }
+
+    if (field.hasMin && field.hasMax && field.maximum < field.minimum) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Widget manifest settingsSchema field '%1' has maximum less than minimum.").arg(field.key);
+        }
+        return false;
+    }
+
+    *outField = field;
+    return true;
+}
+
+bool parseSettingsSchema(const QJsonValue& schemaValue, QVector<WidgetSettingField>* outSchema, QString* errorMessage)
+{
+    if (!outSchema) {
+        return false;
+    }
+    outSchema->clear();
+    if (schemaValue.isUndefined() || schemaValue.isNull()) {
+        return true;
+    }
+
+    if (schemaValue.isArray()) {
+        const QJsonArray arr = schemaValue.toArray();
+        for (const QJsonValue& item : arr) {
+            if (!item.isObject()) {
+                if (errorMessage) {
+                    *errorMessage = QStringLiteral("Widget manifest settingsSchema array items must be objects.");
+                }
+                return false;
+            }
+            WidgetSettingField field;
+            if (!parseSingleSettingField(item.toObject(), QString(), &field, errorMessage)) {
+                return false;
+            }
+            outSchema->append(field);
+        }
+        return true;
+    }
+
+    if (schemaValue.isObject()) {
+        const QJsonObject rootObj = schemaValue.toObject();
+        const QJsonObject propsObj = rootObj.value(QStringLiteral("properties")).isObject()
+            ? rootObj.value(QStringLiteral("properties")).toObject()
+            : rootObj;
+        for (auto it = propsObj.begin(); it != propsObj.end(); ++it) {
+            if (it.key() == QStringLiteral("type") && it.value().isString()) {
+                continue;
+            }
+            if (!it.value().isObject()) {
+                if (errorMessage) {
+                    *errorMessage = QStringLiteral("Widget manifest settingsSchema property '%1' must be an object.").arg(it.key());
+                }
+                return false;
+            }
+            WidgetSettingField field;
+            if (!parseSingleSettingField(it.value().toObject(), it.key(), &field, errorMessage)) {
+                return false;
+            }
+            outSchema->append(field);
+        }
+        return true;
+    }
+
+    if (errorMessage) {
+        *errorMessage = QStringLiteral("Widget manifest field settingsSchema must be an array or object.");
+    }
+    return false;
+}
 }
 
 QString runtimeTypeToString(RuntimeType type)
@@ -128,12 +305,47 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("role"), manifest.role);
     object.insert(QStringLiteral("transparent"), manifest.transparent);
     object.insert(QStringLiteral("resizable"), manifest.resizable);
+    object.insert(QStringLiteral("interactive"), manifest.interactive);
     object.insert(QStringLiteral("autoLoad"), manifest.autoLoad);
     object.insert(QStringLiteral("multiInstance"), manifest.multiInstance);
     object.insert(QStringLiteral("entry"), manifest.entry);
     object.insert(QStringLiteral("settings"), manifest.settings);
     object.insert(QStringLiteral("icon"), manifest.icon);
     object.insert(QStringLiteral("permissions"), permissions);
+
+    if (!manifest.settingsSchema.isEmpty()) {
+        QJsonArray schemaArray;
+        for (const WidgetSettingField& field : manifest.settingsSchema) {
+            QJsonObject fieldObj;
+            fieldObj.insert(QStringLiteral("key"), field.key);
+            fieldObj.insert(QStringLiteral("type"), field.type);
+            fieldObj.insert(QStringLiteral("title"), field.title);
+            if (!field.description.isEmpty()) {
+                fieldObj.insert(QStringLiteral("description"), field.description);
+            }
+            if (!field.defaultValue.isUndefined()) {
+                fieldObj.insert(QStringLiteral("default"), field.defaultValue);
+            }
+            if (field.hasMin) {
+                fieldObj.insert(QStringLiteral("minimum"), field.minimum);
+            }
+            if (field.hasMax) {
+                fieldObj.insert(QStringLiteral("maximum"), field.maximum);
+            }
+            if (!field.options.isEmpty()) {
+                QJsonArray opts;
+                for (const WidgetSettingOption& opt : field.options) {
+                    QJsonObject optObj;
+                    optObj.insert(QStringLiteral("label"), opt.label);
+                    optObj.insert(QStringLiteral("value"), opt.value);
+                    opts.append(optObj);
+                }
+                fieldObj.insert(QStringLiteral("options"), opts);
+            }
+            schemaArray.append(fieldObj);
+        }
+        object.insert(QStringLiteral("settingsSchema"), schemaArray);
+    }
     return object;
 }
 
@@ -190,6 +402,7 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         !readInt(object, QStringLiteral("maxHeight"), 0, &parsed.maxHeight, errorMessage) ||
         !readBool(object, QStringLiteral("transparent"), true, &parsed.transparent, errorMessage) ||
         !readBool(object, QStringLiteral("resizable"), true, &parsed.resizable, errorMessage) ||
+        !readBool(object, QStringLiteral("interactive"), parsed.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0, &parsed.interactive, errorMessage) ||
         !readBool(object, QStringLiteral("autoLoad"), false, &parsed.autoLoad, errorMessage) ||
         !readBool(object, QStringLiteral("multiInstance"), false, &parsed.multiInstance, errorMessage)) {
         return false;
@@ -299,6 +512,9 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         if (errorMessage) {
             *errorMessage = QStringLiteral("Widget manifest icon must be a safe relative path.");
         }
+        return false;
+    }
+    if (!parseSettingsSchema(object.value(QStringLiteral("settingsSchema")), &parsed.settingsSchema, errorMessage)) {
         return false;
     }
 

@@ -975,6 +975,14 @@
         <translation>Right Menu</translation>
     </message>
     <message>
+        <source>Enable Context Menu Filtering</source>
+        <translation>Enable Context Menu Filtering</translation>
+    </message>
+    <message>
+        <source>Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering.</source>
+        <translation>Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering.</translation>
+    </message>
+    <message>
         <source>Shell Menu Exclusions</source>
         <translation>Right Menu Exclusions</translation>
     </message>

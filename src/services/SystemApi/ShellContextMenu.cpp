@@ -16,6 +16,65 @@
 #include <mutex>
 
 namespace {
+class ShellMenuSite : public IServiceProvider, public IOleWindow
+{
+public:
+    HWND m_hwndOwner = nullptr;
+    std::atomic<ULONG> m_refCount{1};
+
+    explicit ShellMenuSite(HWND hwnd = nullptr) : m_hwndOwner(hwnd) {}
+
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_IServiceProvider) {
+            *ppv = static_cast<IServiceProvider*>(this);
+            AddRef();
+            return S_OK;
+        }
+        if (riid == IID_IOleWindow) {
+            *ppv = static_cast<IOleWindow*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() override {
+        return m_refCount.fetch_add(1) + 1;
+    }
+
+    STDMETHODIMP_(ULONG) Release() override {
+        ULONG ref = m_refCount.fetch_sub(1) - 1;
+        if (ref == 0) {
+            delete this;
+        }
+        return ref;
+    }
+
+    STDMETHODIMP QueryService(REFGUID guidService, REFIID riid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        if (guidService == SID_SFolderView || guidService == SID_SShellBrowser) {
+            return E_NOINTERFACE;
+        }
+        if (riid == IID_IOleWindow) {
+            *ppv = static_cast<IOleWindow*>(this);
+            AddRef();
+            return S_OK;
+        }
+        return QueryInterface(riid, ppv);
+    }
+
+    STDMETHODIMP GetWindow(HWND* phwnd) override {
+        if (!phwnd) return E_POINTER;
+        *phwnd = m_hwndOwner;
+        return S_OK;
+    }
+
+    STDMETHODIMP ContextSensitiveHelp(BOOL) override {
+        return E_NOTIMPL;
+    }
+};
 constexpr wchar_t kShellMenuExclusionSection[] = L"ShellMenuExclusions";
 
 HBITMAP CopyMenuBitmap(HBITMAP source)
@@ -1936,7 +1995,7 @@ std::vector<ShellMenuSnapshotItem> ShellContextMenu::SnapshotMenuForExclusionKey
         0,
         MIN_SHELL_MENU_ID,
         MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+        CMF_NORMAL | CMF_CANRENAME);
     if (FAILED(queryHr)) {
         EmitDesktopShellMenuListLine(logTag.c_str(), L"QueryContextMenu failed hr=" + std::to_wstring(static_cast<long>(queryHr)));
         return {};
@@ -2006,83 +2065,57 @@ void ShellContextMenu::DisplayBoxBackgroundContextMenu(const std::wstring& folde
     }
 }
 
-void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl)
+void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl, HWND hwndOwner)
 {
     m_contextMenu = nullptr;
-    if (pidl && operationType != OperationType::BackGround && operationType != OperationType::boxBackground) {
-        if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
-            return;
-        }
-        wil::com_ptr_nothrow<IContextMenu> contextMenu;
-        HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, contextMenu.put_void());
-        if (FAILED(hr))
-        {
-            OutputDebugString(L"Failed to get the file's IContextMenu interface.");
-            return;
-        }
-        //Get object Menu interface
-        m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pShellFolder.get());
+    if (!pidl || operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
+        return;
     }
+    if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
+        return;
+    }
+    m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pDesktopFolder.get(), hwndOwner);
 }
 
 void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
     m_contextMenu = nullptr;
     operationType = OperationType::link;
-    //
-    m_pShellFolder = GetIshellFolderByPath(path);
-    if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
-        return;
+    if (!path || !*path) return;
+    if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) return;
+
+    unique_pidl_absolute itemPidl;
+    HRESULT hr = SHParseDisplayName(path, nullptr, wil::out_param(itemPidl), 0, nullptr);
+    if (SUCCEEDED(hr) && itemPidl) {
+        DisplayItemContextMenu(itemPidl.get(), nullptr);
     }
-    wil::com_ptr_nothrow<IContextMenu> contextMenu;
-    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, contextMenu.put_void());
-    if (FAILED(hr))
-    {
-        OutputDebugString(L"Failed to get the file's IContextMenu interface.");
-        return;
-    }
-    //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL.get(), m_pShellFolder.get());
-    
 }
 
 void ShellContextMenu::DisplayFileContextMenu(const wchar_t* path)
 {
     m_contextMenu = nullptr;
     operationType = OperationType::file;
-    m_pShellFolder = GetIshellFolderByPath(path);
-    if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
-        return;
+    if (!path || !*path) return;
+    if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) return;
+
+    unique_pidl_absolute itemPidl;
+    HRESULT hr = SHParseDisplayName(path, nullptr, wil::out_param(itemPidl), 0, nullptr);
+    if (SUCCEEDED(hr) && itemPidl) {
+        DisplayItemContextMenu(itemPidl.get(), nullptr);
     }
-    wil::com_ptr_nothrow<IContextMenu> contextMenu;
-    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, contextMenu.put_void());
-    if (FAILED(hr))
-    {
-        OutputDebugString(L"Failed to get the file's IContextMenu interface.");
-        return;
-    }
-    //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL.get(), m_pShellFolder.get());
-    
 }
 
 void ShellContextMenu::DisplayFolderContextMenu(const wchar_t* folderPath)
 {
     m_contextMenu = nullptr;
     operationType = OperationType::folder;
-    //鑾峰彇ShellFolder鎺ュ彛
-    m_pShellFolder = GetIshellFolderByPath(folderPath);
-    if (!m_pShellFolder || !m_pDesktopFolder || !m_pPIDL) {
-        return;
+    if (!folderPath || !*folderPath) return;
+    if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) return;
+
+    unique_pidl_absolute itemPidl;
+    HRESULT hr = SHParseDisplayName(folderPath, nullptr, wil::out_param(itemPidl), 0, nullptr);
+    if (SUCCEEDED(hr) && itemPidl) {
+        DisplayItemContextMenu(itemPidl.get(), nullptr);
     }
-    wil::com_ptr_nothrow<IContextMenu> contextMenu;
-    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&m_pPIDL, IID_IContextMenu, NULL, contextMenu.put_void());
-    if (FAILED(hr))
-    {
-        OutputDebugString(L"Failed to get the file's IContextMenu interface.");
-        return;
-    }
-    //Get object Menu interface
-    m_contextMenu = IContextMenuFromIShellFolder(m_pPIDL.get(), m_pShellFolder.get());
 }
 
 void ShellContextMenu::DisplaySpecialFolderContextMenu(SpecialFolders sf)
@@ -2311,7 +2344,7 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
     }
 
     const HRESULT queryHr = m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
+        CMF_NORMAL | CMF_CANRENAME);
     if (FAILED(queryHr)) {
         return false;
     }
@@ -2409,14 +2442,19 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     // 鍒涘缓 WindowSubclassWrapper 瀹炰緥
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
-    const UINT queryFlags = CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME
+    const UINT queryFlags = CMF_NORMAL | CMF_CANRENAME
         | ((flags & Flags::ExtendedVerbs) != Flags::Standard ? CMF_EXTENDEDVERBS : 0);
+    QElapsedTimer queryTimer;
+    queryTimer.start();
     HRESULT queryHr = SafeQueryContextMenu(m_contextMenu.get(), hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
         queryFlags);
+    const qint64 queryContextMenuMs = queryTimer.elapsed();
     if (FAILED(queryHr)) {
         return;
     }
-
+    qInfo() << "[ShellContextMenu] Direct ShowMenu ready: operationType=" << static_cast<int>(operationType)
+            << "queryContextMenuMs=" << queryContextMenuMs
+            << "menuItemCount=" << GetMenuItemCount(hMenu.get());
     if (operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
         RemoveTencentDeskGoMenu(hMenu.get());
         if (operationType == OperationType::boxBackground) {
@@ -2681,17 +2719,33 @@ wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const
 }
 
 
-wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder)
+wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder, HWND hwndOwner)
 {
     LPCITEMIDLIST relativePIDL = nullptr;
     wil::com_ptr_nothrow<IContextMenu3> pContextMenu;
     if (pidl) {
         wil::com_ptr_nothrow<IShellFolder> parentShellFolder;
         HRESULT hr = SHBindToParent(pidl, IID_PPV_ARGS(&parentShellFolder), &relativePIDL);
-        if (SUCCEEDED(hr)) {
+        if (FAILED(hr) || !parentShellFolder || !relativePIDL) {
+            if (pShellFolder) {
+                parentShellFolder = pShellFolder;
+                relativePIDL = pidl;
+            } else if (m_pDesktopFolder) {
+                parentShellFolder = m_pDesktopFolder;
+                relativePIDL = pidl;
+            }
+        }
+        if (parentShellFolder && relativePIDL) {
             wil::com_ptr_nothrow<IContextMenu> baseContextMenu;
-            hr = parentShellFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, baseContextMenu.put_void());
+            hr = parentShellFolder->GetUIObjectOf(hwndOwner, 1, &relativePIDL, IID_IContextMenu, nullptr, baseContextMenu.put_void());
             if (SUCCEEDED(hr) && baseContextMenu) {
+                if (hwndOwner) {
+                    wil::com_ptr_nothrow<IObjectWithSite> siteObj;
+                    if (SUCCEEDED(baseContextMenu->QueryInterface(IID_PPV_ARGS(&siteObj))) && siteObj) {
+                        wil::com_ptr_nothrow<IServiceProvider> site(static_cast<IServiceProvider*>(new ShellMenuSite(hwndOwner)));
+                        siteObj->SetSite(site.get());
+                    }
+                }
                 baseContextMenu->QueryInterface(IID_PPV_ARGS(&pContextMenu));
             }
         }

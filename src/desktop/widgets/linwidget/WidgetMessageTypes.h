@@ -37,6 +37,8 @@ namespace WidgetMessageType {
     constexpr const char* ResizeWidget = "resize_widget";
     constexpr const char* CloseWidget = "close_widget";
     constexpr const char* ThemeChanged = "theme_changed";
+    constexpr const char* WidgetManagerRequest = "widget_manager";
+    constexpr const char* WidgetManagerResponse = "widget_manager_response";
 }
 
 namespace WidgetErrorCode {

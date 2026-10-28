@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QList>
 #include <vector>
+#include <memory>
 
 #include <ShellContextMenu.h>
 #include "CommonEnum.h"
@@ -32,6 +33,7 @@ public:
     ~RightMenu() override;
 
     void initializeCustomMenu();
+    void prewarmWin11DesktopSession() const;
     void showMenu(QPoint pos, const DesktopRootItemModel& model, bool extendedVerbs = false) const;
     void showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models, bool extendedVerbs = false) const;
     static bool isWindows11SystemContextMenuSupported();
@@ -43,6 +45,8 @@ public:
     static void setLinDeskMenuEnabled(bool enabled);
     static bool isThirdPartyShellMenuEnabled();
     static void setThirdPartyShellMenuEnabled(bool enabled);
+    static bool isShellMenuExclusionEnabled();
+    static void setShellMenuExclusionEnabled(bool enabled);
 
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);
     static std::vector<ShellContextMenu::CustomMenuItem> exportCustomMenuItems(
@@ -64,6 +68,7 @@ public:
     std::vector<ShellMenuSnapshotItem> shellMenuPreviewItems(const QString& key) const;
     std::vector<ShellContextMenu::CustomMenuItem> filteredDesktopCustomMenuItems() const;
     std::vector<ShellContextMenu::CustomMenuItem> filteredSharedBoxCustomMenuItems() const;
+    void invalidateCustomMenuCaches();
     static std::vector<ShellContextMenu::CustomMenuItem> filterCustomItemsForExclusionKey(
         const std::vector<ShellContextMenu::CustomMenuItem>& items,
         const std::wstring& key);
@@ -172,7 +177,6 @@ private:
     QMenu* createViewSubMenu();
     QMenu* createUndoDeleteMenu() const;
     void connectMenuActionInvalidation(QMenu* menu);
-    void invalidateCustomMenuCaches();
     QList<QAction*> filteredCustomMenuActions(bool includeCreateBox, bool includeLinDeskMenu) const;
     void clearCachedCustomMenuItems(CachedCustomMenuData& cache);
     void ensureCachedCustomMenuData(CachedCustomMenuData& cache, bool includeCreateBox, bool includeLinDeskMenu) const;
@@ -218,6 +222,7 @@ private:
     mutable CachedFilteredCustomMenuData m_cachedFilteredDesktopMenuData;
     mutable CachedFilteredCustomMenuData m_cachedFilteredSharedBoxMenuData;
     mutable CachedWin11DesktopMenu m_cachedWin11Menu;
+    mutable std::unique_ptr<ShellMenuCommandSession> m_prewarmedWin11Session;
     mutable bool m_cachedPasteEnabled = false;
     mutable bool m_cachedPasteShortcutEnabled = false;
     mutable bool m_pasteStateRefreshPending = false;

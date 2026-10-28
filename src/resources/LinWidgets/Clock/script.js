@@ -193,3 +193,44 @@ function initAnalogClock() {
   }
 }
 initAnalogClock();
+
+function applyClockSettings(settings) {
+  if (!settings || typeof settings !== "object") return;
+  if (typeof settings.clockTheme === "string") {
+    const isLight = settings.clockTheme === "light";
+    document.body.classList.toggle("light-theme", isLight);
+    localStorage.setItem("clockTheme", settings.clockTheme);
+    const themeToggle = document.getElementById("themeToggle");
+    if (themeToggle) themeToggle.textContent = isLight ? "🌙" : "☀️";
+  }
+  if (typeof settings.clockStyle === "string") {
+    Array.from(document.body.classList)
+      .filter(c => c.startsWith("style-"))
+      .forEach(c => document.body.classList.remove(c));
+    if (settings.clockStyle !== "digital") {
+      document.body.classList.add("style-" + settings.clockStyle);
+    }
+    localStorage.setItem("clockStyle", settings.clockStyle);
+    document.querySelectorAll(".style-dot").forEach(dot => {
+      dot.classList.toggle("active", dot.getAttribute("data-style") === settings.clockStyle);
+    });
+  }
+  if (typeof settings.showSeconds === "boolean") {
+    const secEl = document.getElementById("time-sec");
+    const secondHand = document.getElementById("secondHand");
+    if (secEl) secEl.style.display = settings.showSeconds ? "" : "none";
+    if (secondHand) secondHand.style.display = settings.showSeconds ? "" : "none";
+  }
+}
+
+window.addEventListener("message", (event) => {
+  const data = event && event.data;
+  if (!data || typeof data !== "object") return;
+  if (data.type === "settings_changed" || data.type === "linwidget_appearance_changed_notification") {
+    if (data.settings) {
+      applyClockSettings(data.settings);
+    } else if (window.LinWidgetBridge && window.LinWidgetBridge.storage) {
+      window.LinWidgetBridge.storage.get("settings", { scope: "widget" }).then(applyClockSettings).catch(() => {});
+    }
+  }
+});

@@ -28,6 +28,8 @@ public:
                            const QRect& widgetGeometry,
                            const QImage& image,
                            const QVector<QRect>& dirtyRects);
+    void updateWidgetGeometry(const QString& widgetId, const QRect& widgetGeometry);
+    QRect widgetGeometry(const QString& widgetId) const;
     void removeWidgetFrame(const QString& widgetId);
     void setWidgetVisible(const QString& widgetId, bool visible);
     void clearAllFrames();

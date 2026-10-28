@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <ole2.h>
 #include <shlobj.h>
 #include <shellapi.h>
 #include <QDebug>
@@ -91,6 +92,7 @@ static void ensureDevelopmentResources()
 
 int main(int argc, char *argv[])
 {
+    const HRESULT oleHr = OleInitialize(nullptr);
     CrashHandler::initialize();
     LogManager::initialize();
 
@@ -143,5 +145,8 @@ int main(int argc, char *argv[])
     qDebug() << isUACShieldEnabled();
     int result = app.exec();
     LogManager::shutdown();
+    if (SUCCEEDED(oleHr)) {
+        OleUninitialize();
+    }
     return result;
 }

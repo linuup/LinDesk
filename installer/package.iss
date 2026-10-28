@@ -15,7 +15,7 @@
 #endif
 
 #ifndef BuildDir
-#define BuildDir "D:/Desktop/LinDesk/build/build_32/Release"
+#define BuildDir "D:/Desktop/LinDesk/build/Release"
 #endif
 
 #ifndef PackageOutputDir
@@ -66,7 +66,7 @@ zh.closeFailed=无法关闭 {#AppName}。请手动关闭后重试。
 
 [Files]
 Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini,resources,resources\*,vc_redist.*.exe"
-Source: "..\src\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs; Excludes: "LinWidgets\ApiTester,LinWidgets\ApiTester\*,*.git,*node_modules*,*cache*,*tmp*,*temp*"
+Source: "..\src\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs; Excludes: "*.git,*node_modules*,*cache*,*tmp*,*temp*"
 Source: "redist\vc_redist.{#MyArch}.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion
 
 [Dirs]

@@ -11,6 +11,7 @@
 #include <include/cef_request_handler.h>
 #include <include/cef_resource_request_handler.h>
 #include <include/cef_display_handler.h>
+#include <include/cef_keyboard_handler.h>
 #include <include/wrapper/cef_stream_resource_handler.h>
 #include <include/cef_stream.h>
 #include <QJsonObject>
@@ -29,7 +30,8 @@ class CefOsrClientHandler : public CefClient,
                             public CefContextMenuHandler,
                             public CefRequestHandler,
                             public CefResourceRequestHandler,
-                            public CefDisplayHandler
+                            public CefDisplayHandler,
+                            public CefKeyboardHandler
 {
 public:
     explicit CefOsrClientHandler(CefOsrBrowserInstance* owner, CefRefPtr<CefOsrRenderHandler> renderHandler)
@@ -74,6 +76,36 @@ public:
         return this;
     }
 
+    CefRefPtr<CefKeyboardHandler> GetKeyboardHandler() override
+    {
+        return this;
+    }
+
+    // CefKeyboardHandler interfaces
+    bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
+                       const CefKeyEvent& event,
+                       CefEventHandle os_event,
+                       bool* is_keyboard_shortcut) override
+    {
+        Q_UNUSED(os_event);
+        Q_UNUSED(is_keyboard_shortcut);
+        if (event.windows_key_code == 123 /* VK_F12 */ && event.type == KEYEVENT_RAWKEYDOWN) {
+            if (m_owner) {
+                QMetaObject::invokeMethod(m_owner, [owner = m_owner]() {
+                    if (owner) {
+                        if (owner->hasDevTools()) {
+                            owner->closeDevTools();
+                        } else {
+                            owner->showDevTools();
+                        }
+                    }
+                }, Qt::QueuedConnection);
+            }
+            return true;
+        }
+        return false;
+    }
+
     // CefDisplayHandler interface (console logging)
     bool OnConsoleMessage(CefRefPtr<CefBrowser> browser,
                           cef_log_severity_t level,
@@ -82,17 +114,13 @@ public:
                           int line) override
     {
         Q_UNUSED(browser);
-        if (m_owner) {
-            const int lvl = static_cast<int>(level);
-            const QString msg = QString::fromStdWString(message.ToWString());
-            const QString src = QString::fromStdWString(source.ToWString());
-            QMetaObject::invokeMethod(m_owner, [owner = m_owner, lvl, msg, src, line]() {
-                if (owner) {
-                    owner->onConsoleMessage(lvl, msg, src, line);
-                }
-            }, Qt::QueuedConnection);
-        }
-        return false;
+        Q_UNUSED(level);
+        Q_UNUSED(message);
+        Q_UNUSED(source);
+        Q_UNUSED(line);
+        // 完全阻止前端 console.log 跨进程转发至 Qt 线程与磁盘日志，消除高频 CPU 和 I/O 损耗。
+        // 如需查看完整调试信息，使用 DevTools。
+        return true;
     }
 
     // CefRequestHandler interfaces
@@ -178,7 +206,7 @@ public:
 
         // Prevent directory traversal attacks outside the widget package
         if (!canonicalTarget.startsWith(canonicalPkg, Qt::CaseInsensitive)) {
-            qWarning() << "[LinWidget] Path traversal blocked for widget"
+            qWarning() << "[LinWidget][CefOsrBrowserInstance] Path traversal blocked for widget"
                        << m_owner->widgetId() << "target:" << fullPath;
             return nullptr;
         }
@@ -274,7 +302,7 @@ public:
                 urlStr.startsWith(QLatin1String("ws://")) ||
                 urlStr.startsWith(QLatin1String("wss://")) ||
                 urlStr.startsWith(QLatin1String("ftp://"))) {
-                qWarning() << "[LinWidget Sandbox] Blocked network request for widget"
+                qWarning() << "[LinWidget][CefOsrBrowserInstance] Blocked network request for widget"
                            << m_owner->widgetId() << "url:" << QString::fromStdWString(urlW);
                 return RV_CANCEL;
             }
@@ -312,6 +340,38 @@ public:
     }
 
     // CefLifeSpanHandler interfaces
+    bool OnBeforePopup(CefRefPtr<CefBrowser> browser,
+                       CefRefPtr<CefFrame> frame,
+                       int popup_id,
+                       const CefString& target_url,
+                       const CefString& target_frame_name,
+                       CefLifeSpanHandler::WindowOpenDisposition target_disposition,
+                       bool user_gesture,
+                       const CefPopupFeatures& popupFeatures,
+                       CefWindowInfo& windowInfo,
+                       CefRefPtr<CefClient>& client,
+                       CefBrowserSettings& settings,
+                       CefRefPtr<CefDictionaryValue>& extra_info,
+                       bool* no_javascript_access) override
+    {
+        Q_UNUSED(browser);
+        Q_UNUSED(frame);
+        Q_UNUSED(popup_id);
+        Q_UNUSED(target_url);
+        Q_UNUSED(target_frame_name);
+        Q_UNUSED(target_disposition);
+        Q_UNUSED(user_gesture);
+        Q_UNUSED(popupFeatures);
+        Q_UNUSED(settings);
+        Q_UNUSED(extra_info);
+        Q_UNUSED(no_javascript_access);
+#ifdef Q_OS_WIN
+        windowInfo.SetAsPopup(nullptr, "LinWidget Popup");
+#endif
+        client = this;
+        return false;
+    }
+
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
     {
         if (m_owner) {
@@ -433,7 +493,7 @@ bool CefOsrBrowserInstance::create(const QString& url, const QRect& geometry)
     m_geometry = geometry;
 
     if (!CefManager::instance()->initialize()) {
-        qWarning() << "[CefOsrBrowserInstance] Cannot create browser, CEF runtime not available for:" << m_widgetId;
+        qWarning() << "[LinWidget][CefOsrBrowserInstance] Cannot create browser, CEF runtime not available for:" << m_widgetId;
         return false;
     }
 
@@ -463,7 +523,7 @@ bool CefOsrBrowserInstance::create(const QString& url, const QRect& geometry)
     const std::wstring urlW = url.toStdWString();
     const bool success = CefBrowserHost::CreateBrowser(windowInfo, m_clientHandler, urlW, browserSettings, nullptr, nullptr);
     if (!success) {
-        qCritical() << "[CefOsrBrowserInstance] CefBrowserHost::CreateBrowser failed for:" << m_widgetId;
+        qCritical() << "[LinWidget][CefOsrBrowserInstance] CefBrowserHost::CreateBrowser failed for:" << m_widgetId;
         m_clientHandler->detach();
         m_clientHandler = nullptr;
         m_renderHandler = nullptr;
@@ -471,7 +531,7 @@ bool CefOsrBrowserInstance::create(const QString& url, const QRect& geometry)
     }
 
     m_created = true;
-    qInfo() << "[CefOsrBrowserInstance] Browser creation initiated for:" << m_widgetId << "url=" << url;
+    qInfo() << "[LinWidget][CefOsrBrowserInstance] Browser creation initiated for:" << m_widgetId << "url=" << url;
     return true;
 #else
     Q_UNUSED(url);
@@ -605,6 +665,17 @@ void CefOsrBrowserInstance::sendKeyEvent(QKeyEvent* event)
         return;
     }
 
+    if (event->key() == Qt::Key_F12) {
+        if (event->type() == QEvent::KeyPress) {
+            if (hasDevTools()) {
+                closeDevTools();
+            } else {
+                showDevTools();
+            }
+        }
+        return;
+    }
+
     uint32_t modifiers = 0;
     if (event->modifiers() & Qt::ShiftModifier) modifiers |= EVENTFLAG_SHIFT_DOWN;
     if (event->modifiers() & Qt::ControlModifier) modifiers |= EVENTFLAG_CONTROL_DOWN;
@@ -672,25 +743,15 @@ void CefOsrBrowserInstance::sendInputMethodEvent(QInputMethodEvent* event)
 
 void CefOsrBrowserInstance::onRenderProcessTerminated(int status, int errorCode, const QString& errorString)
 {
-    qWarning() << "[CefOsrBrowserInstance] Render process terminated for widget:" << m_widgetId
+    qWarning() << "[LinWidget][CefOsrBrowserInstance] Render process terminated for widget:" << m_widgetId
                << "status:" << status << "code:" << errorCode << "reason:" << errorString;
     emit browserCrashed(m_widgetId, status, errorCode, errorString);
 }
 
 void CefOsrBrowserInstance::onConsoleMessage(int level, const QString& message, const QString& source, int line)
 {
-    const QString widgetTag = QStringLiteral("[widget:%1]").arg(m_widgetId);
-    const QString loc = source.isEmpty() ? QString() : QStringLiteral(" (%1:%2)").arg(source).arg(line);
-    const QString fullMsg = QStringLiteral("%1 %2%3").arg(widgetTag, message, loc);
-
-    if (level >= 4) {
-        qCritical().noquote() << fullMsg;
-    } else if (level == 3) {
-        qWarning().noquote() << fullMsg;
-    } else {
-        qInfo().noquote() << fullMsg;
-    }
-
+    // 不再向 linwidget.log 写入任何 console 日志，消除无谓的 I/O 和格式化损耗。
+    // 如需调试，直接打开 DevTools。
     emit consoleMessageReceived(m_widgetId, level, message, source, line);
 }
 
@@ -734,21 +795,19 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         return;
     }
 
+    const QString escapedWidgetId = QString(m_widgetId)
+        .replace(QLatin1Char('\\'), QLatin1String("\\\\"))
+        .replace(QLatin1Char('\''), QLatin1String("\\'"));
+
     const QString jsPolyfill = QString(
         "(function() {"
         "  if (window.__linwidget_bridge_injected) return;"
         "  window.__linwidget_bridge_injected = true;"
+        "  const widgetId = '%1';"
         "  const messageListeners = [];"
-        "  window.__linwidget_dispatch_message = function(data) {"
-        "    const event = new MessageEvent('message', { data: data });"
-        "    messageListeners.forEach(listener => {"
-        "      try {"
-        "        if (typeof listener === 'function') { listener(event); }"
-        "        else if (listener && typeof listener.handleEvent === 'function') { listener.handleEvent(event); }"
-        "      } catch (e) { console.error('[LinDesk Bridge] Error in listener:', e); }"
-        "    });"
-        "    window.dispatchEvent(event);"
-        "  };"
+        "  let reqSeq = 0;"
+        "  const pendingRequests = new Map();"
+        "  const systemInfoWatchers = new Map();"
         "  const postMessageBridge = function(data) {"
         "    try {"
         "      const body = (typeof data === 'string') ? data : JSON.stringify(data);"
@@ -757,6 +816,49 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "      xhr.setRequestHeader('Content-Type', 'application/json');"
         "      xhr.send(body);"
         "    } catch (e) { console.error('[LinDesk Bridge] Failed to post message:', e); }"
+        "  };"
+        "  const sendRequest = function(type, payload) {"
+        "    return new Promise(function(resolve, reject) {"
+        "      const requestId = 'req-' + Date.now() + '-' + (++reqSeq);"
+        "      pendingRequests.set(requestId, { resolve: resolve, reject: reject });"
+        "      const msg = Object.assign({"
+        "        type: type,"
+        "        requestId: requestId,"
+        "        instanceId: widgetId,"
+        "        widgetId: widgetId"
+        "      }, (payload && typeof payload === 'object') ? payload : {});"
+        "      postMessageBridge(msg);"
+        "    });"
+        "  };"
+        "  window.__linwidget_dispatch_message = function(data) {"
+        "    if (data && typeof data === 'object') {"
+        "      const reqId = data.requestId;"
+        "      if (reqId && pendingRequests.has(reqId)) {"
+        "        const handler = pendingRequests.get(reqId);"
+        "        pendingRequests.delete(reqId);"
+        "        if (data.ok === false) {"
+        "          handler.reject(new Error(data.error || 'Request failed'));"
+        "        } else {"
+        "          handler.resolve(data.data !== undefined ? data.data : data);"
+        "        }"
+        "      }"
+        "      if (data.type === 'system_info_update') {"
+        "        const wid = data.watchId;"
+        "        if (wid && systemInfoWatchers.has(wid)) {"
+        "          const cb = systemInfoWatchers.get(wid);"
+        "          try { cb(data.data || {}); }"
+        "          catch (e) { console.error('[LinDesk Bridge] Error in system_info_update callback:', e); }"
+        "        }"
+        "      }"
+        "    }"
+        "    const event = new MessageEvent('message', { data: data });"
+        "    messageListeners.forEach(listener => {"
+        "      try {"
+        "        if (typeof listener === 'function') { listener(event); }"
+        "        else if (listener && typeof listener.handleEvent === 'function') { listener.handleEvent(event); }"
+        "      } catch (e) { console.error('[LinDesk Bridge] Error in listener:', e); }"
+        "    });"
+        "    window.dispatchEvent(event);"
         "  };"
         "  if (!window.chrome) { window.chrome = {}; }"
         "  if (!window.chrome.webview) {"
@@ -777,14 +879,102 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "  }"
         "  if (!window.linwidget) {"
         "    window.linwidget = {"
-        "      widgetId: '%1',"
+        "      widgetId: widgetId,"
         "      postMessage: postMessageBridge,"
         "      addEventListener: window.chrome.webview.addEventListener,"
         "      removeEventListener: window.chrome.webview.removeEventListener"
         "    };"
         "  }"
+        "  const systemInfoApi = {"
+        "    getSnapshot: function() { return sendRequest('system_info_request', { action: 'snapshot' }); },"
+        "    getCpu: function() { return sendRequest('system_info_request', { action: 'cpu' }); },"
+        "    getMemory: function() { return sendRequest('system_info_request', { action: 'memory' }); },"
+        "    getGpu: function() { return sendRequest('system_info_request', { action: 'gpu' }); },"
+        "    getDisk: function() { return sendRequest('system_info_request', { action: 'disk' }); },"
+        "    getNetwork: function() { return sendRequest('system_info_request', { action: 'network' }); },"
+        "    getBattery: function() { return sendRequest('system_info_request', { action: 'battery' }); },"
+        "    getOs: function() { return sendRequest('system_info_request', { action: 'os' }); },"
+        "    getUptime: function() { return sendRequest('system_info_request', { action: 'uptime' }); },"
+        "    watch: function(callback, intervalMs) {"
+        "      const watchId = 'watch-' + Date.now() + '-' + (++reqSeq);"
+        "      if (typeof callback === 'function') { systemInfoWatchers.set(watchId, callback); }"
+        "      sendRequest('system_info_request', {"
+        "        action: 'watch',"
+        "        watchId: watchId,"
+        "        intervalMs: Number(intervalMs) || 1000"
+        "      }).then(function(initialData) {"
+        "        const cb = systemInfoWatchers.get(watchId);"
+        "        if (cb && initialData) { try { cb(initialData); } catch (e) { console.error(e); } }"
+        "      }).catch(function(err) {"
+        "        console.error('[LinDesk Bridge] systemInfo.watch failed:', err);"
+        "      });"
+        "      return watchId;"
+        "    },"
+        "    unwatch: function(watchId) {"
+        "      const id = String(watchId || '');"
+        "      systemInfoWatchers.delete(id);"
+        "      return sendRequest('system_info_request', { action: 'unwatch', watchId: id });"
+        "    }"
+        "  };"
+        "  const desktopApi = (window.desktop && typeof window.desktop === 'object') ? window.desktop : {};"
+        "  desktopApi.context = 'widget';"
+        "  desktopApi.widgetId = widgetId;"
+        "  desktopApi.instanceId = widgetId;"
+        "  desktopApi.ready = Promise.resolve();"
+        "  desktopApi.systemInfo = systemInfoApi;"
+        "  desktopApi.resizeWidget = function(size) {"
+        "    postMessageBridge({"
+        "      type: 'resize_widget',"
+        "      instanceId: widgetId,"
+        "      widgetId: widgetId,"
+        "      width: size ? size.width : undefined,"
+        "      height: size ? size.height : undefined"
+        "    });"
+        "  };"
+        "  desktopApi.setWidgetGeometry = function(geom) {"
+        "    postMessageBridge(Object.assign({"
+        "      type: 'widget_geometry_changed',"
+        "      instanceId: widgetId,"
+        "      widgetId: widgetId"
+        "    }, geom || {}));"
+        "  };"
+        "  desktopApi.setResizeUiVisible = function(visible) {"
+        "    postMessageBridge({"
+        "      type: 'set_resize_ui_visible',"
+        "      instanceId: widgetId,"
+        "      widgetId: widgetId,"
+        "      visible: !!visible"
+        "    });"
+        "  };"
+        "  desktopApi.openSettings = function() {"
+        "    postMessageBridge({"
+        "      type: 'open_widget_settings',"
+        "      instanceId: widgetId,"
+        "      widgetId: widgetId"
+        "    });"
+        "  };"
+        "  desktopApi.instances = {"
+        "    create: function(options) {"
+        "      return sendRequest('create_widget_instance_request', (options && typeof options === 'object') ? { geometry: options } : {});"
+        "    },"
+        "    list: function() {"
+        "      return sendRequest('list_widget_instances_request', {});"
+        "    },"
+        "    close: function(targetId) {"
+        "      return sendRequest('close_widget_instance_request', { targetInstanceId: targetId || widgetId });"
+        "    },"
+        "    remove: function(targetId) {"
+        "      return sendRequest('remove_widget_instance_request', { targetInstanceId: targetId || widgetId });"
+        "    }"
+        "  };"
+        "  desktopApi.instance = {"
+        "    close: function() { return sendRequest('close_widget_instance_request', { targetInstanceId: widgetId }); },"
+        "    remove: function() { return sendRequest('remove_widget_instance_request', { targetInstanceId: widgetId }); },"
+        "    multiInstance: true"
+        "  };"
+        "  window.desktop = desktopApi;"
         "})();"
-    ).arg(m_widgetId);
+    ).arg(escapedWidgetId);
 
     frame->ExecuteJavaScript(jsPolyfill.toStdWString(), frame->GetURL(), 0);
 }
@@ -798,7 +988,7 @@ void CefOsrBrowserInstance::onBrowserAfterCreated(CefRefPtr<CefBrowser> browser)
         m_browser->GetHost()->Invalidate(PET_VIEW);
     }
     emit browserCreated(m_widgetId);
-    qInfo() << "[CefOsrBrowserInstance] Browser successfully created and invalidated for:" << m_widgetId;
+    qInfo() << "[LinWidget][CefOsrBrowserInstance] Browser successfully created and invalidated for:" << m_widgetId;
 }
 
 void CefOsrBrowserInstance::onBrowserBeforeClose(CefRefPtr<CefBrowser> browser)
@@ -806,19 +996,19 @@ void CefOsrBrowserInstance::onBrowserBeforeClose(CefRefPtr<CefBrowser> browser)
     Q_UNUSED(browser);
     m_browser = nullptr;
     emit browserClosed(m_widgetId);
-    qInfo() << "[CefOsrBrowserInstance] Browser closed callback received for:" << m_widgetId;
+    qInfo() << "[LinWidget][CefOsrBrowserInstance] Browser closed callback received for:" << m_widgetId;
 }
 
 void CefOsrBrowserInstance::onBrowserLoadingStateChange(bool isLoading, bool canGoBack, bool canGoForward)
 {
     Q_UNUSED(canGoBack);
     Q_UNUSED(canGoForward);
-    qInfo() << "[CefOsrBrowserInstance] LoadingStateChange:" << m_widgetId << "isLoading=" << isLoading;
+    qInfo() << "[LinWidget][CefOsrBrowserInstance] LoadingStateChange:" << m_widgetId << "isLoading=" << isLoading;
 }
 
 void CefOsrBrowserInstance::onBrowserLoadEnd(const QString& frameUrl, int httpStatusCode)
 {
-    qInfo() << "[CefOsrBrowserInstance] OnLoadEnd:" << m_widgetId << "url=" << frameUrl << "statusCode=" << httpStatusCode;
+    qInfo() << "[LinWidget][CefOsrBrowserInstance] OnLoadEnd:" << m_widgetId << "url=" << frameUrl << "statusCode=" << httpStatusCode;
     if (m_browser) {
         injectBridgeScript(m_browser->GetMainFrame());
         if (m_browser->GetHost()) {
@@ -829,10 +1019,42 @@ void CefOsrBrowserInstance::onBrowserLoadEnd(const QString& frameUrl, int httpSt
 
 void CefOsrBrowserInstance::onBrowserLoadError(int errorCode, const QString& errorText, const QString& failedUrl)
 {
-    qCritical() << "[CefOsrBrowserInstance] OnLoadError:" << m_widgetId
+    qCritical() << "[LinWidget][CefOsrBrowserInstance] OnLoadError:" << m_widgetId
                 << "code=" << errorCode
                 << "error=" << errorText
                 << "url=" << failedUrl;
+}
+
+bool CefOsrBrowserInstance::hasDevTools() const
+{
+    return m_browser && m_browser->GetHost() && m_browser->GetHost()->HasDevTools();
+}
+
+void CefOsrBrowserInstance::showDevTools()
+{
+    if (!m_browser || !m_browser->GetHost()) {
+        return;
+    }
+    if (m_browser->GetHost()->HasDevTools()) {
+        return;
+    }
+    CefWindowInfo windowInfo;
+#ifdef Q_OS_WIN
+    const std::string title = ("LinWidget DevTools - " + m_widgetId).toStdString();
+    windowInfo.SetAsPopup(nullptr, title);
+#endif
+    CefBrowserSettings settings;
+    CefPoint inspectElementAt;
+    m_browser->GetHost()->ShowDevTools(windowInfo, m_clientHandler, settings, inspectElementAt);
+    qInfo() << "[LinWidget][CefOsrBrowserInstance] ShowDevTools opened for:" << m_widgetId;
+}
+
+void CefOsrBrowserInstance::closeDevTools()
+{
+    if (m_browser && m_browser->GetHost() && m_browser->GetHost()->HasDevTools()) {
+        m_browser->GetHost()->CloseDevTools();
+        qInfo() << "[LinWidget][CefOsrBrowserInstance] CloseDevTools for:" << m_widgetId;
+    }
 }
 #endif
 

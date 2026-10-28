@@ -46,6 +46,17 @@ void LinWidgetCanvasWidget::updateWidgetFrame(const QString& widgetId,
         } else {
             update(widgetGeometry);
         }
+    } else if (dirtyRects.size() > 4 || widgetId.startsWith(QStringLiteral("wallpaper:"))) {
+        QRect unionRect;
+        for (const QRect& dirty : dirtyRects) {
+            unionRect = unionRect.united(dirty);
+        }
+        const QRect translated = unionRect.translated(widgetGeometry.topLeft());
+        if (s_hostWidget) {
+            s_hostWidget->update(translated);
+        } else {
+            update(translated);
+        }
     } else {
         for (const QRect& dirty : dirtyRects) {
             const QRect translatedDirty = dirty.translated(widgetGeometry.topLeft());
@@ -58,16 +69,72 @@ void LinWidgetCanvasWidget::updateWidgetFrame(const QString& widgetId,
     }
 }
 
-void LinWidgetCanvasWidget::removeWidgetFrame(const QString& widgetId)
+void LinWidgetCanvasWidget::updateWidgetGeometry(const QString& widgetId, const QRect& widgetGeometry)
 {
     auto it = m_widgetBuffers.find(widgetId);
-    if (it != m_widgetBuffers.end()) {
-        const QRect rectToClear = it.value().geometry;
-        m_widgetBuffers.erase(it);
+    if (it == m_widgetBuffers.end()) {
+        WidgetRenderBuffer& buffer = m_widgetBuffers[widgetId];
+        buffer.geometry = widgetGeometry;
+        buffer.visible = true;
         if (s_hostWidget) {
-            s_hostWidget->update(rectToClear);
+            s_hostWidget->update(widgetGeometry);
         } else {
-            update(rectToClear);
+            update(widgetGeometry);
+        }
+        return;
+    }
+
+    const QRect oldRect = it.value().geometry;
+    if (oldRect == widgetGeometry) {
+        return;
+    }
+    it.value().geometry = widgetGeometry;
+    const QRect dirtyUnion = oldRect.isValid() ? oldRect.united(widgetGeometry) : widgetGeometry;
+    if (s_hostWidget) {
+        s_hostWidget->update(dirtyUnion);
+    } else {
+        update(dirtyUnion);
+    }
+}
+
+QRect LinWidgetCanvasWidget::widgetGeometry(const QString& widgetId) const
+{
+    auto it = m_widgetBuffers.constFind(widgetId);
+    if (it != m_widgetBuffers.constEnd()) {
+        return it.value().geometry;
+    }
+    return QRect();
+}
+
+void LinWidgetCanvasWidget::removeWidgetFrame(const QString& widgetId)
+{
+    if (widgetId.isEmpty()) {
+        return;
+    }
+    const QString target = widgetId.trimmed().toLower();
+    QStringList keysToRemove;
+    for (auto it = m_widgetBuffers.begin(); it != m_widgetBuffers.end(); ++it) {
+        const QString key = it.key().trimmed().toLower();
+        if (key == target ||
+            key.startsWith(target + QLatin1Char(':')) ||
+            (!target.isEmpty() && (key.endsWith(QLatin1Char(':') + target) || key.contains(QLatin1Char(':') + target + QLatin1Char(':'))))) {
+            keysToRemove.append(it.key());
+        }
+    }
+    if (keysToRemove.isEmpty() && m_widgetBuffers.contains(widgetId)) {
+        keysToRemove.append(widgetId);
+    }
+
+    for (const QString& key : keysToRemove) {
+        auto it = m_widgetBuffers.find(key);
+        if (it != m_widgetBuffers.end()) {
+            const QRect rectToClear = it.value().geometry;
+            m_widgetBuffers.erase(it);
+            if (s_hostWidget) {
+                s_hostWidget->update(rectToClear.isValid() ? rectToClear : QRect(0, 0, 4000, 4000));
+            } else {
+                update(rectToClear.isValid() ? rectToClear : rect());
+            }
         }
     }
 }
