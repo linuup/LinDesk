@@ -77,6 +77,7 @@ private:
     QWidget* createPluginsPage();
     QWidget* createAboutPage();
     QWidget* wrapScrollablePage(QWidget* content);
+    QWidget* getOrCreatePage(int index);
 
     void updateControlsFromTarget();
     void updatePreviewStyle();
@@ -137,6 +138,7 @@ private:
     QLabel* m_titleBarTitle = nullptr;
     QListWidget* m_sidebar = nullptr;
     QStackedWidget* m_contentStack = nullptr;
+    QWidget* m_pageCache[7] = { nullptr };
     QListWidgetItem* m_generalTabItem = nullptr;
     QListWidgetItem* m_desktopTabItem = nullptr;
     QListWidgetItem* m_contextMenuTabItem = nullptr;

@@ -1,4 +1,5 @@
 #include "ui/SettingUI.h"
+#include "ui/Fluent/SmoothScrollArea.h"
 #include "Version.h"
 #include "box/LinBox.h"
 #include "box/BoxManager.h"
@@ -1044,13 +1045,10 @@ void SettingUI::initUI() {
 
     m_contentStack = new QStackedWidget(container());
     m_contentStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_contentStack->addWidget(wrapScrollablePage(createGeneralPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createDesktopPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createContextMenuPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createGridPage()));
-    m_contentStack->addWidget(wrapScrollablePage(createLinWidgetsPage()));
-    m_contentStack->addWidget(createPluginsPage());
-    m_contentStack->addWidget(wrapScrollablePage(createAboutPage()));
+    for (int i = 0; i < 7; ++i) {
+        QWidget* placeholder = new QWidget(container());
+        m_contentStack->addWidget(placeholder);
+    }
 
     rightLayout->addWidget(m_contentStack);
 
@@ -1058,13 +1056,79 @@ void SettingUI::initUI() {
     mainLayout->addWidget(rightArea, 85);
 
     connect(m_sidebar, &QListWidget::currentRowChanged, this, [this](int row) {
-        m_contentStack->setCurrentIndex(row);
+        QWidget* page = getOrCreatePage(row);
+        if (page) {
+            m_contentStack->setCurrentIndex(row);
+        }
         if (row == 2 && m_shellTypeList && !m_shellTypeList->currentItem() && m_shellTypeList->count() > 0) {
             m_shellTypeList->setCurrentRow(0);
         }
     });
-    m_sidebar->setCurrentRow(0);
+
+    const int initialRow = (m_targetBox ? 3 : 0);
+    getOrCreatePage(initialRow);
+    m_sidebar->setCurrentRow(initialRow);
+    m_contentStack->setCurrentIndex(initialRow);
     updateSidebarItemHeights();
+}
+
+QWidget* SettingUI::getOrCreatePage(int index) {
+    if (index < 0 || index >= 7 || !m_contentStack) {
+        return nullptr;
+    }
+    if (m_pageCache[index]) {
+        return m_pageCache[index];
+    }
+
+    QWidget* page = nullptr;
+    switch (index) {
+    case 0:
+        page = wrapScrollablePage(createGeneralPage());
+        break;
+    case 1:
+        page = wrapScrollablePage(createDesktopPage());
+        break;
+    case 2:
+        page = wrapScrollablePage(createContextMenuPage());
+        break;
+    case 3:
+        page = wrapScrollablePage(createGridPage());
+        break;
+    case 4:
+        page = wrapScrollablePage(createLinWidgetsPage());
+        break;
+    case 5:
+        page = createPluginsPage();
+        break;
+    case 6:
+        page = wrapScrollablePage(createAboutPage());
+        break;
+    default:
+        break;
+    }
+
+    if (page) {
+        m_pageCache[index] = page;
+        if (index < m_contentStack->count()) {
+            QWidget* placeholder = m_contentStack->widget(index);
+            m_contentStack->removeWidget(placeholder);
+            m_contentStack->insertWidget(index, page);
+            if (placeholder) {
+                placeholder->deleteLater();
+            }
+        } else {
+            m_contentStack->addWidget(page);
+        }
+
+        if (index == 1) {
+            updateDesktopSelectionPreview();
+        } else if (index == 3) {
+            updateControlsFromTarget();
+            updatePreviewStyle();
+        }
+    }
+
+    return m_pageCache[index];
 }
 
 QWidget* SettingUI::wrapScrollablePage(QWidget* content) {
@@ -1072,7 +1136,7 @@ QWidget* SettingUI::wrapScrollablePage(QWidget* content) {
         return new QWidget(container());
     }
 
-    QScrollArea* scroll = new QScrollArea(container());
+    SmoothScrollArea* scroll = new SmoothScrollArea(container());
     scroll->setWidgetResizable(true);
     scroll->setMinimumWidth(0);
     scroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -1080,6 +1144,14 @@ QWidget* SettingUI::wrapScrollablePage(QWidget* content) {
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scroll->setStyleSheet("QScrollArea { background: transparent; border: none; }");
+
+    if (scroll->viewport()) {
+        scroll->viewport()->setAttribute(Qt::WA_OpaquePaintEvent, true);
+        scroll->viewport()->setAutoFillBackground(true);
+        QPalette p = scroll->viewport()->palette();
+        p.setColor(QPalette::Window, QColor(249, 251, 255));
+        scroll->viewport()->setPalette(p);
+    }
 
     content->setMinimumWidth(0);
     content->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::MinimumExpanding);
@@ -5912,14 +5984,14 @@ QWidget* SettingUI::createPluginsPage() {
 
 void SettingUI::setupStyles() {
     setStyleSheet(
-        "QWidget { "
+        "SettingUI, QWidget#sidebarContainer, QWidget#rightArea { "
         "   background-color: transparent; "
         "   border: none; "
         "   color: #142033; "
         "   font-family: '" + AppFonts::uiFamily() + "', 'Segoe UI', 'Microsoft YaHei UI'; "
         "} "
         "QWidget#fluentBaseContainer { "
-        "   background-color: rgba(249, 251, 255, 0.96); "
+        "   background-color: #f9fbff; "
         "   border: 1px solid #cfd8e6; "
         "   border-radius: 12px; "
         "} "
@@ -6253,9 +6325,11 @@ void SettingUI::setupStyles() {
 
 void SettingUI::setTargetBox(LinBox* target) {
     m_targetBox = target;
-    updateControlsFromTarget();
     if (target && m_sidebar) {
         m_sidebar->setCurrentRow(3);
+    }
+    if (m_pageCache[3]) {
+        updateControlsFromTarget();
     }
 }
 
@@ -6618,24 +6692,27 @@ void SettingUI::syncScrollablePageWidths()
         return;
     }
 
-    for (int i = 0; i < m_contentStack->count(); ++i) {
-        QScrollArea* scroll = qobject_cast<QScrollArea*>(m_contentStack->widget(i));
-        if (!scroll || !scroll->widget() || !scroll->viewport()) {
-            continue;
-        }
+    QWidget* current = m_contentStack->currentWidget();
+    if (!current) {
+        return;
+    }
 
-        QWidget* content = scroll->widget();
-        const int viewportWidth = scroll->viewport()->width();
-        if (viewportWidth <= 0) {
-            continue;
-        }
+    QScrollArea* scroll = qobject_cast<QScrollArea*>(current);
+    if (!scroll || !scroll->widget() || !scroll->viewport()) {
+        return;
+    }
 
-        content->setMinimumWidth(0);
-        content->setMaximumWidth(QWIDGETSIZE_MAX);
-        content->updateGeometry();
-        if (QLayout* layout = content->layout()) {
-            layout->activate();
-        }
+    QWidget* content = scroll->widget();
+    const int viewportWidth = scroll->viewport()->width();
+    if (viewportWidth <= 0) {
+        return;
+    }
+
+    content->setMinimumWidth(0);
+    content->setMaximumWidth(QWIDGETSIZE_MAX);
+    content->updateGeometry();
+    if (QLayout* layout = content->layout()) {
+        layout->activate();
     }
 }
 
