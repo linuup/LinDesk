@@ -96,10 +96,33 @@
     }
 
     .wallpaper-main img.wp-img {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+      transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: opacity, transform;
+    }
+
+    /* Apple 风格壁纸切换：新图淡入 + 微缩放，旧图淡出，双层交叉过渡 */
+    .wallpaper-main .wp-front {
+      z-index: 1;
+    }
+
+    .wallpaper-main .wp-back {
+      opacity: 0;
+      transform: scale(1.04);
+    }
+
+    .wallpaper-main .wp-back.in {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .wallpaper-main .wp-front.out {
+      opacity: 0;
     }
 
     /* 底部渐变遮罩：保证主图文字可读 */
@@ -111,6 +134,7 @@
       height: 84px;
       background: linear-gradient(to top, rgba(2, 6, 23, 0.55), transparent);
       pointer-events: none;
+      z-index: 2;
     }
 
     .wallpaper-main .wp-meta {
@@ -120,6 +144,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      z-index: 3;
     }
 
     .wp-name {
@@ -284,7 +309,8 @@
 
     <div class="section-label">壁纸精选</div>
     <div class="wallpaper-main" id="wpMain">
-      <img class="wp-img" id="wpImg" src="assets/wallpaper-aurora.jpg" alt="极光雪岭">
+      <img class="wp-img wp-front" id="wpFront" src="assets/wallpaper-aurora.jpg" alt="极光雪岭">
+      <img class="wp-img wp-back" id="wpBack" src="" alt="">
       <div class="wp-shade"></div>
       <div class="wp-meta">
         <span class="wp-name" id="wpName">极光 · 雪岭</span>
@@ -332,15 +358,37 @@
 
   <script>
     (function () {
-      // 壁纸精选：缩略图点击切换主图（纯前端，不改动组件系统）
-      var img = document.getElementById('wpImg');
+      // 壁纸精选：Apple 风格切换（双层交叉淡入淡出 + 微缩放），纯前端，不改动组件系统
+      var front = document.getElementById('wpFront');
+      var back = document.getElementById('wpBack');
       var name = document.getElementById('wpName');
       var thumbs = Array.prototype.slice.call(document.querySelectorAll('#wpThumbs .thumb'));
+      var animating = false;
+
       thumbs.forEach(function (t) {
         t.addEventListener('click', function () {
-          img.src = t.getAttribute('data-src');
-          name.textContent = t.getAttribute('data-name');
-          thumbs.forEach(function (b) { b.classList.toggle('active', b === t); });
+          var src = t.getAttribute('data-src');
+          var label = t.getAttribute('data-name');
+          if (animating || src === front.getAttribute('src')) {
+            return;
+          }
+          animating = true;
+          var pre = new Image();
+          pre.onload = function () {
+            name.textContent = label;
+            back.src = src;
+            back.classList.add('in');
+            front.classList.add('out');
+            thumbs.forEach(function (b) { b.classList.toggle('active', b === t); });
+            setTimeout(function () {
+              front.src = src;
+              front.classList.remove('out');
+              back.classList.remove('in');
+              back.src = '';
+              animating = false;
+            }, 560);
+          };
+          pre.src = src;
         });
       });
     })();

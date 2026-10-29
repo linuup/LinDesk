@@ -78,7 +78,8 @@ QMap<QString, PersistentIconInfo> LayoutPersistenceService::toSavedIconPositions
 }
 
 void LayoutPersistenceService::save(const QString& persistencePath,
-                                    const LayoutPersistenceState& state) const
+                                    const LayoutPersistenceState& state,
+                                    bool async) const
 {
     BoxManager::instance()->saveAll(
         persistencePath,
@@ -92,7 +93,8 @@ void LayoutPersistenceService::save(const QString& persistencePath,
         state.gridAlignment,
         state.showDesktopIcons,
         state.doubleClickHideIcons,
-        state.showShortCutArrow
+        state.showShortCutArrow,
+        async
     );
 }
 

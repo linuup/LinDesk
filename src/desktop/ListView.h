@@ -357,7 +357,7 @@ public:
 	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex = -1, bool preferShortcut = false);
 	void reloadMappedFolderBox(LinBox* box);
 	void clearMappedFolderBox(LinBox* box);
-	void saveBoxes();
+	void saveBoxes(bool async = true);
 	void requestSaveBoxes();
 	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", const QString& mappedFolderPath = "", bool refresh = true);
 
@@ -394,6 +394,8 @@ public:
 	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
 	void setDoubleClickHideIconsEnabled(bool enabled);
 	bool isDoubleClickHideIconsEnabled() const;
+	void setFadeTransitionOnHideEnabled(bool enabled);
+	bool isFadeTransitionOnHideEnabled() const { return m_fadeTransitionOnHide; }
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	bool desktopIconsVisible() const;
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
@@ -565,6 +567,8 @@ private:
 	void finalizeActiveDrag(LinBox* box, QMouseEvent* event);
 	void updateGhostDragHoverPreview(const QPoint& globalPos);
 	void clearDestroyedBoxRuntimeState(LinBox* box);
+	void onIconLoaded(const QString& memKey, const QString& filePath);
+	void onIconFadeTimerTimeout();
 
 public slots:
 	// 目录监控
@@ -579,6 +583,10 @@ public slots:
 	void onMenuAutoArrangeIcons();
 	void onMenuAlignIconsToGrid();
 	void onMenuShowDesktopIcons();
+	void toggleDesktopIconsVisibility(bool animated = true);
+	void setDesktopIconsVisibility(bool visible, bool animated = true);
+	bool handleTypeToSelect(const QString& typedText, LinBox* activeBox = nullptr);
+	bool handleUndo();
 	void onMenuDoubleClickHideIcons();
 	void onMenuSortByName();
 	void onMenuSortBySize();
@@ -700,6 +708,14 @@ private:
 	QElapsedTimer m_backgroundSelectionFrameTimer;
 
 	// 状态标志
+	bool m_fadeTransitionOnHide = true;
+	qreal m_desktopElementsOpacity = 1.0;
+	class QVariantAnimation* m_desktopHideAnim = nullptr;
+	QString m_typeSearchBuffer;
+	class QTimer* m_typeSearchTimer = nullptr;
+	QHash<QString, qint64> m_fadingIconStartTimes;
+	class QTimer* m_iconFadeTimer = nullptr;
+
 	bool m_isMultiSelection = false;
 	bool m_isDragging = false;
 	bool m_isSelecting = false;

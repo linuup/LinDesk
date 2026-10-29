@@ -11,6 +11,8 @@ inline void paintDesktopRootItemStaticElements(QPainter& painter, const DesktopR
 {
     if (data.cutMarked) {
         painter.setOpacity(0.55);
+    } else if (data.iconOpacity < 1.0) {
+        painter.setOpacity(qMax<qreal>(0.05, data.iconOpacity));
     }
     QPixmap iconPix = !data.iconPixmap.isNull() ? data.iconPixmap : (!data.iconImage.isNull() ? QPixmap::fromImage(data.iconImage) : QPixmap());
     if (!iconPix.isNull()) {
@@ -23,7 +25,7 @@ inline void paintDesktopRootItemStaticElements(QPainter& painter, const DesktopR
         }
         painter.drawPixmap(iconPos, iconPix);
     }
-    if (data.cutMarked) {
+    if (data.cutMarked || data.iconOpacity < 1.0) {
         painter.setOpacity(1.0);
     }
     QPixmap arrowPix = !data.shortcutArrowPixmap.isNull() ? data.shortcutArrowPixmap : (!data.shortcutArrowImage.isNull() ? QPixmap::fromImage(data.shortcutArrowImage) : QPixmap());
@@ -103,7 +105,7 @@ inline void paintDesktopRootItemStatic(QPainter& painter, const DesktopRootItemR
     painter.save();
     painter.setRenderHint(QPainter::SmoothPixmapTransform, painter.renderHints().testFlag(QPainter::SmoothPixmapTransform));
     painter.setRenderHint(QPainter::TextAntialiasing, painter.renderHints().testFlag(QPainter::TextAntialiasing));
-    if (item.cutMarked || item.staticContentPixmap.isNull()) {
+    if (item.cutMarked || item.iconOpacity < 1.0 || item.staticContentPixmap.isNull()) {
         desktop_render_cache_helper::paintDesktopRootItemStaticElements(painter, item);
     } else {
         painter.drawPixmap(item.staticContentRect.topLeft(), item.staticContentPixmap);

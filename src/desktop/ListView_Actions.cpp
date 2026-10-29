@@ -864,19 +864,191 @@ void ListView::onMenuAlignIconsToGrid() {
     requestSaveBoxes();
 }
 
-void ListView::onMenuShowDesktopIcons() {
-    qDebug() << "ListView: Show Desktop Icons triggered";
-    if(m_iconShowRule.showDesktopIcons) {
-        m_iconShowRule.showDesktopIcons = false;
-        this->rightMenu->setShowDesktopIconsChecked(false);
-    } else {
-        m_iconShowRule.showDesktopIcons = true;
-        this->rightMenu->setShowDesktopIconsChecked(true);
+namespace PinyinHelper {
+    inline char getPinyinInitial(const QChar& ch) {
+        ushort unicode = ch.unicode();
+        if (unicode >= 'a' && unicode <= 'z') return ch.toLatin1();
+        if (unicode >= 'A' && unicode <= 'Z') return ch.toLower().toLatin1();
+        if (unicode >= '0' && unicode <= '9') return ch.toLatin1();
+
+        if (unicode >= 0x4E00 && unicode <= 0x9FA5) {
+            wchar_t wch = unicode;
+            char gbk[4] = { 0 };
+            if (WideCharToMultiByte(936, 0, &wch, 1, gbk, sizeof(gbk), NULL, NULL) == 2) {
+                unsigned char b1 = (unsigned char)gbk[0];
+                unsigned char b2 = (unsigned char)gbk[1];
+                unsigned int code = (b1 << 8) | b2;
+
+                if (code >= 0xB0A1 && code <= 0xB0C4) return 'a';
+                if (code >= 0xB0C5 && code <= 0xB2C0) return 'b';
+                if (code >= 0xB2C1 && code <= 0xB4ED) return 'c';
+                if (code >= 0xB4EE && code <= 0xB6E9) return 'd';
+                if (code >= 0xB6EA && code <= 0xB7A1) return 'e';
+                if (code >= 0xB7A2 && code <= 0xB8C0) return 'f';
+                if (code >= 0xB8C1 && code <= 0xB9FD) return 'g';
+                if (code >= 0xB9FE && code <= 0xBBF6) return 'h';
+                if (code >= 0xBBF7 && code <= 0xBFA5) return 'j';
+                if (code >= 0xBFA6 && code <= 0xC0AB) return 'k';
+                if (code >= 0xC0AC && code <= 0xC2E7) return 'l';
+                if (code >= 0xC2E8 && code <= 0xC4C2) return 'm';
+                if (code >= 0xC4C3 && code <= 0xC5B5) return 'n';
+                if (code >= 0xC5B6 && code <= 0xC5BD) return 'o';
+                if (code >= 0xC5BE && code <= 0xC6D9) return 'p';
+                if (code >= 0xC6DA && code <= 0xC8BA) return 'q';
+                if (code >= 0xC8BB && code <= 0xC8F5) return 'r';
+                if (code >= 0xC8F6 && code <= 0xCBF9) return 's';
+                if (code >= 0xCBFA && code <= 0xCDD9) return 't';
+                if (code >= 0xCDDA && code <= 0xCEF3) return 'w';
+                if (code >= 0xCEF4 && code <= 0xD1B8) return 'x';
+                if (code >= 0xD1B9 && code <= 0xD4D0) return 'y';
+                if (code >= 0xD4D1 && code <= 0xD7F9) return 'z';
+            }
+        }
+        return 0;
     }
-    syncBoxVisibilityWithDesktopIcons();
+
+    inline QString getPinyinInitials(const QString& str) {
+        QString initials;
+        initials.reserve(str.length());
+        for (const QChar& ch : str) {
+            char p = getPinyinInitial(ch);
+            if (p) {
+                initials.append(p);
+            }
+        }
+        return initials;
+    }
+
+    inline bool matchesPrefix(const QString& displayName, const QString& prefix) {
+        if (prefix.isEmpty()) return false;
+        const QString lowerPrefix = prefix.toLower();
+        const QString lowerName = displayName.toLower();
+        if (lowerName.startsWith(lowerPrefix)) {
+            return true;
+        }
+        const QString initials = getPinyinInitials(displayName);
+        if (initials.startsWith(lowerPrefix)) {
+            return true;
+        }
+        return false;
+    }
+}
+
+namespace {
+    void applyBoxFadeOpacity(LinBox* box, qreal opacity) {
+        if (!box) return;
+        if (opacity >= 0.999) {
+            box->setGraphicsEffect(nullptr);
+            return;
+        }
+        QGraphicsOpacityEffect* effect = qobject_cast<QGraphicsOpacityEffect*>(box->graphicsEffect());
+        if (!effect) {
+            effect = new QGraphicsOpacityEffect(box);
+            box->setGraphicsEffect(effect);
+        }
+        effect->setOpacity(qBound(0.0, opacity, 1.0));
+    }
+}
+
+void ListView::onMenuShowDesktopIcons() {
+    toggleDesktopIconsVisibility(m_fadeTransitionOnHide);
+}
+
+void ListView::toggleDesktopIconsVisibility(bool animated) {
+    setDesktopIconsVisibility(!m_iconShowRule.showDesktopIcons, animated);
+}
+
+void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
+    if (m_iconShowRule.showDesktopIcons == visible && (!animated || (m_desktopHideAnim && m_desktopHideAnim->state() != QAbstractAnimation::Running))) {
+        return;
+    }
+
+    if (!animated) {
+        if (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running) {
+            m_desktopHideAnim->stop();
+        }
+        m_desktopElementsOpacity = visible ? 1.0 : 0.0;
+        m_iconShowRule.showDesktopIcons = visible;
+        if (this->rightMenu) {
+            this->rightMenu->setShowDesktopIconsChecked(visible);
+        }
+        syncBoxVisibilityWithDesktopIcons();
+        updateAllItemRenderData();
+        rebuildSpatialIndex();
+        update();
+        if (m_snakeGameController) {
+            m_snakeGameController->onDesktopIconsVisibilityChanged();
+        }
+        requestSaveBoxes();
+        return;
+    }
+
+    if (!m_desktopHideAnim) {
+        m_desktopHideAnim = new QVariantAnimation(this);
+        m_desktopHideAnim->setDuration(220);
+        m_desktopHideAnim->setEasingCurve(QEasingCurve::OutCubic);
+        connect(m_desktopHideAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            m_desktopElementsOpacity = value.toReal();
+            const auto boxes = BoxManager::instance()->allBoxes();
+            for (const auto& boxPtr : boxes) {
+                if (LinBox* box = boxPtr.data()) {
+                    applyBoxFadeOpacity(box, m_desktopElementsOpacity);
+                }
+            }
+            update();
+        });
+        connect(m_desktopHideAnim, &QVariantAnimation::finished, this, [this]() {
+            if (!m_iconShowRule.showDesktopIcons) {
+                const auto boxes = BoxManager::instance()->allBoxes();
+                for (const auto& boxPtr : boxes) {
+                    if (LinBox* box = boxPtr.data()) {
+                        box->hide();
+                        box->setGraphicsEffect(nullptr);
+                    }
+                }
+            } else {
+                const auto boxes = BoxManager::instance()->allBoxes();
+                for (const auto& boxPtr : boxes) {
+                    if (LinBox* box = boxPtr.data()) {
+                        box->setGraphicsEffect(nullptr);
+                    }
+                }
+            }
+            update();
+        });
+    }
+
+    if (m_desktopHideAnim->state() == QAbstractAnimation::Running) {
+        m_desktopHideAnim->stop();
+    }
+
+    m_iconShowRule.showDesktopIcons = visible;
+    if (this->rightMenu) {
+        this->rightMenu->setShowDesktopIconsChecked(visible);
+    }
+
+    if (visible) {
+        const auto boxes = BoxManager::instance()->allBoxes();
+        for (const auto& boxPtr : boxes) {
+            if (LinBox* box = boxPtr.data()) {
+                if (!box->isVisible()) {
+                    box->show();
+                }
+                box->raise();
+                applyBoxFadeOpacity(box, m_desktopElementsOpacity);
+            }
+        }
+        m_desktopHideAnim->setStartValue(m_desktopElementsOpacity);
+        m_desktopHideAnim->setEndValue(1.0);
+    } else {
+        m_desktopHideAnim->setStartValue(m_desktopElementsOpacity);
+        m_desktopHideAnim->setEndValue(0.0);
+    }
+
     updateAllItemRenderData();
     rebuildSpatialIndex();
-    update();
+    m_desktopHideAnim->start();
+
     if (m_snakeGameController) {
         m_snakeGameController->onDesktopIconsVisibilityChanged();
     }
@@ -884,19 +1056,154 @@ void ListView::onMenuShowDesktopIcons() {
 }
 
 void ListView::onMenuDoubleClickHideIcons() {
-    qDebug() << "ListView: Double Click To Hide Icons triggered";
-    m_iconShowRule.doubleClickHideIcons = !m_iconShowRule.doubleClickHideIcons;
-    this->rightMenu->setDoubleClickedHideIconsChecked(m_iconShowRule.doubleClickHideIcons);
-    requestSaveBoxes();
+    setDoubleClickHideIconsEnabled(!m_iconShowRule.doubleClickHideIcons);
 }
 
 void ListView::setDoubleClickHideIconsEnabled(bool enabled) {
     m_iconShowRule.doubleClickHideIcons = enabled;
+    if (this->rightMenu) {
+        this->rightMenu->setDoubleClickedHideIconsChecked(enabled);
+    }
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Desktop/DoubleClickHideIcons"), enabled);
+    settings.sync();
     requestSaveBoxes();
 }
 
 bool ListView::isDoubleClickHideIconsEnabled() const {
     return m_iconShowRule.doubleClickHideIcons;
+}
+
+void ListView::setFadeTransitionOnHideEnabled(bool enabled) {
+    m_fadeTransitionOnHide = enabled;
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Desktop/FadeTransitionOnHide"), enabled);
+    settings.sync();
+}
+
+bool ListView::handleTypeToSelect(const QString& typedText, LinBox* activeBox) {
+    if (typedText.isEmpty()) return false;
+
+    if (!m_typeSearchTimer) {
+        m_typeSearchTimer = new QTimer(this);
+        m_typeSearchTimer->setSingleShot(true);
+        connect(m_typeSearchTimer, &QTimer::timeout, this, [this]() {
+            m_typeSearchBuffer.clear();
+        });
+    }
+
+    const bool timerActive = m_typeSearchTimer->isActive();
+    const bool isRepeatSingleChar = timerActive && (m_typeSearchBuffer.length() == 1) &&
+                                    (m_typeSearchBuffer.compare(typedText, Qt::CaseInsensitive) == 0);
+
+    if (isRepeatSingleChar) {
+        m_typeSearchTimer->start(800);
+    } else {
+        if (timerActive) {
+            m_typeSearchBuffer.append(typedText);
+        } else {
+            m_typeSearchBuffer = typedText;
+        }
+        m_typeSearchTimer->start(800);
+    }
+
+    struct Candidate {
+        QString path;
+        QString displayName;
+    };
+    QVector<Candidate> candidates;
+
+    if (activeBox) {
+        for (const DesktopRootItemState& state : activeBox->itemStates()) {
+            if (!state.model.visible) continue;
+            QString name = state.model.displayName;
+            if (name.isEmpty()) name = QFileInfo(state.model.filePath).fileName();
+            candidates.append({ state.model.filePath, name });
+        }
+    } else {
+        for (const DesktopRootItemState& state : m_itemStates) {
+            if (!shouldPaintDesktopModelState(state)) continue;
+            QString name = state.model.displayName;
+            if (name.isEmpty()) name = QFileInfo(state.model.filePath).fileName();
+            candidates.append({ state.model.filePath, name });
+        }
+    }
+
+    if (candidates.isEmpty()) return false;
+
+    QVector<int> matchIndices;
+    for (int i = 0; i < candidates.size(); ++i) {
+        if (PinyinHelper::matchesPrefix(candidates[i].displayName, m_typeSearchBuffer)) {
+            matchIndices.append(i);
+        }
+    }
+
+    if (matchIndices.isEmpty()) return false;
+
+    int targetCandidateIndex = matchIndices.first();
+
+    if (isRepeatSingleChar && matchIndices.size() > 1) {
+        QString currentSelectedPath;
+        if (activeBox) {
+            currentSelectedPath = focusedItemPath().isEmpty()
+                ? (selectedItemPaths().isEmpty() ? QString() : selectedItemPaths().first())
+                : focusedItemPath();
+        } else {
+            currentSelectedPath = !m_focusedDesktopPath.isEmpty()
+                ? m_focusedDesktopPath
+                : (m_selectedDesktopPaths.isEmpty() ? QString() : m_selectedDesktopPaths.first());
+        }
+
+        int currentMatchPos = -1;
+        for (int m = 0; m < matchIndices.size(); ++m) {
+            if (candidates[matchIndices[m]].path == currentSelectedPath) {
+                currentMatchPos = m;
+                break;
+            }
+        }
+
+        if (currentMatchPos >= 0) {
+            int nextMatchPos = (currentMatchPos + 1) % matchIndices.size();
+            targetCandidateIndex = matchIndices[nextMatchPos];
+        }
+    }
+
+    const QString selectedPath = candidates[targetCandidateIndex].path;
+
+    if (activeBox) {
+        setSelectedItemPaths({ selectedPath }, selectedPath, false);
+        activeBox->ensureItemVisible(selectedPath);
+        activeBox->update();
+    } else {
+        applyDesktopSelection({ selectedPath }, selectedPath, false);
+        update();
+    }
+
+    return true;
+}
+
+bool ListView::handleUndo() {
+    HWND hProgman = ::FindWindowW(L"Progman", L"Program Manager");
+    HWND hDefView = ::FindWindowExW(hProgman, NULL, L"SHELLDLL_DefView", NULL);
+    if (!hDefView) {
+        HWND hWorkerW = NULL;
+        while ((hWorkerW = ::FindWindowExW(NULL, hWorkerW, L"WorkerW", NULL)) != NULL) {
+            hDefView = ::FindWindowExW(hWorkerW, NULL, L"SHELLDLL_DefView", NULL);
+            if (hDefView) break;
+        }
+    }
+
+    if (hDefView) {
+        ::SendMessageTimeoutW(hDefView, WM_COMMAND, 28699, 0, SMTO_ABORTIFHUNG, 500, NULL);
+        qDebug() << "Windows Shell Undo (WM_COMMAND 28699) dispatched to SHELLDLL_DefView";
+        return true;
+    }
+
+    keybd_event(VK_CONTROL, 0, 0, 0);
+    keybd_event('Z', 0, 0, 0);
+    keybd_event('Z', 0, KEYEVENTF_KEYUP, 0);
+    keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+    return true;
 }
 
 void ListView::onMenuLinDesk() {
@@ -1379,6 +1686,9 @@ void ListView::onMenuQuitApp() {
     if (m_settingsWindow) {
         m_settingsWindow->close();
     }
+
+    // Synchronously save boxes and icon positions before tearing down windows
+    saveBoxes(false);
 
     // Close all remaining windows (boxes, etc.)
     QApplication::closeAllWindows();

@@ -644,6 +644,10 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     resize(scaledPx(this, kBaseBoxDefaultWidth), scaledPx(this, kBaseBoxDefaultHeight));
     setAcceptDrops(true);
 
+    QSettings boxSettings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_autoPeekEnabled = boxSettings.value(QStringLiteral("Box/AutoPeekOnHover"), true).toBool();
+    m_autoPeekInstant = boxSettings.value(QStringLiteral("Box/AutoPeekInstant"), false).toBool();
+
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setContentsMargins(m_borderWidth, m_borderWidth, m_borderWidth, m_borderWidth);
     m_mainLayout->setSpacing(0);
@@ -733,6 +737,11 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_mainLayout->addWidget(m_titleBar);
     m_mainLayout->addWidget(m_scrollArea);
 
+    m_iconFadeTimer = new QTimer(this);
+    m_iconFadeTimer->setInterval(16);
+    connect(m_iconFadeTimer, &QTimer::timeout, this, &LinBox::onIconFadeTimerTimeout);
+    connect(&IconCacheManager::instance(), &IconCacheManager::iconLoaded, this, &LinBox::onIconLoaded);
+
     m_blurRefreshTimer = new QTimer(this);
     m_blurRefreshTimer->setSingleShot(true);
     m_blurRefreshTimer->setInterval(16);
@@ -756,7 +765,9 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
         }
     });
 
-    connect(m_collapseBtn, &QPushButton::clicked, this, &LinBox::toggleCollapse);
+    connect(m_collapseBtn, &QPushButton::clicked, this, [this]() {
+        toggleCollapse();
+    });
 
     connect(m_titleEdit, &QLineEdit::returnPressed, this, [this]() {
         commitTitleEditing();
@@ -1015,6 +1026,19 @@ void LinBox::rebuildItemRenderData(DesktopRootItemState& state, const DesktopRen
         state.model.visibleTextHeight = qMax(1, state.model.renderData.selectionContentRect.height());
     }
     state.renderDataDirty = false;
+}
+
+void LinBox::ensureItemVisible(const QString& filePath) {
+    if (!m_scrollArea || !m_contentArea) return;
+    const DesktopRootItemState* state = findItemStateByPath(filePath);
+    if (!state) return;
+    QRect itemRect = state->model.renderData.selectionContentRect;
+    if (itemRect.isNull() || !itemRect.isValid()) {
+        itemRect = state->model.renderData.staticContentRect;
+    }
+    if (!itemRect.isNull() && itemRect.isValid()) {
+        m_scrollArea->ensureVisible(itemRect.center().x(), itemRect.center().y(), itemRect.width() / 2 + 10, itemRect.height() / 2 + 10);
+    }
 }
 
 void LinBox::refreshLayout() {
@@ -1371,6 +1395,78 @@ void LinBox::refreshSelectionOverlayColor()
     update();
 }
 
+void LinBox::setAutoPeekEnabled(bool enabled)
+{
+    m_autoPeekEnabled = enabled;
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Box/AutoPeekOnHover"), enabled);
+    settings.sync();
+}
+
+void LinBox::setAutoPeekInstant(bool instant)
+{
+    m_autoPeekInstant = instant;
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Box/AutoPeekInstant"), instant);
+    settings.sync();
+}
+
+void LinBox::handleBoxMouseEnter()
+{
+    if (m_isMoving || m_isResizing) return;
+    if (m_hoverCollapseTimer && m_hoverCollapseTimer->isActive()) {
+        m_hoverCollapseTimer->stop();
+    }
+    if (m_isCollapsed && m_autoPeekEnabled) {
+        if (!m_hoverExpandTimer) {
+            m_hoverExpandTimer = new QTimer(this);
+            m_hoverExpandTimer->setSingleShot(true);
+            connect(m_hoverExpandTimer, &QTimer::timeout, this, [this]() {
+                if (m_isCollapsed && m_autoPeekEnabled && !m_isMoving && !m_isResizing) {
+                    const QPoint curGlobalPos = QCursor::pos();
+                    const QRect globalRect(mapToGlobal(QPoint(0, 0)), size());
+                    if (globalRect.contains(curGlobalPos)) {
+                        setCollapsed(false, true, true);
+                    }
+                }
+            });
+        }
+        if (!m_hoverExpandTimer->isActive()) {
+            m_hoverExpandTimer->start(m_autoPeekInstant ? 0 : 150);
+        }
+    }
+}
+
+void LinBox::handleBoxMouseLeave()
+{
+    if (m_isMoving || m_isResizing) return;
+    if (m_hoverExpandTimer && m_hoverExpandTimer->isActive()) {
+        m_hoverExpandTimer->stop();
+    }
+    if (m_isAutoPeeking && !m_isCollapsed) {
+        if (!m_hoverCollapseTimer) {
+            m_hoverCollapseTimer = new QTimer(this);
+            m_hoverCollapseTimer->setSingleShot(true);
+            connect(m_hoverCollapseTimer, &QTimer::timeout, this, [this]() {
+                if (m_isAutoPeeking && !m_isCollapsed && !m_isMoving && !m_isResizing) {
+                    const QPoint curGlobalPos = QCursor::pos();
+                    const QRect globalRect(mapToGlobal(QPoint(0, 0)), size());
+                    if (!globalRect.contains(curGlobalPos)) {
+                        setCollapsed(true, true, true);
+                    }
+                }
+            });
+        }
+        const QPoint curGlobalPos = QCursor::pos();
+        const QRect globalRect(mapToGlobal(QPoint(0, 0)), size());
+        if (!globalRect.contains(curGlobalPos)) {
+            if (!m_hoverCollapseTimer->isActive()) {
+                m_hoverCollapseTimer->start(m_autoPeekInstant ? 0 : 300);
+            }
+        }
+    }
+}
+
 void LinBox::beginTitleEditing() {
     if (isFolderMapped() && isDriveRootPath(m_mappedFolderPath)) {
         return;
@@ -1655,6 +1751,12 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
         (m_scrollArea && watched == m_scrollArea->viewport());
 
     if (isTrackedCursorWidget) {
+        if (event->type() == QEvent::Enter) {
+            handleBoxMouseEnter();
+        } else if (event->type() == QEvent::Leave) {
+            handleBoxMouseLeave();
+        }
+
         if (ListView* lv = ListView::instance()) {
             if (lv->isBackgroundSelectionActive()) {
                 if (event->type() == QEvent::Enter ||
@@ -1843,12 +1945,17 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                 beginTitleEditing();
                 return true;
             }
+            toggleCollapse(false);
+            return true;
         }
     }
     return QWidget::eventFilter(watched, event);
 }
 
 void LinBox::mousePressEvent(QMouseEvent* event) {
+    if (m_hoverExpandTimer && m_hoverExpandTimer->isActive()) m_hoverExpandTimer->stop();
+    if (m_hoverCollapseTimer && m_hoverCollapseTimer->isActive()) m_hoverCollapseTimer->stop();
+
     if (m_titleEdit->isVisible()) {
         const QPoint titlePos = m_titleBar->mapFrom(this, event->pos());
         if (!m_titleEdit->geometry().contains(titlePos)) {
@@ -1931,10 +2038,89 @@ void LinBox::mouseMoveEvent(QMouseEvent* event) {
         }
     } else if (m_isMoving) {
         // 计算鼠标移动增量并更新盒子位置
-        QPoint delta = event->globalPos() - m_dragStartPos;
-        QPoint newPos = m_dragStartGeometry.topLeft() + delta;
-        
-        // 仅在位置实际发生变化时触发移动与重绘
+        const QPoint delta = event->globalPos() - m_dragStartPos;
+        QRect targetRect(m_dragStartGeometry.topLeft() + delta, size());
+
+        const bool altPressed = (event->modifiers() & Qt::AltModifier) || (GetAsyncKeyState(VK_MENU) & 0x8000);
+        if (!altPressed) {
+            const int snapDist = scaledPx(this, 12);
+
+            // 获取盒子视觉可见内容矩形（排除外围透明的 m_borderWidth 调整手柄边距）
+            const QRect thisVis = targetRect.adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth);
+
+            // 1. 获取当前屏幕可用工作区（排除任务栏）
+            QScreen* screen = QGuiApplication::screenAt(event->globalPos());
+            if (!screen) {
+                screen = windowHandle() ? windowHandle()->screen() : QGuiApplication::primaryScreen();
+            }
+            const QRect screenArea = screen ? screen->availableGeometry() : QRect(0, 0, 1920, 1080);
+
+            int bestDx = 0;
+            int minAbsDx = snapDist + 1;
+
+            auto checkSnapX = [&](int currentVal, int targetVal) {
+                int diff = targetVal - currentVal;
+                if (qAbs(diff) <= snapDist && qAbs(diff) < minAbsDx) {
+                    minAbsDx = qAbs(diff);
+                    bestDx = diff;
+                }
+            };
+
+            // 屏幕边缘横向视觉贴边吸附（0间距）
+            checkSnapX(thisVis.left(), screenArea.left());
+            checkSnapX(thisVis.right(), screenArea.right());
+
+            int bestDy = 0;
+            int minAbsDy = snapDist + 1;
+
+            auto checkSnapY = [&](int currentVal, int targetVal) {
+                int diff = targetVal - currentVal;
+                if (qAbs(diff) <= snapDist && qAbs(diff) < minAbsDy) {
+                    minAbsDy = qAbs(diff);
+                    bestDy = diff;
+                }
+            };
+
+            // 屏幕边缘纵向视觉贴边吸附（0间距）
+            checkSnapY(thisVis.top(), screenArea.top());
+            checkSnapY(thisVis.bottom(), screenArea.bottom());
+
+            // 2. 收集其他可见盒子的视觉吸附（0间距无缝紧贴与对齐）
+            if (BoxManager* bm = BoxManager::instance()) {
+                const auto boxes = bm->allBoxes();
+                for (const auto& boxPtr : boxes) {
+                    LinBox* otherBox = boxPtr.data();
+                    if (!otherBox || otherBox == this || !otherBox->isVisible()) {
+                        continue;
+                    }
+                    const int oBorder = otherBox->resizeBorderWidth();
+                    const QRect otherVis = otherBox->geometry().adjusted(oBorder, oBorder, -oBorder, -oBorder);
+
+                    // 横向视觉对齐（左对左、右对右、外侧0间距无缝贴靠、水平中心对齐）
+                    checkSnapX(thisVis.left(), otherVis.left());
+                    checkSnapX(thisVis.right(), otherVis.right());
+                    checkSnapX(thisVis.left(), otherVis.right() + 1);
+                    checkSnapX(thisVis.right(), otherVis.left() - 1);
+                    checkSnapX(thisVis.center().x(), otherVis.center().x());
+
+                    // 纵向视觉对齐（顶对顶、底对底、外侧0间距无缝贴靠、垂直中心对齐）
+                    checkSnapY(thisVis.top(), otherVis.top());
+                    checkSnapY(thisVis.bottom(), otherVis.bottom());
+                    checkSnapY(thisVis.top(), otherVis.bottom() + 1);
+                    checkSnapY(thisVis.bottom(), otherVis.top() - 1);
+                    checkSnapY(thisVis.center().y(), otherVis.center().y());
+                }
+            }
+
+            if (minAbsDx <= snapDist) {
+                targetRect.moveLeft(targetRect.left() + bestDx);
+            }
+            if (minAbsDy <= snapDist) {
+                targetRect.moveTop(targetRect.top() + bestDy);
+            }
+        }
+
+        const QPoint newPos = targetRect.topLeft();
         if (pos() != newPos) {
             move(newPos);
             m_geometryChangedDuringInteraction = true;
@@ -1954,6 +2140,9 @@ void LinBox::mouseReleaseEvent(QMouseEvent* event) {
         finishItemSelection();
         event->accept();
         return;
+    }
+    if (m_isResizing && !m_isCollapsed && height() > m_titleHeight + 2 * m_borderWidth) {
+        m_originalHeight = height();
     }
     if ((m_isResizing || m_isMoving) && m_geometryChangedDuringInteraction) {
         refreshStyles();
@@ -2451,9 +2640,11 @@ void LinBox::clearHoveredItem()
 
 void LinBox::enterEvent(QEvent* event) {
     QWidget::enterEvent(event);
+    handleBoxMouseEnter();
 }
 
 void LinBox::leaveEvent(QEvent* event) {
+    handleBoxMouseLeave();
     clearHoveredItem();
     setCursor(Qt::ArrowCursor);
     QWidget::leaveEvent(event);
@@ -3812,6 +4003,17 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             return;
         }
     }
+    const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
+    const bool shortcutUndo = ctrlPressed && (event->key() == Qt::Key_Z);
+    if (shortcutUndo || event->matches(QKeySequence::Undo)) {
+        if (ListView* lv = ListView::instance()) {
+            if (lv->handleUndo()) {
+                event->accept();
+                return;
+            }
+        }
+    }
+
     if (event->key() == Qt::Key_Delete) {
         if (lv) {
             const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
@@ -3822,6 +4024,20 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             return;
         }
     }
+    const QString text = event->text();
+    if (!text.isEmpty() && text.at(0).isPrint() &&
+        !(event->modifiers() & Qt::ControlModifier) && !(event->modifiers() & Qt::AltModifier) &&
+        event->key() != Qt::Key_Escape && event->key() != Qt::Key_Return && event->key() != Qt::Key_Enter &&
+        event->key() != Qt::Key_Delete && event->key() != Qt::Key_Backspace && event->key() != Qt::Key_Tab &&
+        event->key() != Qt::Key_Space) {
+        if (ListView* lv = ListView::instance()) {
+            if (lv->handleTypeToSelect(text, this)) {
+                event->accept();
+                return;
+            }
+        }
+    }
+
     QWidget::keyPressEvent(event);
 }
 
@@ -3864,6 +4080,24 @@ void LinBox::updateCursorShape(const QPoint& pos) {
 }
 
 void LinBox::toggleCollapse() {
+    toggleCollapse(false);
+}
+
+void LinBox::toggleCollapse(bool isAutoPeek) {
+    setCollapsed(!m_isCollapsed, true, isAutoPeek);
+}
+
+void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
+    if (m_isCollapsed == collapsed) {
+        return;
+    }
+
+    if (!isAutoPeek) {
+        m_isAutoPeeking = false;
+    } else {
+        m_isAutoPeeking = !collapsed;
+    }
+
     QFont iconFont("Segoe Fluent Icons");
     bool fontLoaded = QFontInfo(iconFont).exactMatch();
     if (!fontLoaded) {
@@ -3879,23 +4113,96 @@ void LinBox::toggleCollapse() {
         fontLoaded = QFontInfo(iconFont).exactMatch();
     }
     iconFont.setPixelSize(scaledPx(this, 14));
-    m_collapseBtn->setFont(iconFont);
-
-    if (!m_isCollapsed) {
-        m_originalHeight = height();
-        m_scrollArea->hide(); // Hide scroll area instead of content area directly
-        setFixedHeight(m_titleHeight + 2 * m_borderWidth);
-        m_collapseBtn->setText(fontLoaded ? u8"\uE70D" : "+");
-        m_isCollapsed = true;
-    } else {
-        m_scrollArea->show();
-        setMinimumSize(m_minBoxWidth, m_minBoxHeight);
-        setMaximumHeight(16777215);
-        resize(width(), m_originalHeight);
-        m_collapseBtn->setText(fontLoaded ? u8"\uE70E" : "v");
-        m_isCollapsed = false;
+    if (m_collapseBtn) {
+        m_collapseBtn->setFont(iconFont);
     }
-    emit geometryChanged(this);
+
+    const int collapsedHeight = m_titleHeight + 2 * m_borderWidth;
+
+    if (!collapsed) {
+        if (m_originalHeight < m_minBoxHeight) {
+            m_originalHeight = qMax(m_minBoxHeight, scaledPx(this, 300));
+        }
+    } else {
+        if (!m_isCollapsed && height() > collapsedHeight) {
+            m_originalHeight = height();
+        }
+    }
+
+    m_isCollapsed = collapsed;
+    if (m_collapseBtn) {
+        m_collapseBtn->setText(m_isCollapsed ? (fontLoaded ? u8"\uE70D" : "+") : (fontLoaded ? u8"\uE70E" : "v"));
+    }
+
+    const int targetHeight = m_isCollapsed ? collapsedHeight : m_originalHeight;
+
+    if (animated) {
+        if (!m_collapseAnim) {
+            m_collapseAnim = new QPropertyAnimation(this, "geometry", this);
+            m_collapseAnim->setEasingCurve(QEasingCurve::OutCubic);
+            m_collapseAnim->setDuration(200);
+            connect(m_collapseAnim, &QPropertyAnimation::valueChanged, this, [this]() {
+                update();
+            });
+            connect(m_collapseAnim, &QPropertyAnimation::finished, this, [this, collapsedHeight]() {
+                if (m_isCollapsed) {
+                    if (m_scrollArea) {
+                        m_scrollArea->hide();
+                    }
+                    setFixedHeight(collapsedHeight);
+                } else {
+                    setMinimumSize(m_minBoxWidth, m_minBoxHeight);
+                    setMaximumHeight(16777215);
+                    resize(width(), m_originalHeight);
+                }
+                emit geometryChanged(this);
+            });
+        }
+
+        if (m_collapseAnim->state() == QAbstractAnimation::Running) {
+            m_collapseAnim->stop();
+        }
+
+        setMinimumHeight(0);
+        setMaximumHeight(16777215);
+
+        if (!m_isCollapsed && m_scrollArea) {
+            m_scrollArea->show();
+        }
+
+        QRect startGeom = geometry();
+        QRect endGeom = startGeom;
+        endGeom.setHeight(targetHeight);
+
+        // 边缘保护：如果在屏幕底边缘展开且超出底边，则向上展开
+        QScreen* screen = QGuiApplication::screenAt(mapToGlobal(QPoint(width() / 2, height() / 2)));
+        if (!screen) {
+            screen = windowHandle() ? windowHandle()->screen() : QGuiApplication::primaryScreen();
+        }
+        const QRect screenArea = screen ? screen->availableGeometry() : QRect(0, 0, 1920, 1080);
+        if (!m_isCollapsed && endGeom.bottom() - m_borderWidth > screenArea.bottom()) {
+            endGeom.moveBottom(screenArea.bottom() + m_borderWidth);
+        }
+
+        m_collapseAnim->setStartValue(startGeom);
+        m_collapseAnim->setEndValue(endGeom);
+        m_collapseAnim->start();
+    } else {
+        if (m_isCollapsed) {
+            if (m_scrollArea) {
+                m_scrollArea->hide();
+            }
+            setFixedHeight(collapsedHeight);
+        } else {
+            if (m_scrollArea) {
+                m_scrollArea->show();
+            }
+            setMinimumSize(m_minBoxWidth, m_minBoxHeight);
+            setMaximumHeight(16777215);
+            resize(width(), m_originalHeight);
+        }
+        emit geometryChanged(this);
+    }
 }
 
 void LinBox::setBackgroundColor(const QColor& color) { m_bgColor = color; refreshStyles(); emit geometryChanged(this); }
@@ -4131,6 +4438,18 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
         boxItems.push_back(remapItem);
     }
 
+    // Auto-Peek on hover item
+    ShellContextMenu::CustomMenuItem autoPeekItem;
+    QIcon autoPeekIcon(":/Assets/view.svg");
+    autoPeekItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.autopeek"), autoPeekIcon, this);
+    autoPeekItem.text = (m_autoPeekEnabled ? tr("Disable Auto-Peek on Hover") : tr("Enable Auto-Peek on Hover")).toStdWString();
+    autoPeekItem.callback = [boxGuard]() {
+        if (boxGuard) {
+            boxGuard->setAutoPeekEnabled(!boxGuard->isAutoPeekEnabled());
+        }
+    };
+    boxItems.push_back(autoPeekItem);
+
     // Toggle View mode
     ShellContextMenu::CustomMenuItem viewItem;
     QIcon viewIcon;
@@ -4235,3 +4554,44 @@ void LinBox::updateDragTip(const QPoint& pos, bool isCtrl, bool createShortcut) 
     m_dragTip->showAt(mapToGlobal(targetPos));
 }
 
+
+void LinBox::onIconLoaded(const QString& memKey, const QString& filePath)
+{
+    Q_UNUSED(memKey);
+    DesktopRootItemState* state = findItemStateByPath(filePath);
+    if (state) {
+        state->renderDataDirty = true;
+        m_fadingIconStartTimes[filePath] = QDateTime::currentMSecsSinceEpoch();
+        if (!m_iconFadeTimer->isActive()) {
+            m_iconFadeTimer->start();
+        }
+        update();
+    }
+}
+
+void LinBox::onIconFadeTimerTimeout()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool anyFading = false;
+    for (auto it = m_fadingIconStartTimes.begin(); it != m_fadingIconStartTimes.end();) {
+        const qint64 elapsed = now - it.value();
+        DesktopRootItemState* state = findItemStateByPath(it.key());
+        if (state) {
+            if (elapsed < 100) {
+                state->model.renderData.iconOpacity = qBound(0.1, (qreal)elapsed / 100.0, 1.0);
+                anyFading = true;
+                ++it;
+            } else {
+                state->model.renderData.iconOpacity = 1.0;
+                prepareDesktopRootItemStaticContentCache(state->model.renderData);
+                it = m_fadingIconStartTimes.erase(it);
+            }
+        } else {
+            it = m_fadingIconStartTimes.erase(it);
+        }
+    }
+    update();
+    if (!anyFading || m_fadingIconStartTimes.isEmpty()) {
+        m_iconFadeTimer->stop();
+    }
+}

@@ -105,6 +105,7 @@ private:
     QVector<QPointer<LinBox>> m_boxes;
     QHash<QString, QPointer<LinBox>> m_boxIdIndex;
     QTimer* m_saveTimer;
+    QFuture<bool> m_activeSaveFuture;
     
     // 持久化路径
     QString m_persistencePath;

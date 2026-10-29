@@ -45,6 +45,7 @@ struct DesktopRootItemRenderData
     bool hovered = false;
     bool cutMarked = false;
     bool expandedFullName = false;
+    qreal iconOpacity = 1.0;
 };
 
 DesktopRootItemRenderData localizeDesktopRootItemRenderData(

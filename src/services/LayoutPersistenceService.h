@@ -42,7 +42,8 @@ public:
         const QMap<QString, QMap<QString, QVariant>>& iconPositions) const;
 
     void save(const QString& persistencePath,
-              const LayoutPersistenceState& state) const;
+              const LayoutPersistenceState& state,
+              bool async = true) const;
 
     bool load(const QString& persistencePath,
               bool autoUpdateState,

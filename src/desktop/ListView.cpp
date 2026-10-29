@@ -368,6 +368,11 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     m_windowsConfigMonitor->startListening();
     m_showHiddenFiles = m_windowsConfigMonitor->showHiddenFiles();
 
+    m_iconFadeTimer = new QTimer(this);
+    m_iconFadeTimer->setInterval(16);
+    connect(m_iconFadeTimer, &QTimer::timeout, this, &ListView::onIconFadeTimerTimeout);
+    connect(&IconCacheManager::instance(), &IconCacheManager::iconLoaded, this, &ListView::onIconLoaded);
+
     m_fsRelayoutTimer = new QTimer(this);
     m_fsRelayoutTimer->setSingleShot(true);
     connect(m_fsRelayoutTimer, &QTimer::timeout, this, [this]() {
@@ -438,7 +443,9 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     // Initialize BoxManager
     BoxManager::instance(this);
     BoxManager::instance()->setPersistencePath(m_persistencePath);
-    connect(BoxManager::instance(), &BoxManager::saveRequested, this, &ListView::saveBoxes);
+    connect(BoxManager::instance(), &BoxManager::saveRequested, this, [this]() {
+        saveBoxes();
+    });
 
     this->initialize();
     this->initRightMenuConnections();
@@ -768,7 +775,7 @@ ListView::~ListView() {
     if (m_instance == this) {
         m_instance = nullptr;
     }
-    saveBoxes();
+    saveBoxes(false);
     
     // Clean up drag tip
     if (m_dragTip) {
@@ -1370,6 +1377,13 @@ void ListView::paintEvent(QPaintEvent* event)
         return;
     }
 
+    const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
+    const qreal currentOpacity = isFading ? m_desktopElementsOpacity : (m_iconShowRule.showDesktopIcons ? 1.0 : 0.0);
+    if (currentOpacity <= 0.0) {
+        return;
+    }
+    painter.setOpacity(currentOpacity);
+
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
             return;
@@ -1894,6 +1908,15 @@ void ListView::keyPressEvent(QKeyEvent* event)
     const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
     const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
 
+    const bool shortcutUndo = ctrlPressed && (event->key() == Qt::Key_Z);
+    if (shortcutUndo || event->matches(QKeySequence::Undo)) {
+        if (handleUndo()) {
+            event->accept();
+            qDebug() << "Ctrl+Z Undo triggered";
+            return;
+        }
+    }
+
     const bool extendSelection = (event->modifiers() & Qt::ShiftModifier) || shiftPressed;
     const bool shortcutPaste = ctrlPressed && (event->key() == Qt::Key_V);
     const bool shortcutNewFolder = ctrlPressed && extendSelection && (event->key() == Qt::Key_N);
@@ -2080,6 +2103,18 @@ void ListView::keyPressEvent(QKeyEvent* event)
         return;
     }
     
+    const QString text = event->text();
+    if (!text.isEmpty() && text.at(0).isPrint() &&
+        !ctrlPressed && !(event->modifiers() & Qt::AltModifier) &&
+        event->key() != Qt::Key_Escape && event->key() != Qt::Key_Return && event->key() != Qt::Key_Enter &&
+        event->key() != Qt::Key_Delete && event->key() != Qt::Key_Backspace && event->key() != Qt::Key_Tab &&
+        event->key() != Qt::Key_Space) {
+        if (handleTypeToSelect(text, nullptr)) {
+            event->accept();
+            return;
+        }
+    }
+
     QWidget::keyPressEvent(event);
 }
 
@@ -2152,6 +2187,9 @@ ListView* ListView::instance(QWidget* parent) {
 
 void ListView::initialize()
 {
+    QSettings deskSettings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_iconShowRule.doubleClickHideIcons = deskSettings.value(QStringLiteral("Desktop/DoubleClickHideIcons"), true).toBool();
+    m_fadeTransitionOnHide = deskSettings.value(QStringLiteral("Desktop/FadeTransitionOnHide"), true).toBool();
     // === 读取 Windows 原生桌面配置（自动排列、对齐网格）===
     bool osAutoArrange = false;
     bool osSnapToGrid = false;
@@ -3441,7 +3479,8 @@ void ListView::removeDesktopStateByPath(const QString& filePath)
 
 bool ListView::shouldPaintDesktopModelState(const DesktopRootItemState& state) const
 {
-    if (!m_iconShowRule.showDesktopIcons) {
+    const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
+    if (!m_iconShowRule.showDesktopIcons && (!isFading || m_desktopElementsOpacity <= 0.0)) {
         return false;
     }
     if (!state.model.isReady) {
@@ -3816,3 +3855,45 @@ void ListView::setShortcutArrowVisible(bool visible) {
 }
 
 
+
+void ListView::onIconLoaded(const QString& memKey, const QString& filePath)
+{
+    Q_UNUSED(memKey);
+    DesktopRootItemState* state = findDesktopStateByPath(filePath);
+    if (state && state->model.visible) {
+        state->renderDataDirty = true;
+        m_fadingIconStartTimes[filePath] = QDateTime::currentMSecsSinceEpoch();
+        if (!m_iconFadeTimer->isActive()) {
+            m_iconFadeTimer->start();
+        }
+        update(state->model.renderData.itemRect);
+    }
+}
+
+void ListView::onIconFadeTimerTimeout()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool anyFading = false;
+    for (auto it = m_fadingIconStartTimes.begin(); it != m_fadingIconStartTimes.end();) {
+        const qint64 elapsed = now - it.value();
+        DesktopRootItemState* state = findDesktopStateByPath(it.key());
+        if (state && state->model.visible) {
+            if (elapsed < 100) {
+                state->model.renderData.iconOpacity = qBound(0.1, (qreal)elapsed / 100.0, 1.0);
+                update(state->model.renderData.itemRect);
+                anyFading = true;
+                ++it;
+            } else {
+                state->model.renderData.iconOpacity = 1.0;
+                prepareDesktopRootItemStaticContentCache(state->model.renderData);
+                update(state->model.renderData.itemRect);
+                it = m_fadingIconStartTimes.erase(it);
+            }
+        } else {
+            it = m_fadingIconStartTimes.erase(it);
+        }
+    }
+    if (!anyFading || m_fadingIconStartTimes.isEmpty()) {
+        m_iconFadeTimer->stop();
+    }
+}

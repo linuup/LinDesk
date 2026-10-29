@@ -73,6 +73,9 @@ BoxManager::BoxManager(QObject* parent)
 }
 
 BoxManager::~BoxManager() {
+    if (m_activeSaveFuture.isRunning()) {
+        m_activeSaveFuture.waitForFinished();
+    }
 }
 
 void BoxManager::setPersistencePath(const QString& path) {
@@ -598,18 +601,33 @@ QFuture<bool> BoxManager::saveAll(const QString& persistencePath, bool enablePer
     };
 
     if (async) {
-        return QtConcurrent::run([this, performSave]() -> bool {
+        if (m_activeSaveFuture.isRunning()) {
+            m_activeSaveFuture.waitForFinished();
+        }
+        QPointer<BoxManager> weakThis(this);
+        m_activeSaveFuture = QtConcurrent::run([weakThis, performSave]() -> bool {
             const bool ok = performSave();
-            QMetaObject::invokeMethod(this, [this, ok]() {
-                emit saveFinished(ok);
-            }, Qt::QueuedConnection);
+            if (weakThis && !QCoreApplication::closingDown()) {
+                QMetaObject::invokeMethod(weakThis.data(), [weakThis, ok]() {
+                    if (weakThis && !QCoreApplication::closingDown()) {
+                        emit weakThis->saveFinished(ok);
+                    }
+                }, Qt::QueuedConnection);
+            }
             return ok;
         });
+        return m_activeSaveFuture;
     }
 
+    if (m_activeSaveFuture.isRunning()) {
+        m_activeSaveFuture.waitForFinished();
+    }
     const bool ok = performSave();
-    emit saveFinished(ok);
-    return QtConcurrent::run([ok]() { return ok; });
+    if (!QCoreApplication::closingDown()) {
+        emit saveFinished(ok);
+    }
+    m_activeSaveFuture = QFuture<bool>();
+    return m_activeSaveFuture;
 }
 
 void BoxManager::loadAll(const QString& persistencePath, bool autoUpdateState,

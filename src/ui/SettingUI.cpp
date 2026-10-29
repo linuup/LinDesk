@@ -1712,6 +1712,16 @@ QWidget* SettingUI::createDesktopPage() {
     });
     m_hideIconsCard = nullptr;
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE949), tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces."), hideToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
+
+    FluentToggleSwitch* fadeToggle = new FluentToggleSwitch(page);
+    bool fadeTransition = lv ? lv->isFadeTransitionOnHideEnabled() : true;
+    fadeToggle->setChecked(fadeTransition);
+    connect(fadeToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
+        ListView* lv = ListView::instance();
+        if (lv) lv->setFadeTransitionOnHideEnabled(checked);
+    });
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Fade Transition on Hide"), tr("Play a smooth opacity fade-in/out transition when hiding or showing desktop elements."), fadeToggle, behaviorPanel));
 
     layout->addWidget(behaviorPanel, 0);
     layout->addWidget(createWindows11MenuPanel(page), 0);
@@ -2807,6 +2817,45 @@ QWidget* SettingUI::createGridPage() {
 
     m_glassCard = nullptr;
     styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Acrylic Glass Effect"), tr("Enable real-time DWM background blur for a translucent look."), m_glassToggle, stylePanel));
+    styleLayout->addWidget(createDivider(stylePanel));
+
+    QSettings boxSettings(AppPaths::configFilePath(), QSettings::IniFormat);
+    bool initialAutoPeek = boxSettings.value(QStringLiteral("Box/AutoPeekOnHover"), true).toBool();
+    bool initialAutoPeekInstant = boxSettings.value(QStringLiteral("Box/AutoPeekInstant"), false).toBool();
+
+    FluentToggleSwitch* autoPeekToggle = new FluentToggleSwitch(page);
+    autoPeekToggle->setChecked(initialAutoPeek, false);
+    connect(autoPeekToggle, &FluentToggleSwitch::toggled, this, [](bool v){
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("Box/AutoPeekOnHover"), v);
+        settings.sync();
+        if (BoxManager* bm = BoxManager::instance()) {
+            for (const auto& boxPtr : bm->allBoxes()) {
+                if (LinBox* box = boxPtr.data()) {
+                    box->setAutoPeekEnabled(v);
+                }
+            }
+        }
+    });
+    styleLayout->addWidget(createSwitchRow(glyph(0xE7B3), tr("Auto-Peek on Hover"), tr("Automatically expand collapsed boxes when hovered, and roll up when the mouse leaves."), autoPeekToggle, stylePanel));
+
+    styleLayout->addWidget(createDivider(stylePanel));
+
+    FluentToggleSwitch* autoPeekInstantToggle = new FluentToggleSwitch(page);
+    autoPeekInstantToggle->setChecked(initialAutoPeekInstant, false);
+    connect(autoPeekInstantToggle, &FluentToggleSwitch::toggled, this, [](bool v){
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("Box/AutoPeekInstant"), v);
+        settings.sync();
+        if (BoxManager* bm = BoxManager::instance()) {
+            for (const auto& boxPtr : bm->allBoxes()) {
+                if (LinBox* box = boxPtr.data()) {
+                    box->setAutoPeekInstant(v);
+                }
+            }
+        }
+    });
+    styleLayout->addWidget(createSwitchRow(glyph(0xE823), tr("Instant Auto-Peek"), tr("Expand immediately on hover without a 150ms debounce delay."), autoPeekInstantToggle, stylePanel));
     layout->addWidget(stylePanel);
 
     if (LinBox* sourceBox = controlSourceBox()) {

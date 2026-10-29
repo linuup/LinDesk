@@ -296,35 +296,116 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
         rd.textRect = QRect(model.position.x() + sp(2), textTop, textWidth, qMax(sp(18), itemHeight - (textTop - model.position.y())));
     }
     QPixmap rawPix;
+    // 1. Image preview progressive pipeline
     if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isFile() && !model.isShortcut && isPreviewableImageSuffix(model.fileInfo.suffix())) {
         const QString pKey = QString("image_preview:%1|%2").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(clampedIconSide);
-        rawPix = IconCacheManager::instance().getPixmap(pKey, [&]() {
-            QImageReader r(model.fileInfo.absoluteFilePath());
-            r.setAutoTransform(true);
-            if (!r.canRead()) return QPixmap();
-            const QSize origSize = r.size();
-            const QSize targetThumbSize(clampedIconSide, clampedIconSide);
-            if (origSize.isValid() && origSize.width() > 0 && origSize.height() > 0) {
-                const QSize scaledReadSize = origSize.scaled(targetThumbSize, Qt::KeepAspectRatio);
-                if (scaledReadSize.isValid() && !scaledReadSize.isEmpty()) {
-                    r.setScaledSize(scaledReadSize);
+        const QString diskKey = IconCacheManager::instance().computeDiskKey(model.fileInfo.absoluteFilePath(), model.fileInfo.lastModified().toMSecsSinceEpoch(), clampedIconSide);
+        rawPix = IconCacheManager::instance().getPixmap(pKey, nullptr);
+        if (rawPix.isNull() && IconCacheManager::instance().hasDiskCache(diskKey)) {
+            QImage diskImg = IconCacheManager::instance().loadDiskCache(diskKey);
+            if (!diskImg.isNull()) {
+                rawPix = QPixmap::fromImage(diskImg);
+                IconCacheManager::instance().putPixmap(pKey, rawPix);
+            }
+        }
+        if (rawPix.isNull()) {
+            rawPix = IconCacheManager::instance().genericFilePlaceholder(clampedIconSide);
+            const QString absPath = model.fileInfo.absoluteFilePath();
+            IconCacheManager::instance().requestAsyncPixmap(
+                pKey, diskKey, model.filePath,
+                [absPath, clampedIconSide]() -> QImage {
+                    QImageReader r(absPath);
+                    r.setAutoTransform(true);
+                    if (!r.canRead()) return QImage();
+                    const QSize origSize = r.size();
+                    const QSize targetThumbSize(clampedIconSide, clampedIconSide);
+                    if (origSize.isValid() && origSize.width() > 0 && origSize.height() > 0) {
+                        const QSize scaledReadSize = origSize.scaled(targetThumbSize, Qt::KeepAspectRatio);
+                        if (scaledReadSize.isValid() && !scaledReadSize.isEmpty()) {
+                            r.setScaledSize(scaledReadSize);
+                        }
+                    }
+                    QImage img = r.read();
+                    if (img.isNull()) return QImage();
+                    img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+                    const QSize ts(clampedIconSide, clampedIconSide);
+                    const QImage s = img.scaled(ts, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                    QImage res(ts, QImage::Format_ARGB32_Premultiplied);
+                    res.fill(Qt::transparent);
+                    QPainter pp(&res);
+                    pp.setRenderHint(QPainter::SmoothPixmapTransform);
+                    pp.drawImage(QPoint((ts.width() - s.width()) / 2, (ts.height() - s.height()) / 2), s);
+                    return res;
+                }
+            );
+        }
+    }
+
+    // 2. Folder live preview matte pipeline
+    if (rawPix.isNull() && model.objectType != ObjectType::SpecialFolder && model.fileInfo.isDir()) {
+        const QString matteKey = QString("%1|matte|%2").arg(model.iconCacheKey).arg(clampedIconSide);
+        const QString diskKey = IconCacheManager::instance().computeDiskKey(model.filePath, model.fileInfo.lastModified().toMSecsSinceEpoch(), clampedIconSide);
+        rawPix = IconCacheManager::instance().getPixmap(matteKey, nullptr);
+        if (rawPix.isNull() && IconCacheManager::instance().hasDiskCache(diskKey)) {
+            QImage diskImg = IconCacheManager::instance().loadDiskCache(diskKey);
+            if (!diskImg.isNull()) {
+                rawPix = QPixmap::fromImage(diskImg);
+                IconCacheManager::instance().putPixmap(matteKey, rawPix);
+            }
+        }
+        if (rawPix.isNull()) {
+            rawPix = IconCacheManager::instance().genericFolderPlaceholder(clampedIconSide);
+            const QString nativeDirPath = QDir::toNativeSeparators(model.filePath);
+            IconCacheManager::instance().requestAsyncPixmap(
+                matteKey, diskKey, model.filePath,
+                [nativeDirPath, clampedIconSide]() -> QImage {
+                    if (QDir(nativeDirPath).isEmpty()) {
+                        return QImage();
+                    }
+                    HBITMAP hBmp = CSystemApi::GetShellThumbnail(nativeDirPath, 256, 256);
+                    if (!hBmp) return QImage();
+                    QPixmap rawPreview = QtWin::fromHBITMAP(hBmp, QtWin::HBitmapAlpha);
+                    DeleteObject(hBmp);
+                    QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPreview);
+                    QPixmap finalPreview = !sanitized.isNull() ? sanitized : rawPreview;
+                    if (!finalPreview.isNull()) {
+                        finalPreview = finalPreview.scaled(clampedIconSide, clampedIconSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                        return finalPreview.toImage();
+                    }
+                    return QImage();
+                }
+            );
+        }
+    }
+
+    // 3. Render key (extension shared pool or path key)
+    if (rawPix.isNull()) {
+        const QString renderKey = QString("%1|render|%2").arg(model.iconCacheKey).arg(clampedIconSide);
+        rawPix = IconCacheManager::instance().getPixmap(renderKey, nullptr);
+        if (rawPix.isNull() && model.iconCacheKey.startsWith("path:")) {
+            const QString diskKey = IconCacheManager::instance().computeDiskKey(model.filePath, model.fileInfo.lastModified().toMSecsSinceEpoch(), clampedIconSide);
+            if (IconCacheManager::instance().hasDiskCache(diskKey)) {
+                QImage diskImg = IconCacheManager::instance().loadDiskCache(diskKey);
+                if (!diskImg.isNull()) {
+                    rawPix = QPixmap::fromImage(diskImg);
+                    IconCacheManager::instance().putPixmap(renderKey, rawPix);
                 }
             }
-            QImage img = r.read(); if (img.isNull()) return QPixmap();
-            img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-            const QSize ts(clampedIconSide, clampedIconSide);
-            const QImage s = img.scaled(ts, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            QPixmap p(ts); p.fill(Qt::transparent); QPainter pp(&p); pp.setRenderHint(QPainter::SmoothPixmapTransform);
-            pp.drawImage(QPoint((ts.width() - s.width()) / 2, (ts.height() - s.height()) / 2), s); return p;
-        });
+        }
+        if (rawPix.isNull()) {
+            rawPix = IconCacheManager::instance().getPixmap(renderKey, [&]() {
+                return buildCroppedRenderPix(model.sourceIcon, clampedIconSide);
+            });
+            if (!rawPix.isNull() && model.iconCacheKey.startsWith("path:")) {
+                const QString diskKey = IconCacheManager::instance().computeDiskKey(model.filePath, model.fileInfo.lastModified().toMSecsSinceEpoch(), clampedIconSide);
+                IconCacheManager::instance().saveDiskCache(diskKey, rawPix.toImage());
+            }
+        }
     }
-    if (rawPix.isNull()) rawPix = IconCacheManager::instance().getPixmap(QString("%1|render|%2").arg(model.iconCacheKey).arg(clampedIconSide), [&]() { return buildCroppedRenderPix(model.sourceIcon, clampedIconSide); });
-    if (rawPix.isNull()) rawPix = buildCroppedRenderPix(SysInfoUtil::SysFileIconByDLL(0, ListItemData::s_targetIconSize, "shell32.dll"), clampedIconSide);
-    if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isDir() && !rawPix.isNull()) {
-        rawPix = IconCacheManager::instance().getPixmap(QString("%1|matte|%2").arg(model.iconCacheKey).arg(clampedIconSide), [&]() {
-            QPixmap sanitized = SysInfoUtil::sanitizeFolderPreviewMatte(rawPix);
-            return !sanitized.isNull() ? sanitized : rawPix;
-        });
+
+    // 4. Fallback placeholder
+    if (rawPix.isNull()) {
+        rawPix = IconCacheManager::instance().genericPlaceholder(static_cast<int>(model.objectType), model.fileInfo.suffix(), clampedIconSide);
     }
     if (model.objectType == ObjectType::DiskLetter && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.8);
     if (model.isHiddenFileVisual && !rawPix.isNull()) rawPix = applyOpacityEffect(rawPix, 0.45);
