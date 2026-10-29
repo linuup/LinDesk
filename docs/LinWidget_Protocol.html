@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LinWidget 协议与组件开发规范</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232b2b2b'/%3E%3Crect x='7' y='9' width='18' height='14' rx='2' fill='none' stroke='%23f5f5f5' stroke-width='2'/%3E%3Ccircle cx='13' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3Ccircle cx='19' cy='16' r='1.6' fill='%23f5f5f5'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --text:#1f2328;
+    --text-sub:#57606a;
+    --line:#d0d7de;
+    --line-soft:#eaeef2;
+    --bg:#ffffff;
+    --accent:#0969da;
+    --danger:#cf222e;
+    --warn:#9a6700;
+    --ok:#1a7f37;
+    --code-bg:#f6f8fa;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    font-size:15px;line-height:1.75;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 20px 64px;}
+  header.doc-head{border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:28px;}
+  h1{font-size:26px;margin:0 0 8px;font-weight:700;}
+  .meta{color:var(--text-sub);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 16px;}
+  h2{font-size:20px;margin:38px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line-soft);}
+  h3{font-size:16px;margin:24px 0 10px;color:#0969da;}
+  h4{font-size:15px;margin:18px 0 8px;}
+  p{margin:10px 0;}
+  ul,ol{margin:10px 0;padding-left:24px;}
+  li{margin:4px 0;}
+  code{
+    font-family:Consolas,"Courier New",monospace;
+    font-size:13px;background:var(--code-bg);
+    border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px;
+  }
+  pre{
+    background:var(--code-bg);border:1px solid var(--line-soft);border-radius:6px;
+    padding:12px 16px;overflow-x:auto;font-size:13px;line-height:1.6;
+    font-family:Consolas,"Courier New",monospace;margin:12px 0;
+  }
+  pre code{background:none;border:none;padding:0;}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top;}
+  th{background:var(--code-bg);font-weight:600;white-space:nowrap;}
+  .tbl-scroll{overflow-x:auto;}
+  .note{
+    background:var(--code-bg);border:1px solid var(--line-soft);
+    border-left:3px solid var(--accent);padding:10px 14px;margin:14px 0;font-size:14px;
+  }
+  .tag{
+    display:inline-block;font-size:12px;border-radius:10px;padding:1px 8px;
+    margin-left:6px;vertical-align:1px;white-space:nowrap;
+  }
+  .tag.spec{background:#ddf4ff;color:#0969da;border:1px solid #54aeff;}
+  footer.doc-foot{margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;}
+  @media (max-width:560px){
+    body{font-size:14px;}
+    h1{font-size:22px;}
+    h2{font-size:18px;}
+    .wrap{padding:24px 14px 48px;}
+  }
+</style>
+<style>
+  .doc-nav{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 24px;padding:10px 12px;background:#f6f8fa;border:1px solid #eaeef2;border-radius:4px;}
+  .doc-nav a{font-size:13px;color:#57606a;text-decoration:none;padding:2px 10px;border-radius:3px;white-space:nowrap;}
+  .doc-nav a:hover{background:#eaeef2;color:#1f2328;}
+  .doc-nav a.active{background:#0969da;color:#fff;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="doc-nav">
+    <a href="LinDesk_Docs_Index.html">文档中心</a>
+    <a href="LinDesk_Product_Intro.html">产品介绍</a>
+    <a href="LinDesk_Module_Guide.html">模块介绍</a>
+    <a href="LinDesk_Architecture_Guide.html">架构指南</a>
+    <a href="LinDesk_Todo.html">任务清单</a>
+    <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
+    <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
+    <a href="LinWidget_Protocol.html" class="active">组件通信协议</a>
+    <a href="LinDesk_Core_Desktop_UX_Plan.html">核心体验优化</a>
+</nav>
+
+<header class="doc-head">
+  <h1>LinWidget 协议与组件开发规范</h1>
+  <div class="meta">
+    <span>版本：1.0.0</span>
+    <span>适用环境：Qt 5.15+ / CEF OSR Windowless</span>
+    <span>读者：小组件开发者、AI 编程代理、底层架构师</span>
+  </div>
+</header>
+
+<div class="note">
+  <strong>小组件体系导航提示</strong>：本篇为<strong>底层通信协议与开发手册</strong>。有关组件系统架构、沙箱安全与市场方案请参阅 <a href="LinDesk_Widget_Platform_Plan.html">组件平台方案</a>；有关组件管理 SPA 页面与全屏壁纸框选协同请参阅 <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互方案</a>。
+</div>
+
+<section>
+  <h2>1. 架构总览 (Architecture Overview)</h2>
+  <p>LinDesk 组件系统采用 <strong>单进程 · 动态加载 · 离线画布合成 (CEF OSR Windowless)</strong> 架构：</p>
+  <ul>
+    <li><strong>主程序 (<code>LinDesk.exe</code>)</strong>：零静态 CEF 链接，仅在需要时通过动态库桥接接口 (<code>LinWidgetRuntimeBridge</code>) 动态加载 <code>LinWidgetRuntime.dll</code>。</li>
+    <li><strong>组件运行时 (<code>LinWidgetRuntime.dll</code>)</strong>：宿主 Chromium Embedded Framework (CEF)、管理 OSR 离线渲染浏览器实例、执行安全沙箱策略并处理双向 IPC 消息。</li>
+    <li><strong>桌面画布合成 (<code>LinWidgetCanvasWidget</code>)</strong>：将各组件实例与动态壁纸的 BGRA 渲染帧，直接绘制到 Windows 桌面图层画布，与原生图标完美混流。</li>
+    <li><strong>数据隔离约束</strong>：组件系统只读写 <code>LinWidgets/</code>、<code>LinWidgetsData/</code> 与 <code>LinWallpapers/</code>，严禁触碰或修改主桌面持久化数据文件 (<code>data.dat</code> / <code>data.json</code>)。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>2. 组件包规范与 Manifest 规范 (Package & Manifest)</h2>
+  <p>每个小组件为一个独立文件夹（或 <code>.zip</code> 压缩包），包根目录下必须包含 <code>manifest.json</code>：</p>
+
+  <h3>2.1 目录结构</h3>
+  <pre><code>MyWidget/
+├── manifest.json       # 组件元数据与权限声明（必须）
+├── icon.png            # 组件图标（推荐 128x128 PNG）
+├── index.html          # 入口 HTML 页面
+├── style.css           # 样式表
+└── script.js           # 逻辑脚本</code></pre>
+
+  <h3>2.2 <code>manifest.json</code> 字段规范</h3>
+  <pre><code>{
+  "id": "com.example.clock",
+  "name": "极简时钟",
+  "version": "1.0.0",
+  "author": "LinDesk Community",
+  "description": "半透明毛玻璃桌面时钟组件",
+  "icon": "icon.png",
+  "role": "widget",
+  "type": "html",
+  "entry": "index.html",
+  "width": 320,
+  "height": 140,
+  "minWidth": 160,
+  "minHeight": 100,
+  "maxWidth": 640,
+  "maxHeight": 480,
+  "transparent": true,
+  "resizable": true,
+  "autoLoad": true,
+  "multiInstance": false,
+  "permissions": [
+    "storage",
+    "desktop"
+  ],
+  "intent": {
+    "prompt": "创建一个带有暗黑毛玻璃质感、秒针呼吸灯效果的桌面时钟",
+    "ai_engine": "Claude-3.7-Sonnet",
+    "created_at": "2026-10-14T01:30:00Z"
+  }
+}</code></pre>
+
+  <h4>核心字段说明</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:12%"><col style="width:10%"><col style="width:14%"><col style="width:44%"></colgroup>
+    <tr><th>字段</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
+    <tr><td><code>id</code></td><td>string</td><td>是</td><td>-</td><td>唯一标识符，小写字母、数字及点号（如 <code>lindesk.clock</code>）</td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>是</td><td>-</td><td>组件显示名称</td></tr>
+    <tr><td><code>version</code></td><td>string</td><td>是</td><td>1.0.0</td><td>语义化版本号（<code>X.Y.Z</code>）</td></tr>
+    <tr><td><code>role</code></td><td>string</td><td>否</td><td>"widget"</td><td>角色：<code>"widget"</code>（普通组件）或 <code>"wallpaper"</code>（全屏动态壁纸）</td></tr>
+    <tr><td><code>entry</code></td><td>string</td><td>否</td><td>"index.html"</td><td>包内入口页面相对路径</td></tr>
+    <tr><td><code>width</code> / <code>height</code></td><td>number</td><td>是</td><td>-</td><td>初始宽度与高度（像素，仅 <code>role="widget"</code> 生效）</td></tr>
+    <tr><td><code>transparent</code></td><td>boolean</td><td>否</td><td>true</td><td>是否支持 Alpha 透明通道渲染</td></tr>
+    <tr><td><code>resizable</code></td><td>boolean</td><td>否</td><td>true</td><td>是否允许用户拖拽边角手柄缩放尺寸</td></tr>
+    <tr><td><code>permissions</code></td><td>array</td><td>否</td><td>[]</td><td>申请特权数组：<code>"storage"</code>, <code>"desktop"</code>, <code>"network"</code></td></tr>
+    <tr><td><code>intent</code></td><td>object</td><td>否</td><td>{}</td><td>记录 AI 辅助生成的原始需求与引擎信息，供增量修复参考</td></tr>
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>3. 双向通信桥接机制 (Bridge Protocol)</h2>
+  <p>小组件运行在独立的 Chromium 隔离沙箱环境中，通过统一的 Bridge 协议与 C++ 宿主双向通信：</p>
+
+  <h3>3.1 组件向宿主发送请求 (Outbound)</h3>
+  <p>组件支持两种等价的消息发送通道：</p>
+  <h4>推荐方式 A：原生 Bridge 拦截通道 (零开销)</h4>
+  <pre><code>function sendHostMessage(message) {
+  fetch('http://linwidget.bridge/postMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(message)
+  }).catch(function (err) {
+    console.error('Bridge postMessage error:', err);
+  });
+}</code></pre>
+
+  <h4>兼容方式 B：Standard postMessage</h4>
+  <pre><code>window.parent.postMessage(message, '*');</code></pre>
+
+  <h3>3.2 宿主向组件推送消息/响应 (Inbound)</h3>
+  <pre><code>window.addEventListener('message', function (event) {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+  console.log('Received from host:', msg.type, msg);
+});</code></pre>
+</section>
+
+<section>
+  <h2>4. 标准协议消息面字典 (Message Schema Reference)</h2>
+
+  <h3>4.1 系统信息 API (<code>SystemInfo</code>)</h3>
+  <p><strong>所需权限</strong>：<code>desktop</code></p>
+  <h4>4.1.1 获取即时快照 (<code>system_info_snapshot</code>)</h4>
+  <pre><code>// 请求
+{ "type": "system_info_snapshot", "requestId": "req_101", "action": "snapshot" }
+
+// 宿主响应 (systemInfoResponse)
+{
+  "type": "systemInfoResponse",
+  "requestId": "req_101",
+  "ok": true,
+  "data": {
+    "cpu": { "usagePercent": 14.5, "coreCount": 16, "brand": "13th Gen Intel Core i7" },
+    "memory": { "totalBytes": 34359738368, "usedBytes": 17179869184, "usagePercent": 50.0 },
+    "battery": { "hasBattery": true, "percent": 98, "charging": true }
+  }
+}</code></pre>
+
+  <h4>4.1.2 订阅周期推送 (<code>system_info_watch</code>)</h4>
+  <pre><code>// 订阅
+{ "type": "system_info_watch", "requestId": "req_102", "watchId": "cpu_watcher_1", "action": "watch", "intervalMs": 1000 }
+
+// 宿主推送 (systemInfoUpdate)
+{ "type": "systemInfoUpdate", "watchId": "cpu_watcher_1", "data": { ... } }
+
+// 取消订阅 (system_info_unwatch)
+{ "type": "system_info_unwatch", "requestId": "req_103", "watchId": "cpu_watcher_1", "action": "unwatch" }</code></pre>
+
+  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
+
+  <h3>4.2 本地持久化存储 API (<code>Storage</code>)</h3>
+  <p><strong>所需权限</strong>：<code>storage</code>。数据独立保存在 <code>&lt;userData&gt;/LinWidgetsData/&lt;widgetId&gt;/storage.json</code> 中，绝对隔离。</p>
+  <pre><code>// 存入键值
+{ "type": "storage_set", "requestId": "req_201", "action": "set", "key": "theme_mode", "value": "dark" }
+
+// 读取键值
+{ "type": "storage_get", "requestId": "req_202", "action": "get", "key": "theme_mode" }
+
+// 响应
+{ "type": "storageResponse", "requestId": "req_202", "ok": true, "value": "dark" }
+
+// 删除与清空
+{ "type": "storage_remove", "requestId": "req_203", "action": "remove", "key": "theme_mode" }
+{ "type": "storage_clear", "requestId": "req_204", "action": "clear" }</code></pre>
+
+  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
+
+  <h3>4.3 动态壁纸专用 API (<code>Wallpaper</code>)</h3>
+  <p>仅对 <code>manifest.role = "wallpaper"</code> 的壁纸组件生效。</p>
+  <pre><code>// 弹出系统文件选择框选择本地视频或图片
+{ "type": "wallpaper_set_source", "requestId": "req_301", "dialog": true }
+
+// 宿主响应：注入本地媒体
+{ "type": "wallpaper_source_changed", "requestId": "req_301", "ok": true, "sourcePath": "D:/Wallpapers/cyberpunk.mp4" }
+
+// 切换内置主题预设 (aurora / twilight / deepblue)
+{ "type": "wallpaper_set_preset", "requestId": "req_303", "preset": "twilight" }</code></pre>
+  <p class="note"><strong>媒体加载规范</strong>：选定本地媒体文件后，通过 <code>linwidget://wallpaper:&lt;id&gt;/_media?path=</code> 自定义协议直接赋予 <code>&lt;video src="..."&gt;</code>，突破 Chromium 本地文件访问拦截。</p>
+
+  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
+
+  <h3>4.4 窗口与视口控制 API</h3>
+  <pre><code>// 组件主动请求变更位置与尺寸
+{ "type": "widget_geometry_changed", "x": 100, "y": 120, "width": 360, "height": 200 }
+
+// 请求打开宿主对应组件的设置面板
+{ "type": "open_widget_settings" }</code></pre>
+</section>
+
+<section>
+  <h2>5. 权限沙箱与安全模型 (Security & Sandbox)</h2>
+  <ul>
+    <li><strong>资源协议隔离 (<code>linwidget://</code>)</strong>：所有组件页面及内部静态资源必须通过 <code>linwidget://&lt;instanceId&gt;/&lt;relativePath&gt;</code> 加载。宿主执行严密的目录穿越检测，拦截任何跳出组件目录的非法请求。</li>
+    <li><strong>外网权限拦截 (<code>network</code>)</strong>：未在 <code>manifest.permissions</code> 中声明 <code>"network"</code> 的组件，所有外发网络连接在 CEF <code>OnBeforeResourceLoad</code> 层直接拦截并返回 <code>RV_CANCEL</code>。</li>
+    <li><strong>输入穿透检测</strong>：鼠标点击组件像素 Alpha &lt; 10 的透明区域时，事件自动穿透给桌面原生图标，确保原生桌面操作零受阻。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>6. 开发者工具与 AI 增量修复闭环</h2>
+  <p>调试面板内置 <strong>「导出诊断包」</strong> 功能：</p>
+  <ul>
+    <li><strong>脱敏保护</strong>：自动将用户绝对路径替换为 <code>&lt;USER_HOME&gt;</code>；</li>
+    <li><strong>诊断包内容</strong>：完整 Manifest 元数据、当前运行时状态（尺寸、Z 序、已授予特权）、最后 200 行控制台异常日志；</li>
+    <li><strong>闭环修复模式</strong>：组件异常时，将诊断包直接提交给 AI 编程助手，即可在保持原有组件结构的前提下完成增量精准修复。</li>
+  </ul>
+</section>
+
+<footer class="doc-foot">
+  <span>LinDesk 文档中心 · LinWidget 协议规范手册</span>
+</footer>
+</div>
+</body>
+</html>

@@ -70,8 +70,9 @@
     <a href="LinDesk_Module_Guide.html">模块介绍</a>
     <a href="LinDesk_Architecture_Guide.html">架构指南</a>
     <a href="LinDesk_Todo.html">任务清单</a>
-    <a href="LinDesk_Widget_Platform_Plan.html">组件方案</a>
-    <a href="LinDesk_Widget_Management_Interaction_Plan.html">管理与交互</a>
+    <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
+    <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
+    <a href="LinWidget_Protocol.html">组件通信协议</a>
     <a href="LinDesk_Core_Desktop_UX_Plan.html">核心体验优化</a>
 </nav>
 
@@ -87,13 +88,18 @@
   <h2>1. 建议的阅读路径</h2>
   <p>按读者角色进入对应文档：</p>
   <ul>
-    <li><strong>不了解 LinDesk 是什么</strong> → <a href="LinDesk_Product_Intro.html">产品介绍</a>（定位、功能、技术栈）。</li>
-    <li><strong>要了解代码结构与模块职责</strong> → <a href="LinDesk_Module_Guide.html">模块介绍</a>（src 下各模块职责、依赖、构建目标）。</li>
-    <li><strong>要理解渲染与组件系统架构</strong> → <a href="LinDesk_Architecture_Guide.html">架构指南</a>（CEF OSR 版，统一绘制管线）。</li>
-    <li><strong>要查功能进度与待办</strong> → <a href="LinDesk_Todo.html">任务清单</a>（由项目根 Todo.md 迁移整理）。</li>
-    <li><strong>要打磨 HTML 组件系统（AI 开发组件、组件市场、权限/沙箱、组件包动态加载、组件系统安装/卸载）</strong> → <a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a>（单进程 · 组件系统运行时经 LinDesk 安装/卸载 + 组件包动态加载：安装/卸载设计、CEF 缺口、AI 开发闭环、与主程序集成、按代码细分的任务清单、P0-P3 路线图）。</li>
-    <li><strong>要了解组件管理 Web 化、全屏壁纸与框选协同、小组件尺寸修改与交互重构</strong> → <a href="LinDesk_Widget_Management_Interaction_Plan.html">管理与交互方案</a>（管理页 HTML/SPA 化、协同路由消灭壁纸框选冲突、智能手柄与网格预设尺寸）。</li>
-    <li><strong>要优化桌面基础核心功能人机工学交互、动画质感与操作细节</strong> → <a href="LinDesk_Core_Desktop_UX_Plan.html">核心功能体验优化方案</a>（LinBox 缓动折叠、悬停下卷展开、磁吸对齐、盲打跳选、Ctrl+Z 撤销、淡入淡出、一键智能整理）。</li>
+    <li><strong>不了解 LinDesk 是什么</strong> → <a href="LinDesk_Product_Intro.html">产品介绍</a>（定位、功能、技术栈与形态）。</li>
+    <li><strong>要了解代码结构与模块职责</strong> → <a href="LinDesk_Module_Guide.html">模块介绍</a>（src 下各模块职责、关键类、依赖关系、构建目标）。</li>
+    <li><strong>要理解渲染与底座系统架构</strong> → <a href="LinDesk_Architecture_Guide.html">架构指南</a>（CEF OSR 版统一绘制管线、WorkerW 嵌入、持久化数据流）。</li>
+    <li><strong>要查全局任务进度与待办</strong> → <a href="LinDesk_Todo.html">任务清单</a>（单一真实来源：冷启动、右键菜单、小组件与核心体验全景任务）。</li>
+    <li><strong>要深入小组件系统 (LinWidget)</strong>：
+      <ul>
+        <li><strong>平台架构与生态规划</strong> → <a href="LinDesk_Widget_Platform_Plan.html">组件平台方案</a>（单进程动态加载、市场分发、沙箱安全）</li>
+        <li><strong>管理界面与桌面交互重构</strong> → <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>（HTML/SPA 化、消灭壁纸框选冲突、智能手柄）</li>
+        <li><strong>开发手册与通信协议字典</strong> → <a href="LinWidget_Protocol.html">组件通信协议</a>（Manifest 规范、Bridge 双向 IPC、API 字典）</li>
+      </ul>
+    </li>
+    <li><strong>要优化桌面基础核心功能人机工学交互与动效质感</strong> → <a href="LinDesk_Core_Desktop_UX_Plan.html">核心功能体验优化方案</a>（LinBox 缓动折叠、悬停下卷展开、磁吸对齐、盲打跳选、Ctrl+Z 撤销、淡入淡出、一键智能整理）。</li>
   </ul>
 </section>
 
@@ -107,10 +113,10 @@
     <tr><td><a href="LinDesk_Product_Intro.html">LinDesk_Product_Intro.html</a></td><td>产品介绍：定位、核心功能、技术栈、当前状态</td><td><span class="tag current">当前</span></td><td>所有人</td></tr>
     <tr><td><a href="LinDesk_Module_Guide.html">LinDesk_Module_Guide.html</a></td><td>模块介绍：src 下各模块职责、关键类、依赖关系、构建目标</td><td><span class="tag current">当前</span></td><td>开发者</td></tr>
     <tr><td><a href="LinDesk_Architecture_Guide.html">LinDesk_Architecture_Guide.html</a></td><td>架构指南：桌面底座、统一绘制管线、LinWidget 组件系统、消息桥现状、持久化</td><td><span class="tag current">当前</span></td><td>开发者</td></tr>
-    <tr><td><a href="LinDesk_Todo.html">LinDesk_Todo.html</a></td><td>任务清单：功能勾选清单（待办 + 已完成），由项目根 Todo.md 迁移</td><td><span class="tag current">当前</span></td><td>开发者 / 产品</td></tr>
+    <tr><td><a href="LinDesk_Todo.html">LinDesk_Todo.html</a></td><td>全局任务清单：单一真实来源，整合底座冷启动、右键菜单、组件系统与体验优化全景进度</td><td><span class="tag current">当前</span></td><td>所有人 / 开发者 / 产品</td></tr>
     <tr><td><a href="LinDesk_Widget_Platform_Plan.html">LinDesk_Widget_Platform_Plan.html</a></td><td>组件系统方案：单进程 · 组件系统运行时安装/卸载（动态加载）+ 组件包动态加载（CEF 缺口、AI 开发闭环、组件市场、权限与沙箱、壁纸组件、与主程序集成）、按代码细分的任务清单、P0-P3 路线图</td><td><span class="tag current">当前</span></td><td>antigravity / 开发者</td></tr>
     <tr><td><a href="LinDesk_Widget_Management_Interaction_Plan.html">LinDesk_Widget_Management_Interaction_Plan.html</a></td><td>管理与交互方案：组件管理 HTML/SPA 化（CEF 独立渲染子进程）、壁纸协同路由消灭拖拽框选冲突、智能边缘缩放手柄与网格预设尺寸</td><td><span class="tag current">当前</span></td><td>开发者 / 架构师</td></tr>
-    <tr><td><a href="LinWidget_Protocol.md">LinWidget_Protocol.md</a></td><td>组件通信协议规范：C++ 宿主与 HTML5 小组件之间的双向 JSON IPC 信封、存储、硬件指标推送与生命周期控制</td><td><span class="tag current">当前</span></td><td>小组件开发者 / 开发者</td></tr>
+    <tr><td><a href="LinWidget_Protocol.html">LinWidget_Protocol.html</a></td><td>组件通信协议规范：C++ 宿主与 HTML5 小组件之间的双向 JSON IPC 信封、存储、硬件指标推送与生命周期控制</td><td><span class="tag current">当前</span></td><td>小组件开发者 / 开发者</td></tr>
   </table>
   </div>
   <p class="note">历史文档（旧 WebView2 架构指南、CEF POC 与完整改造规划、CEF 实现笔记、WebView2 移除改造任务书、更新功能方案与使用说明、组件独立进程方案）已删除；内存审查、商店图标兼容、显示名覆盖、双架构发布、Box 移动卡顿/撕裂修复、日志独立成卷六份改造任务书（对应改造均已落地）已删除；<code>docs/_shots/</code> 为自检产物目录，保留。</p>
