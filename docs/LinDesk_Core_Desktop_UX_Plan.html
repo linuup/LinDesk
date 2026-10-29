@@ -102,9 +102,10 @@
     <li><strong>动画生硬</strong>：盒子折叠展开为瞬切尺寸（<code>setFixedHeight</code>），隐藏桌面图标为直接刷新消失，缺乏现代流体动效；</li>
     <li><strong>排版对齐费力</strong>：盒子移动时缺少与屏幕边缘及其他盒子的磁吸（Snap），多个盒子对齐或贴边需要反复手动微调；</li>
     <li><strong>键盘直觉缺失</strong>：不支持在桌面上盲打首字母快速选中文件（Type-to-Select），误删/误移动后缺少 <code>Ctrl + Z</code> 撤销机制；</li>
+    <li><strong>海量文件与图标加载卡顿</strong>：桌面图标较多或映射几百个文件的文件夹时，主线程同步提取图标导致界面假死；</li>
     <li><strong>高阶收纳功能空白</strong>：缺少 Fences 标志性的“悬停自动展开 (Auto-Peek / Roll-up)”与真正实用的“一键桌面智能分类整理”。</li>
   </ul>
-  <p class="note"><strong>核心目标</strong>：从“功能可用”迈向“商业级高品质交互”，消除机械生硬感，让桌面具备极致的整洁感与顺滑的操作手感。</p>
+  <p class="note"><strong>核心目标</strong>：从“功能可用”迈向“商业级高品质交互”，消除机械生硬感与主线程卡顿，让桌面具备极致的整洁感与顺滑的操作手感。</p>
 </section>
 
 <section>
@@ -229,6 +230,33 @@
     </li>
   </ul>
 
+  <h4>2.4 图标与 IO 管线：两级 LRU 缓存与异步渐进式加载 (Two-Tier Icon Cache & Progressive Loading)</h4>
+  <p><strong>现状痛点</strong>：当用户桌面图标较多（100+），或在 LinBox 中映射了包含数百个文件的深层目录（如“下载”、“文档”或移动硬盘）时，主线程在 <code>ListItemData.h</code> 中同步调用 Windows <code>SHGetFileInfoW</code>、<code>GetShellThumbnail</code> 以及图标抠图算法。密集的同步磁盘 I/O 和 COM 耗时会导致桌面初始化或文件夹打开时产生明显的假死与界面掉帧，且相同扩展名/相同目标无法共享图标实例。</p>
+  <p><strong>优化方案与详细规范</strong>：</p>
+  <ul>
+    <li><strong>内存级 LRU 缓存（第一级）</strong>：
+      <ul>
+        <li>引入全局单例图标缓存池 <code>IconCacheManager</code>，以 <code>(filePath + lastModifiedTime + iconSizeTier)</code> 作为唯一哈希键（针对特殊文件夹以 PIDL / CLSID 缓存）；</li>
+        <li>相同文件类型或未修改的文件二次加载命中率达 100%，内存中直接复用同一份 <code>QPixmap</code> 引用，不仅耗时降为 0ms，还能大幅压缩海量图标带来的 GDI 与内存占用；</li>
+        <li>设置合理的上限阈值（如最多缓存 500 个高分辨率图标对象），遵循 LRU 机制淘汰最近最少使用的图标。</li>
+      </ul>
+    </li>
+    <li><strong>后台异步解码与渐进式淡入（第二级）</strong>：
+      <ul>
+        <li><strong>首帧占位（Skeleton / Fallback）</strong>：主线程扫描到新文件时，先以 <code>0ms</code> 极速返回系统通用的轻量类型图标（如通用文档、通用文件夹底图），确保列表秒级排版上屏，绝不阻塞主线程绘制；</li>
+        <li><strong>线程池异步提取</strong>：将重度的高清 Shell 图标抽取、256x256 文件夹 Live Preview 缩略图生成及 Alpha 边缘去黑边计算分发给后台 <code>QThreadPool</code> 异步工作线程；</li>
+        <li><strong>平滑淡入替换 (Progressive Fade-In)</strong>：后台线程解码完成后，向主线程发送信号，仅对发生变动的局部图标项触发 100ms 的平滑透明度淡入替换（Fade-In），用户肉眼感知上既不卡顿，又呈现出极具科技感的流体加载效果。</li>
+      </ul>
+    </li>
+    <li><strong>涉及核心文件</strong>：
+      <ul>
+        <li><code>src/models/data/ListItemData.h</code>：解耦同步提取流程，接入图标缓存池查询与异步提取任务分发；</li>
+        <li><code>src/services/IconCacheManager.h</code> / <code>.cpp</code>（新增）：轻量级线程安全的高速两级 LRU 图标缓存管理器；</li>
+        <li><code>src/services/SysInfoUtil.cpp</code>：后台线程异步调用缩略图生成与裁切。</li>
+      </ul>
+    </li>
+  </ul>
+
   <hr style="border:none;border-top:1px solid var(--line-soft);margin:28px 0;">
 
   <h3>维度三：拖拽交互手感与视觉反馈</h3>
@@ -265,6 +293,7 @@
     <tr><td><span class="tag p1">P1</span></td><td><strong>键盘盲打首字母跳选定位 (Type-to-Select)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td>★★★★☆（对齐 Windows 原生习惯）</td></tr>
     <tr><td><span class="tag p1">P1</span></td><td><strong>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td>★★★★☆（误操作救回兜底）</td></tr>
     <tr><td><span class="tag p1">P1</span></td><td><strong>双击空白处隐藏桌面与淡入淡出动效（含设置页独立双开关与右键菜单同步）</strong></td><td><code>ListView_Actions.cpp</code><br><code>SettingUI.cpp</code></td><td>0.5 天</td><td>★★★★☆（看壁纸更优雅，防误触可控）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>图标与 IO 管线：两级 LRU 缓存与渐进式异步加载</strong></td><td><code>ListItemData.h</code><br><code>IconCacheManager</code></td><td>1 天</td><td>★★★★★（秒开海量图标，消除主线程卡死）</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td><strong>真正的一键桌面智能整理分类 (Smart Box)</strong></td><td><code>ListView_Actions.cpp</code></td><td>1.5 天</td><td>★★★★★（初装用户的“第一惊艳功能”）</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td><strong>拖拽进入 Box 的呼吸发光高亮提示</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★☆☆（投掷反馈更明确）</td></tr>
     <tr><td><span class="tag p3">P3</span></td><td><strong>多屏幕跨屏摆放 Box 支持</strong></td><td><code>LinDesktop.cpp</code></td><td>2 天</td><td>★★★★☆（拿下双屏重度办公用户）</td></tr>

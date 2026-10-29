@@ -239,7 +239,110 @@ window.addEventListener('message', (e) => {
 5. 自动同步更新 ConfigManager 本地配置，下次开机自动保持该几何尺寸</code></pre>
 
 
-  <h2>四、 边界防坑与工程实施细则 (Critical Implementation Rules)</h2>
+  <h2>四、 壁纸工坊与可视化配置编辑器方案 (Wallpaper Studio)</h2>
+
+  <h3>4.1 人机工学定位与双轮驱动架构</h3>
+  <p>在 LinDesk 动态壁纸生态中，定位清晰划分为两个闭环层级：</p>
+  <ul>
+    <li><strong>AI 开发者层（骨架与特效）</strong>：负责生成高复杂度的动态引擎、3D 粒子流、视差交互模板或 Canvas 着色器代码；</li>
+    <li><strong>终端用户层（资产装配与个性化）</strong>：广大非编程用户拥有极强烈的诉求，希望<strong>零代码自由更换本地收藏的精美壁纸图片、4K 动图或 MP4/WebM 视频剪辑</strong>。</li>
+  </ul>
+  <p>传统的“弹出文件选择对话框”方案存在致命缺陷：用户选完后无法感知缩放拉伸是否失真、是否出现黑边、视频声音过大、以及主体过于明亮导致桌面图标文字完全无法辨识。因此，必须提供一个<strong>类似 Wallpaper Engine / Lively Wallpaper 的可视化配置编辑器——“壁纸工坊 (Wallpaper Studio)”</strong>。</p>
+
+  <h3>4.2 界面布局与交互设计（Web 单页架构）</h3>
+  <p>得益于表现层已拥抱 CEF 独立窗口模式，壁纸工坊直接采用基于现代 HTML5 + Flex/Grid 的双栏 Web 视图：</p>
+  <pre><code>┌────────────────────────────────────────────────────────────────────────┐
+│  🎨 LinDesk 壁纸工坊 (Wallpaper Studio)                        [-] [x]  │
+├──────────────────────────────────────┬─────────────────────────────────┤
+│                                      │ 📁 本地素材拖拽或导入           │
+│                                      │ [拖拽图片/MP4/WebM到此处 或 点击选择]│
+│                                      │                                 │
+│         🖥️ 16:9 实时所见即所得画板    │ 📐 画面排版与裁切                │
+│                                      │ 填充模式: [ 填充裁剪 (Cover)  ▼] │
+│      ┌────────────────────────┐      │ 居中对齐: [ 水平垂直居中      ▼] │
+│      │                        │      │                                 │
+│      │    [ 实时动态预览 ]     │      │ 🎬 视频播放选项 (视频媒体有效)   │
+│      │   包含桌面图标模拟半透明浮层 │      │ 静音模式: [ON]  音量: [───○───] 30%│
+│      │                        │      │ 播放速率: [1.0x] 循环模式: [单曲循环]│
+│      └────────────────────────┘      │                                 │
+│                                      │ 🎛️ 易读性滤镜 (文字保护)        │
+│   [▶ 播放/暂停]  00:12 / 00:45       │ 遮罩暗化: [──○─────] 20%        │
+│   [x] 模拟显示桌面图标与网格浮层     │ 毛玻璃模糊: [○───────] 0px       │
+│                                      ├─────────────────────────────────┤
+│                                      │ [ 保存为预设 ]   [ 应用到桌面 ]   │
+└──────────────────────────────────────┴─────────────────────────────────┘</code></pre>
+
+  <h3>4.3 核心功能矩阵</h3>
+  <div class="tbl-scroll">
+    <table>
+      <thead>
+        <tr><th>功能板块</th><th>控件/形态</th><th>业务价值与技术细节</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>16:9 实时模拟画板</strong></td>
+          <td>Canvas / HTML5 Video 实时双向预览</td>
+          <td>1:1 按当前用户屏幕实际分辨率长宽比（16:9、16:10、21:9 带鱼屏等）构建模拟器视口；支持播放/暂停控制与当前时间戳显示。</td>
+        </tr>
+        <tr>
+          <td><strong>桌面图标模拟浮层</strong></td>
+          <td>半透明网格与文字开关 <code>Show Desktop Icons Overlay</code></td>
+          <td>在画板上可一键开启/关闭典型 Windows 桌面图标与文字的半透明剪影，让用户直接肉眼验证所选素材是否会干扰日常图标辨识。</td>
+        </tr>
+        <tr>
+          <td><strong>多格式文件拖拽装载</strong></td>
+          <td>HTML5 Drag & Drop 区域 + <code>input[type=file]</code></td>
+          <td>支持本地常见格式：JPG, PNG, GIF, WEBP, MP4, WebM；拖入即刻触发预览，并通过本地 <code>linwidget://</code> scheme 解析物理绝对路径。</td>
+        </tr>
+        <tr>
+          <td><strong>画面排版适配模式</strong></td>
+          <td>下拉选择框 (Fit Mode)</td>
+          <td>
+            • <strong>填充裁剪 (Cover)</strong>：等比例铺满画板，无黑边，溢出部分自动居中裁切；<br>
+            • <strong>等比适应 (Contain)</strong>：完整呈现所有画面内容，四周留安全背景底色（无变形）；<br>
+            • <strong>拉伸变形 (Stretch)</strong>：非等比铺满；<br>
+            • <strong>平铺 (Tile)</strong>：小像素图案或纹理重复平铺。
+          </td>
+        </tr>
+        <tr>
+          <td><strong>视频媒体声音与控制</strong></td>
+          <td>静音开关、音量滑块、速率下拉框 (0.5x~2.0x)</td>
+          <td>解决用户导入带声视频吵闹的痛点；配置直接映射至 OSR 渲染管线的 <code>volume</code> 与 <code>playbackRate</code> 属性。</td>
+        </tr>
+        <tr>
+          <td><strong>桌面文字保护滤镜</strong></td>
+          <td>暗度遮罩滑块 (0%~80%)、高斯模糊滑块 (0~20px)</td>
+          <td>针对高亮度风景壁纸，无需借助 Photoshop 处理，直接在前端叠加纯黑半透明层与 CSS <code>backdrop-filter: blur(...)</code>，大幅提升桌面文件易读性。</td>
+        </tr>
+        <tr>
+          <td><strong>预设另存与一键应用</strong></td>
+          <td><code>[应用到桌面]</code> 与 <code>[导出为壁纸包]</code></td>
+          <td>点击应用立即发送 <code>wallpaper_set_source</code> 消息给桌面底层生效；点击导出可一键打包为包含 <code>manifest.json</code> 的 <code>.lw</code> 壁纸包，供社区分发。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>4.4 通信契约扩展 (JSON-RPC)</h3>
+  <pre><code>// 1. 设置/应用本地壁纸资源与样式参数
+await desktop.storeApi.call('wallpaper_apply_preset', {
+  sourceType: 'video', // 'image' | 'video'
+  sourcePath: 'D:/Wallpapers/Gargantua_Blackhole.mp4',
+  fitMode: 'cover',    // 'cover' | 'contain' | 'tile' | 'center'
+  volume: 0.3,         // 0.0 ~ 1.0 (静音为 0.0)
+  playbackRate: 1.0,   // 0.5 ~ 2.0
+  dimOpacity: 0.25,    // 0.0 ~ 0.8 暗化遮罩
+  blurRadius: 0        // 0 ~ 20px 高斯模糊
+});
+
+// 2. 导出为独立壁纸包 (.lw)
+await desktop.storeApi.call('wallpaper_export_lw', {
+  name: '我的星空壁纸',
+  author: 'User',
+  targetFilePath: 'C:/Users/zijix/Desktop/MyWallpaper.lw'
+});</code></pre>
+
+  <h2>五、 边界防坑与工程实施细则 (Critical Implementation Rules)</h2>
 
   <h3>4.1 右键绝对保护原则 (Right-Click ContextMenu Protection)</h3>
   <div class="note warn">
@@ -274,7 +377,7 @@ window.addEventListener('message', (e) => {
     <li>桌面缩放逻辑中强制施加 <code>qBound(min, val, max)</code> 约束，严防组件被缩至 0 像素黑点或拉扯至超大分辨率挤爆显存。</li>
   </ul>
 
-  <h2>五、 实施规划与任务拆解</h2>
+  <h2>六、 实施规划与任务拆解</h2>
 
   <div class="tbl-scroll">
     <table>
@@ -296,8 +399,8 @@ window.addEventListener('message', (e) => {
         </tr>
         <tr>
           <td><strong>阶段三</strong></td>
-          <td>管理页 Web 骨架</td>
-          <td>在 <code>src/resources/LinWidgetRuntime/store/</code> 搭建轻量 Web 管理单页，封装 <code>LinWidgetStoreBridge</code> RPC 协议。</td>
+          <td>管理页 Web 骨架与壁纸工坊</td>
+          <td>在 <code>src/resources/LinWidgetRuntime/store/</code> 搭建轻量 Web 管理单页，实现双栏壁纸工坊 (Wallpaper Studio) 可视化编辑器与本地图片/视频导入。</td>
           <td><span class="tag p1">P1</span></td>
         </tr>
         <tr>
