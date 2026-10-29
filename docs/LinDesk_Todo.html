@@ -95,7 +95,7 @@
   <div class="meta">
     <span>性质：全局单一真实来源 (Single Source of Truth)</span>
     <span>覆盖范围：桌面底座、右键菜单、LinBox 容器、LinWidget 组件系统、人机工学体验</span>
-    <span>更新时间：2026-10-29</span>
+    <span>更新时间：2026-10-30</span>
   </div>
 </header>
 
@@ -114,6 +114,9 @@
     <tr><th>优先级</th><th>任务事项</th><th>设计说明与落地点</th><th>状态</th></tr>
     <tr><td><span class="tag p0">P0</span></td><td>LinBox 折叠/展开弹性高度缓动动画</td><td>使用 <code>QEasingCurve::OutCubic</code> 实现 180~220ms 高度弹性动画，消除瞬间尺寸瞬变的机械感（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p0">P0</span></td><td>双击标题栏折叠 + 悬停自动展开 (Roll-up)</td><td>双击标题栏直接折叠；折叠状态下鼠标悬停 150ms 自动平滑下卷展开，移出后延时收起（<code>LinBox.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>自动悬浮展开开关迁移至设置页</td><td>Roll-up「悬停自动展开」的开关放在设置页（组件/桌面设置区），不放右键菜单——右键菜单只保留手动折叠操作，避免菜单项膨胀（落地点：<code>SettingUI.cpp</code> 组件/桌面设置区 + 右键菜单移除对应项）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>修复收起后内容区残留显示</td><td>Box 折叠收起后内容区仍露出约一行内容（滚动区域未完全收回/尺寸缓存残留），需在 <code>toggleCollapse()</code> 收起终态强制内容区高度为 0 并同步隐藏滚动条，展开时再恢复（<code>LinBox.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>折叠/展开动画卡顿优化</td><td>收起/展开高度动画期间主线程明显卡顿（疑似逐帧触发 <code>QScrollArea</code> 内容 relayout 与全量重绘），改为动画期间仅驱动容器高度、内容区按比例淡隐淡入，避免逐帧布局重算（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p0">P0</span></td><td>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</td><td>当拖拽盒子边缘距离屏幕或其它盒子小于 10px 时产生微阻尼对齐，解决手动对不齐的痛苦（<code>LinBox.cpp:mouseMoveEvent</code>）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>键盘盲打首字母跳选定位 (Type-to-Select)</td><td>桌面按键盘盲打字符（如按 <code>W</code>）立即跳选对应首字母图标，对齐 Windows 原生操作习惯（<code>ListView.cpp:keyPressEvent</code>）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</td><td>拦截 <code>Ctrl + Z</code> 调用 Windows Shell Undo 栈，为误删误拖提供反悔安全兜底（<code>ListView.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
@@ -144,6 +147,7 @@
   <table>
     <colgroup><col style="width:10%"><col style="width:34%"><col style="width:42%"><col style="width:14%"></colgroup>
     <tr><th>优先级</th><th>任务事项</th><th>设计说明与落地点</th><th>状态</th></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>CEF / LinWidget 运行时端到端安装、下载进度与卸载 UI 闭环</td><td>对接 RuntimeInstaller 状态机（未安装/下载进度条/已安装/安全卸载），移除非显式启动 CEF，补全 SettingUI 安装卡片（详见组件方案 2.4）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>组件包解压与本地离线安装/卸载</td><td>支持拖入 <code>.zip</code> 格式组件包自动校验并解压安装到 <code>LinWidgets/</code> 目录</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>AI 组件开发闭环（脱敏诊断包导出）</td><td>调试面板一键导出脱敏环境诊断包，提交 AI 即可对组件进行增量修复与迭代</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>严格外网沙箱与目录穿越防护</td><td>对未声明 <code>network</code> 权限的组件强制拦截一切外联连接，严格阻断 <code>../../</code> 穿越路径</td><td><span class="state todo">待办</span></td></tr>

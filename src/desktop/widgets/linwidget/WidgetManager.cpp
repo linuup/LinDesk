@@ -1709,8 +1709,13 @@ void WidgetManager::updateDefaultCefPage()
     }
 
     QRect canvasRect;
-    if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
+    if (LinCef::LinWidgetCanvasWidget::hostWidget() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().isValid() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().width() > 100) {
+        canvasRect = LinCef::LinWidgetCanvasWidget::hostWidget()->rect();
+    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
         canvasRect = m_canvasWidget->rect();
+    } else if (QGuiApplication::primaryScreen()) {
+        canvasRect = QGuiApplication::primaryScreen()->geometry();
+        canvasRect.moveTo(0, 0);
     } else {
         canvasRect = QRect(0, 0, 1920, 1080);
     }
@@ -1718,6 +1723,9 @@ void WidgetManager::updateDefaultCefPage()
     if (m_defaultOsrBrowser) {
         if (m_defaultOsrBrowser->geometry() != canvasRect) {
             m_defaultOsrBrowser->setGeometry(canvasRect);
+            if (m_canvasWidget) {
+                m_canvasWidget->updateWidgetGeometry(QStringLiteral("__default_page__"), canvasRect);
+            }
         }
         return;
     }
