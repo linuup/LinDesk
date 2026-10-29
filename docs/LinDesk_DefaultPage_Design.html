@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinDesk 组件系统默认页 · 设计稿</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect x='5.5' y='5.5' width='10' height='10' rx='2.5' fill='%238b5cf6'/%3E%3Crect x='5.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='5.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3C/svg%3E">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      padding: 48px 24px 72px;
+    }
+
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .page-head {
+      margin-bottom: 36px;
+    }
+
+    .page-head h1 {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .page-head p {
+      margin-top: 8px;
+      font-size: 15px;
+      color: rgba(29, 29, 31, 0.6);
+    }
+
+    .stage {
+      position: relative;
+      border-radius: 20px;
+      overflow: hidden;
+      height: 380px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.4s ease;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .stage.dark {
+      background: linear-gradient(135deg, #0a0d14 0%, #0e1726 55%, #05070b 100%);
+    }
+
+    .stage.light {
+      background: linear-gradient(135deg, #dbe4ee 0%, #c7d2e0 60%, #b6c3d4 100%);
+    }
+
+    /* —— 组件系统默认页卡片（与成品 LinDesk_DefaultPage_Final.html 完全一致）—— */
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 44px 64px;
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    .card .brand {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2.5px;
+      color: rgba(30, 41, 59, 0.55);
+      margin-bottom: 14px;
+    }
+
+    .card .icon {
+      width: 36px;
+      height: 36px;
+      margin-bottom: 6px;
+    }
+
+    .card h1 {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      line-height: 1.2;
+      color: #1e293b;
+      text-align: center;
+    }
+
+    .card p {
+      font-size: 14px;
+      font-weight: 400;
+      letter-spacing: 0.1px;
+      color: rgba(51, 65, 85, 0.72);
+      text-align: center;
+    }
+
+    .tone-switch {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      padding: 3px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .tone-switch button {
+      font: inherit;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: rgba(29, 29, 31, 0.7);
+      cursor: pointer;
+    }
+
+    .tone-switch button.active {
+      background: #fff;
+      color: #1d1d1f;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+
+    section {
+      margin-top: 40px;
+    }
+
+    section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+      margin-bottom: 14px;
+    }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+    }
+
+    .spec {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 18px 20px;
+    }
+
+    .spec .k {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: rgba(29, 29, 31, 0.45);
+      margin-bottom: 8px;
+    }
+
+    .spec .v {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #1d1d1f;
+    }
+
+    .spec .v code {
+      font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+      font-size: 13px;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+
+    ul.notes {
+      list-style: none;
+      margin-top: 8px;
+    }
+
+    ul.notes li {
+      position: relative;
+      padding-left: 18px;
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(29, 29, 31, 0.8);
+    }
+
+    ul.notes li::before {
+      content: "";
+      position: absolute;
+      left: 2px;
+      top: 10px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(29, 29, 31, 0.35);
+    }
+
+    .callout {
+      margin-top: 36px;
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 20px 24px;
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(29, 29, 31, 0.85);
+    }
+
+    .callout strong {
+      color: #1d1d1f;
+    }
+
+    .callout code {
+      font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+      font-size: 13px;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 28px 16px 56px;
+      }
+
+      .stage {
+        height: 300px;
+      }
+
+      .card {
+        padding: 32px 36px;
+      }
+
+      .card h1 {
+        font-size: 24px;
+      }
+
+      .tone-switch {
+        top: 12px;
+        right: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header class="page-head">
+      <h1>LinDesk 组件系统 · 默认页设计稿</h1>
+      <p>无活动组件时的空状态页面 · Apple 风格 · 替换 src/resources/LinWidgetRuntime/default_page.html</p>
+    </header>
+
+    <div class="stage dark" id="stage">
+      <div class="card">
+        <div class="brand">LINWIDGET</div>
+        <svg class="icon" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+          <rect x="5.5" y="5.5" width="10" height="10" rx="2.5" fill="#8b5cf6" />
+          <rect x="5.5" y="20.5" width="10" height="10" rx="2.5" stroke="rgba(30,41,59,0.5)" stroke-width="1.5" />
+          <rect x="20.5" y="5.5" width="10" height="10" rx="2.5" stroke="rgba(30,41,59,0.5)" stroke-width="1.5" />
+          <rect x="20.5" y="20.5" width="10" height="10" rx="2.5" stroke="rgba(30,41,59,0.5)" stroke-width="1.5" />
+        </svg>
+        <h1>没有正在运行的组件</h1>
+        <p>在设置中启用组件，它们会出现在你的桌面上</p>
+      </div>
+      <div class="tone-switch">
+        <button data-tone="dark" class="active">深色壁纸</button>
+        <button data-tone="light">浅色壁纸</button>
+      </div>
+    </div>
+
+    <section>
+      <h2>设计规格</h2>
+      <div class="spec-grid">
+        <div class="spec">
+          <div class="k">文案</div>
+          <div class="v">
+            字标 <code>LINWIDGET</code>（品牌归属）<br>
+            主标题「没有正在运行的组件」<br>
+            副文案「在设置中启用组件，它们会出现在你的桌面上」
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">层级</div>
+          <div class="v">
+            字标 11px / 字距 2.5px / 60% 透明度<br>
+            主标题 30px / <code>600</code> / <code>#1e293b</code><br>
+            副文案 14px / <code>400</code> / 72% 透明度
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">材料</div>
+          <div class="v">
+            卡片 <code>rgba(255,255,255,.14)</code><br>
+            <code>blur(20px) saturate(150%)</code><br>
+            描边 <code>rgba(255,255,255,.18)</code> · 圆角 26px<br>
+            阴影 <code>0 8px 32px rgba(15,23,42,.08)</code>
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">图标</div>
+          <div class="v">
+            36px 四宫格线性 SVG，1.5px 描边<br>
+            左上格填充组件紫 <code>#8b5cf6</code><br>
+            唯一强调色，其余线框克制
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">动效</div>
+          <div class="v">
+            仅一次淡入 <code>0.5s cubic-bezier(.22,1,.36,1)</code><br>
+            无 hover 变换 · 无光晕 · 无脉冲
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">交互约束</div>
+          <div class="v">
+            透明区域穿透给桌面（现状保留）<br>
+            卡片区域拦截点击（现状保留）<br>
+            <code>user-select: none</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>与现状的差异</h2>
+      <ul class="notes">
+        <li>去掉「CEF OSR Engine」技术徽标与绿色脉冲状态点——面向用户的页面不该暴露渲染引擎名；</li>
+        <li>去掉 56px 蓝紫渐变文字与光晕 shadow——Apple 空状态用纯色层级，不靠渐变炫技；</li>
+        <li>文案从「你好 / 暂无活动组件」改为完整的空状态引导，语气系统化；</li>
+        <li>卡片材料更收敛（0.18 → 0.14 透明度、去掉 hover 上浮位移），避免“网页感”。</li>
+      </ul>
+    </section>
+
+    <div class="callout">
+      <strong>交付</strong>：成品文件 <code>docs/LinDesk_DefaultPage_Final.html</code>，直接整文件替换
+      <code>src/resources/LinWidgetRuntime/default_page.html</code> 即可；纯静态资源、无脚本依赖、不引用外部链接，
+      无需重编 C++（构建时随资源拷贝进运行时）。
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var stage = document.getElementById('stage');
+      var btns = Array.prototype.slice.call(document.querySelectorAll('.tone-switch button'));
+      btns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var tone = btn.getAttribute('data-tone');
+          stage.className = 'stage ' + tone;
+          btns.forEach(function (b) {
+            b.classList.toggle('active', b === btn);
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+
+</html>

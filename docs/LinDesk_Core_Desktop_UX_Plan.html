@@ -39,7 +39,7 @@
     font-size:13px;background:var(--code-bg);
     border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px;
   }
-  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;}
+  table{width:100%;table-layout:fixed;border-collapse:collapse;margin:14px 0;font-size:14px;}
   th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top;}
   th{background:var(--code-bg);font-weight:600;white-space:nowrap;}
   .tbl-scroll{overflow-x:auto;}
@@ -90,7 +90,7 @@
   <div class="meta">
     <span>定位：人机工学交互、视觉微动画、操作跟手感专项优化</span>
     <span>对标：Stardock Fences 5、腾讯桌面整理、Windows 11 原生交互</span>
-    <span>更新：2026-10-29</span>
+    <span>更新：2026-10-30</span>
   </div>
 </header>
 
@@ -123,12 +123,21 @@
   </ul>
 
   <h4>1.2 双击标题栏折叠 与 悬停自动展开 (Roll-up / Auto-Peek)</h4>
-  <p><strong>现状痛点</strong>：用户必须精确瞄准右上角 14px 的折叠按钮才能操作；折叠后的盒子取用文件需要手动展开再手动收起，步骤繁琐。</p>
+  <p><strong>现状痛点</strong>：用户必须精确瞄准右上角 14px 的折叠按钮才能操作；折叠后的盒子取用文件需要手动展开再手动收起，步骤繁琐。<strong>双击区域冲突（本次规范重点）</strong>：当前 <code>LinBox.cpp:1836-1845</code> 中，双击标题栏的"文本矩形"（<code>mappedTitleTextRect()</code> 返回整条标题栏带，非映射 Box 为左右各缩 35px 的全宽）会触发标题重命名——即双击标题栏几乎任何位置都进入"自定义名称"编辑，与折叠目标冲突，必须先规范双击命中区域。</p>
   <p><strong>优化方案</strong>：</p>
   <ul>
-    <li><strong>双击标题栏折叠</strong>：在 <code>LinBox::mouseDoubleClickEvent</code> 中增加判断，双击标题栏非按钮空白区域直接折叠/展开；</li>
-    <li><strong>悬停自动展开 (Roll-up)</strong>：对于折叠状态的盒子，鼠标光标悬停在标题栏达到 150ms 后，盒子自动下卷平滑展开；鼠标移出整个盒子区域且没有拖拽行为后，延时 250ms 平滑收回折叠；</li>
-    <li><strong>客户价值</strong>：用户日常可将所有盒子都折叠成漂亮的“抽屉标签栏”，桌面整洁到极致，但使用时随用随现。</li>
+    <li><strong>双击位置分区规范（先行落地）</strong>：标题栏按命中优先级分四区——
+      <ol>
+        <li><strong>按钮区</strong>（<code>m_collapseBtn</code> / <code>m_viewSwitchBtn</code> 的 geometry）：交按钮自身 click 处理（折叠 / 视图切换），双击不拦截；</li>
+        <li><strong>映射图标区</strong>（仅 MapBox，<code>mappedTitleIconRect</code>）：双击在资源管理器中打开映射文件夹（保留现状行为）；</li>
+        <li><strong>标题文本热区</strong>（缩窄后的 <code>mappedTitleHitRect</code>）：仅"实际绘制文本宽度 + 左右各 <code>scaledPx(8)</code> 的 padding"范围命中，双击进入重命名（自定义名称）——不再整条标题栏触发；</li>
+        <li><strong>其余空白区</strong>：双击调用 <code>toggleCollapse()</code> 折叠 / 展开。</li>
+      </ol>
+    </li>
+    <li><strong>文本热区计算</strong>：新增 <code>mappedTitleHitRect()</code>（复用 <code>displayTitleText()</code> + <code>QFontMetrics::horizontalAdvance</code> 的 elided 宽度；非映射 Box 水平居中于标题栏，映射 Box 从 <code>mappedTitleIconRect().right() + scaledPx(7)</code> 起算）。绘制逻辑（<code>mappedTitleTextRect</code>）与命中热区分离，避免"视觉文字在中间、双击判定却全宽"的偏差；</li>
+    <li><strong>边界处理</strong>：双击空白折叠前若 <code>m_titleEdit-&gt;isVisible()</code> 先 <code>commitTitleEditing()</code>；折叠状态双击空白同样走 <code>toggleCollapse()</code> 双向展开；正处于标题编辑 / 框选态时不响应双击，交回默认；双击事件内先重置 <code>m_isMoving=false</code>，避免与标题栏拖拽移动互扰；</li>
+    <li><strong>悬停自动展开 (Roll-up)</strong>：折叠状态下鼠标光标悬停标题栏达到 150ms 后盒子自动下卷平滑展开；鼠标移出整个盒子区域且无拖拽行为后延时 250ms 平滑收回折叠；</li>
+    <li><strong>客户价值</strong>：用户日常可将所有盒子折叠成漂亮的"抽屉标签栏"，桌面整洁到极致，使用时双击空白区或悬停即现；重命名只命中文字本身，两者互不误触。</li>
   </ul>
 
   <h4>1.3 移动盒子磁吸与对齐吸附 (Magnetic Snapping)</h4>
@@ -173,9 +182,52 @@
     <li>桥接 Windows Shell Undo 栈或执行 LinDesk 文件操作的反向操作，实现安全兜底。</li>
   </ul>
 
-  <h4>2.3 双击空白隐藏桌面的淡入淡出动画 (Fade Transition)</h4>
-  <p><strong>现状痛点</strong>：双击空白处隐藏/显示桌面时为瞬时重绘，视觉跳变明显。</p>
-  <p><strong>优化方案</strong>：引入 150ms 的透明度动画（Opacity 0.0 &harr; 1.0），淡出时优雅露出纯净壁纸，淡入时平滑恢复。涉及 <code>ListView_Actions.cpp</code> 的 <code>onMenuShowDesktopIcons()</code>。</p>
+  <h4>2.3 双击空白隐藏桌面与淡入淡出动效 (Fade Transition & Settings Switch)</h4>
+  <p><strong>现状痛点</strong>：双击空白处隐藏/显示桌面时为瞬时重绘（硬切刷新），视觉跳变突兀生硬；同时，用户对“双击空白是否触发隐藏”以及“是否启用淡入淡出动画”缺乏清晰可控的设置面板入口，容易产生误触或动效偏好无法满足的问题。</p>
+  <p><strong>优化方案与详细规范</strong>：</p>
+  <ul>
+    <li><strong>设置页独立开关控制（本次规范核心）</strong>：
+      <ul>
+        <li><strong>开关一 · 双击隐藏桌面图标 (<code>DoubleClickHideIcons</code>)</strong>：
+          <ul>
+            <li><strong>界面位置</strong>：<code>设置中心 -&gt; 桌面与行为 (Desktop &amp; Behavior)</code> 页面，卡片标题为“双击隐藏桌面图标”，副标题为“双击桌面空白处快速隐藏或显示所有桌面图标与整理盒子”；</li>
+            <li><strong>配置项持久化</strong>：写入 <code>config.ini</code> 的 <code>[Desktop] DoubleClickHideIcons=true/false</code>；默认值为 <code>true</code>；</li>
+            <li><strong>双向实时同步</strong>：设置页开关状态与桌面右键上下文菜单（<code>查看 -&gt; 双击隐藏图标</code>）保持实时双向绑定，一处修改立即全局生效并持久化；关闭后，彻底屏蔽空白双击隐藏逻辑，避免高频双击误触。</li>
+          </ul>
+        </li>
+        <li><strong>开关二 · 隐藏/显示淡入淡出动效 (<code>FadeTransitionOnHide</code>)</strong>：
+          <ul>
+            <li><strong>界面位置</strong>：紧随上述开关下方，作为视觉动效专属性开关，标题为“隐藏桌面动效过渡”，副标题为“隐藏或恢复桌面元素时播放平滑的淡入淡出透明度过渡动画”；</li>
+            <li><strong>配置项持久化</strong>：写入 <code>config.ini</code> 的 <code>[Desktop] FadeTransitionOnHide=true/false</code>；默认值为 <code>true</code>；</li>
+            <li><strong>关闭回退机制</strong>：若用户关闭动效开关（追求瞬时响应或低配机器省电），则直接走无延迟的瞬时显隐切换（兼容现状行为）。</li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+    <li><strong>淡入淡出动效设计与实现细节</strong>：
+      <ul>
+        <li><strong>动画驱动机制</strong>：在 <code>ListView_Actions.cpp</code> 中引入 <code>QVariantAnimation</code>，驱动统一透明度变量 <code>m_desktopHideOpacity</code>（范围 <code>0.0f &harr; 1.0f</code>）；</li>
+        <li><strong>动效参数</strong>：过渡时长 <code>180ms ~ 220ms</code>，采用平滑三次缓动曲线 <code>QEasingCurve::InOutQuad</code>；</li>
+        <li><strong>全元素同频过渡</strong>：淡出时，桌面普通图标、Box 盒子容器及选中框等桌面层元素同频渐隐至 <code>0.0</code>，优雅透视露出底层纯净壁纸/动态小组件；淡入时平滑反向淡入至 <code>1.0</code>；</li>
+        <li><strong>状态机与防抖保护</strong>：
+          <ol>
+            <li><strong>连击防抖与动画拦截</strong>：在动效执行期间（<code>m_fadeAnimation-&gt;state() == QAbstractAnimation::Running</code>），再次双击桌面空白处直接被拦截忽略，严防因手抖极速连击导致透明度状态机错乱或闪烁；</li>
+            <li><strong>输入穿透控制</strong>：当透明度处于淡出完成态（隐藏态，<code>m_desktopHideOpacity == 0.0f</code>）时，桌面图标区域自动禁用鼠标命中与拖拽框选，仅响应双击空白恢复或右键菜单呼出；</li>
+            <li><strong>首帧与脏区刷新</strong>：每帧动画仅触发桌面脏区 <code>update()</code>，动效完全结束后触发 <code>syncBoxVisibilityWithDesktopIcons()</code> 并保存布局状态。</li>
+          </ol>
+        </li>
+      </ul>
+    </li>
+    <li><strong>涉及核心文件</strong>：
+      <ul>
+        <li><code>src/ui/SettingUI.cpp</code> / <code>SettingUI.h</code>：在桌面设置页添加设置卡片与 <code>FluentToggleSwitch</code> 开关；</li>
+        <li><code>src/desktop/ListView.h</code> / <code>ListView.cpp</code>：维护动效开关状态、双击命中分支与鼠标事件门禁；</li>
+        <li><code>src/desktop/ListView_Actions.cpp</code>：实现 <code>onMenuShowDesktopIcons()</code> 中的淡入淡出动画管线；</li>
+        <li><code>src/desktop/RightMenu.cpp</code>：同步维护右键菜单勾选项；</li>
+        <li><code>src/services/LayoutPersistenceService.cpp</code>：配置项 <code>DoubleClickHideIcons</code> 及 <code>FadeTransitionOnHide</code> 的读取与写盘。</li>
+      </ul>
+    </li>
+  </ul>
 
   <hr style="border:none;border-top:1px solid var(--line-soft);margin:28px 0;">
 
@@ -208,11 +260,11 @@
     <colgroup><col style="width:12%"><col style="width:36%"><col style="width:20%"><col style="width:14%"><col style="width:18%"></colgroup>
     <tr><th>优先级</th><th>优化项</th><th>核心模块</th><th>研发工期</th><th>体验提升度</th></tr>
     <tr><td><span class="tag p0">P0</span></td><td><strong>LinBox 折叠/展开平滑高度缓动动画</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★★★（消除生硬跳变）</td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td><strong>双击标题栏折叠 + 悬停自动展开 (Roll-up)</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★★★（桌面极致整洁的杀手级功能）</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td><strong>双击标题栏分区规范（文本=重命名 / 空白=折叠）+ 悬停自动展开 (Roll-up)</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★★★（桌面极致整洁的杀手级功能）</td></tr>
     <tr><td><span class="tag p0">P0</span></td><td><strong>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</strong></td><td><code>LinBox.cpp</code></td><td>1 天</td><td>★★★★★（解决强迫症对不齐的痛苦）</td></tr>
     <tr><td><span class="tag p1">P1</span></td><td><strong>键盘盲打首字母跳选定位 (Type-to-Select)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td>★★★★☆（对齐 Windows 原生习惯）</td></tr>
     <tr><td><span class="tag p1">P1</span></td><td><strong>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td>★★★★☆（误操作救回兜底）</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td><strong>双击空白处隐藏桌面的淡入淡出动画</strong></td><td><code>ListView_Actions.cpp</code></td><td>0.5 天</td><td>★★★★☆（看壁纸更优雅）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>双击空白处隐藏桌面与淡入淡出动效（含设置页独立双开关与右键菜单同步）</strong></td><td><code>ListView_Actions.cpp</code><br><code>SettingUI.cpp</code></td><td>0.5 天</td><td>★★★★☆（看壁纸更优雅，防误触可控）</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td><strong>真正的一键桌面智能整理分类 (Smart Box)</strong></td><td><code>ListView_Actions.cpp</code></td><td>1.5 天</td><td>★★★★★（初装用户的“第一惊艳功能”）</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td><strong>拖拽进入 Box 的呼吸发光高亮提示</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★☆☆（投掷反馈更明确）</td></tr>
     <tr><td><span class="tag p3">P3</span></td><td><strong>多屏幕跨屏摆放 Box 支持</strong></td><td><code>LinDesktop.cpp</code></td><td>2 天</td><td>★★★★☆（拿下双屏重度办公用户）</td></tr>

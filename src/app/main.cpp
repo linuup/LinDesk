@@ -130,6 +130,15 @@ int main(int argc, char *argv[])
     //LinDesk *lindesk = LinDesk::instance();
     //lindesk->show();
     LinDesktop linDesktop;
+    if (linDesktop.isSecondaryInstance()) {
+        int result = app.exec();
+        LogManager::shutdown();
+        if (SUCCEEDED(oleHr)) {
+            OleUninitialize();
+        }
+        return result;
+    }
+
     LinDeskHoveredItemServer hoveredItemServer;
     launchOptions.apply(&linDesktop);
     linDesktop.show();

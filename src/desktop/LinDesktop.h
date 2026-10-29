@@ -28,6 +28,7 @@
 #include <QElapsedTimer>
 #include <windows.h>
 class FluentDialog;
+class QLocalServer;
 
 class LinDesktop : public QWidget {
     Q_OBJECT
@@ -78,6 +79,8 @@ public:
     void embedToDesktop();
     void unembedFromDesktop();
     bool isEmbedded() const { return m_isEmbedded; }
+    bool isSecondaryInstance() const { return m_isSecondaryInstance; }
+    void selfHealAndRestoreDesktop();
     void forceDesktopRepaint();
     bool hasDesktopHostConflict() const { return m_hasDesktopHostConflict; }
     void handleDesktopHostWindowEvent(HWND hwnd, DWORD event);
@@ -90,6 +93,8 @@ private:
     void scheduleLinWidgetLayerRecovery();
     void showDesktopHostConflictDialog(HWND conflictHwnd);
     void repairDesktopHostPresentation();
+    void startSingleInstanceServer();
+    void handleSingleInstanceCommand(const QString& command);
     HWND findThirdPartyDesktopHostChild() const;
     bool isDesktopHostWindow(HWND hwnd) const;
     bool isWindowUnderDesktopHost(HWND hwnd) const;
@@ -139,6 +144,10 @@ private:
     bool m_shellHookRegistered = false;
     bool m_desktopHostConflictDialogShown = false;
     QPointer<FluentDialog> m_desktopHostConflictDialog;
+    bool m_isSecondaryInstance = false;
+    QPointer<QLocalServer> m_ipcServer;
+    UINT m_restoreWindowMessage = 0;
+    UINT m_showTrayWindowMessage = 0;
 
 private slots:
 

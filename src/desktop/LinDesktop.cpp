@@ -4,6 +4,8 @@
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInfoTip.h"
+#include <QLocalServer>
+#include <QLocalSocket>
 #include "services/AppPaths.h"
 #include "services/DpiCoordinateHelper.h"
 #include <QCoreApplication>
@@ -41,20 +43,93 @@ QImage loadWallpaperImageScaled(const QString& path, const QSize& targetSize)
     return reader.read();
 }
 
-void showAlreadyRunningTipAndQuit()
-{
-    constexpr int kTipVisibleMs = 2600;
-    constexpr int kQuitDelayMs = 2900;
+static const char* kSingleInstanceServerName = "LinDesk_SingleInstance_IPC";
 
-    FluentInfoTip* tip = new FluentInfoTip(nullptr);
-    tip->setText(QCoreApplication::translate("LinDesktop", "LinDesk is already running."));
-    QObject::connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, tip, &QObject::deleteLater);
+static UINT getRestoreWindowMessage()
+{
+    static const UINT s_msg = RegisterWindowMessageW(L"LINDESK_IPC_RESTORE_MSG");
+    return s_msg;
+}
+
+static UINT getShowTrayWindowMessage()
+{
+    static const UINT s_msg = RegisterWindowMessageW(L"LINDESK_IPC_SHOW_TRAY_MSG");
+    return s_msg;
+}
+
+static void sendSingleInstanceCommand(const QString& cmd)
+{
+    // Channel 1: QLocalSocket Named Pipe
+    QLocalSocket socket;
+    socket.connectToServer(QString::fromLatin1(kSingleInstanceServerName));
+    if (socket.waitForConnected(600)) {
+        socket.write(cmd.toUtf8() + "\n");
+        socket.flush();
+        socket.waitForBytesWritten(600);
+        socket.disconnectFromServer();
+    }
+
+    // Channel 2: Broadcast Windows Registered Message
+    if (cmd == QStringLiteral("RESTORE")) {
+        PostMessageW(HWND_BROADCAST, getRestoreWindowMessage(), 0, 0);
+    } else if (cmd == QStringLiteral("SHOW_TRAY")) {
+        PostMessageW(HWND_BROADCAST, getShowTrayWindowMessage(), 0, 0);
+    }
+}
+
+void showAlreadyRunningDialogAndHandle()
+{
+    auto* dialog = new FluentDialog(nullptr);
+    dialog->setAttribute(Qt::WA_DeleteOnClose, true);
+    dialog->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
+    dialog->setDialogTitle(QCoreApplication::translate("LinDesktop", "LinDesk is Already Running"));
+    dialog->setMessage(QCoreApplication::translate("LinDesktop",
+        "LinDesk is already running in the background, but the desktop presentation may have been obscured by the Windows desktop or third-party software.\n\n"
+        "• Click [Restore Desktop] to bring LinDesk back to the front.\n"
+        "• Click [Cancel] to keep the current desktop and show the icon in the system tray."));
+
+    auto handled = std::make_shared<bool>(false);
+
+    dialog->addActionButton(
+        QCoreApplication::translate("LinDesktop", "Cancel"),
+        FluentDialog::ActionType::Secondary,
+        [handled]() {
+            if (!*handled) {
+                *handled = true;
+                sendSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
+                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
+            }
+        }
+    );
+
+    dialog->addActionButton(
+        QCoreApplication::translate("LinDesktop", "Restore Desktop"),
+        FluentDialog::ActionType::Primary,
+        [handled]() {
+            if (!*handled) {
+                *handled = true;
+                sendSingleInstanceCommand(QStringLiteral("RESTORE"));
+                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
+            }
+        }
+    );
+
+    QObject::connect(dialog, &QObject::destroyed, [handled]() {
+        if (!*handled) {
+            *handled = true;
+            sendSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
+            QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
+        }
+    });
 
     const QRect screenRect = QApplication::primaryScreen()
         ? QApplication::primaryScreen()->availableGeometry()
         : QRect(0, 0, 800, 600);
-    tip->showCentered(screenRect, kTipVisibleMs);
-    QTimer::singleShot(kQuitDelayMs, QCoreApplication::instance(), &QCoreApplication::quit);
+    dialog->show();
+    const QPoint center = screenRect.center() - QPoint(dialog->width() / 2, dialog->height() / 2);
+    dialog->move(center);
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 void CALLBACK desktopHostWindowEventProc(HWINEVENTHOOK,
@@ -122,8 +197,9 @@ LinDesktop::LinDesktop(QWidget* parent)
             CloseHandle(m_singleInstanceMutex);
             m_singleInstanceMutex = nullptr;
         }
+        m_isSecondaryInstance = true;
         QTimer::singleShot(0, []() {
-            showAlreadyRunningTipAndQuit();
+            showAlreadyRunningDialogAndHandle();
         });
         return;
     }
@@ -200,6 +276,16 @@ LinDesktop::LinDesktop(QWidget* parent)
         connectScreenSignals(screen());
         handleDpiOrScreenMetricsChanged();
     });
+
+    m_restoreWindowMessage = getRestoreWindowMessage();
+    m_showTrayWindowMessage = getShowTrayWindowMessage();
+#ifdef Q_OS_WIN
+    if (HWND hwnd = reinterpret_cast<HWND>(winId())) {
+        ChangeWindowMessageFilterEx(hwnd, m_restoreWindowMessage, MSGFLT_ALLOW, nullptr);
+        ChangeWindowMessageFilterEx(hwnd, m_showTrayWindowMessage, MSGFLT_ALLOW, nullptr);
+    }
+#endif
+    startSingleInstanceServer();
 }
 
 LinDesktop::~LinDesktop()
@@ -208,6 +294,12 @@ LinDesktop::~LinDesktop()
         DeregisterShellHookWindow(reinterpret_cast<HWND>(winId()));
     }
     stopDesktopHostWindowMonitor();
+
+    if (m_ipcServer) {
+        m_ipcServer->close();
+        delete m_ipcServer;
+        m_ipcServer = nullptr;
+    }
 
     if (m_trayIcon) {
         m_trayIcon->hide();
@@ -652,18 +744,10 @@ bool LinDesktop::shouldMinimizeToTray() const
 
 void LinDesktop::restoreFromTray()
 {
-    if (m_trayIcon) {
+    selfHealAndRestoreDesktop();
+    if (m_trayIcon && isVisible()) {
         m_trayIcon->hide();
     }
-
-    if (windowState() & Qt::WindowMinimized) {
-        setWindowState(windowState() & ~Qt::WindowMinimized);
-    }
-
-    show();
-    showNormal();
-    raise();
-    activateWindow();
 }
 
 void LinDesktop::exitFromTray()
@@ -859,18 +943,85 @@ void LinDesktop::showDesktopHostConflictDialog(HWND conflictHwnd)
     dialog->show();
 }
 
-void LinDesktop::repairDesktopHostPresentation()
+void LinDesktop::startSingleInstanceServer()
+{
+    QLocalServer::removeServer(QString::fromLatin1(kSingleInstanceServerName));
+    m_ipcServer = new QLocalServer(this);
+    connect(m_ipcServer, &QLocalServer::newConnection, this, [this]() {
+        while (m_ipcServer && m_ipcServer->hasPendingConnections()) {
+            QLocalSocket* socket = m_ipcServer->nextPendingConnection();
+            connect(socket, &QLocalSocket::readyRead, this, [this, socket]() {
+                const QByteArray data = socket->readAll();
+                const QString command = QString::fromUtf8(data).trimmed();
+                handleSingleInstanceCommand(command);
+            });
+            connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+        }
+    });
+    m_ipcServer->listen(QString::fromLatin1(kSingleInstanceServerName));
+}
+
+void LinDesktop::handleSingleInstanceCommand(const QString& command)
+{
+    qWarning() << "[LinDesktop] Received single instance command:" << command;
+    if (command == QStringLiteral("RESTORE")) {
+        // 1. 打开托盘图标
+        if (m_trayIcon) {
+            m_trayIcon->show();
+        }
+
+        // 2. 执行桌面自愈重挂载
+        selfHealAndRestoreDesktop();
+
+        // 3. 当程序显示出来时，自动恢复为用户设置的隐藏或显示状态
+        if (m_trayIcon && isVisible()) {
+            m_trayIcon->hide();
+        }
+    } else if (command == QStringLiteral("SHOW_TRAY")) {
+        // 取消恢复桌面：保持当前桌面状态，把托盘打开以供随时操作
+        if (m_trayIcon) {
+            m_trayIcon->show();
+            if (!m_hasShownTrayHint) {
+                m_trayIcon->showMessage(
+                    tr("LinDesk"),
+                    tr("LinDesk is still running in the background. Right-click here to restore or exit."),
+                    QSystemTrayIcon::Information,
+                    3000
+                );
+                m_hasShownTrayHint = true;
+            }
+        }
+    }
+}
+
+void LinDesktop::selfHealAndRestoreDesktop()
 {
     HWND selfHwnd = reinterpret_cast<HWND>(winId());
     if (!selfHwnd || !IsWindow(selfHwnd)) {
         return;
     }
 
-    qWarning() << "[LinDesktopHostMonitor] repairing desktop host presentation"
-               << "self=" << selfHwnd
-               << "parent=" << GetParent(selfHwnd)
-               << "parentClass=" << windowClassName(GetParent(selfHwnd));
+    qWarning() << "[LinDesktop] executing selfHealAndRestoreDesktop";
 
+    if (windowState() & Qt::WindowMinimized) {
+        setWindowState(windowState() & ~Qt::WindowMinimized);
+    }
+
+    HWND realDesktop = CSystemApi::FindRealDesktop();
+    if (realDesktop && IsWindow(realDesktop)) {
+        HWND currentParent = GetParent(selfHwnd);
+        if (currentParent != realDesktop) {
+            qWarning() << "[LinDesktop] Desktop host parent changed from" << currentParent << "to" << realDesktop << ", re-embedding...";
+            SetParent(selfHwnd, realDesktop);
+
+            LONG_PTR exStyle = GetWindowLongPtr(selfHwnd, GWL_EXSTYLE);
+            exStyle &= ~WS_EX_LAYERED;
+            SetWindowLongPtr(selfHwnd, GWL_EXSTYLE, exStyle);
+            m_isEmbedded = true;
+        }
+    }
+
+    setGeometry(QApplication::primaryScreen()->geometry());
     SetWindowPos(
         selfHwnd,
         HWND_TOP,
@@ -878,18 +1029,28 @@ void LinDesktop::repairDesktopHostPresentation()
         0,
         0,
         0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED
+    );
 
-    RedrawWindow(selfHwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN);
-    update();
+    show();
+    showNormal();
+    raise();
+    activateWindow();
+
     if (listView) {
+        listView->setGeometry(rect());
+        listView->show();
+        listView->raise();
         listView->update();
     }
+    forceDesktopRepaint();
 
-    qWarning() << "[LinDesktopHostMonitor] desktop host presentation repaired"
-               << "self=" << selfHwnd
-               << "parent=" << GetParent(selfHwnd)
-               << "parentClass=" << windowClassName(GetParent(selfHwnd));
+    qWarning() << "[LinDesktop] selfHealAndRestoreDesktop completed successfully";
+}
+
+void LinDesktop::repairDesktopHostPresentation()
+{
+    selfHealAndRestoreDesktop();
 }
 
 HWND LinDesktop::findThirdPartyDesktopHostChild() const
@@ -1211,6 +1372,16 @@ void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
     MSG* msg = static_cast<MSG*>(message);
+    if (msg && m_restoreWindowMessage != 0 && msg->message == m_restoreWindowMessage) {
+        handleSingleInstanceCommand(QStringLiteral("RESTORE"));
+        if (result) *result = 0;
+        return true;
+    }
+    if (msg && m_showTrayWindowMessage != 0 && msg->message == m_showTrayWindowMessage) {
+        handleSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
+        if (result) *result = 0;
+        return true;
+    }
     if (msg && m_shellHookMessage != 0 && msg->message == m_shellHookMessage) {
         const WPARAM shellEvent = msg->wParam;
         if (shellEvent == HSHELL_WINDOWACTIVATED ||
