@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "desktop/RightMenu.h"
 #include "desktop/ListViewFileOpsHelper.h"
 #include "desktop/Win11MenuBridge.h"
@@ -104,6 +104,7 @@ UINT nativeWindowDpi(HWND hwnd)
 
 void logRightMenuDpiTrace(const char* source, HWND hwnd, const QPoint& pos)
 {
+#ifdef QT_DEBUG
     QScreen* screen = QGuiApplication::screenAt(pos);
     if (!screen) {
         screen = QGuiApplication::primaryScreen();
@@ -121,6 +122,11 @@ void logRightMenuDpiTrace(const char* source, HWND hwnd, const QPoint& pos)
              << "screenDpr=" << (screen ? screen->devicePixelRatio() : 0.0)
              << "screenGeometry=" << (screen ? screen->geometry() : QRect())
              << "screenAvailable=" << (screen ? screen->availableGeometry() : QRect());
+#else
+    Q_UNUSED(source);
+    Q_UNUSED(hwnd);
+    Q_UNUSED(pos);
+#endif
 }
 
 bool isSupportedSpecialFolderMenu(SpecialFolders folder)
@@ -1284,7 +1290,7 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool ext
     if (this->fileType == ObjectType::SpecialFolder && isSupportedSpecialFolderMenu(model.specialFolder)) {
         scm.DisplaySpecialFolderContextMenu(model.specialFolder);
     } else {
-        scm.DisplayItemContextMenu(model.itemData.pidl(), this->hwnd);
+        scm.DisplayItemContextMenu(model.itemData.pidl());
     }
     scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeysForModel(model)));
     scm.ShowMenu(this->hwnd, position, nullptr,

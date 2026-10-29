@@ -1,4 +1,4 @@
-
+﻿
 #include "ShellContextMenu.h"
 #include <algorithm>
 #include <cwctype>
@@ -16,65 +16,6 @@
 #include <mutex>
 
 namespace {
-class ShellMenuSite : public IServiceProvider, public IOleWindow
-{
-public:
-    HWND m_hwndOwner = nullptr;
-    std::atomic<ULONG> m_refCount{1};
-
-    explicit ShellMenuSite(HWND hwnd = nullptr) : m_hwndOwner(hwnd) {}
-
-    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
-        if (!ppv) return E_POINTER;
-        if (riid == IID_IUnknown || riid == IID_IServiceProvider) {
-            *ppv = static_cast<IServiceProvider*>(this);
-            AddRef();
-            return S_OK;
-        }
-        if (riid == IID_IOleWindow) {
-            *ppv = static_cast<IOleWindow*>(this);
-            AddRef();
-            return S_OK;
-        }
-        *ppv = nullptr;
-        return E_NOINTERFACE;
-    }
-
-    STDMETHODIMP_(ULONG) AddRef() override {
-        return m_refCount.fetch_add(1) + 1;
-    }
-
-    STDMETHODIMP_(ULONG) Release() override {
-        ULONG ref = m_refCount.fetch_sub(1) - 1;
-        if (ref == 0) {
-            delete this;
-        }
-        return ref;
-    }
-
-    STDMETHODIMP QueryService(REFGUID guidService, REFIID riid, void** ppv) override {
-        if (!ppv) return E_POINTER;
-        if (guidService == SID_SFolderView || guidService == SID_SShellBrowser) {
-            return E_NOINTERFACE;
-        }
-        if (riid == IID_IOleWindow) {
-            *ppv = static_cast<IOleWindow*>(this);
-            AddRef();
-            return S_OK;
-        }
-        return QueryInterface(riid, ppv);
-    }
-
-    STDMETHODIMP GetWindow(HWND* phwnd) override {
-        if (!phwnd) return E_POINTER;
-        *phwnd = m_hwndOwner;
-        return S_OK;
-    }
-
-    STDMETHODIMP ContextSensitiveHelp(BOOL) override {
-        return E_NOTIMPL;
-    }
-};
 constexpr wchar_t kShellMenuExclusionSection[] = L"ShellMenuExclusions";
 
 HBITMAP CopyMenuBitmap(HBITMAP source)
@@ -165,21 +106,21 @@ void EnableWindowDarkMenuTheme(HWND hwnd)
 
     using fnSetPreferredAppMode = int(WINAPI*)(int appMode);
     using fnAllowDarkModeForWindow = bool(WINAPI*)(HWND hWnd, bool allow);
-    using fnFlushMenuThemes = void(WINAPI*)();
 
     static auto pSetPreferredAppMode = reinterpret_cast<fnSetPreferredAppMode>(GetProcAddress(hUxtheme, MAKEINTRESOURCEA(135)));
     static auto pAllowDarkModeForWindow = reinterpret_cast<fnAllowDarkModeForWindow>(GetProcAddress(hUxtheme, MAKEINTRESOURCEA(133)));
-    static auto pFlushMenuThemes = reinterpret_cast<fnFlushMenuThemes>(GetProcAddress(hUxtheme, MAKEINTRESOURCEA(136)));
 
-    if (pSetPreferredAppMode) {
-        pSetPreferredAppMode(1); // AllowDark = 1 (自动跟随系统深浅模式)
-    }
+    static std::once_flag initDarkFlag;
+    std::call_once(initDarkFlag, []() {
+        if (pSetPreferredAppMode) {
+            pSetPreferredAppMode(1); // AllowDark = 1 (自动跟随系统深浅模式)
+        }
+    });
+
     if (pAllowDarkModeForWindow) {
         pAllowDarkModeForWindow(hwnd, true);
     }
-    if (pFlushMenuThemes) {
-        pFlushMenuThemes();
-    }
+    // 还原 1.0.5 模式：移除 pFlushMenuThemes()，不强制清空系统菜单缓存，消除 30~80ms 阻塞
 }
 
 HBITMAP BitmapFromIcon(HICON icon)
@@ -2067,6 +2008,7 @@ void ShellContextMenu::DisplayBoxBackgroundContextMenu(const std::wstring& folde
 
 void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl, HWND hwndOwner)
 {
+    Q_UNUSED(hwndOwner);
     m_contextMenu = nullptr;
     if (!pidl || operationType == OperationType::BackGround || operationType == OperationType::boxBackground) {
         return;
@@ -2074,7 +2016,8 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl, HWND hwndOwner)
     if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
         return;
     }
-    m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pDesktopFolder.get(), hwndOwner);
+    // 还原 1.0.5 模式：传入 nullptr 作为 hwndOwner，触发轻量快速查询通道
+    m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pDesktopFolder.get(), nullptr);
 }
 
 void ShellContextMenu::DisplayLinkContextMenu(const wchar_t* path) {
@@ -2721,6 +2664,7 @@ wil::com_ptr_nothrow<IShellFolder> ShellContextMenu::GetIshellFolderByPath(const
 
 wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::IContextMenuFromIShellFolder(PCIDLIST_ABSOLUTE pidl, IShellFolder* pShellFolder, HWND hwndOwner)
 {
+    Q_UNUSED(hwndOwner);
     LPCITEMIDLIST relativePIDL = nullptr;
     wil::com_ptr_nothrow<IContextMenu3> pContextMenu;
     if (pidl) {
@@ -2737,15 +2681,10 @@ wil::com_ptr_nothrow<IContextMenu3> ShellContextMenu::IContextMenuFromIShellFold
         }
         if (parentShellFolder && relativePIDL) {
             wil::com_ptr_nothrow<IContextMenu> baseContextMenu;
-            hr = parentShellFolder->GetUIObjectOf(hwndOwner, 1, &relativePIDL, IID_IContextMenu, nullptr, baseContextMenu.put_void());
+            // 还原 1.0.5 模式：传入 NULL 作为 hwndOwner，触发 Shell 扩展轻量极速查询通道
+            hr = parentShellFolder->GetUIObjectOf(NULL, 1, &relativePIDL, IID_IContextMenu, nullptr, baseContextMenu.put_void());
             if (SUCCEEDED(hr) && baseContextMenu) {
-                if (hwndOwner) {
-                    wil::com_ptr_nothrow<IObjectWithSite> siteObj;
-                    if (SUCCEEDED(baseContextMenu->QueryInterface(IID_PPV_ARGS(&siteObj))) && siteObj) {
-                        wil::com_ptr_nothrow<IServiceProvider> site(static_cast<IServiceProvider*>(new ShellMenuSite(hwndOwner)));
-                        siteObj->SetSite(site.get());
-                    }
-                }
+                // 还原 1.0.5 模式：不注入 Site，彻底规避快捷方式 (.lnk) 向上探测 Explorer 宿主引发的 RPC 阻塞
                 baseContextMenu->QueryInterface(IID_PPV_ARGS(&pContextMenu));
             }
         }

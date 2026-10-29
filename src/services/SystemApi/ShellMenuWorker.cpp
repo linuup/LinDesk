@@ -1,4 +1,4 @@
-#include "services/SystemApi/ShellMenuWorker.h"
+﻿#include "services/SystemApi/ShellMenuWorker.h"
 
 #include <QDir>
 
@@ -338,11 +338,7 @@ void EnableWindowDarkMenuTheme(HWND hwnd)
 
     }
 
-    if (pFlushMenuThemes) {
-
-        pFlushMenuThemes();
-
-    }
+    // 还原 1.0.5 模式：移除 pFlushMenuThemes()
 
 }
 
