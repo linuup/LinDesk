@@ -156,7 +156,8 @@ LinDesktop::LinDesktop(QWidget* parent)
         m_transitionOpacity = 1.0f;
         update();
     });
-    loadBackImage();
+    // Synchronously load wallpaper on cold startup so m_scaledBackImagePixmap is ready on first paint
+    loadBackImageSync();
 
     listView = ListView::instance(this);
     listView->setGeometry(rect());
@@ -270,6 +271,16 @@ void LinDesktop::onWallpaperChanged()
 
 void LinDesktop::loadBackImage()
 {
+    loadBackImageInternal(false);
+}
+
+void LinDesktop::loadBackImageSync()
+{
+    loadBackImageInternal(true);
+}
+
+void LinDesktop::loadBackImageInternal(bool sync)
+{
     if (!showDefaultWallpaper()) {
         m_backImagePixmap = QPixmap();
         m_scaledBackImagePixmap = QPixmap();
@@ -283,7 +294,7 @@ void LinDesktop::loadBackImage()
     }
 
     const QString path = SysInfoUtil::GetRobustWallpaperPath();
-    qDebug() << "[LinDesktop] Loading wallpaper from:" << path;
+    qDebug() << "[LinDesktop] Loading wallpaper from:" << path << (sync ? "(sync cold start)" : "(async)");
 
     if (path.isEmpty()) {
         applyFallbackWallpaper(QString(), QStringLiteral("wallpaper path is empty"));
@@ -291,6 +302,21 @@ void LinDesktop::loadBackImage()
     }
 
     if (path == m_pendingWallpaperPath) {
+        return;
+    }
+
+    const QSize wallpaperTargetSize = size().isValid() && !size().isEmpty()
+        ? size()
+        : (QApplication::primaryScreen() ? QApplication::primaryScreen()->geometry().size() : QSize(1920, 1080));
+
+    if (sync) {
+        m_pendingWallpaperPath.clear();
+        const QImage image = loadWallpaperImageScaled(path, wallpaperTargetSize);
+        if (image.isNull()) {
+            applyFallbackWallpaper(path, QStringLiteral("failed to decode wallpaper"));
+        } else {
+            applyLoadedWallpaper(path, image);
+        }
         return;
     }
 
@@ -313,7 +339,6 @@ void LinDesktop::loadBackImage()
 
         applyLoadedWallpaper(path, image);
     });
-    const QSize wallpaperTargetSize = size();
     watcher->setFuture(QtConcurrent::run([path, wallpaperTargetSize]() {
         return loadWallpaperImageScaled(path, wallpaperTargetSize);
     }));
@@ -1123,6 +1148,8 @@ void LinDesktop::paintEvent(QPaintEvent* event)
     if (!m_scaledBackImagePixmap.isNull()) {
         painter.setOpacity(m_transitionOpacity);
         painter.drawPixmap(QPoint(0, 0), m_scaledBackImagePixmap);
+    } else {
+        painter.fillRect(rect(), Qt::black);
     }
 }
 

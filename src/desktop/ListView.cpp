@@ -314,6 +314,7 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     m_lastRightClickPos(-1, -1),
     m_forwardingMouseToWidget(false)
 {
+    m_instance = this;
     setAcceptDrops(true);
     setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_TranslucentBackground);
@@ -397,30 +398,31 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     // Load view mode configuration before initializing desktop item models.
     // This keeps icon sizing and render state consistent during startup.
 
-    this->initialize();
-    this->initRightMenuConnections();
-    this->syncViewModeSizes(); // Call syncViewModeSizes after initialization
-    
     // Initialize BoxManager
     BoxManager::instance(this);
     BoxManager::instance()->setPersistencePath(m_persistencePath);
     connect(BoxManager::instance(), &BoxManager::saveRequested, this, &ListView::saveBoxes);
-    this->hide();
-    // Defer loading boxes to ensure the event loop is running and windows can be properly shown/mapped
-    QTimer::singleShot(100, [this](){
-        this->loadBoxes(true);
-        const QString configPath = AppPaths::configFilePath();
-        QSettings settings(configPath, QSettings::IniFormat);
-        const bool isFirstLaunch = settings.value("Firslanuch", true).toBool();
-        if (isFirstLaunch) {
-            this->setPersistenceEnabled(true); 
-            settings.setValue("Firslanuch", false);
-            settings.sync();
-        }
-        this->onMenuRefresh();
+
+    this->initialize();
+    this->initRightMenuConnections();
+    this->syncViewModeSizes(); // Call syncViewModeSizes after initialization
+
+    // Synchronously load all boxes and assign items before any window is displayed
+    this->loadBoxes(true);
+
+    const QString configPath = AppPaths::configFilePath();
+    QSettings settings(configPath, QSettings::IniFormat);
+    const bool isFirstLaunch = settings.value("Firslanuch", true).toBool();
+    if (isFirstLaunch) {
+        this->setPersistenceEnabled(true); 
+        settings.setValue("Firslanuch", false);
+        settings.sync();
+    }
+
+    // Initialize LinWidgets asynchronously in next event loop tick so startup is instantaneous
+    QTimer::singleShot(0, this, [this]() {
         this->raise();
         this->initializeLinWidgets();
-
     });
 }
 
@@ -724,6 +726,9 @@ void ListView::handleHotkey(int id) {
     }
 }
 ListView::~ListView() {
+    if (m_instance == this) {
+        m_instance = nullptr;
+    }
     saveBoxes();
     
     // Clean up drag tip

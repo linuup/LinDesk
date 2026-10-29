@@ -57,6 +57,10 @@ public:
 
 	//QRect drawingMaskRect;    // 拖拽选择框矩形
     void loadBackImage();
+    void loadBackImageSync();
+private:
+    void loadBackImageInternal(bool sync);
+public:
     void applyLoadedWallpaper(const QString& path, const QImage& image);
     void applyFallbackWallpaper(const QString& path, const QString& reason);
     void rebuildScaledWallpaperPixmaps();
