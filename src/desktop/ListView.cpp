@@ -275,6 +275,43 @@ QPoint ListView::localPosFromGhostWidget(const QWidget* ghostWidget) const
     return mapFromGlobal(ghostWidget->pos());
 }
 
+QPoint ListView::localPosForGhost(const GhostInfo& ghost) const
+{
+    const QPoint mousePos = m_lastGhostMousePos.isNull() ? QCursor::pos() : m_lastGhostMousePos;
+    return mapFromGlobal(mousePos) + ghost.offset;
+}
+
+void ListView::clearDragGhosts()
+{
+    if (m_combinedGhostWidget) {
+        m_combinedGhostWidget->hide();
+        m_combinedGhostWidget->deleteLater();
+        m_combinedGhostWidget = nullptr;
+    }
+    for (auto& ghost : m_ghosts) {
+        if (ghost.widget && ghost.widget != m_combinedGhostWidget) {
+            ghost.widget->hide();
+            ghost.widget->deleteLater();
+        }
+        ghost.widget = nullptr;
+    }
+    m_ghosts.clear();
+}
+
+void ListView::loadSelectionColors()
+{
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    const QColor baseColor(settings.value(QStringLiteral("Desktop/SelectionRectangleColor"), QStringLiteral("#64A0F0")).toString());
+    const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
+    const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
+    QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
+    QColor borderColor = fillColor.darker(110);
+    fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
+    borderColor.setAlpha(qBound(95, contrast * 230 / 100, 230));
+    m_selectionFillColor = fillColor;
+    m_selectionBorderColor = borderColor;
+}
+
 bool ListView::rectIntersectsDesktopBlockedArea(const QRect& rect) const
 {
     for (const QRect& componentRect : desktopBlockedOccupiedRects()) {
@@ -424,6 +461,8 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         this->raise();
         this->initializeLinWidgets();
     });
+
+    loadSelectionColors();
 }
 
 void* ListView::linWidgetManager()
@@ -742,14 +781,7 @@ ListView::~ListView() {
         m_infoTip = nullptr;
     }
     
-    // Clean up ghost widgets
-    for (auto& ghost : m_ghosts) {
-        if (ghost.widget) {
-            delete ghost.widget;
-            ghost.widget = nullptr;
-        }
-    }
-    m_ghosts.clear();
+    clearDragGhosts();
 
 }
 DesktopRootItemState* ListView::findAnyItemStateByPath(const QString& filePath)
@@ -1343,7 +1375,8 @@ void ListView::paintEvent(QPaintEvent* event)
             return;
         }
 
-        if (!dirtyRegion.intersects(state.model.renderData.itemRect)) {
+        if (!dirtyRegion.intersects(state.model.renderData.itemRect) &&
+            !dirtyRegion.intersects(state.model.renderData.textRect)) {
             return;
         }
 
@@ -1351,19 +1384,47 @@ void ListView::paintEvent(QPaintEvent* event)
         paintDesktopRootItemStatic(painter, state.model.renderData);
     };
 
-    // Paint normal items first so expanded filename labels can sit above siblings.
-    for (const auto& state : m_itemStates) {
-        if (state.model.renderData.expandedFullName) {
-            continue;
-        }
-        paintDesktopState(state);
-    }
+    const QRect dirtyBoundingRect = dirtyRegion.boundingRect();
+    const bool useSpatialIndex = m_spatialIndex &&
+                                 !m_spatialIndexDirty &&
+                                 m_spatialIndexBounds == this->rect() &&
+                                 dirtyBoundingRect.isValid() &&
+                                 dirtyBoundingRect != rect() &&
+                                 dirtyRegion.rectCount() <= 20 &&
+                                 m_itemStates.size() >= 16;
 
-    for (const auto& state : m_itemStates) {
-        if (!state.model.renderData.expandedFullName) {
-            continue;
+    if (useSpatialIndex) {
+        const QRect queryRect = dirtyBoundingRect.adjusted(-32, -32, 32, 32);
+        const QVector<DesktopRootItemState*> candidates = m_spatialIndex->query(queryRect);
+
+        for (const DesktopRootItemState* state : candidates) {
+            if (!state || state->model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(*state);
         }
-        paintDesktopState(state);
+
+        for (const DesktopRootItemState* state : candidates) {
+            if (!state || !state->model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(*state);
+        }
+    } else {
+        // Paint normal items first so expanded filename labels can sit above siblings.
+        for (const auto& state : m_itemStates) {
+            if (state.model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(state);
+        }
+
+        for (const auto& state : m_itemStates) {
+            if (!state.model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(state);
+        }
     }
 
     // 2. 如果处于浮动模式（小组件在图标上方），后置绘制 CEF OSR 画布
@@ -1383,6 +1444,14 @@ void ListView::paintEvent(QPaintEvent* event)
     }
 
     paintLinWidgetBlockedCellsOverlay(painter, dirtyRegion);
+
+    if (m_isSelecting && !m_renderedSelectionRect.isNull() && m_renderedSelectionRect.isValid() && dirtyRegion.intersects(m_renderedSelectionRect)) {
+        painter.save();
+        painter.setPen(QPen(m_selectionBorderColor, 1));
+        painter.setBrush(m_selectionFillColor);
+        painter.drawRect(m_renderedSelectionRect.adjusted(0, 0, -1, -1));
+        painter.restore();
+    }
 }
 
 void ListView::contextMenuEvent(QContextMenuEvent* event)
@@ -1566,22 +1635,7 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
     if (m_isSelecting) {
         QRect rect;
-        const bool shouldShowSelection = updateBackgroundSelection(event->pos(), &rect);
-        if (LinDesktop* desktop = findLinDesktopAncestor(parentWidget())) {
-            if (desktop->selectArea) {
-                desktop->selectArea->setSelectionRect(rect);
-            }
-            if (shouldShowSelection) {
-                if (desktop->selectArea && !desktop->selectArea->isVisible()) {
-                    desktop->selectArea->show();
-                }
-                if (desktop->selectArea) {
-                    desktop->selectArea->lower();
-                }
-            } else {
-                desktop->clearSelectionOverlay();
-            }
-        }
+        updateBackgroundSelection(event->pos(), &rect);
         event->accept();
         return;
     }

@@ -1,4 +1,6 @@
 #include "box/LinBox.h"
+#include "services/AppPaths.h"
+#include <QSettings>
 #include "services/IconCacheManager.h"
 #include <windows.h>
 #include <windowsx.h>
@@ -743,6 +745,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     updateDpiMetrics();
 
     refreshStyles();
+    loadSelectionColors();
 
     // Signals
     connect(m_viewSwitchBtn, &QPushButton::clicked, this, [this]() {
@@ -1348,13 +1351,24 @@ void LinBox::setMappedFolderLoading(bool loading)
     update();
 }
 
+void LinBox::loadSelectionColors()
+{
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    const QColor baseColor(settings.value(QStringLiteral("Desktop/SelectionRectangleColor"), QStringLiteral("#64A0F0")).toString());
+    const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
+    const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
+    QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
+    QColor borderColor = fillColor.darker(110);
+    fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
+    borderColor.setAlpha(qBound(95, contrast * 230 / 100, 230));
+    m_selectionFillColor = fillColor;
+    m_selectionBorderColor = borderColor;
+}
+
 void LinBox::refreshSelectionOverlayColor()
 {
-    if (!m_selectionArea) {
-        return;
-    }
-
-    m_selectionArea->reloadColorsFromSettings();
+    loadSelectionColors();
+    update();
 }
 
 void LinBox::beginTitleEditing() {
@@ -2279,6 +2293,15 @@ void LinBox::paintEvent(QPaintEvent* event) {
             paintDesktopRootItemDynamic(p, renderData);
             paintDesktopRootItemStatic(p, renderData);
         }
+
+        if (m_isSelectingItems && !m_selectionRect.isNull() && m_selectionRect.isValid()) {
+            const QRect boxSelectionRect = m_selectionRect.translated(contentOrigin);
+            if (dirtyRegion.intersects(boxSelectionRect)) {
+                p.setPen(QPen(m_selectionBorderColor, 1));
+                p.setBrush(m_selectionFillColor);
+                p.drawRect(boxSelectionRect.adjusted(0, 0, -1, -1));
+            }
+        }
         p.restore();
     }
 
@@ -2306,16 +2329,9 @@ void LinBox::beginItemSelection(const QPoint& contentPos)
         listView->clearCheckedItem();
     }
 
-    if (!m_selectionArea) {
-        m_selectionArea = new SelectArea(m_contentArea);
-    }
-
     m_isSelectingItems = true;
     m_selectionStartPos = contentPos;
-    m_selectionArea->syncToRect(m_contentArea->rect());
-    m_selectionArea->setSelectionRect(QRect(contentPos, QSize(1, 1)));
-    m_selectionArea->show();
-    m_selectionArea->raise();
+    m_selectionRect = QRect(contentPos, QSize(1, 1));
     updateItemSelection(contentPos);
 }
 
@@ -2326,10 +2342,12 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
     }
 
     const QRect selectionRect = QRect(m_selectionStartPos, contentPos).normalized();
-    if (m_selectionArea) {
-        m_selectionArea->syncToRect(m_contentArea->rect());
-        m_selectionArea->setSelectionRect(selectionRect);
-    }
+    const QRect previousRect = m_selectionRect;
+    m_selectionRect = selectionRect;
+
+    const QPoint contentOrigin = m_contentArea ? m_contentArea->mapTo(this, QPoint(0, 0)) : QPoint(0, 0);
+    const QRect dirty = previousRect.united(selectionRect).adjusted(-2, -2, 2, 2);
+    update(dirty.translated(contentOrigin));
 
     QStringList selectedPaths;
     selectedPaths.reserve(m_itemStates.size());
@@ -2364,14 +2382,11 @@ void LinBox::updateItemSelection(const QPoint& contentPos)
 
 void LinBox::clearSelectionOverlay()
 {
-    if (!m_selectionArea) {
-        return;
-    }
-
-    const QRect previousRect = m_selectionArea->selectionRect();
-    m_selectionArea->clearAndHide();
-    if (m_contentArea && !previousRect.isNull()) {
-        m_contentArea->update(previousRect.adjusted(-2, -2, 2, 2));
+    const QRect previousRect = m_selectionRect;
+    m_selectionRect = QRect();
+    if (!previousRect.isNull()) {
+        const QPoint contentOrigin = m_contentArea ? m_contentArea->mapTo(this, QPoint(0, 0)) : QPoint(0, 0);
+        update(previousRect.adjusted(-2, -2, 2, 2).translated(contentOrigin));
     }
 }
 

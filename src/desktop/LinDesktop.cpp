@@ -1095,21 +1095,7 @@ void LinDesktop::mouseMoveEvent(QMouseEvent* event)
     }
 
     QRect rect;
-    const bool shouldShowSelection = listView->updateBackgroundSelection(event->pos(), &rect);
-
-    if (selectArea) {
-        selectArea->setSelectionRect(rect);
-    }
-
-    if (shouldShowSelection) {
-        if (!selectArea->isVisible()) {
-            selectArea->show();
-        }
-        selectArea->lower();
-    } else {
-        clearSelectionOverlay();
-    }
-
+    listView->updateBackgroundSelection(event->pos(), &rect);
     m_lastSelectRect = rect;
     event->accept();
 }

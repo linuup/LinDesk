@@ -250,7 +250,7 @@ bool ListView::applyGridAlignedDesktopDropLayout(const QStringList& draggedPaths
         if (!draggedPathSet.contains(normalizedPath)) {
             continue;
         }
-        const QPoint cell = normalizedCellForPos(localPosFromGhostWidget(ghost.widget));
+        const QPoint cell = normalizedCellForPos(localPosForGhost(ghost));
         previewMinCellX = qMin(previewMinCellX, cell.x());
         previewMinCellY = qMin(previewMinCellY, cell.y());
         hasPreviewCells = true;

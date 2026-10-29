@@ -92,6 +92,7 @@ public:
 
     void refreshStyles();
     void refreshSelectionOverlayColor();
+    void loadSelectionColors();
     void setRefreshFlashing(bool flashing);
     bool isRefreshFlashing() const { return m_flashingForRefresh; }
 
@@ -233,6 +234,9 @@ private:
     bool m_flashingForRefresh = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
+    QRect m_selectionRect;
+    QColor m_selectionFillColor;
+    QColor m_selectionBorderColor;
     QString m_hoveredItemPath;
     QString m_pressedItemPath;
     QPoint m_pressedItemBoxPos;

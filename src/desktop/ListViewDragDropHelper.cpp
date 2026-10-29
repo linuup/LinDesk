@@ -63,12 +63,12 @@ QMap<QString, QPoint> ListViewDragDropHelper::resolveDesktopDragFinalPositions(
     QHash<QString, QPoint> ghostLocalPositions = previewPositions;
     if (ghostLocalPositions.isEmpty()) {
         for (const ListView::GhostInfo& ghost : listView.m_ghosts) {
-            if (!ghost.widget || ghost.filePath.isEmpty()) {
+            if (ghost.filePath.isEmpty()) {
                 continue;
             }
             const QString normalizedPath = listView.normalizeDesktopItemPath(ghost.filePath);
             if (!normalizedPath.isEmpty()) {
-                ghostLocalPositions.insert(normalizedPath, listView.localPosFromGhostWidget(ghost.widget));
+                ghostLocalPositions.insert(normalizedPath, listView.localPosForGhost(ghost));
             }
         }
     }
@@ -397,15 +397,15 @@ QPoint ListViewDragDropHelper::resolveNearestFreeCreatePosition(
 }
 
 void ListViewDragDropHelper::createDragGhosts(ListView& listView, const QPoint& clickPos) {
-    for (auto& ghost : listView.m_ghosts) {
-        if (ghost.widget) ghost.widget->deleteLater();
-    }
-    listView.m_ghosts.clear();
+    listView.clearDragGhosts();
+
+    QVector<QPair<QString, DesktopRootItemState*>> draggedItems;
+    QRect combinedRect;
 
     for (const QString& desktopPath : listView.selectedDesktopPaths()) {
         bool alreadyTracked = false;
-        for (const auto& ghost : listView.m_ghosts) {
-            if (ghost.filePath == desktopPath) {
+        for (const auto& item : draggedItems) {
+            if (item.first == desktopPath) {
                 alreadyTracked = true;
                 break;
             }
@@ -420,51 +420,71 @@ void ListViewDragDropHelper::createDragGhosts(ListView& listView, const QPoint& 
         }
 
         const DesktopRootItemRenderData& renderData = state->model.renderData;
-        const QSize ghostSize = renderData.itemRect.size();
-        if (!ghostSize.isValid()) {
+        if (!renderData.itemRect.isValid() || renderData.itemRect.isEmpty()) {
             continue;
         }
 
-        QLabel* ghostWidget = new QLabel(nullptr);
-        ghostWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowTransparentForInput);
-        ghostWidget->setAttribute(Qt::WA_TranslucentBackground);
-        ghostWidget->setAttribute(Qt::WA_NoSystemBackground);
-        ghostWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
-        ghostWidget->setStyleSheet("background: transparent;");
+        draggedItems.append({ desktopPath, state });
+        combinedRect = combinedRect.isNull() ? renderData.itemRect : combinedRect.united(renderData.itemRect);
+    }
 
-        QPixmap pixmap(ghostSize);
-        pixmap.fill(Qt::transparent);
-        QPainter painter(&pixmap);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setRenderHint(QPainter::SmoothPixmapTransform);
-        painter.translate(-renderData.itemRect.topLeft());
+    if (draggedItems.isEmpty() || !combinedRect.isValid() || combinedRect.isEmpty()) {
+        return;
+    }
+
+    QPixmap pixmap(combinedRect.size());
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    for (const auto& item : draggedItems) {
+        const DesktopRootItemRenderData& renderData = item.second->model.renderData;
+        painter.save();
+        painter.translate(renderData.itemRect.topLeft() - combinedRect.topLeft());
         paintDesktopRootItemGhost(painter, renderData);
-        painter.end();
+        painter.restore();
+    }
+    painter.end();
 
-        ghostWidget->setPixmap(pixmap);
-        ghostWidget->setFixedSize(ghostSize);
+    QLabel* ghostWidget = new QLabel(nullptr);
+    ghostWidget->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowTransparentForInput);
+    ghostWidget->setAttribute(Qt::WA_TranslucentBackground);
+    ghostWidget->setAttribute(Qt::WA_NoSystemBackground);
+    ghostWidget->setAttribute(Qt::WA_TransparentForMouseEvents);
+    ghostWidget->setStyleSheet("background: transparent;");
 
-        QPoint globalItemPos = listView.mapToGlobal(renderData.itemRect.topLeft());
-        QPoint globalClickPos = listView.mapToGlobal(clickPos);
-        QPoint offset = globalItemPos - globalClickPos;
+    ghostWidget->setPixmap(pixmap);
+    ghostWidget->setFixedSize(combinedRect.size());
 
-        ghostWidget->move(QCursor::pos() + offset);
-        ghostWidget->show();
+    const QPoint globalCombinedTopLeft = listView.mapToGlobal(combinedRect.topLeft());
+    const QPoint globalClickPos = listView.mapToGlobal(clickPos);
+    const QPoint combinedOffset = globalCombinedTopLeft - globalClickPos;
+
+    ghostWidget->move(QCursor::pos() + combinedOffset);
+    ghostWidget->show();
 #ifdef Q_OS_WIN
-        if (HWND hwnd = reinterpret_cast<HWND>(ghostWidget->winId())) {
-            SetWindowPos(
-                hwnd,
-                HWND_NOTOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
-            );
-        }
+    if (HWND hwnd = reinterpret_cast<HWND>(ghostWidget->winId())) {
+        SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+        );
+    }
 #endif
 
-        listView.m_ghosts.append({ ghostWidget, desktopPath, offset });
+    listView.m_combinedGhostWidget = ghostWidget;
+    listView.m_combinedGhostOffset = combinedOffset;
+    listView.m_lastGhostMousePos = QCursor::pos();
+
+    for (const auto& item : draggedItems) {
+        const QPoint itemGlobalPos = listView.mapToGlobal(item.second->model.renderData.itemRect.topLeft());
+        const QPoint itemOffset = itemGlobalPos - globalClickPos;
+        listView.m_ghosts.append({ ghostWidget, item.first, itemOffset });
     }
 }
 
@@ -473,98 +493,8 @@ void ListViewDragDropHelper::moveDesktopGhostsForPreview(ListView& listView, con
         return;
     }
 
-    auto moveGhostsRaw = [&]() {
-        for (ListView::GhostInfo& ghost : listView.m_ghosts) {
-            if (ghost.widget) {
-                ghost.widget->move(globalPos + ghost.offset);
-            }
-        }
-    };
-
-    if (listView.m_iconShowRule.autoArrange) {
-        moveGhostsRaw();
-        return;
-    }
-
-    const QPoint localPos = listView.mapFromGlobal(globalPos);
-    const DesktopRootItemState* hoveredState = listView.findDesktopStateAt(localPos);
-    if (hoveredState && !listView.isDesktopPathSelected(hoveredState->model.filePath)) {
-        moveGhostsRaw();
-        return;
-    }
-
-    for (LinBox* box : listView.boxes()) {
-        if (!box) {
-            continue;
-        }
-        const QRect boxGlobalRect(box->mapToGlobal(QPoint(0, 0)), box->size());
-        if (boxGlobalRect.contains(globalPos)) {
-            moveGhostsRaw();
-            return;
-        }
-    }
-
-    QStringList draggedPaths;
-    QHash<QString, QPoint> previewPositions;
-    bool overlapsComponent = false;
-    const int itemHeight = listView.desktopItemFootprintHeight();
-    const QSize itemSize(listView.m_iconWidth, itemHeight);
-
-    for (const ListView::GhostInfo& ghost : listView.m_ghosts) {
-        if (!ghost.widget || ghost.filePath.isEmpty()) {
-            continue;
-        }
-        if (!draggedPaths.contains(ghost.filePath)) {
-            draggedPaths.append(ghost.filePath);
-        }
-
-        const QPoint ghostLocalPos = listView.mapFromGlobal(globalPos + ghost.offset);
-        const QString normalizedPath = listView.normalizeDesktopItemPath(ghost.filePath);
-        if (!normalizedPath.isEmpty()) {
-            previewPositions.insert(normalizedPath, ghostLocalPos);
-        }
-
-        const QRect ghostRect(ghostLocalPos, itemSize);
-        if (listView.rectIntersectsDesktopBlockedArea(ghostRect)) {
-            overlapsComponent = true;
-            continue;
-        }
-
-        if (listView.m_iconShowRule.gridAlignment) {
-            const int strideX = qMax(1, listView.m_iconWidth + listView.m_colSpacing);
-            const int strideY = qMax(1, itemHeight + listView.m_rowSpacing);
-            const int layoutLeft = listView.desktopLayoutLeft();
-            const int layoutTop = listView.desktopLayoutTop();
-            const int maxRows = qMax(1, maxGridRowsForBounds(layoutTop, listView.desktopUsableBottom(), itemHeight, strideY));
-            const int maxCols = qMax(1, maxGridColsForBounds(layoutLeft, listView.desktopUsableRight(), listView.m_iconWidth, strideX));
-            const QPoint cell = pointToGridCell(ghostLocalPos, layoutLeft, layoutTop, strideX, strideY);
-            const int cellX = qBound(0, cell.x(), maxCols - 1);
-            const int cellY = qBound(0, cell.y(), maxRows - 1);
-            if (listView.desktopBlockedOccupiedCells().contains(packGridCell(cellX, cellY))) {
-                overlapsComponent = true;
-            }
-        }
-    }
-
-    if (!overlapsComponent || draggedPaths.isEmpty()) {
-        moveGhostsRaw();
-        return;
-    }
-
-    const QMap<QString, QPoint> resolvedPositions = resolveDesktopDragFinalPositions(listView, draggedPaths, localPos, previewPositions);
-    if (resolvedPositions.isEmpty()) {
-        moveGhostsRaw();
-        return;
-    }
-
-    for (ListView::GhostInfo& ghost : listView.m_ghosts) {
-        if (!ghost.widget || ghost.filePath.isEmpty()) {
-            continue;
-        }
-        const QString normalizedPath = listView.normalizeDesktopItemPath(ghost.filePath);
-        if (!resolvedPositions.contains(normalizedPath)) {
-            continue;
-        }
-        ghost.widget->move(listView.mapToGlobal(resolvedPositions.value(normalizedPath)));
+    listView.m_lastGhostMousePos = globalPos;
+    if (listView.m_combinedGhostWidget) {
+        listView.m_combinedGhostWidget->move(globalPos + listView.m_combinedGhostOffset);
     }
 }

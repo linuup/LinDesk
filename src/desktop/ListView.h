@@ -139,6 +139,11 @@ friend class ListViewDragDropHelper;
 friend class ListViewSelectionController;
 
 public:
+	struct GhostInfo {
+		QLabel* widget = nullptr;
+		QString filePath;
+		QPoint offset;
+	};
 	// 枚举定义
 	enum class IconPosMode {
 		AlignIconToGrid,  // 对齐网格
@@ -418,6 +423,7 @@ public:
 	void beginBackgroundSelection(const QPoint& startPos);
 	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
 	void endBackgroundSelection();
+	void loadSelectionColors();
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
 
@@ -475,6 +481,8 @@ private:
 	QPoint resolveNearestFreeCreatePosition(const QPoint& requestedPos) const;
 	QMap<QString, QPoint> resolveDesktopDragFinalPositions(const QStringList& draggedPaths, const QPoint& releasePos, const QHash<QString, QPoint>& previewPositions = QHash<QString, QPoint>()) const;
 	QPoint localPosFromGhostWidget(const QWidget* ghostWidget) const;
+	QPoint localPosForGhost(const GhostInfo& ghost) const;
+	void clearDragGhosts();
 	bool rectIntersectsDesktopBlockedArea(const QRect& rect) const;
 	QPoint resolveNearestGridAreaForDrag(const QVector<QPoint>& relativeCells, const QPoint& preferredTopLeftCell, const QSet<quint64>& occupiedSlots) const;
 	void moveDesktopGhostsForPreview(const QPoint& globalPos);
@@ -606,11 +614,7 @@ private:
 	friend class ListViewMappedBoxHelper;
     void executeMenuSort(SortOrderType sortType, const QString& debugName);
 
-	struct GhostInfo {
-		QLabel* widget;
-		QString filePath;
-		QPoint offset;
-	};
+
 
 private:
 	// 静态成员
@@ -650,6 +654,9 @@ private:
 	QSet<QString>& m_selectedDesktopPathSet;
 	QVector<QString> m_selectedBoxPaths;
 	QVector<GhostInfo> m_ghosts;
+	QLabel* m_combinedGhostWidget = nullptr;
+	QPoint m_combinedGhostOffset;
+	QPoint m_lastGhostMousePos;
 	QStringList m_desktopReorderDraggedPaths;
 	QRect m_desktopReorderIndicatorRect;
 	int m_desktopReorderInsertIndex = -1;
@@ -696,6 +703,9 @@ private:
 	bool m_isMultiSelection = false;
 	bool m_isDragging = false;
 	bool m_isSelecting = false;
+	QRect m_renderedSelectionRect;
+	QColor m_selectionFillColor;
+	QColor m_selectionBorderColor;
 	bool m_forwardingMouseToWidget = false;
 	bool m_widgetDragPending = false;
 	bool m_draggingWidget = false;

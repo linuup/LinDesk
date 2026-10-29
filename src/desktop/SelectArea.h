@@ -1,8 +1,9 @@
-﻿#pragma once
+#pragma once
 
 #include <QWidget>
 #include <QColor>
 #include <QPointer>
+
 class SelectArea : public QWidget
 {
 	Q_OBJECT
@@ -18,14 +19,6 @@ public:
     void reloadColorsFromSettings();
 
 private:
-    void loadColors();
-    void applyColors();
-    void updateVisuals();
-
     QRect m_rect;
     QPointer<QWidget> m_hostWidget;
-    QColor m_fillColor;
-    QColor m_borderColor;
-    QPointer<QWidget> m_fillWidget;
-    QPointer<QWidget> m_borderWidget;
 };

@@ -1637,13 +1637,7 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
         }
     }
 
-    for (GhostInfo& ghost : m_ghosts) {
-        if (ghost.widget) {
-            ghost.widget->hide();
-            ghost.widget->deleteLater();
-        }
-    }
-    m_ghosts.clear();
+    clearDragGhosts();
 
     QDrag drag(this);
     drag.setMimeData(mimeData);
@@ -1750,13 +1744,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
                 assignCustomSortOrders(orderedStates);
             }
 
-            for (auto& ghost : m_ghosts) {
-                if (ghost.widget) {
-                    ghost.widget->hide();
-                    ghost.widget->deleteLater();
-                }
-            }
-            m_ghosts.clear();
+            clearDragGhosts();
             m_isDragging = false;
             m_draggedDesktopPath.clear();
             m_draggedBoxPath.clear();
@@ -1772,13 +1760,7 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
         if (!targetBox && !dropTargetState && m_iconShowRule.gridAlignment && !draggedPaths.isEmpty() &&
             !desktopBackgroundFileOperation) {
             if (applyGridAlignedDesktopDropLayout(draggedPaths, releasePos)) {
-                for (auto& ghost : m_ghosts) {
-                    if (ghost.widget) {
-                        ghost.widget->hide();
-                        ghost.widget->deleteLater();
-                    }
-                }
-                m_ghosts.clear();
+                clearDragGhosts();
                 m_isDragging = false;
                 m_draggedDesktopPath.clear();
                 m_draggedBoxPath.clear();
@@ -1797,9 +1779,9 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
             DesktopRootItemState* draggedState = ghost.filePath.isEmpty()
                 ? nullptr
                 : findDesktopStateByPath(ghost.filePath);
-			if (ghost.widget && draggedState) {
+			if (draggedState) {
 				if (!hasCollision) {
-					QPoint finalPos = this->mapFromGlobal(ghost.widget->pos());
+					QPoint finalPos = localPosForGhost(ghost);
                     const QString normalizedPath = normalizeDesktopItemPath(ghost.filePath);
                     if (!normalizedPath.isEmpty() && resolvedDesktopPositions.contains(normalizedPath)) {
                         finalPos = resolvedDesktopPositions.value(normalizedPath);
@@ -1818,12 +1800,10 @@ void ListView::finalizeActiveDrag(LinBox* box, QMouseEvent* event)
                         }
 					}
 				}
-				ghost.widget->hide();
-				ghost.widget->deleteLater();
 			}
 		}
 
-		m_ghosts.clear();
+		clearDragGhosts();
 		m_isDragging = false;
         const QString draggedDesktopPath = m_draggedDesktopPath;
         m_draggedDesktopPath.clear();

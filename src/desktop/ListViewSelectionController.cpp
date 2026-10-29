@@ -466,10 +466,24 @@ bool ListViewSelectionController::updateBackgroundSelection(ListView& view, cons
 
     const QRect rect = QRect(view.m_selectionStart, currentPos).normalized();
     const bool shouldShowSelection = rect.width() > 3 || rect.height() > 3;
-    const QRect previousRect = view.m_selectionRect;
-    view.m_selectionRect = rect;
+    const QRect previousRect = view.m_renderedSelectionRect;
+    view.m_selectionRect = shouldShowSelection ? rect : QRect();
     view.m_pendingBackgroundSelectionPos = currentPos;
     view.m_hasPendingBackgroundSelectionUpdate = true;
+
+    // Zero-ghosting dirty rect update: invalidate union of old and new selection rects
+    QRect dirtyRect;
+    if (!previousRect.isNull() && !view.m_selectionRect.isNull()) {
+        dirtyRect = previousRect.united(view.m_selectionRect);
+    } else if (!view.m_selectionRect.isNull()) {
+        dirtyRect = view.m_selectionRect;
+    } else {
+        dirtyRect = previousRect;
+    }
+    if (!dirtyRect.isNull()) {
+        view.update(dirtyRect.adjusted(-2, -2, 2, 2));
+    }
+    view.m_renderedSelectionRect = view.m_selectionRect;
 
     if (shouldShowSelection) {
         const int throttleMs = currentBackgroundSelectionThrottleMs(view);
@@ -486,12 +500,8 @@ bool ListViewSelectionController::updateBackgroundSelection(ListView& view, cons
     } else {
         view.m_backgroundSelectionThrottleTimer->stop();
         view.m_hasPendingBackgroundSelectionUpdate = false;
-        view.m_selectionRect = QRect();
         resetBackgroundSelectionCandidateCache(view);
         view.clearCheckedItem();
-        if (!previousRect.isNull()) {
-            view.update(previousRect.adjusted(-2, -2, 2, 2));
-        }
     }
 
     if (selectionRect) {
@@ -503,7 +513,7 @@ bool ListViewSelectionController::updateBackgroundSelection(ListView& view, cons
 
 void ListViewSelectionController::endBackgroundSelection(ListView& view)
 {
-    const QRect previousRect = view.m_selectionRect;
+    const QRect previousRect = view.m_renderedSelectionRect;
     if (view.m_hasPendingBackgroundSelectionUpdate) {
         flushBackgroundSelectionUpdate(view);
     }
@@ -514,6 +524,7 @@ void ListViewSelectionController::endBackgroundSelection(ListView& view)
     view.m_startPos = QPoint();
     view.m_selectionStart = QPoint();
     view.m_selectionRect = QRect();
+    view.m_renderedSelectionRect = QRect();
     view.m_backgroundSelectionOcclusionRegion = QRegion();
     view.m_backgroundSelectionThrottleMs = kBackgroundSelectionThrottleFastMs;
     view.m_backgroundSelectionRefreshCostMs = 0.0;
