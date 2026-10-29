@@ -1936,7 +1936,7 @@ std::vector<ShellMenuSnapshotItem> ShellContextMenu::SnapshotMenuForExclusionKey
         0,
         MIN_SHELL_MENU_ID,
         MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_CANRENAME);
+        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
     if (FAILED(queryHr)) {
         EmitDesktopShellMenuListLine(logTag.c_str(), L"QueryContextMenu failed hr=" + std::to_wstring(static_cast<long>(queryHr)));
         return {};
@@ -2016,7 +2016,11 @@ void ShellContextMenu::DisplayItemContextMenu(LPITEMIDLIST pidl, HWND hwndOwner)
     if (!GetDesktop_IshellFolder() || !m_pDesktopFolder) {
         return;
     }
-    // 还原 1.0.5 模式：传入 nullptr 作为 hwndOwner，触发轻量快速查询通道
+    wil::com_ptr_nothrow<IContextMenu> contextMenu;
+    HRESULT hr = m_pDesktopFolder->GetUIObjectOf(NULL, 1, (LPCITEMIDLIST*)&pidl, IID_IContextMenu, NULL, contextMenu.put_void());
+    if (FAILED(hr)) {
+        return;
+    }
     m_contextMenu = IContextMenuFromIShellFolder(pidl, m_pDesktopFolder.get(), nullptr);
 }
 
@@ -2287,7 +2291,7 @@ bool ShellContextMenu::prepareDesktopBackgroundMenuSnapshot(HWND hwnd, ShellMenu
     }
 
     const HRESULT queryHr = m_contextMenu->QueryContextMenu(hMenu.get(), 0, MIN_SHELL_MENU_ID, MAX_SHELL_MENU_ID,
-        CMF_NORMAL | CMF_CANRENAME);
+        CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME);
     if (FAILED(queryHr)) {
         return false;
     }
@@ -2385,7 +2389,7 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     // 鍒涘缓 WindowSubclassWrapper 瀹炰緥
     auto winWrapper = std::make_unique<WindowSubclassWrapper>(hwnd, handlerFunction);
 
-    const UINT queryFlags = CMF_NORMAL | CMF_CANRENAME
+    const UINT queryFlags = CMF_NORMAL | CMF_EXPLORE | CMF_CANRENAME
         | ((flags & Flags::ExtendedVerbs) != Flags::Standard ? CMF_EXTENDEDVERBS : 0);
     QElapsedTimer queryTimer;
     queryTimer.start();
@@ -2718,12 +2722,10 @@ LRESULT ShellContextMenu::ParentWindowSubclass(HWND hwnd, UINT msg, WPARAM wPara
 
             if (SUCCEEDED(hr))
             {
-                if (msg == WM_INITMENUPOPUP) {
+                if (msg == WM_INITMENUPOPUP && !m_compiledExclusions.empty) {
                     RemoveConfiguredMenuItems(reinterpret_cast<HMENU>(wParam), m_compiledExclusions);
                 }
-                if (msg != WM_INITMENUPOPUP) {
-                    return result;
-                }
+                return result;
             }
         }
         else if (auto contextMenu2 = m_contextMenu.try_query<IContextMenu2>())

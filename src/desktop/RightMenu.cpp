@@ -1221,8 +1221,10 @@ void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
     const QPoint nativePos = DpiCoordinateHelper::qtGlobalPointToNativePoint(this->hwnd, pos);
     POINT p = { nativePos.x(), nativePos.y() };
     scm.DisplayDesktopContextMenu();
-    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
-    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+    if (isShellMenuExclusionEnabled()) {
+        const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
+        scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+    }
     if (m_customMenu) {
         scm.setCustomMenuItems(filteredDesktopCustomMenuItems());
     }
@@ -1235,8 +1237,10 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
     logRightMenuDpiTrace("windows11DesktopMenu", this->hwnd, pos);
     ShellContextMenu shellMenu;
     ShellMenuCommandSession shellSession;
-    const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
-    shellMenu.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+    if (isShellMenuExclusionEnabled()) {
+        const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
+        shellMenu.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+    }
     const bool hasShellNewSnapshot = shellMenu.prepareDesktopBackgroundMenuSnapshot(hwnd, shellSession);
     if (!hasShellNewSnapshot) {
         qWarning() << "[RightMenu] Shell New snapshot unavailable";
@@ -1271,8 +1275,10 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool ext
 		}
 
 		scm.DisplayDesktopContextMenu();
-        const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
-        scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+        if (isShellMenuExclusionEnabled()) {
+            const auto exclusionKeys = ShellContextMenu::ExclusionKeysForPath(ShellContextMenu::OperationType::BackGround, nullptr);
+            scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeys));
+        }
 		// 将自定义菜单项注册到Shell背景菜单中
 		if (m_customMenu) {
 			scm.setCustomMenuItems(filteredDesktopCustomMenuItems());
@@ -1292,7 +1298,9 @@ void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool ext
     } else {
         scm.DisplayItemContextMenu(model.itemData.pidl());
     }
-    scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeysForModel(model)));
+    if (isShellMenuExclusionEnabled()) {
+        scm.setExclusions(ShellMenuExclusionStore::loadForKeys(exclusionKeysForModel(model)));
+    }
     scm.ShowMenu(this->hwnd, position, nullptr,
         extendedVerbs ? ShellContextMenu::Flags::ExtendedVerbs : ShellContextMenu::Flags::Standard);
 }
