@@ -38,6 +38,9 @@ void LinBox::setMappedFolderMonitor(LinDirectoryMonitor*) {}
 void LinBox::setBackgroundColor(const QColor& c) { m_bgColor = c; }
 void LinBox::setBackgroundOpacity(float op) { m_bgOpacity = op; }
 void LinBox::setGlassEffect(bool g) { m_glassEffect = g; }
+void LinBox::setLayeredZDepth(bool z) { m_layeredZDepth = z; }
+void LinBox::setAdaptiveWallpaperTint(bool a) { m_adaptiveWallpaperTint = a; }
+void LinBox::setActiveDragPulse(bool p) { m_activeDragPulse = p; }
 void LinBox::showEvent(QShowEvent*) {}
 bool LinBox::eventFilter(QObject*, QEvent*) { return false; }
 void LinBox::mousePressEvent(QMouseEvent*) {}

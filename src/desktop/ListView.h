@@ -726,6 +726,7 @@ private:
 	QColor m_selectionFillColor;
 	QColor m_selectionBorderColor;
 	bool m_fluentSelectionEnabled = true;
+	bool m_selectionCountBadgeEnabled = false;
 	bool m_forwardingMouseToWidget = false;
 	bool m_widgetDragPending = false;
 	bool m_draggingWidget = false;

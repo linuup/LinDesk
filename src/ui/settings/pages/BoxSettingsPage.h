@@ -39,6 +39,9 @@ private:
     QColor m_previewColor;
     float m_previewOpacity = 0.45f;
     bool m_previewGlass = false;
+    bool m_previewLayeredDepth = true;
+    bool m_previewAdaptiveTint = false;
+    bool m_previewDragPulse = true;
 
     QLabel* m_previewBackground = nullptr;
     QLineEdit* m_boxColorValueEdit = nullptr;
@@ -46,5 +49,8 @@ private:
     QSlider* m_opacitySlider = nullptr;
     QLabel* m_opacityLabelValue = nullptr;
     FluentToggleSwitch* m_glassToggle = nullptr;
+    FluentToggleSwitch* m_layeredDepthToggle = nullptr;
+    FluentToggleSwitch* m_adaptiveTintToggle = nullptr;
+    FluentToggleSwitch* m_dragPulseToggle = nullptr;
     QWidget* m_boxPreviewContainer = nullptr;
 };

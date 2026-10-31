@@ -305,6 +305,7 @@ void ListView::loadSelectionColors()
     const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
     const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
     m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
+    m_selectionCountBadgeEnabled = settings.value(QStringLiteral("Desktop/SelectionCountBadgeEnabled"), false).toBool();
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -1431,113 +1432,59 @@ void ListView::paintEvent(QPaintEvent* event)
 
         if (m_fluentSelectionEnabled) {
             painter.setRenderHint(QPainter::Antialiasing, true);
-            const qreal radius = 6.0;
+            const qreal radius = 4.5;
 
-            // 1. 多重外发光柔光晕 (Multi-tier Outer Bloom Glow)
-            QColor glowColor = m_selectionBorderColor;
-            if (glowColor.alpha() < 100) {
-                glowColor.setAlpha(180);
-            }
-            // 外层柔光散开 (外扩 3.5px)
-            painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 35), 4.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(QRectF(selRect).adjusted(-2.0, -2.0, 2.0, 2.0), radius + 2.0, radius + 2.0);
-
-            // 内层微光光晕 (外扩 1.5px)
-            painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 80), 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter.drawRoundedRect(QRectF(selRect).adjusted(-0.8, -0.8, 0.8, 0.8), radius + 0.8, radius + 0.8);
-
-            // 2. Acrylic / Glass 半透明渐变填充
+            // 1. Apple 级极简高透光光学质感填充 (Optical Glass Fill)
+            // 绝不堆砌浓重发光与机械角标，通透、克制、自然，与壁纸完美融合
             QLinearGradient fillGrad(selRect.topLeft(), selRect.bottomRight());
             QColor topFill = m_selectionFillColor;
-            topFill.setAlpha(qBound(45, topFill.alpha() + 25, 200));
+            topFill.setAlpha(qBound(24, topFill.alpha() * 70 / 100, 110));
             QColor bottomFill = m_selectionFillColor;
-            bottomFill.setAlpha(qBound(20, bottomFill.alpha() - 15, 160));
+            bottomFill.setAlpha(qBound(16, bottomFill.alpha() * 45 / 100, 80));
             fillGrad.setColorAt(0.0, topFill);
             fillGrad.setColorAt(1.0, bottomFill);
             painter.setBrush(fillGrad);
 
-            // 3. 核心发光描边 (Vibrant Neon Accent Border)
-            QLinearGradient borderGrad(selRect.topLeft(), selRect.bottomRight());
-            QColor bTop = glowColor.lighter(135);
-            bTop.setAlpha(240);
-            QColor bBottom = glowColor;
-            bBottom.setAlpha(200);
-            borderGrad.setColorAt(0.0, bTop);
-            borderGrad.setColorAt(1.0, bBottom);
-            painter.setPen(QPen(QBrush(borderGrad), 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            // 2. 发丝级 1px 亚克力边缘 (Ultra-Fine 1px Hairline Border)
+            QColor strokeColor = m_selectionBorderColor;
+            strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
+            painter.setPen(QPen(strokeColor, 1.0));
             painter.drawRoundedRect(QRectF(selRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
 
-            // 4. 顶边玻璃微光高光反射 (Top Specular Highlight)
-            if (selRect.width() > 20 && selRect.height() > 16) {
-                painter.setPen(QPen(QColor(255, 255, 255, 95), 1.0));
-                painter.drawLine(QPointF(selRect.left() + radius + 2, selRect.top() + 1.2),
-                                 QPointF(selRect.right() - radius - 2, selRect.top() + 1.2));
+            // 3. 极细顶沿玻璃微光折射 (Subtle Top Ambient Highlight)
+            if (selRect.width() > 14 && selRect.height() > 10) {
+                painter.setPen(QPen(QColor(255, 255, 255, 45), 1.0));
+                painter.drawLine(QPointF(selRect.left() + radius + 1, selRect.top() + 1.0),
+                                 QPointF(selRect.right() - radius - 1, selRect.top() + 1.0));
             }
 
-            // 5. 四角高光精细定位角标 (L-shaped Precision Corner Brackets)
-            if (selRect.width() >= 32 && selRect.height() >= 32) {
-                const qreal cornerLen = qMin(10.0, qMin(selRect.width() / 4.0, selRect.height() / 4.0));
-                painter.setPen(QPen(QColor(255, 255, 255, 200), 1.8, Qt::SolidLine, Qt::SquareCap));
-
-                // Top-Left
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.top() + 2), QPointF(selRect.left() + 2 + cornerLen, selRect.top() + 2));
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.top() + 2), QPointF(selRect.left() + 2, selRect.top() + 2 + cornerLen));
-
-                // Top-Right
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.top() + 2), QPointF(selRect.right() - 2 - cornerLen, selRect.top() + 2));
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.top() + 2), QPointF(selRect.right() - 2, selRect.top() + 2 + cornerLen));
-
-                // Bottom-Left
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.bottom() - 2), QPointF(selRect.left() + 2 + cornerLen, selRect.bottom() - 2));
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.bottom() - 2), QPointF(selRect.left() + 2, selRect.bottom() - 2 - cornerLen));
-
-                // Bottom-Right
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.bottom() - 2), QPointF(selRect.right() - 2 - cornerLen, selRect.bottom() - 2));
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.bottom() - 2), QPointF(selRect.right() - 2, selRect.bottom() - 2 - cornerLen));
-            }
-
-            // 6. 实时框选统计 HUD 微胶囊气泡 (随时动态呈现数量或尺寸)
-            if (selRect.width() >= 64 && selRect.height() >= 38) {
+            // 4. 独立开关控制的极简数量气泡 (Apple-style Minimalist Count Badge)
+            if (m_selectionCountBadgeEnabled) {
                 const int count = m_selectedDesktopPaths.size();
-                QString badgeText;
-                if (count > 0) {
-                    badgeText = QStringLiteral("🎯 %1 项").arg(count);
-                } else {
-                    badgeText = QStringLiteral("%1 × %2").arg(selRect.width()).arg(selRect.height());
+                if (count > 0 && selRect.width() >= 54 && selRect.height() >= 34) {
+                    const QString badgeText = QString::number(count);
+                    QFont badgeFont = painter.font();
+                    badgeFont.setPixelSize(11);
+                    badgeFont.setWeight(QFont::Medium);
+                    painter.setFont(badgeFont);
+
+                    QFontMetrics fm(badgeFont);
+                    const int textW = fm.horizontalAdvance(badgeText);
+                    const int badgeW = qMax(22, textW + 14);
+                    const int badgeH = 20;
+                    const int badgeX = selRect.right() - badgeW - 6;
+                    const int badgeY = selRect.bottom() - badgeH - 6;
+                    const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
+
+                    // 纯净磨砂暗色微胶囊
+                    painter.setPen(QPen(QColor(255, 255, 255, 50), 0.75));
+                    painter.setBrush(QColor(24, 25, 28, 205));
+                    painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+
+                    // 白色简洁数字
+                    painter.setPen(QColor(250, 250, 252));
+                    painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
                 }
-
-                QFont badgeFont = painter.font();
-                badgeFont.setPixelSize(10);
-                badgeFont.setBold(true);
-                painter.setFont(badgeFont);
-
-                QFontMetrics fm(badgeFont);
-                const int badgeW = fm.horizontalAdvance(badgeText) + 16;
-                const int badgeH = 22;
-                const int badgeX = qMax(selRect.left() + 6, selRect.right() - badgeW - 6);
-                const int badgeY = qMax(selRect.top() + 6, selRect.bottom() - badgeH - 6);
-                const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
-
-                // 胶囊外发光
-                painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 60), 2.0));
-                painter.setBrush(QColor(16, 20, 28, 225));
-                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
-
-                // 胶囊描边
-                if (count > 0) {
-                    painter.setPen(QPen(QColor(0, 220, 255, 180), 1.0));
-                } else {
-                    painter.setPen(QPen(QColor(255, 255, 255, 60), 1.0));
-                }
-                painter.setBrush(Qt::NoBrush);
-                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
-
-                // 文字
-                painter.setPen(QColor(0, 0, 0, 160));
-                painter.drawText(badgeRect.translated(0, 1), Qt::AlignCenter, badgeText);
-                painter.setPen(count > 0 ? QColor(0, 235, 255) : QColor(230, 238, 250));
-                painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
             }
         } else {
             // 经典 Windows 原生矩形选框

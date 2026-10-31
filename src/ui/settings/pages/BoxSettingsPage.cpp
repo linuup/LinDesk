@@ -138,6 +138,15 @@ void BoxSettingsPage::updateControlsFromTarget()
     if (m_glassToggle) {
         m_glassToggle->setChecked(sourceBox->glassEffect());
     }
+    if (m_layeredDepthToggle) {
+        m_layeredDepthToggle->setChecked(sourceBox->layeredZDepth());
+    }
+    if (m_adaptiveTintToggle) {
+        m_adaptiveTintToggle->setChecked(sourceBox->adaptiveWallpaperTint());
+    }
+    if (m_dragPulseToggle) {
+        m_dragPulseToggle->setChecked(sourceBox->activeDragPulse());
+    }
     if (m_boxColorValueEdit) {
         m_boxColorValueEdit->setText(sourceBox->backgroundColor().name().toUpper());
     }
@@ -146,6 +155,9 @@ void BoxSettingsPage::updateControlsFromTarget()
     m_previewColor = sourceBox->backgroundColor();
     m_previewOpacity = sourceBox->backgroundOpacity();
     m_previewGlass = sourceBox->glassEffect();
+    m_previewLayeredDepth = sourceBox->layeredZDepth();
+    m_previewAdaptiveTint = sourceBox->adaptiveWallpaperTint();
+    m_previewDragPulse = sourceBox->activeDragPulse();
     updatePreview();
 }
 
@@ -405,6 +417,66 @@ void BoxSettingsPage::initUI()
     });
 
     styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Acrylic Glass Effect"), tr("Enable real-time DWM background blur for a translucent look."), m_glassToggle, stylePanel));
+    styleLayout->addWidget(createDivider(stylePanel));
+
+    // Layered Depth Toggle
+    m_layeredDepthToggle = new FluentToggleSwitch(this);
+    bool initialLayeredDepth = true;
+    if (LinBox* sourceBox = controlSourceBox()) {
+        initialLayeredDepth = sourceBox->layeredZDepth();
+    } else if (BoxManager* bm = BoxManager::instance()) {
+        initialLayeredDepth = bm->unifiedLayeredZDepth();
+    }
+    m_layeredDepthToggle->setChecked(initialLayeredDepth, false);
+    connect(m_layeredDepthToggle, &FluentToggleSwitch::toggled, this, [this](bool v){
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("Box/LayeredZDepth"), v);
+        settings.sync();
+        if (BoxManager* bm = BoxManager::instance()) {
+            bm->setAllBoxesLayeredZDepth(v);
+        }
+        for (const auto& boxPtr : m_allBoxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setLayeredZDepth(v);
+            }
+        }
+        m_previewLayeredDepth = v;
+        updatePreview();
+        if (ListView* lv = ListView::instance()) {
+            lv->requestSaveBoxes();
+        }
+    });
+    styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Layered Glass Depth"), tr("Render high-specular titlebar and deep frosted body with 3D glass depth."), m_layeredDepthToggle, stylePanel));
+    styleLayout->addWidget(createDivider(stylePanel));
+
+    // Adaptive Tint Toggle
+    m_adaptiveTintToggle = new FluentToggleSwitch(this);
+    bool initialAdaptiveTint = false;
+    if (LinBox* sourceBox = controlSourceBox()) {
+        initialAdaptiveTint = sourceBox->adaptiveWallpaperTint();
+    } else if (BoxManager* bm = BoxManager::instance()) {
+        initialAdaptiveTint = bm->unifiedAdaptiveWallpaperTint();
+    }
+    m_adaptiveTintToggle->setChecked(initialAdaptiveTint, false);
+    connect(m_adaptiveTintToggle, &FluentToggleSwitch::toggled, this, [this](bool v){
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("Box/AdaptiveWallpaperTint"), v);
+        settings.sync();
+        if (BoxManager* bm = BoxManager::instance()) {
+            bm->setAllBoxesAdaptiveWallpaperTint(v);
+        }
+        for (const auto& boxPtr : m_allBoxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setAdaptiveWallpaperTint(v);
+            }
+        }
+        m_previewAdaptiveTint = v;
+        updatePreview();
+        if (ListView* lv = ListView::instance()) {
+            lv->requestSaveBoxes();
+        }
+    });
+    styleLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Adaptive Wallpaper Color"), tr("Automatically extract and blend colors from the underlying desktop wallpaper."), m_adaptiveTintToggle, stylePanel));
 
     layout->addWidget(stylePanel, 0);
     layout->addSpacing(14);
@@ -457,6 +529,33 @@ void BoxSettingsPage::initUI()
         }
     });
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE823), tr("Instant Auto-Peek"), tr("Expand immediately on hover without a 150ms debounce delay."), autoPeekInstantToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
+
+    // Active Drag Pulse Toggle
+    m_dragPulseToggle = new FluentToggleSwitch(this);
+    bool initialDragPulse = true;
+    if (LinBox* sourceBox = controlSourceBox()) {
+        initialDragPulse = sourceBox->activeDragPulse();
+    } else if (BoxManager* bm = BoxManager::instance()) {
+        initialDragPulse = bm->unifiedActiveDragPulse();
+    }
+    m_dragPulseToggle->setChecked(initialDragPulse, false);
+    connect(m_dragPulseToggle, &FluentToggleSwitch::toggled, this, [this](bool v){
+        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("Box/ActiveDragPulse"), v);
+        settings.sync();
+        if (BoxManager* bm = BoxManager::instance()) {
+            bm->setAllBoxesActiveDragPulse(v);
+        }
+        for (const auto& boxPtr : m_allBoxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setActiveDragPulse(v);
+            }
+        }
+        m_previewDragPulse = v;
+        updatePreview();
+    });
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE896), tr("Active Drop Pulse & Glow"), tr("Display an ambient glowing border and magnetic pulse when dragging files over the box."), m_dragPulseToggle, behaviorPanel));
 
     layout->addWidget(behaviorPanel, 0);
 
@@ -532,15 +631,27 @@ void BoxSettingsPage::updatePreview()
     const QRect boxRect(boxX, boxY, boxW, boxH);
     const int boxRadius = 8;
 
-    // Drop shadow
+    // Box background base color
+    QColor baseColor = m_previewColor.isValid() ? m_previewColor : QColor(40, 40, 40);
+    if (m_previewAdaptiveTint) {
+        QColor adaptive = LinBox::extractWallpaperDominantColor(wp);
+        if (adaptive.isValid()) {
+            baseColor = adaptive;
+        }
+    }
+
+    // Drop shadow & Ambient Glow Pulse
     painter.setPen(Qt::NoPen);
+    if (m_previewDragPulse) {
+        QColor haloColor = baseColor;
+        haloColor.setAlpha(36);
+        painter.setBrush(haloColor);
+        painter.drawRoundedRect(boxRect.adjusted(-3, -3, 3, 3), boxRadius + 2, boxRadius + 2);
+    }
     painter.setBrush(QColor(0, 0, 0, 30));
     painter.drawRoundedRect(QRect(boxX - 1, boxY + 3, boxW + 2, boxH + 2), boxRadius, boxRadius);
     painter.setBrush(QColor(0, 0, 0, 48));
     painter.drawRoundedRect(QRect(boxX, boxY + 2, boxW, boxH), boxRadius, boxRadius);
-
-    // Box background
-    QColor baseColor = m_previewColor.isValid() ? m_previewColor : QColor(40, 40, 40);
 
     if (m_previewGlass) {
         // True Acrylic Glass: crop wallpaper under box and apply smooth blur
@@ -814,10 +925,28 @@ void BoxSettingsPage::updatePreview()
         painter.drawText(QRect(sx - 2, labelY, slotW + 4, 16), Qt::AlignCenter, elidedName);
     }
 
-    // LinBox outer highlight border
-    painter.setPen(QPen(QColor(255, 255, 255, m_previewGlass ? 75 : 45), 1));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), boxRadius, boxRadius);
+    // LinBox outer highlight border (with layered Z-Depth sheen & drag pulse)
+    if (m_previewDragPulse) {
+        QLinearGradient pulseBorder(boxX, boxY, boxX + boxW, boxY + boxH);
+        pulseBorder.setColorAt(0.0, QColor(56, 189, 248, 200));
+        pulseBorder.setColorAt(0.5, QColor(168, 85, 247, 180));
+        pulseBorder.setColorAt(1.0, QColor(56, 189, 248, 200));
+        painter.setPen(QPen(QBrush(pulseBorder), 1.5));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), boxRadius, boxRadius);
+    } else if (m_previewLayeredDepth) {
+        QLinearGradient borderSheen(boxX, boxY, boxX + boxW, boxY + boxH);
+        borderSheen.setColorAt(0.0, QColor(255, 255, 255, 160));
+        borderSheen.setColorAt(0.4, QColor(255, 255, 255, 75));
+        borderSheen.setColorAt(1.0, QColor(255, 255, 255, 130));
+        painter.setPen(QPen(QBrush(borderSheen), 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), boxRadius, boxRadius);
+    } else {
+        painter.setPen(QPen(QColor(255, 255, 255, m_previewGlass ? 75 : 45), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), boxRadius, boxRadius);
+    }
 
     // Inner card border
     painter.setClipping(false);

@@ -761,6 +761,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
 
     refreshStyles();
     loadSelectionColors();
+    loadVisualEffectSettings();
 
     // Signals
     connect(m_viewSwitchBtn, &QPushButton::clicked, this, [this]() {
@@ -1403,6 +1404,74 @@ void LinBox::refreshSelectionOverlayColor()
 {
     loadSelectionColors();
     update();
+}
+
+void LinBox::loadVisualEffectSettings()
+{
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_layeredZDepth = settings.value(QStringLiteral("Box/LayeredZDepth"), true).toBool();
+    m_adaptiveWallpaperTint = settings.value(QStringLiteral("Box/AdaptiveWallpaperTint"), false).toBool();
+    m_activeDragPulse = settings.value(QStringLiteral("Box/ActiveDragPulse"), true).toBool();
+}
+
+void LinBox::setLayeredZDepth(bool enabled)
+{
+    if (m_layeredZDepth == enabled) return;
+    m_layeredZDepth = enabled;
+    update();
+}
+
+void LinBox::setAdaptiveWallpaperTint(bool enabled)
+{
+    if (m_adaptiveWallpaperTint == enabled) return;
+    m_adaptiveWallpaperTint = enabled;
+    scheduleBlurRefresh();
+    update();
+}
+
+void LinBox::setActiveDragPulse(bool enabled)
+{
+    if (m_activeDragPulse == enabled) return;
+    m_activeDragPulse = enabled;
+    update();
+}
+
+QColor LinBox::effectiveBackgroundColor() const
+{
+    if (m_adaptiveWallpaperTint && m_adaptiveColor.isValid()) {
+        return m_adaptiveColor;
+    }
+    return m_bgColor.isValid() ? m_bgColor : QColor(60, 60, 60);
+}
+
+QColor LinBox::extractWallpaperDominantColor(const QPixmap& pixmap)
+{
+    if (pixmap.isNull()) return QColor();
+    const QImage thumb = pixmap.toImage().scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    if (thumb.isNull()) return QColor();
+
+    qint64 totalR = 0, totalG = 0, totalB = 0;
+    int count = 0;
+    for (int y = 0; y < thumb.height(); ++y) {
+        for (int x = 0; x < thumb.width(); ++x) {
+            const QRgb px = thumb.pixel(x, y);
+            totalR += qRed(px);
+            totalG += qGreen(px);
+            totalB += qBlue(px);
+            count++;
+        }
+    }
+    if (count == 0) return QColor();
+
+    QColor col(static_cast<int>(totalR / count),
+               static_cast<int>(totalG / count),
+               static_cast<int>(totalB / count));
+    int h, s, v;
+    col.getHsv(&h, &s, &v);
+    s = qBound(60, s * 14 / 10, 220);
+    v = qBound(70, v * 11 / 10, 220);
+    col.setHsv(h, s, v);
+    return col;
 }
 
 void LinBox::setAutoPeekEnabled(bool enabled)
@@ -2432,9 +2501,11 @@ void LinBox::paintEvent(QPaintEvent* event) {
 
     const QRect contentRect = rect().adjusted(m_borderWidth, m_borderWidth, -m_borderWidth, -m_borderWidth);
 
+    const QColor baseColor = effectiveBackgroundColor();
+    const int r = baseColor.red(), g = baseColor.green(), b = baseColor.blue();
+    const int a = qBound(0, (int)(m_bgOpacity * 255), 255);
+
     if (isFolderMapped() && isMappedFolderLoading() && m_itemStates.isEmpty()) {
-        const int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
-        const int a = qBound(0, (int)(m_bgOpacity * 255), 255);
         if (a > 0) {
             p.fillRect(contentRect, QColor(r, g, b, a));
         }
@@ -2444,22 +2515,122 @@ void LinBox::paintEvent(QPaintEvent* event) {
     } else if (m_glassEffect && !m_blurCache.isNull()) {
         p.drawPixmap(contentRect.topLeft(), m_blurCache);
         p.fillRect(contentRect, QColor(255, 255, 255, 8));
-        p.setPen(QPen(QColor(255, 255, 255, 110), 1.0));
-        p.setBrush(Qt::NoBrush);
-        p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+
+        if (m_layeredZDepth) {
+            const int titleH = m_titleBar ? m_titleBar->height() : scaledPx(this, kBaseBoxTitleHeight);
+            const QRect titleRect(contentRect.x(), contentRect.y(), contentRect.width(), titleH);
+
+            QLinearGradient titleSheen(titleRect.topLeft(), titleRect.bottomLeft());
+            titleSheen.setColorAt(0.0, QColor(255, 255, 255, 42));
+            titleSheen.setColorAt(0.3, QColor(255, 255, 255, 14));
+            titleSheen.setColorAt(1.0, QColor(255, 255, 255, 4));
+            p.fillRect(titleRect, titleSheen);
+
+            p.setPen(QPen(QColor(255, 255, 255, 140), 1.0));
+            p.drawLine(titleRect.left() + 1, titleRect.top(), titleRect.right() - 1, titleRect.top());
+
+            p.setPen(QPen(QColor(255, 255, 255, 28), 1.0));
+            p.drawLine(titleRect.left(), titleRect.bottom(), titleRect.right(), titleRect.bottom());
+
+            const QRect bodyRect(contentRect.x(), contentRect.y() + titleH, contentRect.width(), contentRect.height() - titleH);
+            if (bodyRect.height() > 0) {
+                QLinearGradient innerShadow(bodyRect.topLeft(), bodyRect.topLeft() + QPoint(0, 16));
+                innerShadow.setColorAt(0.0, QColor(0, 0, 0, 36));
+                innerShadow.setColorAt(1.0, QColor(0, 0, 0, 0));
+                p.fillRect(QRect(bodyRect.left(), bodyRect.top(), bodyRect.width(), qMin(16, bodyRect.height())), innerShadow);
+            }
+
+            QLinearGradient borderSheen(contentRect.topLeft(), contentRect.bottomRight());
+            borderSheen.setColorAt(0.0, QColor(255, 255, 255, 160));
+            borderSheen.setColorAt(0.4, QColor(255, 255, 255, 75));
+            borderSheen.setColorAt(1.0, QColor(255, 255, 255, 130));
+            p.setPen(QPen(QBrush(borderSheen), 1.0));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+        } else {
+            p.setPen(QPen(QColor(255, 255, 255, 110), 1.0));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+        }
     } else {
         QStyleOption opt;
         opt.init(this);
         style()->drawPrimitive(QStyle::PE_Widget, &opt, &p, this);
 
-        const int r = m_bgColor.red(), g = m_bgColor.green(), b = m_bgColor.blue();
-        const int a = qBound(0, (int)(m_bgOpacity * 255), 255);
         if (a > 0) {
             p.fillRect(contentRect, QColor(r, g, b, a));
         }
-        p.setPen(QPen(QColor(255, 255, 255, 50), 1));
+
+        if (m_layeredZDepth) {
+            const int titleH = m_titleBar ? m_titleBar->height() : scaledPx(this, kBaseBoxTitleHeight);
+            const QRect titleRect(contentRect.x(), contentRect.y(), contentRect.width(), titleH);
+
+            QLinearGradient titleSheen(titleRect.topLeft(), titleRect.bottomLeft());
+            titleSheen.setColorAt(0.0, QColor(255, 255, 255, 36));
+            titleSheen.setColorAt(0.3, QColor(255, 255, 255, 12));
+            titleSheen.setColorAt(1.0, QColor(255, 255, 255, 2));
+            p.fillRect(titleRect, titleSheen);
+
+            p.setPen(QPen(QColor(255, 255, 255, 120), 1.0));
+            p.drawLine(titleRect.left() + 1, titleRect.top(), titleRect.right() - 1, titleRect.top());
+
+            p.setPen(QPen(QColor(255, 255, 255, 26), 1.0));
+            p.drawLine(titleRect.left(), titleRect.bottom(), titleRect.right(), titleRect.bottom());
+
+            const QRect bodyRect(contentRect.x(), contentRect.y() + titleH, contentRect.width(), contentRect.height() - titleH);
+            if (bodyRect.height() > 0) {
+                QLinearGradient innerShadow(bodyRect.topLeft(), bodyRect.topLeft() + QPoint(0, 14));
+                innerShadow.setColorAt(0.0, QColor(0, 0, 0, 28));
+                innerShadow.setColorAt(1.0, QColor(0, 0, 0, 0));
+                p.fillRect(QRect(bodyRect.left(), bodyRect.top(), bodyRect.width(), qMin(14, bodyRect.height())), innerShadow);
+            }
+
+            QLinearGradient borderSheen(contentRect.topLeft(), contentRect.bottomRight());
+            borderSheen.setColorAt(0.0, QColor(255, 255, 255, 120));
+            borderSheen.setColorAt(0.4, QColor(255, 255, 255, 50));
+            borderSheen.setColorAt(1.0, QColor(255, 255, 255, 90));
+            p.setPen(QPen(QBrush(borderSheen), 1.0));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+        } else {
+            p.setPen(QPen(QColor(255, 255, 255, 50), 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+        }
+    }
+
+    // Active Drag Pulse & Glowing Edge
+    if (m_activeDragPulse && m_isDragHovered) {
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        QColor accentColor = effectiveBackgroundColor();
+        if (!accentColor.isValid() || accentColor.alpha() == 0) {
+            accentColor = QColor(56, 189, 248);
+        }
+
+        // 1. Ambient outer glow halo
+        p.setPen(Qt::NoPen);
+        QColor haloColor = accentColor;
+        haloColor.setAlpha(55);
+        p.setBrush(haloColor);
+        p.drawRoundedRect(contentRect.adjusted(-3, -3, 3, 3), 3, 3);
+
+        // 2. High-energy magnetic pulse border
+        QLinearGradient pulseGrad(contentRect.topLeft(), contentRect.bottomRight());
+        pulseGrad.setColorAt(0.0, QColor(56, 189, 248, 245));
+        pulseGrad.setColorAt(0.5, QColor(168, 85, 247, 230));
+        pulseGrad.setColorAt(1.0, QColor(56, 189, 248, 245));
+        p.setPen(QPen(QBrush(pulseGrad), 2.0));
         p.setBrush(Qt::NoBrush);
-        p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+        p.drawRoundedRect(contentRect.adjusted(0, 0, -1, -1), 1, 1);
+
+        // 3. Subtle acceptance tint overlay
+        QColor acceptTint = accentColor;
+        acceptTint.setAlpha(18);
+        p.fillRect(contentRect, acceptTint);
+
+        p.restore();
     }
 
     const QRect indicatorRect = insertionIndicatorRect();
@@ -2521,28 +2692,19 @@ void LinBox::paintEvent(QPaintEvent* event) {
             if (dirtyRegion.intersects(boxSelectionRect)) {
                 if (m_fluentSelectionEnabled) {
                     p.setRenderHint(QPainter::Antialiasing, true);
-                    const qreal radius = 5.0;
-
-                    // 1. 发光外晕
-                    QColor glowColor = m_selectionBorderColor;
-                    if (glowColor.alpha() < 100) glowColor.setAlpha(180);
-                    p.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 50), 2.5));
-                    p.setBrush(Qt::NoBrush);
-                    p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(-1.0, -1.0, 1.0, 1.0), radius + 1.0, radius + 1.0);
-
-                    // 2. 玻璃填充
+                    const qreal radius = 4.0;
                     QLinearGradient fillGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
-                    fillGrad.setColorAt(0.0, m_selectionFillColor);
-                    QColor endFill = m_selectionFillColor;
-                    endFill.setAlpha(qMax(0, endFill.alpha() - 15));
-                    fillGrad.setColorAt(1.0, endFill);
+                    QColor topFill = m_selectionFillColor;
+                    topFill.setAlpha(qBound(24, topFill.alpha() * 70 / 100, 110));
+                    QColor bottomFill = m_selectionFillColor;
+                    bottomFill.setAlpha(qBound(16, bottomFill.alpha() * 45 / 100, 80));
+                    fillGrad.setColorAt(0.0, topFill);
+                    fillGrad.setColorAt(1.0, bottomFill);
                     p.setBrush(fillGrad);
 
-                    // 3. 核心发光描边
-                    QLinearGradient borderGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
-                    borderGrad.setColorAt(0.0, glowColor.lighter(130));
-                    borderGrad.setColorAt(1.0, glowColor);
-                    p.setPen(QPen(QBrush(borderGrad), 1.5));
+                    QColor strokeColor = m_selectionBorderColor;
+                    strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
+                    p.setPen(QPen(strokeColor, 1.0));
                     p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
                 } else {
                     p.setPen(QPen(m_selectionBorderColor, 1));
@@ -3317,6 +3479,10 @@ bool LinBox::handleMappedBoxItemTargetDrop(const QStringList& sourcePaths,
 }
 
 void LinBox::dragEnterEvent(QDragEnterEvent* event) {
+    if (m_activeDragPulse && !m_isDragHovered) {
+        m_isDragHovered = true;
+        update();
+    }
     if (!event->mimeData()->hasUrls()) {
         event->ignore();
         return;
@@ -3428,12 +3594,20 @@ void LinBox::dragEnterEvent(QDragEnterEvent* event) {
 }
 
 void LinBox::dragLeaveEvent(QDragLeaveEvent* event) {
+    if (m_isDragHovered) {
+        m_isDragHovered = false;
+        update();
+    }
     if (m_dragTip) m_dragTip->hide();
     clearReorderPreview();
 }
 
 void LinBox::clearDropPreview()
 {
+    if (m_isDragHovered) {
+        m_isDragHovered = false;
+        update();
+    }
     if (m_dragTip) {
         m_dragTip->hide();
     }
@@ -3442,6 +3616,10 @@ void LinBox::clearDropPreview()
 
 void LinBox::previewGhostDropAt(const QPoint& boxPos, const QStringList& draggedPaths, Qt::KeyboardModifiers modifiers)
 {
+    if (m_activeDragPulse && !m_isDragHovered) {
+        m_isDragHovered = true;
+        update();
+    }
     ListView* lv = ListView::instance();
     if (!lv || draggedPaths.isEmpty()) {
         clearDropPreview();
@@ -3613,6 +3791,10 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
 }
 
 void LinBox::dropEvent(QDropEvent* event) {
+    if (m_isDragHovered) {
+        m_isDragHovered = false;
+        update();
+    }
     if (m_dragTip) m_dragTip->hide();
     const QMimeData* mime = event->mimeData();
     if (!mime->hasUrls()) {
@@ -4430,13 +4612,27 @@ QPixmap LinBox::captureBackgroundPixmap() const
 
 void LinBox::updateBlurCache()
 {
-    if (!m_glassEffect || !isVisible()) {
+    if (!isVisible()) {
+        return;
+    }
+
+    if (!m_glassEffect && !m_adaptiveWallpaperTint) {
         return;
     }
 
     const QPixmap captured = captureBackgroundPixmap();
     if (captured.isNull()) {
         m_blurCache = QPixmap();
+        return;
+    }
+
+    if (m_adaptiveWallpaperTint) {
+        m_adaptiveColor = extractWallpaperDominantColor(captured);
+    }
+
+    if (!m_glassEffect) {
+        m_blurCache = QPixmap();
+        update();
         return;
     }
 
@@ -4447,7 +4643,7 @@ void LinBox::updateBlurCache()
     }
 
     const QPixmap contentCapture = captured.copy(contentRect);
-    m_blurCache = buildBlurredGlass(contentCapture, m_bgColor, m_bgOpacity);
+    m_blurCache = buildBlurredGlass(contentCapture, effectiveBackgroundColor(), m_bgOpacity);
     if (isPixmapEffectivelyTransparent(m_blurCache, 40)) {
         m_blurCache = QPixmap();
     }
