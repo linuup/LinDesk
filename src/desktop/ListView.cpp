@@ -701,47 +701,12 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         QPoint globalPos = QCursor::pos();
         QPoint clientPos = mapFromGlobal(globalPos);
 
-        auto& bridge = LinWidgetRuntimeBridge::instance();
-        if (bridge.isLoaded()) {
-            // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through,
-            // EXCEPT if we are using composition windowless hosting where ListView needs to forward the input!
-            if (bridge.isWidgetAt(clientPos)) {
-                if (result) {
-                    *result = HTCLIENT;
-                }
-                return true;
+        // ListView 统一接管桌面画布的全部输入消息（包括桌面图标、LinBox、小组件与动态交互壁纸），统一由顶层状态机仲裁
+        if (rect().contains(clientPos)) {
+            if (result) {
+                *result = HTCLIENT;
             }
-
-            const bool isWallpaperActive = bridge.hasActiveWallpaper();
-            const bool isWallpaperInteractive = isWallpaperActive && bridge.isWallpaperInteractive();
-
-            if (isWallpaperInteractive) {
-                // Keep HTCLIENT if cursor is over a desktop icon
-                if (findDesktopStateAt(clientPos)) {
-                    // Fall through to default HTCLIENT handling
-                } else {
-                    // Check if cursor is over any LinBox child widget
-                    bool overBox = false;
-                    for (LinBox* box : boxes()) {
-                        if (!box || !box->isVisible()) {
-                            continue;
-                        }
-                        // mapFromGlobal to get position relative to the box
-                        const QPoint boxLocal = box->mapFromGlobal(globalPos);
-                        if (box->rect().contains(boxLocal)) {
-                            overBox = true;
-                            break;
-                        }
-                    }
-                    if (!overBox) {
-                        // Empty desktop space with active interactive wallpaper: pass through
-                        if (result) {
-                            *result = HTTRANSPARENT;
-                        }
-                        return true;
-                    }
-                }
-            }
+            return true;
         }
     }
 
@@ -1473,6 +1438,7 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 #ifdef Q_OS_WIN
     logListViewDpiTrace("contextMenu", this, event->pos(), event->globalPos());
 #endif
+    m_pendingWallpaperClick = false;
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             const QString itemPath = normalizeDesktopItemPath(hitState->model.filePath);
@@ -1594,6 +1560,19 @@ void ListView::mousePressEvent(QMouseEvent* event)
 
         clearHoveredDesktopItem();
         clearWidgetFocus();
+
+        const bool hasInteractiveWallpaper = bridge.isLoaded() &&
+                                             bridge.hasActiveWallpaper() &&
+                                             bridge.isWallpaperInteractive();
+        if (hasInteractiveWallpaper) {
+            // 待决的壁纸点击：记录按下点与按钮，进入拖拽防抖仲裁（等待判断用户是原地点击壁纸还是拉框选桌面图标）
+            m_pendingWallpaperClick = true;
+            m_pendingWallpaperPressPos = event->pos();
+            m_pendingWallpaperButton = event->button();
+            event->accept();
+            return;
+        }
+
         beginBackgroundSelection(event->pos());
         event->accept();
         return;
@@ -1611,13 +1590,26 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
                 event->accept();
                 return;
             }
-        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-            if (bridge.forwardMouseEvent(event)) {
-                event->accept();
-                return;
-            }
         }
     }
+
+    // 拖拽阈值仲裁：检查是否有待决的壁纸点击
+    if (m_pendingWallpaperClick) {
+        const int dragDistance = (event->pos() - m_pendingWallpaperPressPos).manhattanLength();
+        if (dragDistance > QApplication::startDragDistance()) {
+            // 移动超出防抖阈值（通常 6px）：用户意图明确为“桌面框选”，放弃壁纸点击，立即启动桌面框选
+            m_pendingWallpaperClick = false;
+            beginBackgroundSelection(m_pendingWallpaperPressPos);
+            QRect rect;
+            updateBackgroundSelection(event->pos(), &rect);
+            event->accept();
+            return;
+        }
+        // 仍在 6px 防抖阈值内，暂缓派发
+        event->accept();
+        return;
+    }
+
     // handle multi-dragging
     if (m_isDragging && !m_ghosts.isEmpty()) {
         QPoint mousePos = event->globalPos();
@@ -1641,8 +1633,19 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
         return;
     }
 
+    // 正常移动状态：
+    // 1. 如果光标位于小组件上方，小组件响应 hover
+    if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+        bridge.forwardMouseEvent(event);
+    }
+
+    // 2. 桌面图标响应 hover
     updateHoveredDesktopItem(event->pos());
 
+    // 3. 动态壁纸粒子跟随 (非互斥广播，60fps 节流)
+    if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+        bridge.forwardMouseMoveToWallpaper(event->pos());
+    }
 
     event->ignore();
 
@@ -1658,14 +1661,24 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
                 event->accept();
                 return;
             }
-        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-            if (bridge.forwardMouseEvent(event)) {
-                event->accept();
-                return;
-            }
         }
     }
-    // No-op for Item-based drags, as QDropEvent now handles them
+
+    // 1. 待决的壁纸点击（原地释放，移动距离未超出 6px）
+    if (m_pendingWallpaperClick) {
+        m_pendingWallpaperClick = false;
+        // 桌面空白处点击常规行为：清空图标选中
+        clearCheckedItem();
+        // 派发 Click 给动态壁纸 (Press + Release)
+        if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+            bridge.forwardMouseClickToWallpaper(m_pendingWallpaperPressPos, m_pendingWallpaperButton, false, 1);
+            bridge.forwardMouseClickToWallpaper(event->pos(), event->button(), true, 1);
+        }
+        event->accept();
+        return;
+    }
+
+    // 2. 图标拖拽结束
     if (m_isDragging) {
         if (!m_draggedDesktopPath.isEmpty()) {
             finalizeActiveDrag(nullptr, event);
@@ -1677,7 +1690,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     }
     clearDesktopAutoArrangeReorderPreview();
     
-    // Clear selection state if we were selecting background
+    // 3. 桌面框选结束
     if (m_isSelecting) {
         if (LinDesktop* desktop = findLinDesktopAncestor(parentWidget())) {
             desktop->clearSelectionOverlay();
@@ -1701,6 +1714,12 @@ void ListView::focusInEvent(QFocusEvent* event)
 {
     clearWidgetFocus();
     QWidget::focusInEvent(event);
+}
+
+void ListView::focusOutEvent(QFocusEvent* event)
+{
+    m_pendingWallpaperClick = false;
+    QWidget::focusOutEvent(event);
 }
 
 void ListView::beginBackgroundSelection(const QPoint& startPos)
@@ -1871,6 +1890,13 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
             event->accept();
             return;
         }
+
+        // 空白处且未启用双击隐藏图标时，可将双击转发给壁纸
+        if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+            bridge.forwardMouseClickToWallpaper(event->pos(), event->button(), false, 2);
+            event->accept();
+            return;
+        }
     }
     QWidget::mouseDoubleClickEvent(event);
 }
@@ -1890,6 +1916,14 @@ void ListView::wheelEvent(QWheelEvent* event)
         const int delta = angleDelta.y() != 0 ? angleDelta.y() : angleDelta.x();
         if (delta != 0) {
             stepIconViewMode(delta > 0 ? 1 : -1);
+            event->accept();
+            return;
+        }
+    }
+
+    // 转发给动态交互壁纸（如缩放或粒子滚动交互）
+    if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+        if (bridge.forwardWheelToWallpaper(event->pos(), event->angleDelta())) {
             event->accept();
             return;
         }

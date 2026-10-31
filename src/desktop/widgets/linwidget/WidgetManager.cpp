@@ -1466,10 +1466,9 @@ QString WidgetManager::widgetAt(const QPoint& clientPos) const
         if (!m_runningWidgets.contains(instance.instanceId)) {
             continue;
         }
+        // 壁纸属于底层全屏背景，不作为局部小组件返回，由专属壁纸管道处理
         if (instance.instanceId.startsWith(QStringLiteral("wallpaper:"))) {
-            if (!m_activeWallpaperInteractive) {
-                continue; // 点击穿透壁纸
-            }
+            continue;
         }
         if (m_layout.contains(instance.instanceId)) {
             WidgetLayoutState state = m_layout.state(instance.instanceId);
@@ -1542,6 +1541,61 @@ bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
         return true;
     }
     return false;
+}
+
+bool WidgetManager::forwardMouseMoveToWallpaper(const QPoint& clientPos)
+{
+    if (!m_enabled || !m_cefOsrEnabled || m_activeWallpaperId.isEmpty() || !m_activeWallpaperInteractive) {
+        return false;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return false;
+    }
+
+    // 60fps 频率限制 (16ms 间隔)，平滑广播光标位置，避免高频 IPC 洪峰
+    static qint64 s_lastMoveMs = 0;
+    static QPoint s_lastPos;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (clientPos == s_lastPos || (now - s_lastMoveMs < 16 && (clientPos - s_lastPos).manhattanLength() < 4)) {
+        return true;
+    }
+    s_lastMoveMs = now;
+    s_lastPos = clientPos;
+
+    const QPoint localPos = clientPos - osr->geometry().topLeft();
+    osr->sendMouseMove(localPos.x(), localPos.y());
+    return true;
+}
+
+bool WidgetManager::forwardMouseClickToWallpaper(const QPoint& clientPos, Qt::MouseButton button, bool isRelease, int clickCount)
+{
+    if (!m_enabled || !m_cefOsrEnabled || m_activeWallpaperId.isEmpty() || !m_activeWallpaperInteractive) {
+        return false;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return false;
+    }
+
+    const QPoint localPos = clientPos - osr->geometry().topLeft();
+    osr->sendMouseClick(localPos.x(), localPos.y(), button, isRelease, clickCount);
+    return true;
+}
+
+bool WidgetManager::forwardWheelToWallpaper(const QPoint& clientPos, const QPoint& angleDelta)
+{
+    if (!m_enabled || !m_cefOsrEnabled || m_activeWallpaperId.isEmpty() || !m_activeWallpaperInteractive) {
+        return false;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return false;
+    }
+
+    const QPoint localPos = clientPos - osr->geometry().topLeft();
+    osr->sendMouseWheel(localPos.x(), localPos.y(), angleDelta.x(), angleDelta.y());
+    return true;
 }
 
 void WidgetManager::setFocusedWidget(const QString& instanceId)

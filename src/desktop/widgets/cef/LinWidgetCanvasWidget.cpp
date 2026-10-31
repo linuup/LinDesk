@@ -175,11 +175,9 @@ QString LinWidgetCanvasWidget::widgetAt(const QPoint& pos) const
             continue;
         }
 
-        // 壁纸组件：若非交互模式，完全穿透给底层 ListView / 图标
+        // 壁纸属于底层全屏画布，不作为普通局部小组件返回，由专属壁纸输入管道处理
         if (it.key().startsWith(QStringLiteral("wallpaper:"))) {
-            if (!LinWidget::WidgetManager::instance() || !LinWidget::WidgetManager::instance()->isWallpaperInteractive()) {
-                continue;
-            }
+            continue;
         }
 
         // 默认页面：全屏 OSR 渲染，按像素透明度感应交互（透明区域穿透给底层桌面图标）

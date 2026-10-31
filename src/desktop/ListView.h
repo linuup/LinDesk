@@ -442,6 +442,7 @@ protected:
 	void keyPressEvent(QKeyEvent* event) override;
 	void keyReleaseEvent(QKeyEvent* event) override;
 	void focusInEvent(QFocusEvent* event) override;
+	void focusOutEvent(QFocusEvent* event) override;
 	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 	void inputMethodEvent(QInputMethodEvent* event) override;
 	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
@@ -734,6 +735,10 @@ private:
 	Qt::MouseButton m_pendingWidgetPressButton = Qt::NoButton;
 	Qt::MouseButtons m_pendingWidgetPressButtons = Qt::NoButton;
 	Qt::KeyboardModifiers m_pendingWidgetPressModifiers = Qt::NoModifier;
+
+	bool m_pendingWallpaperClick = false;
+	QPoint m_pendingWallpaperPressPos;
+	Qt::MouseButton m_pendingWallpaperButton = Qt::NoButton;
 
 	enum WidgetResizeEdge {
 		ResizeEdgeNone = 0,

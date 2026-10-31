@@ -105,6 +105,10 @@ public:
     bool forwardKeyEvent(QKeyEvent* event);
     bool forwardInputMethodEvent(QInputMethodEvent* event);
 
+    bool forwardMouseMoveToWallpaper(const QPoint& clientPos);
+    bool forwardMouseClickToWallpaper(const QPoint& clientPos, Qt::MouseButton button, bool isRelease, int clickCount);
+    bool forwardWheelToWallpaper(const QPoint& clientPos, const QPoint& angleDelta);
+
     bool isCefOsrEnabled() const { return m_cefOsrEnabled; }
     void setCefOsrEnabled(bool enabled);
     int cefOsrBrowserCount() const { return m_osrBrowsers.size(); }

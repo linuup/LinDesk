@@ -286,6 +286,28 @@ LINWIDGET_EXPORT bool linwidget_is_wallpaper_interactive()
     return s_runtimeWidgetManager ? s_runtimeWidgetManager->isWallpaperInteractive() : false;
 }
 
+LINWIDGET_EXPORT void linwidget_set_wallpaper_interactive(bool interactive)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setWallpaperInteractive(interactive);
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_mouse_move_to_wallpaper(int clientX, int clientY)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardMouseMoveToWallpaper(QPoint(clientX, clientY)) : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_mouse_click_to_wallpaper(int clientX, int clientY, int button, bool isRelease, int clickCount)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardMouseClickToWallpaper(QPoint(clientX, clientY), static_cast<Qt::MouseButton>(button), isRelease, clickCount) : false;
+}
+
+LINWIDGET_EXPORT bool linwidget_forward_wheel_to_wallpaper(int clientX, int clientY, int deltaX, int deltaY)
+{
+    return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardWheelToWallpaper(QPoint(clientX, clientY), QPoint(deltaX, deltaY)) : false;
+}
+
 LINWIDGET_EXPORT int linwidget_active_wallpaper_package_path(char* outBuffer, int bufferSize)
 {
     if (!s_runtimeWidgetManager || !outBuffer || bufferSize <= 0) return 0;
@@ -460,6 +482,10 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
     m_pfnStopWallpaper = nullptr;
     m_pfnHasActiveWallpaper = nullptr;
     m_pfnIsWallpaperInteractive = nullptr;
+    m_pfnSetWallpaperInteractive = nullptr;
+    m_pfnForwardMouseMoveToWallpaper = nullptr;
+    m_pfnForwardMouseClickToWallpaper = nullptr;
+    m_pfnForwardWheelToWallpaper = nullptr;
     m_pfnActiveWallpaperPackagePath = nullptr;
     m_pfnActiveWallpaperId = nullptr;
     m_pfnActiveWallpaperIsDevelopment = nullptr;
@@ -555,6 +581,10 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_stop_wallpaper", m_pfnStopWallpaper);
     RESOLVE_FN("linwidget_has_active_wallpaper", m_pfnHasActiveWallpaper);
     RESOLVE_FN("linwidget_is_wallpaper_interactive", m_pfnIsWallpaperInteractive);
+    RESOLVE_FN("linwidget_set_wallpaper_interactive", m_pfnSetWallpaperInteractive);
+    RESOLVE_FN("linwidget_forward_mouse_move_to_wallpaper", m_pfnForwardMouseMoveToWallpaper);
+    RESOLVE_FN("linwidget_forward_mouse_click_to_wallpaper", m_pfnForwardMouseClickToWallpaper);
+    RESOLVE_FN("linwidget_forward_wheel_to_wallpaper", m_pfnForwardWheelToWallpaper);
     RESOLVE_FN("linwidget_active_wallpaper_package_path", m_pfnActiveWallpaperPackagePath);
     RESOLVE_FN("linwidget_active_wallpaper_id", m_pfnActiveWallpaperId);
     RESOLVE_FN("linwidget_active_wallpaper_is_development", m_pfnActiveWallpaperIsDevelopment);
@@ -790,6 +820,28 @@ bool LinWidgetRuntimeBridge::hasActiveWallpaper() const
 bool LinWidgetRuntimeBridge::isWallpaperInteractive() const
 {
     return m_pfnIsWallpaperInteractive ? m_pfnIsWallpaperInteractive() : false;
+}
+
+void LinWidgetRuntimeBridge::setWallpaperInteractive(bool interactive)
+{
+    if (m_pfnSetWallpaperInteractive) {
+        m_pfnSetWallpaperInteractive(interactive);
+    }
+}
+
+bool LinWidgetRuntimeBridge::forwardMouseMoveToWallpaper(const QPoint& clientPos)
+{
+    return m_pfnForwardMouseMoveToWallpaper ? m_pfnForwardMouseMoveToWallpaper(clientPos.x(), clientPos.y()) : false;
+}
+
+bool LinWidgetRuntimeBridge::forwardMouseClickToWallpaper(const QPoint& clientPos, Qt::MouseButton button, bool isRelease, int clickCount)
+{
+    return m_pfnForwardMouseClickToWallpaper ? m_pfnForwardMouseClickToWallpaper(clientPos.x(), clientPos.y(), static_cast<int>(button), isRelease, clickCount) : false;
+}
+
+bool LinWidgetRuntimeBridge::forwardWheelToWallpaper(const QPoint& clientPos, const QPoint& angleDelta)
+{
+    return m_pfnForwardWheelToWallpaper ? m_pfnForwardWheelToWallpaper(clientPos.x(), clientPos.y(), angleDelta.x(), angleDelta.y()) : false;
 }
 
 QString LinWidgetRuntimeBridge::activeWallpaperPackagePath() const
