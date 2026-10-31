@@ -430,8 +430,8 @@ public:
 	void setFluentSelectionCornerRadius(int radius) { m_fluentSelectionCornerRadius = radius; update(); }
 	int selectionBadgeRadius() const { return m_selectionBadgeRadius; }
 	void setSelectionBadgeRadius(int radius) { m_selectionBadgeRadius = radius; update(); }
-	int selectionBorderWidth() const { return m_selectionBorderWidth; }
-	void setSelectionBorderWidth(int width) { m_selectionBorderWidth = width; update(); }
+	qreal selectionBorderWidth() const { return m_selectionBorderWidth; }
+	void setSelectionBorderWidth(qreal width) { m_selectionBorderWidth = width; update(); }
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
 	void clearWidgetFocus();
@@ -735,7 +735,7 @@ private:
 	bool m_selectionCountBadgeEnabled = false;
 	int m_fluentSelectionCornerRadius = 5;
 	int m_selectionBadgeRadius = 11;
-	int m_selectionBorderWidth = 1;
+	qreal m_selectionBorderWidth = 1.0;
 	bool m_forwardingMouseToWidget = false;
 	bool m_widgetDragPending = false;
 	bool m_draggingWidget = false;

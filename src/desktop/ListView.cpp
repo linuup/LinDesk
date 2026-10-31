@@ -308,7 +308,7 @@ void ListView::loadSelectionColors()
     m_selectionCountBadgeEnabled = settings.value(QStringLiteral("Desktop/SelectionCountBadgeEnabled"), false).toBool();
     m_fluentSelectionCornerRadius = qBound(0, settings.value(QStringLiteral("Desktop/SelectionCornerRadius"), 5).toInt(), 16);
     m_selectionBadgeRadius = qBound(0, settings.value(QStringLiteral("Desktop/SelectionBadgeRadius"), 11).toInt(), 11);
-    m_selectionBorderWidth = qBound(0, settings.value(QStringLiteral("Desktop/SelectionBorderWidth"), 1).toInt(), 3);
+    m_selectionBorderWidth = qBound(0.0, settings.value(QStringLiteral("Desktop/SelectionBorderWidth"), 1.0).toReal(), 3.0);
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -1516,10 +1516,17 @@ void ListView::paintEvent(QPaintEvent* event)
                 }
             }
         } else {
-            // 经典 Windows 原生矩形选框
-            painter.setPen(QPen(m_selectionBorderColor, 1));
+            // 经典 Windows 原生矩形选框 (独立响应边框粗细)
+            const qreal bWidth = qBound(0.0, m_selectionBorderWidth, 3.0);
+            if (bWidth > 0.05) {
+                painter.setPen(QPen(m_selectionBorderColor, bWidth));
+                const qreal halfW = bWidth / 2.0;
+                painter.drawRect(QRectF(selRect).adjusted(halfW, halfW, -halfW, -halfW));
+            } else {
+                painter.setPen(Qt::NoPen);
+                painter.drawRect(QRectF(selRect));
+            }
             painter.setBrush(m_selectionFillColor);
-            painter.drawRect(selRect.adjusted(0, 0, -1, -1));
         }
 
         painter.restore();

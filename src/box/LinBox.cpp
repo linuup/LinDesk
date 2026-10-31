@@ -1393,7 +1393,7 @@ void LinBox::loadSelectionColors()
     const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
     m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
     m_fluentSelectionCornerRadius = qBound(0, settings.value(QStringLiteral("Desktop/SelectionCornerRadius"), 5).toInt(), 16);
-    m_selectionBorderWidth = qBound(0, settings.value(QStringLiteral("Desktop/SelectionBorderWidth"), 1).toInt(), 3);
+    m_selectionBorderWidth = qBound(0.0, settings.value(QStringLiteral("Desktop/SelectionBorderWidth"), 1.0).toReal(), 3.0);
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -2682,9 +2682,16 @@ void LinBox::paintEvent(QPaintEvent* event) {
                         }
                     }
                 } else {
-                    p.setPen(QPen(m_selectionBorderColor, 1));
+                    const qreal bWidth = qBound(0.0, m_selectionBorderWidth, 3.0);
+                    if (bWidth > 0.05) {
+                        p.setPen(QPen(m_selectionBorderColor, bWidth));
+                        const qreal halfW = bWidth / 2.0;
+                        p.drawRect(QRectF(boxSelectionRect).adjusted(halfW, halfW, -halfW, -halfW));
+                    } else {
+                        p.setPen(Qt::NoPen);
+                        p.drawRect(QRectF(boxSelectionRect));
+                    }
                     p.setBrush(m_selectionFillColor);
-                    p.drawRect(boxSelectionRect.adjusted(0, 0, -1, -1));
                 }
             }
         }

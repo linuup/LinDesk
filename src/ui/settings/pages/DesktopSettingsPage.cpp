@@ -224,49 +224,9 @@ void DesktopSettingsPage::initUI()
         dialog->open();
     });
 
-    // Contrast Slider
-    QWidget* contrastRow = new QWidget(selectionPanel);
-    contrastRow->setObjectName("settingsInnerRow");
-    contrastRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QHBoxLayout* contrastLayout = new QHBoxLayout(contrastRow);
-    contrastLayout->setContentsMargins(14, 8, 14, 8);
-    contrastLayout->setSpacing(12);
-    QVBoxLayout* contrastText = new QVBoxLayout();
-    contrastText->setContentsMargins(0, 0, 0, 0);
-    contrastText->setSpacing(2);
-    QLabel* contrastTitle = new QLabel(tr("Contrast"), contrastRow);
-    contrastTitle->setObjectName("rowTitle");
-    contrastTitle->setWordWrap(true);
-    contrastTitle->setMinimumWidth(0);
-    contrastTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    contrastText->addWidget(contrastTitle);
-    contrastLayout->addLayout(contrastText, 1);
-    contrastLayout->addWidget(createGlyphLabel(glyph(0xE706), contrastRow, 18, QColor("#5b6b86")));
-    QSlider* contrastSlider = new QSlider(Qt::Horizontal, contrastRow);
-    contrastSlider->setRange(0, 100);
     QSettings desktopSettings(settingsConfigPath(), QSettings::IniFormat);
-    contrastSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100));
-    contrastSlider->setMinimumWidth(120);
-    contrastSlider->setMaximumWidth(160);
-    contrastSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    contrastLayout->addWidget(contrastSlider, 2);
-    QLabel* contrastValue = new QLabel(QStringLiteral("%1%").arg(contrastSlider->value()), contrastRow);
-    contrastValue->setObjectName("valueLabel");
-    contrastValue->setFixedWidth(44);
-    contrastValue->setAlignment(Qt::AlignCenter);
-    contrastLayout->addWidget(contrastValue);
-    connect(contrastSlider, &QSlider::valueChanged, this, [this, contrastValue](int value) {
-        contrastValue->setText(QStringLiteral("%1%").arg(value));
-        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
-        settings.setValue("Desktop/SelectionRectangleContrast", value);
-        settings.sync();
-        reloadSelectionOverlays();
-        updatePreview();
-    });
-    selectionLayout->addWidget(contrastRow);
-    selectionLayout->addWidget(createDivider(selectionPanel));
 
-    // Opacity / Strength Slider
+    // 1. Fill Opacity Slider (填充不透明度)
     QWidget* strengthRow = new QWidget(selectionPanel);
     strengthRow->setObjectName("settingsInnerRow");
     strengthRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -276,7 +236,7 @@ void DesktopSettingsPage::initUI()
     QVBoxLayout* strengthText = new QVBoxLayout();
     strengthText->setContentsMargins(0, 0, 0, 0);
     strengthText->setSpacing(2);
-    QLabel* strengthTitle = new QLabel(tr("Opacity / Strength"), strengthRow);
+    QLabel* strengthTitle = new QLabel(tr("Fill Opacity"), strengthRow);
     strengthTitle->setObjectName("rowTitle");
     strengthTitle->setWordWrap(true);
     strengthTitle->setMinimumWidth(0);
@@ -305,8 +265,98 @@ void DesktopSettingsPage::initUI()
         updatePreview();
     });
     selectionLayout->addWidget(strengthRow);
+    selectionLayout->addWidget(createDivider(selectionPanel));
 
-    // Toggle 1: Modern Glass Marquee (Apple / macOS 现代极简玻璃质感选框)
+    // 2. Border Opacity / Contrast Slider (边框不透明度 / 对比度)
+    QWidget* contrastRow = new QWidget(selectionPanel);
+    contrastRow->setObjectName("settingsInnerRow");
+    contrastRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* contrastLayout = new QHBoxLayout(contrastRow);
+    contrastLayout->setContentsMargins(14, 8, 14, 8);
+    contrastLayout->setSpacing(12);
+    QVBoxLayout* contrastText = new QVBoxLayout();
+    contrastText->setContentsMargins(0, 0, 0, 0);
+    contrastText->setSpacing(2);
+    QLabel* contrastTitle = new QLabel(tr("Border Opacity / Contrast"), contrastRow);
+    contrastTitle->setObjectName("rowTitle");
+    contrastTitle->setWordWrap(true);
+    contrastTitle->setMinimumWidth(0);
+    contrastTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    contrastText->addWidget(contrastTitle);
+    contrastLayout->addLayout(contrastText, 1);
+    contrastLayout->addWidget(createGlyphLabel(glyph(0xE706), contrastRow, 18, QColor("#5b6b86")));
+    QSlider* contrastSlider = new QSlider(Qt::Horizontal, contrastRow);
+    contrastSlider->setRange(0, 100);
+    contrastSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100));
+    contrastSlider->setMinimumWidth(120);
+    contrastSlider->setMaximumWidth(160);
+    contrastSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    contrastLayout->addWidget(contrastSlider, 2);
+    QLabel* contrastValue = new QLabel(QStringLiteral("%1%").arg(contrastSlider->value()), contrastRow);
+    contrastValue->setObjectName("valueLabel");
+    contrastValue->setFixedWidth(44);
+    contrastValue->setAlignment(Qt::AlignCenter);
+    contrastLayout->addWidget(contrastValue);
+    connect(contrastSlider, &QSlider::valueChanged, this, [this, contrastValue](int value) {
+        contrastValue->setText(QStringLiteral("%1%").arg(value));
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleContrast", value);
+        settings.sync();
+        reloadSelectionOverlays();
+        updatePreview();
+    });
+    selectionLayout->addWidget(contrastRow);
+    selectionLayout->addWidget(createDivider(selectionPanel));
+
+    // 3. Border Width Slider (独立呈现的边框粗细，0.1px 高精度)
+    QWidget* marqueeBorderRow = new QWidget(selectionPanel);
+    marqueeBorderRow->setObjectName("settingsInnerRow");
+    marqueeBorderRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* marqueeBorderLayout = new QHBoxLayout(marqueeBorderRow);
+    marqueeBorderLayout->setContentsMargins(14, 8, 14, 8);
+    marqueeBorderLayout->setSpacing(12);
+    QVBoxLayout* marqueeBorderText = new QVBoxLayout();
+    marqueeBorderText->setContentsMargins(0, 0, 0, 0);
+    marqueeBorderText->setSpacing(2);
+    QLabel* marqueeBorderTitle = new QLabel(tr("Border Width"), marqueeBorderRow);
+    marqueeBorderTitle->setObjectName("rowTitle");
+    marqueeBorderTitle->setWordWrap(true);
+    marqueeBorderTitle->setMinimumWidth(0);
+    marqueeBorderTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    marqueeBorderText->addWidget(marqueeBorderTitle);
+    marqueeBorderLayout->addLayout(marqueeBorderText, 1);
+    marqueeBorderLayout->addWidget(createGlyphLabel(glyph(0xE74B), marqueeBorderRow, 18, QColor("#5b6b86")));
+    m_marqueeBorderSlider = new QSlider(Qt::Horizontal, marqueeBorderRow);
+    m_marqueeBorderSlider->setRange(0, 30);
+    const qreal savedBorderW = qBound(0.0, desktopSettings.value("Desktop/SelectionBorderWidth", 1.0).toReal(), 3.0);
+    m_marqueeBorderSlider->setValue(qRound(savedBorderW * 10.0));
+    m_marqueeBorderSlider->setMinimumWidth(120);
+    m_marqueeBorderSlider->setMaximumWidth(160);
+    m_marqueeBorderSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    marqueeBorderLayout->addWidget(m_marqueeBorderSlider, 2);
+
+    auto formatBorderWidth = [](int val) -> QString {
+        if (val <= 0) return QStringLiteral("0.0 px");
+        return QStringLiteral("%1 px").arg(val / 10.0, 0, 'f', 1);
+    };
+
+    m_marqueeBorderValue = new QLabel(formatBorderWidth(m_marqueeBorderSlider->value()), marqueeBorderRow);
+    m_marqueeBorderValue->setObjectName("valueLabel");
+    m_marqueeBorderValue->setFixedWidth(44);
+    m_marqueeBorderValue->setAlignment(Qt::AlignCenter);
+    marqueeBorderLayout->addWidget(m_marqueeBorderValue);
+    connect(m_marqueeBorderSlider, &QSlider::valueChanged, this, [this, formatBorderWidth](int value) {
+        if (m_marqueeBorderValue) m_marqueeBorderValue->setText(formatBorderWidth(value));
+        const qreal floatVal = value / 10.0;
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionBorderWidth", floatVal);
+        settings.sync();
+        reloadSelectionOverlays();
+        updatePreview();
+    });
+    selectionLayout->addWidget(marqueeBorderRow);
+
+    // 4. Toggle 1: Modern Glass Marquee (Apple / macOS 现代极简玻璃质感选框)
     QWidget* fluentRow = new QWidget(selectionPanel);
     fluentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QHBoxLayout* fluentLayout = new QHBoxLayout(fluentRow);
@@ -320,7 +370,7 @@ void DesktopSettingsPage::initUI()
     fluentTitle->setObjectName("rowTitle");
     fluentTitle->setWordWrap(true);
     fluentTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QLabel* fluentSubtitle = new QLabel(tr("Refined translucent optical glass fill with subtle continuous curvature and 1px hairline border."), fluentRow);
+    QLabel* fluentSubtitle = new QLabel(tr("Refined translucent optical glass fill with subtle continuous curvature and hairline border."), fluentRow);
     fluentSubtitle->setObjectName("rowSubtitle");
     fluentSubtitle->setWordWrap(true);
     fluentSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -383,47 +433,6 @@ void DesktopSettingsPage::initUI()
         updatePreview();
     });
     selectionLayout->addWidget(marqueeRadiusRow);
-
-    // Slider: Marquee Border Width (选框边框粗细滑块)
-    QWidget* marqueeBorderRow = new QWidget(selectionPanel);
-    marqueeBorderRow->setObjectName("settingsInnerRow");
-    marqueeBorderRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QHBoxLayout* marqueeBorderLayout = new QHBoxLayout(marqueeBorderRow);
-    marqueeBorderLayout->setContentsMargins(14, 8, 14, 8);
-    marqueeBorderLayout->setSpacing(12);
-    QVBoxLayout* marqueeBorderText = new QVBoxLayout();
-    marqueeBorderText->setContentsMargins(0, 0, 0, 0);
-    marqueeBorderText->setSpacing(2);
-    QLabel* marqueeBorderTitle = new QLabel(tr("Border Width"), marqueeBorderRow);
-    marqueeBorderTitle->setObjectName("rowTitle");
-    marqueeBorderTitle->setWordWrap(true);
-    marqueeBorderTitle->setMinimumWidth(0);
-    marqueeBorderTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    marqueeBorderText->addWidget(marqueeBorderTitle);
-    marqueeBorderLayout->addLayout(marqueeBorderText, 1);
-    marqueeBorderLayout->addWidget(createGlyphLabel(glyph(0xE74B), marqueeBorderRow, 18, QColor("#5b6b86")));
-    m_marqueeBorderSlider = new QSlider(Qt::Horizontal, marqueeBorderRow);
-    m_marqueeBorderSlider->setRange(0, 3);
-    m_marqueeBorderSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionBorderWidth", 1).toInt(), 3));
-    m_marqueeBorderSlider->setMinimumWidth(120);
-    m_marqueeBorderSlider->setMaximumWidth(160);
-    m_marqueeBorderSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    marqueeBorderLayout->addWidget(m_marqueeBorderSlider, 2);
-    const int initBorderVal = m_marqueeBorderSlider->value();
-    m_marqueeBorderValue = new QLabel(initBorderVal == 0 ? tr("None") : QStringLiteral("%1 px").arg(initBorderVal), marqueeBorderRow);
-    m_marqueeBorderValue->setObjectName("valueLabel");
-    m_marqueeBorderValue->setFixedWidth(44);
-    m_marqueeBorderValue->setAlignment(Qt::AlignCenter);
-    marqueeBorderLayout->addWidget(m_marqueeBorderValue);
-    connect(m_marqueeBorderSlider, &QSlider::valueChanged, this, [this](int value) {
-        if (m_marqueeBorderValue) m_marqueeBorderValue->setText(value == 0 ? tr("None") : QStringLiteral("%1 px").arg(value));
-        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
-        settings.setValue("Desktop/SelectionBorderWidth", value);
-        settings.sync();
-        reloadSelectionOverlays();
-        updatePreview();
-    });
-    selectionLayout->addWidget(marqueeBorderRow);
 
     // Toggle 2: Selection Count Badge (独立数量胶囊开关)
     QWidget* badgeRow = new QWidget(selectionPanel);
@@ -689,9 +698,9 @@ void DesktopSettingsPage::updatePreview()
         painter.setRenderHint(QPainter::Antialiasing, true);
         const int selCornerInt = qBound(0, settings.value("Desktop/SelectionCornerRadius", 5).toInt(), 16);
         const int badgeCornerInt = qBound(0, settings.value("Desktop/SelectionBadgeRadius", 11).toInt(), 11);
-        const int borderWInt = qBound(0, settings.value("Desktop/SelectionBorderWidth", 1).toInt(), 3);
+        const qreal borderWVal = qBound(0.0, settings.value("Desktop/SelectionBorderWidth", 1.0).toReal(), 3.0);
         const qreal radius = selCornerInt;
-        const qreal bWidth = borderWInt;
+        const qreal bWidth = borderWVal;
 
         // 1. Apple 级光学高透质感填充
         QLinearGradient fillGrad(selectionRect.topLeft(), selectionRect.bottomRight());
@@ -767,10 +776,14 @@ void DesktopSettingsPage::updatePreview()
             painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
         }
     } else {
+        const qreal borderWVal = qBound(0.0, settings.value("Desktop/SelectionBorderWidth", 1.0).toReal(), 3.0);
         painter.fillRect(selectionRect, fillColor);
-        painter.setPen(QPen(borderColor, 1.5));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRect(selectionRect);
+        if (borderWVal > 0.05) {
+            painter.setPen(QPen(borderColor, borderWVal));
+            painter.setBrush(Qt::NoBrush);
+            const qreal halfW = borderWVal / 2.0;
+            painter.drawRect(QRectF(selectionRect).adjusted(halfW, halfW, -halfW, -halfW));
+        }
     }
 
     // 4. Subtle inner card border
