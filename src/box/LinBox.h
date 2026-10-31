@@ -102,14 +102,10 @@ public:
     bool layeredZDepth() const { return m_layeredZDepth; }
     void setLayeredZDepth(bool enabled);
 
-    bool adaptiveWallpaperTint() const { return m_adaptiveWallpaperTint; }
-    void setAdaptiveWallpaperTint(bool enabled);
-
     bool activeDragPulse() const { return m_activeDragPulse; }
     void setActiveDragPulse(bool enabled);
 
     QColor effectiveBackgroundColor() const;
-    static QColor extractWallpaperDominantColor(const QPixmap& pixmap);
 
     void loadVisualEffectSettings();
 
@@ -256,10 +252,8 @@ private:
     qreal m_dpiScale = 1.0;
     bool m_isMappedFolderLoading = false;
     bool m_layeredZDepth = true;
-    bool m_adaptiveWallpaperTint = false;
     bool m_activeDragPulse = true;
     bool m_isDragHovered = false;
-    QColor m_adaptiveColor;
 
 private:
     QPointer<class FluentDragTip> m_dragTip;
@@ -278,6 +272,7 @@ private:
     QColor m_selectionBorderColor;
     bool m_fluentSelectionEnabled = true;
     int m_fluentSelectionCornerRadius = 5;
+    int m_selectionBorderWidth = 1;
     QString m_hoveredItemPath;
     QString m_pressedItemPath;
     QPoint m_pressedItemBoxPos;

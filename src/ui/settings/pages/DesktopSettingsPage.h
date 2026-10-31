@@ -36,6 +36,8 @@ private:
     FluentToggleSwitch* m_selectionCountBadgeToggle = nullptr;
     QSlider* m_marqueeRadiusSlider = nullptr;
     QLabel* m_marqueeRadiusValue = nullptr;
+    QSlider* m_marqueeBorderSlider = nullptr;
+    QLabel* m_marqueeBorderValue = nullptr;
     QSlider* m_badgeRadiusSlider = nullptr;
     QLabel* m_badgeRadiusValue = nullptr;
 };

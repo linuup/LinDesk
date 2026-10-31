@@ -85,16 +85,13 @@ public:
     float unifiedBackgroundOpacity() const { return m_unifiedBackgroundOpacity; }
     bool unifiedGlassEffect() const { return m_unifiedGlassEffect; }
     bool unifiedLayeredZDepth() const { return m_unifiedLayeredZDepth; }
-    bool unifiedAdaptiveWallpaperTint() const { return m_unifiedAdaptiveWallpaperTint; }
     bool unifiedActiveDragPulse() const { return m_unifiedActiveDragPulse; }
     void setUnifiedBackgroundColor(const QColor& color) { m_unifiedBackgroundColor = color; }
     void setUnifiedBackgroundOpacity(float opacity) { m_unifiedBackgroundOpacity = opacity; }
     void setUnifiedGlassEffect(bool enabled) { m_unifiedGlassEffect = enabled; }
     void setUnifiedLayeredZDepth(bool enabled) { m_unifiedLayeredZDepth = enabled; }
-    void setUnifiedAdaptiveWallpaperTint(bool enabled) { m_unifiedAdaptiveWallpaperTint = enabled; }
     void setUnifiedActiveDragPulse(bool enabled) { m_unifiedActiveDragPulse = enabled; }
     void setAllBoxesLayeredZDepth(bool enabled);
-    void setAllBoxesAdaptiveWallpaperTint(bool enabled);
     void setAllBoxesActiveDragPulse(bool enabled);
 
 signals:
@@ -124,7 +121,6 @@ private:
     float m_unifiedBackgroundOpacity = 0.28f;
     bool m_unifiedGlassEffect = false;
     bool m_unifiedLayeredZDepth = true;
-    bool m_unifiedAdaptiveWallpaperTint = false;
     bool m_unifiedActiveDragPulse = true;
     
     // 禁止拷贝

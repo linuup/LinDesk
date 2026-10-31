@@ -384,6 +384,47 @@ void DesktopSettingsPage::initUI()
     });
     selectionLayout->addWidget(marqueeRadiusRow);
 
+    // Slider: Marquee Border Width (选框边框粗细滑块)
+    QWidget* marqueeBorderRow = new QWidget(selectionPanel);
+    marqueeBorderRow->setObjectName("settingsInnerRow");
+    marqueeBorderRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* marqueeBorderLayout = new QHBoxLayout(marqueeBorderRow);
+    marqueeBorderLayout->setContentsMargins(14, 8, 14, 8);
+    marqueeBorderLayout->setSpacing(12);
+    QVBoxLayout* marqueeBorderText = new QVBoxLayout();
+    marqueeBorderText->setContentsMargins(0, 0, 0, 0);
+    marqueeBorderText->setSpacing(2);
+    QLabel* marqueeBorderTitle = new QLabel(tr("Border Width"), marqueeBorderRow);
+    marqueeBorderTitle->setObjectName("rowTitle");
+    marqueeBorderTitle->setWordWrap(true);
+    marqueeBorderTitle->setMinimumWidth(0);
+    marqueeBorderTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    marqueeBorderText->addWidget(marqueeBorderTitle);
+    marqueeBorderLayout->addLayout(marqueeBorderText, 1);
+    marqueeBorderLayout->addWidget(createGlyphLabel(glyph(0xE74B), marqueeBorderRow, 18, QColor("#5b6b86")));
+    m_marqueeBorderSlider = new QSlider(Qt::Horizontal, marqueeBorderRow);
+    m_marqueeBorderSlider->setRange(0, 3);
+    m_marqueeBorderSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionBorderWidth", 1).toInt(), 3));
+    m_marqueeBorderSlider->setMinimumWidth(120);
+    m_marqueeBorderSlider->setMaximumWidth(160);
+    m_marqueeBorderSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    marqueeBorderLayout->addWidget(m_marqueeBorderSlider, 2);
+    const int initBorderVal = m_marqueeBorderSlider->value();
+    m_marqueeBorderValue = new QLabel(initBorderVal == 0 ? tr("None") : QStringLiteral("%1 px").arg(initBorderVal), marqueeBorderRow);
+    m_marqueeBorderValue->setObjectName("valueLabel");
+    m_marqueeBorderValue->setFixedWidth(44);
+    m_marqueeBorderValue->setAlignment(Qt::AlignCenter);
+    marqueeBorderLayout->addWidget(m_marqueeBorderValue);
+    connect(m_marqueeBorderSlider, &QSlider::valueChanged, this, [this](int value) {
+        if (m_marqueeBorderValue) m_marqueeBorderValue->setText(value == 0 ? tr("None") : QStringLiteral("%1 px").arg(value));
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionBorderWidth", value);
+        settings.sync();
+        reloadSelectionOverlays();
+        updatePreview();
+    });
+    selectionLayout->addWidget(marqueeBorderRow);
+
     // Toggle 2: Selection Count Badge (独立数量胶囊开关)
     QWidget* badgeRow = new QWidget(selectionPanel);
     badgeRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -648,7 +689,9 @@ void DesktopSettingsPage::updatePreview()
         painter.setRenderHint(QPainter::Antialiasing, true);
         const int selCornerInt = qBound(0, settings.value("Desktop/SelectionCornerRadius", 5).toInt(), 16);
         const int badgeCornerInt = qBound(0, settings.value("Desktop/SelectionBadgeRadius", 11).toInt(), 11);
+        const int borderWInt = qBound(0, settings.value("Desktop/SelectionBorderWidth", 1).toInt(), 3);
         const qreal radius = selCornerInt;
+        const qreal bWidth = borderWInt;
 
         // 1. Apple 级光学高透质感填充
         QLinearGradient fillGrad(selectionRect.topLeft(), selectionRect.bottomRight());
@@ -660,83 +703,68 @@ void DesktopSettingsPage::updatePreview()
         fillGrad.setColorAt(1.0, bottomFill);
         painter.setBrush(fillGrad);
 
-        // 2. 极细 1px 发丝边框
-        QColor strokeColor = borderColor;
-        strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
-        painter.setPen(QPen(strokeColor, 1.0));
-        if (radius > 0.1) {
-            painter.drawRoundedRect(QRectF(selectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+        // 2. 选框边框 (支持 0px 无描边 ~ 3px)
+        if (bWidth > 0.05) {
+            QColor strokeColor = borderColor;
+            strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
+            painter.setPen(QPen(strokeColor, bWidth));
+            const qreal halfW = bWidth / 2.0;
+            if (radius > 0.1) {
+                painter.drawRoundedRect(QRectF(selectionRect).adjusted(halfW, halfW, -halfW, -halfW), radius, radius);
+            } else {
+                painter.drawRect(QRectF(selectionRect).adjusted(halfW, halfW, -halfW, -halfW));
+            }
         } else {
-            painter.drawRect(QRectF(selectionRect).adjusted(0.5, 0.5, -0.5, -0.5));
+            painter.setPen(Qt::NoPen);
+            if (radius > 0.1) {
+                painter.drawRoundedRect(QRectF(selectionRect), radius, radius);
+            } else {
+                painter.drawRect(QRectF(selectionRect));
+            }
         }
 
-        // 3. 极细顶边反射
-        if (selectionRect.width() > 14 && selectionRect.height() > 10) {
+        // 3. 极细顶边反射 (仅在有描边时渲染)
+        if (bWidth > 0.05 && selectionRect.width() > 14 && selectionRect.height() > 10) {
             painter.setPen(QPen(QColor(255, 255, 255, 45), 1.0));
             const qreal inset = radius > 0.1 ? (radius + 1.0) : 1.0;
-            painter.drawLine(QPointF(selectionRect.left() + inset, selectionRect.top() + 1.0),
-                             QPointF(selectionRect.right() - inset, selectionRect.top() + 1.0));
+            painter.drawLine(QPointF(selectionRect.left() + inset, selectionRect.top() + bWidth / 2.0),
+                             QPointF(selectionRect.right() - inset, selectionRect.top() + bWidth / 2.0));
         }
 
-        // 4. 独立开关控制的极简灵动岛徽章 (Apple Dynamic Island / Status Pill Badge)
+        // 4. 独立开关控制的极简微胶囊徽章 (纯净数字，彻底移除任何圆点)
         if (showBadge) {
             const QString badgeText = QStringLiteral("2");
             QFont badgeFont = painter.font();
-            badgeFont.setPixelSize(11);
-            badgeFont.setWeight(QFont::DemiBold);
+            badgeFont.setPixelSize(10);
+            badgeFont.setWeight(QFont::Medium);
             painter.setFont(badgeFont);
 
             QFontMetrics fm(badgeFont);
             const int textW = fm.horizontalAdvance(badgeText);
-            const int dotSize = 5;
-            const int dotSpacing = 5;
-            const int padLeft = 8;
-            const int padRight = 8;
-            const int badgeH = 22;
-            const int badgeW = qMax(32, padLeft + dotSize + dotSpacing + textW + padRight);
+            const int badgeH = 18;
+            const int padH = 6;
+            const int badgeW = qMax(18, textW + padH * 2);
 
             const qreal badgeCorner = qBound(0.0, static_cast<qreal>(badgeCornerInt), badgeH / 2.0);
-            const qreal badgeX = selectionRect.right() - badgeW - 7;
-            const qreal badgeY = selectionRect.bottom() - badgeH - 7;
+            const qreal badgeX = selectionRect.right() - badgeW - 5;
+            const qreal badgeY = selectionRect.bottom() - badgeH - 5;
             const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
 
-            // a. 双层极柔环境漫反射阴影 (Ambient Multi-Drop Shadow)
+            // a. 极轻柔环境微阴影
             painter.setPen(Qt::NoPen);
             painter.setBrush(QColor(0, 0, 0, 40));
-            painter.drawRoundedRect(badgeRect.translated(0, 2.0), badgeCorner, badgeCorner);
-            painter.setBrush(QColor(0, 0, 0, 75));
             painter.drawRoundedRect(badgeRect.translated(0, 1.0), badgeCorner, badgeCorner);
 
-            // b. 极高质感深色光学磨砂玻璃背景 (Frosted Obsidian Glass)
-            QLinearGradient glassGrad(badgeRect.topLeft(), badgeRect.bottomLeft());
-            glassGrad.setColorAt(0.0, QColor(38, 42, 50, 235));
-            glassGrad.setColorAt(1.0, QColor(18, 20, 26, 245));
-            painter.setBrush(glassGrad);
+            // b. 半透明极简微磨砂黑底
+            painter.setBrush(QColor(22, 24, 28, 205));
 
-            // c. 发丝级 0.85px 物理边缘高光描边 (Hairline Specular Rim)
-            QLinearGradient rimGrad(badgeRect.topLeft(), badgeRect.bottomLeft());
-            rimGrad.setColorAt(0.0, QColor(255, 255, 255, 80));
-            rimGrad.setColorAt(1.0, QColor(255, 255, 255, 25));
-            painter.setPen(QPen(QBrush(rimGrad), 0.85));
+            // c. 0.75px 极细微透描边
+            painter.setPen(QPen(QColor(255, 255, 255, 40), 0.75));
             painter.drawRoundedRect(badgeRect, badgeCorner, badgeCorner);
 
-            // d. 灵动岛同色系微发光状态点 (Accent Status Indicator Dot)
-            const qreal dotX = badgeX + padLeft;
-            const qreal dotY = badgeY + (badgeH - dotSize) / 2.0;
-            const QRectF dotRect(dotX, dotY, dotSize, dotSize);
-            QColor dotGlow = strokeColor;
-            dotGlow.setAlpha(80);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(dotGlow);
-            painter.drawEllipse(dotRect.adjusted(-1.0, -1.0, 1.0, 1.0));
-            painter.setBrush(strokeColor);
-            painter.drawEllipse(dotRect);
-
-            // e. 纯白视网膜级清晰数字
-            const qreal textX = dotX + dotSize + dotSpacing;
-            const QRectF textRect(textX, badgeY, textW + 2, badgeH);
+            // d. 纯白清晰数字 (无红点，无任何多余元素，纯净通透)
             painter.setPen(QColor(250, 252, 255));
-            painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, badgeText);
+            painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
         }
     } else {
         painter.fillRect(selectionRect, fillColor);

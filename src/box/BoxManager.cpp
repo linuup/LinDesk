@@ -75,7 +75,6 @@ BoxManager::BoxManager(QObject* parent)
 
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
     m_unifiedLayeredZDepth = settings.value(QStringLiteral("Box/LayeredZDepth"), true).toBool();
-    m_unifiedAdaptiveWallpaperTint = settings.value(QStringLiteral("Box/AdaptiveWallpaperTint"), false).toBool();
     m_unifiedActiveDragPulse = settings.value(QStringLiteral("Box/ActiveDragPulse"), true).toBool();
 }
 
@@ -130,7 +129,6 @@ void BoxManager::applyUnifiedStyleToBox(LinBox* box) {
     box->setBackgroundOpacity(targetOpacity);
     box->setGlassEffect(targetGlass);
     box->setLayeredZDepth(m_unifiedLayeredZDepth);
-    box->setAdaptiveWallpaperTint(m_unifiedAdaptiveWallpaperTint);
     box->setActiveDragPulse(m_unifiedActiveDragPulse);
     box->refreshStyles();
 }
@@ -916,13 +914,6 @@ void BoxManager::setAllBoxesLayeredZDepth(bool enabled) {
     m_unifiedLayeredZDepth = enabled;
     for (auto& ptr : m_boxes) {
         if (LinBox* box = ptr.data()) box->setLayeredZDepth(enabled);
-    }
-}
-
-void BoxManager::setAllBoxesAdaptiveWallpaperTint(bool enabled) {
-    m_unifiedAdaptiveWallpaperTint = enabled;
-    for (auto& ptr : m_boxes) {
-        if (LinBox* box = ptr.data()) box->setAdaptiveWallpaperTint(enabled);
     }
 }
 

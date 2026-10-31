@@ -1393,6 +1393,7 @@ void LinBox::loadSelectionColors()
     const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
     m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
     m_fluentSelectionCornerRadius = qBound(0, settings.value(QStringLiteral("Desktop/SelectionCornerRadius"), 5).toInt(), 16);
+    m_selectionBorderWidth = qBound(0, settings.value(QStringLiteral("Desktop/SelectionBorderWidth"), 1).toInt(), 3);
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -1411,7 +1412,6 @@ void LinBox::loadVisualEffectSettings()
 {
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
     m_layeredZDepth = settings.value(QStringLiteral("Box/LayeredZDepth"), true).toBool();
-    m_adaptiveWallpaperTint = settings.value(QStringLiteral("Box/AdaptiveWallpaperTint"), false).toBool();
     m_activeDragPulse = settings.value(QStringLiteral("Box/ActiveDragPulse"), true).toBool();
 }
 
@@ -1419,14 +1419,6 @@ void LinBox::setLayeredZDepth(bool enabled)
 {
     if (m_layeredZDepth == enabled) return;
     m_layeredZDepth = enabled;
-    update();
-}
-
-void LinBox::setAdaptiveWallpaperTint(bool enabled)
-{
-    if (m_adaptiveWallpaperTint == enabled) return;
-    m_adaptiveWallpaperTint = enabled;
-    scheduleBlurRefresh();
     update();
 }
 
@@ -1439,40 +1431,7 @@ void LinBox::setActiveDragPulse(bool enabled)
 
 QColor LinBox::effectiveBackgroundColor() const
 {
-    if (m_adaptiveWallpaperTint && m_adaptiveColor.isValid()) {
-        return m_adaptiveColor;
-    }
     return m_bgColor.isValid() ? m_bgColor : QColor(60, 60, 60);
-}
-
-QColor LinBox::extractWallpaperDominantColor(const QPixmap& pixmap)
-{
-    if (pixmap.isNull()) return QColor();
-    const QImage thumb = pixmap.toImage().scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    if (thumb.isNull()) return QColor();
-
-    qint64 totalR = 0, totalG = 0, totalB = 0;
-    int count = 0;
-    for (int y = 0; y < thumb.height(); ++y) {
-        for (int x = 0; x < thumb.width(); ++x) {
-            const QRgb px = thumb.pixel(x, y);
-            totalR += qRed(px);
-            totalG += qGreen(px);
-            totalB += qBlue(px);
-            count++;
-        }
-    }
-    if (count == 0) return QColor();
-
-    QColor col(static_cast<int>(totalR / count),
-               static_cast<int>(totalG / count),
-               static_cast<int>(totalB / count));
-    int h, s, v;
-    col.getHsv(&h, &s, &v);
-    s = qBound(60, s * 14 / 10, 220);
-    v = qBound(70, v * 11 / 10, 220);
-    col.setHsv(h, s, v);
-    return col;
 }
 
 void LinBox::setAutoPeekEnabled(bool enabled)
@@ -2694,6 +2653,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
                 if (m_fluentSelectionEnabled) {
                     p.setRenderHint(QPainter::Antialiasing, true);
                     const qreal radius = qBound(0.0, static_cast<qreal>(m_fluentSelectionCornerRadius), 16.0);
+                    const qreal bWidth = qBound(0.0, static_cast<qreal>(m_selectionBorderWidth), 3.0);
                     QLinearGradient fillGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
                     QColor topFill = m_selectionFillColor;
                     topFill.setAlpha(qBound(24, topFill.alpha() * 70 / 100, 110));
@@ -2703,13 +2663,23 @@ void LinBox::paintEvent(QPaintEvent* event) {
                     fillGrad.setColorAt(1.0, bottomFill);
                     p.setBrush(fillGrad);
 
-                    QColor strokeColor = m_selectionBorderColor;
-                    strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
-                    p.setPen(QPen(strokeColor, 1.0));
-                    if (radius > 0.1) {
-                        p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+                    if (bWidth > 0.05) {
+                        QColor strokeColor = m_selectionBorderColor;
+                        strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
+                        p.setPen(QPen(strokeColor, bWidth));
+                        const qreal halfW = bWidth / 2.0;
+                        if (radius > 0.1) {
+                            p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(halfW, halfW, -halfW, -halfW), radius, radius);
+                        } else {
+                            p.drawRect(QRectF(boxSelectionRect).adjusted(halfW, halfW, -halfW, -halfW));
+                        }
                     } else {
-                        p.drawRect(QRectF(boxSelectionRect).adjusted(0.5, 0.5, -0.5, -0.5));
+                        p.setPen(Qt::NoPen);
+                        if (radius > 0.1) {
+                            p.drawRoundedRect(QRectF(boxSelectionRect), radius, radius);
+                        } else {
+                            p.drawRect(QRectF(boxSelectionRect));
+                        }
                     }
                 } else {
                     p.setPen(QPen(m_selectionBorderColor, 1));
@@ -4617,27 +4587,13 @@ QPixmap LinBox::captureBackgroundPixmap() const
 
 void LinBox::updateBlurCache()
 {
-    if (!isVisible()) {
-        return;
-    }
-
-    if (!m_glassEffect && !m_adaptiveWallpaperTint) {
+    if (!m_glassEffect || !isVisible()) {
         return;
     }
 
     const QPixmap captured = captureBackgroundPixmap();
     if (captured.isNull()) {
         m_blurCache = QPixmap();
-        return;
-    }
-
-    if (m_adaptiveWallpaperTint) {
-        m_adaptiveColor = extractWallpaperDominantColor(captured);
-    }
-
-    if (!m_glassEffect) {
-        m_blurCache = QPixmap();
-        update();
         return;
     }
 
