@@ -13,10 +13,75 @@
 #include <QColorDialog>
 #include <QPainter>
 #include <QPainterPath>
+#include <QLinearGradient>
+#include <QImage>
+#include <QPolygon>
 #include <QSettings>
 #include <QTimer>
 
 using namespace SettingsUICommon;
+
+namespace {
+
+QImage fastBoxBlurImage(const QImage& source, int radius)
+{
+    if (source.isNull() || radius <= 0) {
+        return source;
+    }
+    const QImage input = source.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const int w = input.width();
+    const int h = input.height();
+    QImage temp(w, h, QImage::Format_ARGB32_Premultiplied);
+    QImage output(w, h, QImage::Format_ARGB32_Premultiplied);
+
+    // Horizontal pass
+    for (int y = 0; y < h; ++y) {
+        const QRgb* srcLine = reinterpret_cast<const QRgb*>(input.constScanLine(y));
+        QRgb* dstLine = reinterpret_cast<QRgb*>(temp.scanLine(y));
+        for (int x = 0; x < w; ++x) {
+            int a = 0, r = 0, g = 0, b = 0;
+            int count = 0;
+            for (int dx = -radius; dx <= radius; ++dx) {
+                const int nx = qBound(0, x + dx, w - 1);
+                const QRgb pixel = srcLine[nx];
+                a += qAlpha(pixel);
+                r += qRed(pixel);
+                g += qGreen(pixel);
+                b += qBlue(pixel);
+                ++count;
+            }
+            dstLine[x] = qRgba(r / count, g / count, b / count, a / count);
+        }
+    }
+
+    // Vertical pass
+    for (int x = 0; x < w; ++x) {
+        for (int y = 0; y < h; ++y) {
+            int a = 0, r = 0, g = 0, b = 0;
+            int count = 0;
+            for (int dy = -radius; dy <= radius; ++dy) {
+                const int ny = qBound(0, y + dy, h - 1);
+                const QRgb pixel = reinterpret_cast<const QRgb*>(temp.constScanLine(ny))[x];
+                a += qAlpha(pixel);
+                r += qRed(pixel);
+                g += qGreen(pixel);
+                b += qBlue(pixel);
+                ++count;
+            }
+            reinterpret_cast<QRgb*>(output.scanLine(y))[x] = qRgba(r / count, g / count, b / count, a / count);
+        }
+    }
+
+    return output;
+}
+
+struct MockItemDef {
+    enum Type { Doc, Folder, Image, Code, Archive };
+    Type type;
+    QString name;
+};
+
+} // namespace
 
 BoxSettingsPage::BoxSettingsPage(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidget* parent)
     : QWidget(parent), m_targetBox(targetBox)
@@ -91,25 +156,25 @@ void BoxSettingsPage::initUI()
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignTop);
 
-    QLabel* titleLabel = createPageTitle(tr("Box UI"), this);
+    QLabel* titleLabel = createPageTitle(tr("Box"), this);
     titleLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(titleLabel, 0, Qt::AlignLeft);
     layout->addSpacing(8);
 
-    // Box Style Panel (Compact Inline Preview)
+    // 1. Box Appearance & Theme Panel
     QWidget* stylePanel = createPanel(this);
     stylePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* styleLayout = new QVBoxLayout(stylePanel);
     styleLayout->setContentsMargins(22, 18, 22, 18);
     styleLayout->setSpacing(0);
 
-    styleLayout->addWidget(createCardTitle(tr("Box Appearance & Style"), stylePanel));
+    styleLayout->addWidget(createCardTitle(tr("Appearance & Theme"), stylePanel));
     styleLayout->addSpacing(4);
     styleLayout->addWidget(createCardSubtitle(tr("Preview and customize the theme color, opacity, and acrylic glass effect of your desktop boxes."), stylePanel));
     styleLayout->addSpacing(12);
 
     m_previewBackground = new QLabel(stylePanel);
-    m_previewBackground->setFixedHeight(98);
+    m_previewBackground->setFixedHeight(128);
     m_previewBackground->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_previewBackground->setAlignment(Qt::AlignCenter);
     m_previewBackground->setObjectName(QStringLiteral("previewSurface"));
@@ -130,20 +195,10 @@ void BoxSettingsPage::initUI()
     QHBoxLayout* presetsLayout = new QHBoxLayout(presetsRow);
     presetsLayout->setContentsMargins(12, 8, 12, 8);
     presetsLayout->setSpacing(8);
-    QLabel* presetsLabel = new QLabel(tr("Presets"), presetsRow);
+    QLabel* presetsLabel = new QLabel(tr("Theme Color"), presetsRow);
     presetsLabel->setObjectName("rowTitle");
     presetsLayout->addWidget(presetsLabel);
     presetsLayout->addStretch();
-
-    m_boxColorValueEdit = new QLineEdit(presetsRow);
-    m_boxColorValueEdit->setReadOnly(true);
-    m_boxColorValueEdit->setAlignment(Qt::AlignCenter);
-    m_boxColorValueEdit->setMinimumWidth(72);
-    m_boxColorValueEdit->setMaximumWidth(84);
-    m_boxColorValueEdit->setFixedHeight(30);
-    m_boxColorValueEdit->setText(initialBoxColor.name().toUpper());
-    m_boxColorValueEdit->setObjectName("valueEdit");
-    presetsLayout->addWidget(m_boxColorValueEdit);
 
     auto applyBoxColor = [this](const QColor& color) {
         if (!color.isValid()) {
@@ -244,6 +299,17 @@ void BoxSettingsPage::initUI()
         dialog->open();
     });
 
+    presetsLayout->addSpacing(6);
+    m_boxColorValueEdit = new QLineEdit(presetsRow);
+    m_boxColorValueEdit->setReadOnly(true);
+    m_boxColorValueEdit->setAlignment(Qt::AlignCenter);
+    m_boxColorValueEdit->setMinimumWidth(72);
+    m_boxColorValueEdit->setMaximumWidth(84);
+    m_boxColorValueEdit->setFixedHeight(28);
+    m_boxColorValueEdit->setText(initialBoxColor.name().toUpper());
+    m_boxColorValueEdit->setObjectName("valueEdit");
+    presetsLayout->addWidget(m_boxColorValueEdit);
+
     styleLayout->addWidget(presetsRow);
     styleLayout->addWidget(createDivider(stylePanel));
 
@@ -339,9 +405,22 @@ void BoxSettingsPage::initUI()
     });
 
     styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Acrylic Glass Effect"), tr("Enable real-time DWM background blur for a translucent look."), m_glassToggle, stylePanel));
-    styleLayout->addWidget(createDivider(stylePanel));
 
-    // Auto Peek Toggles
+    layout->addWidget(stylePanel, 0);
+    layout->addSpacing(14);
+
+    // 2. Box Behavior Panel
+    QWidget* behaviorPanel = createPanel(this);
+    behaviorPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* behaviorLayout = new QVBoxLayout(behaviorPanel);
+    behaviorLayout->setContentsMargins(22, 18, 22, 18);
+    behaviorLayout->setSpacing(0);
+
+    behaviorLayout->addWidget(createCardTitle(tr("Box Behavior"), behaviorPanel));
+    behaviorLayout->addSpacing(4);
+    behaviorLayout->addWidget(createCardSubtitle(tr("Configure how boxes interact with mouse hover and collapsing."), behaviorPanel));
+    behaviorLayout->addSpacing(12);
+
     QSettings boxSettings(AppPaths::configFilePath(), QSettings::IniFormat);
     bool initialAutoPeek = boxSettings.value(QStringLiteral("Box/AutoPeekOnHover"), true).toBool();
     bool initialAutoPeekInstant = boxSettings.value(QStringLiteral("Box/AutoPeekInstant"), false).toBool();
@@ -360,8 +439,8 @@ void BoxSettingsPage::initUI()
             }
         }
     });
-    styleLayout->addWidget(createSwitchRow(glyph(0xE7B3), tr("Auto-Peek on Hover"), tr("Automatically expand collapsed boxes when hovered, and roll up when the mouse leaves."), autoPeekToggle, stylePanel));
-    styleLayout->addWidget(createDivider(stylePanel));
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE7B3), tr("Auto-Peek on Hover"), tr("Automatically expand collapsed boxes when hovered, and roll up when the mouse leaves."), autoPeekToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
 
     FluentToggleSwitch* autoPeekInstantToggle = new FluentToggleSwitch(this);
     autoPeekInstantToggle->setChecked(initialAutoPeekInstant, false);
@@ -377,9 +456,9 @@ void BoxSettingsPage::initUI()
             }
         }
     });
-    styleLayout->addWidget(createSwitchRow(glyph(0xE823), tr("Instant Auto-Peek"), tr("Expand immediately on hover without a 150ms debounce delay."), autoPeekInstantToggle, stylePanel));
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE823), tr("Instant Auto-Peek"), tr("Expand immediately on hover without a 150ms debounce delay."), autoPeekInstantToggle, behaviorPanel));
 
-    layout->addWidget(stylePanel);
+    layout->addWidget(behaviorPanel, 0);
 
     if (LinBox* sourceBox = controlSourceBox()) {
         m_previewColor = sourceBox->backgroundColor();
@@ -413,7 +492,7 @@ void BoxSettingsPage::updatePreview()
 
     QSize previewSize = m_previewBackground->contentsRect().size();
     if (previewSize.width() < 10 || previewSize.height() < 10) {
-        previewSize = QSize(qMax(280, width() - 88), 98);
+        previewSize = QSize(qMax(280, width() - 88), 128);
     }
 
     const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
@@ -432,61 +511,137 @@ void BoxSettingsPage::updatePreview()
     const int radius = 8;
     const QRect bounds(0, 0, previewSize.width(), previewSize.height());
 
-    // 1. Draw rounded real wallpaper clip
+    // 1. Wallpaper background with rounded clip
     QPainterPath clipPath;
     clipPath.addRoundedRect(bounds, radius, radius);
     painter.setClipPath(clipPath);
 
     QPixmap wp = getDesktopWallpaperThumbnail(previewSize, dpr);
     painter.drawPixmap(0, 0, wp);
-    // Subtle darkening vignette
-    painter.fillRect(bounds, QColor(0, 0, 0, 20));
+    // Subtle darkening vignette for contrast
+    painter.fillRect(bounds, QColor(0, 0, 0, 22));
 
-    // 2. Miniature LinBox geometry
-    const int boxW = qBound(220, previewSize.width() * 64 / 100, 360);
-    const int boxH = 74;
+    // 2. Realistic 1:1 Scale LinBox Geometry
+    const int boxMarginX = 14;
+    const int boxMarginY = 10;
+    const int maxBoxW = 520;
+    const int boxW = qBound(280, qMin(previewSize.width() - boxMarginX * 2, maxBoxW), previewSize.width() - 8);
+    const int boxH = qMax(80, previewSize.height() - boxMarginY * 2);
     const int boxX = (previewSize.width() - boxW) / 2;
-    const int boxY = (previewSize.height() - boxH) / 2;
+    const int boxY = boxMarginY;
     const QRect boxRect(boxX, boxY, boxW, boxH);
-    const int boxRadius = 7;
+    const int boxRadius = 8;
 
     // Drop shadow
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(0, 0, 0, 42));
-    painter.drawRoundedRect(boxRect.translated(0, 3), boxRadius, boxRadius);
+    painter.setBrush(QColor(0, 0, 0, 30));
+    painter.drawRoundedRect(QRect(boxX - 1, boxY + 3, boxW + 2, boxH + 2), boxRadius, boxRadius);
+    painter.setBrush(QColor(0, 0, 0, 48));
+    painter.drawRoundedRect(QRect(boxX, boxY + 2, boxW, boxH), boxRadius, boxRadius);
 
     // Box background
     QColor baseColor = m_previewColor.isValid() ? m_previewColor : QColor(40, 40, 40);
-    int alpha = m_previewGlass ? 152 : qBound(30, qRound(m_previewOpacity * 255.0f), 245);
-    baseColor.setAlpha(alpha);
 
-    painter.setBrush(baseColor);
-    painter.drawRoundedRect(boxRect, boxRadius, boxRadius);
-
-    // If acrylic glass is enabled, overlay a soft glass reflection gradient
     if (m_previewGlass) {
-        QLinearGradient glassTint(boxX, boxY, boxX, boxY + boxH);
-        glassTint.setColorAt(0.0, QColor(255, 255, 255, 40));
-        glassTint.setColorAt(0.4, QColor(255, 255, 255, 10));
-        glassTint.setColorAt(1.0, QColor(255, 255, 255, 18));
-        painter.setBrush(glassTint);
+        // True Acrylic Glass: crop wallpaper under box and apply smooth blur
+        QImage wpImg = wp.toImage();
+        const int pxBoxX = qRound(boxX * dpr);
+        const int pxBoxY = qRound(boxY * dpr);
+        const int pxBoxW = qRound(boxW * dpr);
+        const int pxBoxH = qRound(boxH * dpr);
+        const QRect pxBoxRect = QRect(pxBoxX, pxBoxY, pxBoxW, pxBoxH).intersected(QRect(0, 0, wpImg.width(), wpImg.height()));
+
+        if (pxBoxRect.isValid() && !pxBoxRect.isEmpty()) {
+            QImage subWp = wpImg.copy(pxBoxRect);
+            const QSize downSize(qMax(16, subWp.width() / 4), qMax(12, subWp.height() / 4));
+            QImage downSampled = subWp.scaled(downSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            QImage blurredSmall = fastBoxBlurImage(downSampled, 3);
+            blurredSmall = fastBoxBlurImage(blurredSmall, 2);
+            QImage blurredFinal = blurredSmall.scaled(pxBoxRect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            QPixmap blurredPx = QPixmap::fromImage(blurredFinal);
+            blurredPx.setDevicePixelRatio(dpr);
+
+            QPainterPath boxClip;
+            boxClip.addRoundedRect(boxRect, boxRadius, boxRadius);
+            painter.save();
+            painter.setClipPath(boxClip);
+            painter.drawPixmap(boxX, boxY, blurredPx);
+
+            // Acrylic Tint Overlay
+            QColor acrylicTint = baseColor;
+            acrylicTint.setAlpha(qBound(60, qRound(m_previewOpacity * 170.0f), 180));
+            painter.fillRect(boxRect, acrylicTint);
+
+            // Specular Reflection (Windows 11 Mica top reflection)
+            QLinearGradient specular(boxX, boxY, boxX, boxY + boxH);
+            specular.setColorAt(0.0, QColor(255, 255, 255, 42));
+            specular.setColorAt(0.28, QColor(255, 255, 255, 12));
+            specular.setColorAt(1.0, QColor(255, 255, 255, 0));
+            painter.fillRect(boxRect, specular);
+            painter.restore();
+        }
+    } else {
+        // Standard translucent solid surface
+        QColor solidBg = baseColor;
+        solidBg.setAlpha(qBound(20, qRound(m_previewOpacity * 255.0f), 255));
+        painter.setBrush(solidBg);
+        painter.setPen(Qt::NoPen);
         painter.drawRoundedRect(boxRect, boxRadius, boxRadius);
     }
 
-    // LinBox Title Bar
-    const int titleH = 22;
-    QColor titleColor = baseColor.darker(115);
-    titleColor.setAlpha(qBound(110, baseColor.alpha() + 45, 245));
+    // 3. LinBox Title Bar (Height: 28px)
+    const int titleH = 28;
+    QColor titleColor = baseColor.darker(118);
+    int titleAlpha = m_previewGlass ? qBound(100, baseColor.alpha() + 50, 220)
+                                    : qBound(60, qRound(m_previewOpacity * 255.0f) + 40, 255);
+    titleColor.setAlpha(titleAlpha);
+
     QPainterPath titlePath;
     titlePath.addRoundedRect(QRect(boxX, boxY, boxW, titleH), boxRadius, boxRadius);
     titlePath.addRect(QRect(boxX, boxY + titleH - boxRadius, boxW, boxRadius));
     painter.fillPath(titlePath, titleColor);
 
-    // Title separator line
-    painter.setPen(QPen(QColor(255, 255, 255, 30), 1));
+    // Title separator hairline
+    painter.setPen(QPen(QColor(255, 255, 255, 26), 1));
     painter.drawLine(boxX, boxY + titleH, boxX + boxW, boxY + titleH);
 
-    // Title text
+    // Left Collapse Chevron Button
+    const int btnSize = 18;
+    const int collapseBtnX = boxX + 6;
+    const int collapseBtnY = boxY + (titleH - btnSize) / 2;
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 24));
+    painter.drawRoundedRect(collapseBtnX, collapseBtnY, btnSize, btnSize, 4, 4);
+
+    painter.setPen(QPen(Qt::white, 1.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(Qt::NoBrush);
+    const qreal ccx = collapseBtnX + btnSize / 2.0;
+    const qreal ccy = collapseBtnY + btnSize / 2.0;
+    QPainterPath chevronPath;
+    chevronPath.moveTo(ccx - 3.5, ccy - 1.5);
+    chevronPath.lineTo(ccx, ccy + 2.0);
+    chevronPath.lineTo(ccx + 3.5, ccy - 1.5);
+    painter.drawPath(chevronPath);
+
+    // Right View Switch Button (Fluent 2x2 Grid)
+    const int switchBtnX = boxX + boxW - 6 - btnSize;
+    const int switchBtnY = collapseBtnY;
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 24));
+    painter.drawRoundedRect(switchBtnX, switchBtnY, btnSize, btnSize, 4, 4);
+
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(Qt::white);
+    const int gSize = 3;
+    const int gGap = 2;
+    const int gx = switchBtnX + (btnSize - (gSize * 2 + gGap)) / 2;
+    const int gy = switchBtnY + (btnSize - (gSize * 2 + gGap)) / 2;
+    painter.drawRect(gx, gy, gSize, gSize);
+    painter.drawRect(gx + gSize + gGap, gy, gSize, gSize);
+    painter.drawRect(gx, gy + gSize + gGap, gSize, gSize);
+    painter.drawRect(gx + gSize + gGap, gy + gSize + gGap, gSize, gSize);
+
+    // Centered Title Text
     QString boxTitle = tr("LinBox");
     if (LinBox* sourceBox = controlSourceBox()) {
         if (!sourceBox->boxTitle().trimmed().isEmpty()) {
@@ -495,50 +650,178 @@ void BoxSettingsPage::updatePreview()
     }
     QFont titleFont(AppFonts::uiFamily(), 9, QFont::Bold);
     painter.setFont(titleFont);
-    painter.setPen(QColor(255, 255, 255, 225));
-    QFontMetrics fm(titleFont);
-    QString elidedTitle = fm.elidedText(boxTitle, Qt::ElideRight, boxW - 55);
-    painter.drawText(QRect(boxX + 10, boxY, boxW - 55, titleH), Qt::AlignVCenter | Qt::AlignLeft, elidedTitle);
+    QFontMetrics titleFm(titleFont);
+    const int maxTitleW = boxW - (btnSize + 14) * 2;
+    QString elidedTitle = titleFm.elidedText(boxTitle, Qt::ElideRight, maxTitleW);
+    const QRect titleRect(boxX + btnSize + 14, boxY, maxTitleW, titleH);
 
-    // Title bar mini buttons (chevron and view switch)
-    painter.setPen(QColor(255, 255, 255, 160));
-    QFont btnFont("Segoe Fluent Icons");
-    if (!btnFont.exactMatch()) btnFont.setFamily("Segoe MDL2 Assets");
-    btnFont.setPixelSize(10);
-    painter.setFont(btnFont);
-    painter.drawText(QRect(boxX + boxW - 36, boxY, 16, titleH), Qt::AlignCenter, glyph(0xE712)); // view switch
-    painter.drawText(QRect(boxX + boxW - 18, boxY, 14, titleH), Qt::AlignCenter, glyph(0xE70E)); // chevron
+    painter.setPen(QColor(0, 0, 0, 130));
+    painter.drawText(titleRect.translated(0, 1), Qt::AlignCenter, elidedTitle);
+    painter.setPen(QColor(255, 255, 255, 240));
+    painter.drawText(titleRect, Qt::AlignCenter, elidedTitle);
 
-    // Box content area (3 miniature items cleanly arranged)
-    const int contentY = boxY + titleH + (boxH - titleH - 36) / 2;
-    const int slotW = 34;
-    const int slotSpacing = 14;
-    const int totalSlotsW = slotW * 3 + slotSpacing * 2;
-    const int startSlotX = boxX + (boxW - totalSlotsW) / 2;
+    // 4. Box Body Content (Desktop 1:1 Scale Icons)
+    const QVector<MockItemDef> mockItems = {
+        { MockItemDef::Doc,     tr("Report.docx") },
+        { MockItemDef::Folder,  tr("Project") },
+        { MockItemDef::Image,   tr("Photo.png") },
+        { MockItemDef::Code,    QStringLiteral("App.cpp") },
+        { MockItemDef::Archive, tr("Assets.zip") }
+    };
 
-    for (int i = 0; i < 3; ++i) {
-        const int sx = startSlotX + i * (slotW + slotSpacing);
-        painter.setPen(Qt::NoPen);
-        if (i == 0) {
-            painter.setBrush(QColor(80, 160, 245, 200)); // Document
-        } else if (i == 1) {
-            painter.setBrush(QColor(250, 190, 60, 210)); // Folder
-        } else {
-            painter.setBrush(QColor(80, 210, 140, 200)); // App/Media
-        }
-        painter.drawRoundedRect(sx + 7, contentY + 3, 20, 18, 3, 3);
-        painter.setBrush(QColor(255, 255, 255, 160));
-        painter.drawRoundedRect(sx + 3, contentY + 25, 28, 5, 2, 2);
+    int itemCount = 3;
+    if (boxW >= 430) {
+        itemCount = 5;
+    } else if (boxW >= 340) {
+        itemCount = 4;
     }
 
-    // Box outer border
-    painter.setPen(QPen(QColor(255, 255, 255, 55), 1));
+    const int contentY = boxY + titleH;
+    const int contentH = boxH - titleH;
+    const int slotW = 66;
+    const int slotH = 68;
+    const int totalSlotsW = itemCount * slotW;
+    const int slotSpacing = qBound(6, (boxW - totalSlotsW) / (itemCount + 1), 20);
+    const int actualGroupW = itemCount * slotW + (itemCount - 1) * slotSpacing;
+    const int startSlotX = boxX + (boxW - actualGroupW) / 2;
+    const int itemBaseY = contentY + (contentH - slotH) / 2;
+
+    QFont labelFont(AppFonts::uiFamily(), 8);
+    labelFont.setPixelSize(10);
+    painter.setFont(labelFont);
+    QFontMetrics labelFm(labelFont);
+
+    for (int i = 0; i < itemCount; ++i) {
+        const MockItemDef& item = mockItems[i];
+        const int sx = startSlotX + i * (slotW + slotSpacing);
+        const int iconX = sx + (slotW - 32) / 2;
+        const int iconY = itemBaseY + 4;
+        const int labelY = itemBaseY + 42;
+
+        if (item.type == MockItemDef::Doc) {
+            // Word Document
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(0, 0, 0, 30));
+            painter.drawRoundedRect(iconX + 6, iconY + 3, 20, 26, 2, 2);
+
+            painter.setBrush(QColor(248, 250, 252));
+            painter.drawRoundedRect(iconX + 6, iconY + 2, 20, 26, 2, 2);
+
+            QPainterPath headerPath;
+            headerPath.addRoundedRect(QRect(iconX + 6, iconY + 2, 20, 8), 2, 2);
+            headerPath.addRect(QRect(iconX + 6, iconY + 6, 20, 4));
+            painter.fillPath(headerPath, QColor("#1976D2"));
+
+            QPolygon foldPoly;
+            foldPoly << QPoint(iconX + 21, iconY + 2) << QPoint(iconX + 26, iconY + 2) << QPoint(iconX + 26, iconY + 7);
+            painter.setBrush(QColor("#90CAF9"));
+            painter.drawPolygon(foldPoly);
+
+            painter.setBrush(QColor(176, 190, 204));
+            painter.drawRoundedRect(iconX + 9, iconY + 13, 14, 2, 1, 1);
+            painter.drawRoundedRect(iconX + 9, iconY + 17, 11, 2, 1, 1);
+            painter.drawRoundedRect(iconX + 9, iconY + 21, 13, 2, 1, 1);
+
+            painter.setPen(QPen(QColor(0, 0, 0, 25), 1));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(iconX + 6, iconY + 2, 20, 26, 2, 2);
+        } else if (item.type == MockItemDef::Folder) {
+            // Fluent Modern Folder
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor("#D97706"));
+            painter.drawRoundedRect(iconX + 3, iconY + 6, 12, 6, 2, 2);
+
+            painter.setBrush(QColor(255, 255, 255, 220));
+            painter.drawRoundedRect(iconX + 7, iconY + 7, 18, 6, 1, 1);
+
+            QLinearGradient folderGrad(iconX + 2, iconY + 10, iconX + 2, iconY + 29);
+            folderGrad.setColorAt(0.0, QColor("#FBBF24"));
+            folderGrad.setColorAt(1.0, QColor("#D97706"));
+            painter.setBrush(folderGrad);
+            painter.drawRoundedRect(iconX + 2, iconY + 10, 28, 19, 3, 3);
+
+            painter.setPen(QPen(QColor(255, 251, 235, 180), 1));
+            painter.drawLine(iconX + 4, iconY + 11, iconX + 28, iconY + 11);
+        } else if (item.type == MockItemDef::Image) {
+            // Photo / Gallery Image
+            painter.setPen(Qt::NoPen);
+            QLinearGradient imgGrad(iconX + 4, iconY + 4, iconX + 28, iconY + 28);
+            imgGrad.setColorAt(0.0, QColor("#4F46E5"));
+            imgGrad.setColorAt(1.0, QColor("#06B6D4"));
+            painter.setBrush(imgGrad);
+            painter.drawRoundedRect(iconX + 4, iconY + 4, 24, 24, 4, 4);
+
+            painter.setBrush(QColor("#FDE047"));
+            painter.drawEllipse(iconX + 8, iconY + 8, 5, 5);
+
+            QPolygon mtnPoly;
+            mtnPoly << QPoint(iconX + 4, iconY + 28)
+                    << QPoint(iconX + 13, iconY + 17)
+                    << QPoint(iconX + 18, iconY + 23)
+                    << QPoint(iconX + 23, iconY + 15)
+                    << QPoint(iconX + 28, iconY + 28);
+            painter.setBrush(QColor(255, 255, 255, 230));
+            painter.drawPolygon(mtnPoly);
+
+            painter.setPen(QPen(QColor(255, 255, 255, 60), 1));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(iconX + 4, iconY + 4, 24, 24, 4, 4);
+        } else if (item.type == MockItemDef::Code) {
+            // Code / Dev File
+            painter.setPen(Qt::NoPen);
+            QLinearGradient codeGrad(iconX + 4, iconY + 4, iconX + 28, iconY + 28);
+            codeGrad.setColorAt(0.0, QColor("#334155"));
+            codeGrad.setColorAt(1.0, QColor("#0F172A"));
+            painter.setBrush(codeGrad);
+            painter.drawRoundedRect(iconX + 4, iconY + 4, 24, 24, 4, 4);
+
+            painter.setPen(QPen(QColor("#34D399"), 1.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.setBrush(Qt::NoBrush);
+            QPainterPath codePath;
+            codePath.moveTo(iconX + 10, iconY + 12); codePath.lineTo(iconX + 8, iconY + 16); codePath.lineTo(iconX + 10, iconY + 20);
+            codePath.moveTo(iconX + 14, iconY + 21); codePath.lineTo(iconX + 18, iconY + 11);
+            codePath.moveTo(iconX + 22, iconY + 12); codePath.lineTo(iconX + 24, iconY + 16); codePath.lineTo(iconX + 22, iconY + 20);
+            painter.drawPath(codePath);
+
+            painter.setPen(QPen(QColor(255, 255, 255, 40), 1));
+            painter.drawRoundedRect(iconX + 4, iconY + 4, 24, 24, 4, 4);
+        } else {
+            // Zip / Archive File
+            painter.setPen(Qt::NoPen);
+            QLinearGradient zipGrad(iconX + 4, iconY + 4, iconX + 28, iconY + 28);
+            zipGrad.setColorAt(0.0, QColor("#818CF8"));
+            zipGrad.setColorAt(1.0, QColor("#4F46E5"));
+            painter.setBrush(zipGrad);
+            painter.drawRoundedRect(iconX + 4, iconY + 4, 24, 24, 4, 4);
+
+            painter.setBrush(QColor("#E2E8F0"));
+            painter.drawRect(iconX + 14, iconY + 6, 4, 20);
+            painter.setBrush(QColor("#1E293B"));
+            for (int z = 0; z < 4; ++z) {
+                painter.drawRect(iconX + 14 + (z % 2 == 0 ? 0 : 2), iconY + 8 + z * 3, 2, 2);
+            }
+
+            painter.setPen(QPen(QColor(255, 255, 255, 50), 1));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(iconX + 4, iconY + 4, 24, 24, 4, 4);
+        }
+
+        // Item Label with Text Shadow
+        QString elidedName = labelFm.elidedText(item.name, Qt::ElideRight, slotW - 4);
+        painter.setPen(QColor(0, 0, 0, 180));
+        painter.drawText(QRect(sx - 2, labelY + 1, slotW + 4, 16), Qt::AlignCenter, elidedName);
+        painter.setPen(QColor(255, 255, 255, 235));
+        painter.drawText(QRect(sx - 2, labelY, slotW + 4, 16), Qt::AlignCenter, elidedName);
+    }
+
+    // LinBox outer highlight border
+    painter.setPen(QPen(QColor(255, 255, 255, m_previewGlass ? 75 : 45), 1));
     painter.setBrush(Qt::NoBrush);
     painter.drawRoundedRect(boxRect.adjusted(0, 0, -1, -1), boxRadius, boxRadius);
 
     // Inner card border
     painter.setClipping(false);
-    painter.setPen(QPen(QColor(0, 0, 0, 32), 1));
+    painter.setPen(QPen(QColor(0, 0, 0, 28), 1));
     painter.drawRoundedRect(bounds.adjusted(0, 0, -1, -1), radius, radius);
 
     painter.end();
