@@ -1390,6 +1390,7 @@ void LinBox::loadSelectionColors()
     const QColor baseColor(settings.value(QStringLiteral("Desktop/SelectionRectangleColor"), QStringLiteral("#64A0F0")).toString());
     const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
     const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
+    m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -2518,9 +2519,26 @@ void LinBox::paintEvent(QPaintEvent* event) {
         if (m_isSelectingItems && !m_selectionRect.isNull() && m_selectionRect.isValid()) {
             const QRect boxSelectionRect = m_selectionRect.translated(contentOrigin);
             if (dirtyRegion.intersects(boxSelectionRect)) {
-                p.setPen(QPen(m_selectionBorderColor, 1));
-                p.setBrush(m_selectionFillColor);
-                p.drawRect(boxSelectionRect.adjusted(0, 0, -1, -1));
+                if (m_fluentSelectionEnabled) {
+                    p.setRenderHint(QPainter::Antialiasing, true);
+                    const qreal radius = 4.0;
+                    QLinearGradient fillGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
+                    fillGrad.setColorAt(0.0, m_selectionFillColor);
+                    QColor endFill = m_selectionFillColor;
+                    endFill.setAlpha(qMax(0, endFill.alpha() - 12));
+                    fillGrad.setColorAt(1.0, endFill);
+                    p.setBrush(fillGrad);
+
+                    QLinearGradient borderGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
+                    borderGrad.setColorAt(0.0, m_selectionBorderColor.lighter(120));
+                    borderGrad.setColorAt(1.0, m_selectionBorderColor);
+                    p.setPen(QPen(QBrush(borderGrad), 1.25));
+                    p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+                } else {
+                    p.setPen(QPen(m_selectionBorderColor, 1));
+                    p.setBrush(m_selectionFillColor);
+                    p.drawRect(boxSelectionRect.adjusted(0, 0, -1, -1));
+                }
             }
         }
         p.restore();

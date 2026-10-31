@@ -304,6 +304,7 @@ void ListView::loadSelectionColors()
     const QColor baseColor(settings.value(QStringLiteral("Desktop/SelectionRectangleColor"), QStringLiteral("#64A0F0")).toString());
     const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
     const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
+    m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -1426,9 +1427,70 @@ void ListView::paintEvent(QPaintEvent* event)
 
     if (m_isSelecting && !m_renderedSelectionRect.isNull() && m_renderedSelectionRect.isValid() && dirtyRegion.intersects(m_renderedSelectionRect)) {
         painter.save();
-        painter.setPen(QPen(m_selectionBorderColor, 1));
-        painter.setBrush(m_selectionFillColor);
-        painter.drawRect(m_renderedSelectionRect.adjusted(0, 0, -1, -1));
+        const QRect selRect = m_renderedSelectionRect;
+
+        if (m_fluentSelectionEnabled) {
+            painter.setRenderHint(QPainter::Antialiasing, true);
+            const qreal radius = 5.0;
+
+            // 1. Acrylic/Glass 对角微光渐变填充
+            QLinearGradient fillGrad(selRect.topLeft(), selRect.bottomRight());
+            QColor topFill = m_selectionFillColor;
+            topFill.setAlpha(qMin(255, topFill.alpha() + 18));
+            QColor bottomFill = m_selectionFillColor;
+            bottomFill.setAlpha(qMax(0, bottomFill.alpha() - 12));
+            fillGrad.setColorAt(0.0, topFill);
+            fillGrad.setColorAt(1.0, bottomFill);
+            painter.setBrush(fillGrad);
+
+            // 2. Win11 Fluent 发光渐变边框
+            QLinearGradient borderGrad(selRect.topLeft(), selRect.bottomRight());
+            borderGrad.setColorAt(0.0, m_selectionBorderColor.lighter(125));
+            borderGrad.setColorAt(1.0, m_selectionBorderColor);
+            painter.setPen(QPen(QBrush(borderGrad), 1.5));
+            painter.drawRoundedRect(QRectF(selRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+
+            // 3. 内边缘柔和高光 (玻璃光泽质感)
+            if (selRect.width() > 16 && selRect.height() > 16) {
+                painter.setPen(QPen(QColor(255, 255, 255, 42), 1.0));
+                painter.setBrush(Qt::NoBrush);
+                painter.drawRoundedRect(QRectF(selRect).adjusted(1.5, 1.5, -1.5, -1.5), radius - 1.0, radius - 1.0);
+            }
+
+            // 4. 实时框选统计 HUD 微胶囊气泡 (圈中项目时在右下角内部呈现)
+            const int count = m_selectedDesktopPaths.size();
+            if (count > 0 && selRect.width() >= 68 && selRect.height() >= 42) {
+                const QString badgeText = QStringLiteral("✓ %1 项").arg(count);
+                QFont badgeFont = painter.font();
+                badgeFont.setPixelSize(11);
+                badgeFont.setBold(true);
+                painter.setFont(badgeFont);
+
+                QFontMetrics fm(badgeFont);
+                const int badgeW = fm.horizontalAdvance(badgeText) + 16;
+                const int badgeH = 22;
+                const int badgeX = selRect.right() - badgeW - 6;
+                const int badgeY = selRect.bottom() - badgeH - 6;
+                const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
+
+                // 半透明 Fluent 亚克力气泡底色
+                painter.setPen(QPen(QColor(255, 255, 255, 60), 1.0));
+                painter.setBrush(QColor(22, 26, 34, 215));
+                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+
+                // 文字阴影与正文
+                painter.setPen(QColor(0, 0, 0, 130));
+                painter.drawText(badgeRect.translated(0, 1), Qt::AlignCenter, badgeText);
+                painter.setPen(QColor(245, 248, 255));
+                painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
+            }
+        } else {
+            // 经典 Windows 原生矩形选框
+            painter.setPen(QPen(m_selectionBorderColor, 1));
+            painter.setBrush(m_selectionFillColor);
+            painter.drawRect(selRect.adjusted(0, 0, -1, -1));
+        }
+
         painter.restore();
     }
 }

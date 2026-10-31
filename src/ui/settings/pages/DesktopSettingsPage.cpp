@@ -51,6 +51,8 @@ DesktopSettingsPage::DesktopSettingsPage(QWidget* parent)
 void DesktopSettingsPage::reloadSelectionOverlays()
 {
     if (ListView* lv = ListView::instance()) {
+        lv->loadSelectionColors();
+        lv->update();
         if (LinDesktop* desktop = qobject_cast<LinDesktop*>(lv->parentWidget())) {
             if (desktop->selectArea) {
                 desktop->selectArea->reloadColorsFromSettings();
@@ -303,6 +305,44 @@ void DesktopSettingsPage::initUI()
         updatePreview();
     });
     selectionLayout->addWidget(strengthRow);
+
+    // Toggle: Win11 Fluent Marquee & Stats Badge
+    QWidget* fluentRow = new QWidget(selectionPanel);
+    fluentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* fluentLayout = new QHBoxLayout(fluentRow);
+    fluentLayout->setContentsMargins(14, 8, 14, 8);
+    fluentLayout->setSpacing(12);
+
+    QVBoxLayout* fluentText = new QVBoxLayout();
+    fluentText->setContentsMargins(0, 0, 0, 0);
+    fluentText->setSpacing(2);
+    QLabel* fluentTitle = new QLabel(tr("Win11 Fluent Marquee & Stats Badge"), fluentRow);
+    fluentTitle->setObjectName("rowTitle");
+    fluentTitle->setWordWrap(true);
+    fluentTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QLabel* fluentSubtitle = new QLabel(tr("Enable modern rounded glass marquee with gradient glow border and real-time selection stats pill."), fluentRow);
+    fluentSubtitle->setObjectName("rowSubtitle");
+    fluentSubtitle->setWordWrap(true);
+    fluentSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    fluentText->addWidget(fluentTitle);
+    fluentText->addWidget(fluentSubtitle);
+    fluentLayout->addLayout(fluentText, 1);
+
+    m_fluentSelectionToggle = new FluentToggleSwitch(fluentRow);
+    const bool isFluentEnabled = desktopSettings.value("Desktop/FluentSelectionMarquee", true).toBool();
+    m_fluentSelectionToggle->setChecked(isFluentEnabled);
+    fluentLayout->addWidget(m_fluentSelectionToggle, 0, Qt::AlignRight | Qt::AlignVCenter);
+
+    connect(m_fluentSelectionToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/FluentSelectionMarquee", checked);
+        settings.sync();
+        reloadSelectionOverlays();
+        updatePreview();
+    });
+
+    selectionLayout->addWidget(createDivider(selectionPanel));
+    selectionLayout->addWidget(fluentRow);
     layout->addWidget(selectionPanel, 0);
 
     // 3. Desktop Behavior Panel
@@ -472,7 +512,7 @@ void DesktopSettingsPage::updatePreview()
     painter.setBrush(Qt::white);
     painter.drawRoundedRect(item2X + 7, iconBaseY + 36, 28, 3, 1, 1);
 
-    // 3. Draw clean, native Windows 11 drag selection marquee (No crop handles!)
+    // 3. Draw clean, native Windows 11 drag selection marquee
     const QColor fillColor = desktopSelectionFillColor(m_selectionPreviewColor);
     const QColor borderColor = desktopSelectionBorderColor(m_selectionPreviewColor);
     const int selX = qMax(item1X + 60, previewSize.width() * 38 / 100);
@@ -481,10 +521,54 @@ void DesktopSettingsPage::updatePreview()
     const int selH = 66;
     const QRect selectionRect(selX, selY, selW, selH);
 
-    painter.fillRect(selectionRect, fillColor);
-    painter.setPen(QPen(borderColor, 1.5));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawRect(selectionRect);
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const bool isFluent = settings.value("Desktop/FluentSelectionMarquee", true).toBool();
+
+    if (isFluent) {
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        const qreal radius = 5.0;
+
+        QLinearGradient fillGrad(selectionRect.topLeft(), selectionRect.bottomRight());
+        QColor topFill = fillColor;
+        topFill.setAlpha(qMin(255, topFill.alpha() + 18));
+        QColor bottomFill = fillColor;
+        bottomFill.setAlpha(qMax(0, bottomFill.alpha() - 12));
+        fillGrad.setColorAt(0.0, topFill);
+        fillGrad.setColorAt(1.0, bottomFill);
+        painter.setBrush(fillGrad);
+
+        QLinearGradient borderGrad(selectionRect.topLeft(), selectionRect.bottomRight());
+        borderGrad.setColorAt(0.0, borderColor.lighter(125));
+        borderGrad.setColorAt(1.0, borderColor);
+        painter.setPen(QPen(QBrush(borderGrad), 1.5));
+        painter.drawRoundedRect(QRectF(selectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+
+        // Inner specular highlight
+        painter.setPen(QPen(QColor(255, 255, 255, 45), 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(QRectF(selectionRect).adjusted(1.5, 1.5, -1.5, -1.5), radius - 1.0, radius - 1.0);
+
+        // Preview HUD Pill badge
+        const QString badgeText = QStringLiteral("✓ 1 项");
+        QFont badgeFont = painter.font();
+        badgeFont.setPixelSize(10);
+        badgeFont.setBold(true);
+        painter.setFont(badgeFont);
+        QFontMetrics fm(badgeFont);
+        const int badgeW = fm.horizontalAdvance(badgeText) + 14;
+        const int badgeH = 20;
+        const QRectF badgeRect(selectionRect.right() - badgeW - 6, selectionRect.bottom() - badgeH - 6, badgeW, badgeH);
+        painter.setPen(QPen(QColor(255, 255, 255, 55), 1.0));
+        painter.setBrush(QColor(22, 26, 34, 215));
+        painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+        painter.setPen(QColor(245, 248, 255));
+        painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
+    } else {
+        painter.fillRect(selectionRect, fillColor);
+        painter.setPen(QPen(borderColor, 1.5));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(selectionRect);
+    }
 
     // 4. Subtle inner card border
     painter.setClipping(false);

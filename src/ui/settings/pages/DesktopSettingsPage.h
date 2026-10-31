@@ -31,4 +31,5 @@ private:
     QLabel* m_desktopSelectionPreview = nullptr;
     QLineEdit* m_selectionColorValueEdit = nullptr;
     QWidget* m_desktopPreviewContainer = nullptr;
+    FluentToggleSwitch* m_fluentSelectionToggle = nullptr;
 };
