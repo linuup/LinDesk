@@ -1,0 +1,489 @@
+#include "ui/settings/pages/DesktopSettingsPage.h"
+#include "ui/settings/SettingsUICommon.h"
+#include "desktop/ListView.h"
+#include "desktop/LinDesktop.h"
+#include "desktop/SelectArea.h"
+#include "desktop/RightMenu.h"
+#include "box/LinBox.h"
+#include "ui/Fluent/FluentToggleSwitch.h"
+
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QSlider>
+#include <QColorDialog>
+#include <QPainter>
+#include <QPainterPath>
+#include <QSettings>
+
+using namespace SettingsUICommon;
+
+static QColor desktopSelectionFillColor(const QColor& baseColor)
+{
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const int opacity = qBound(20, settings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100);
+    QColor fill = baseColor;
+    fill.setAlpha(qBound(35, opacity * 140 / 100, 180));
+    return fill;
+}
+
+static QColor desktopSelectionBorderColor(const QColor& baseColor)
+{
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const int contrast = qBound(0, settings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100);
+    QColor border = baseColor.darker(110);
+    border.setAlpha(qBound(95, contrast * 230 / 100, 230));
+    return border;
+}
+
+DesktopSettingsPage::DesktopSettingsPage(QWidget* parent)
+    : QWidget(parent)
+{
+    QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+    const QColor color(settings.value("Desktop/SelectionRectangleColor", QStringLiteral("#64A0F0")).toString());
+    m_selectionPreviewColor = color.isValid() ? color : QColor(100, 160, 240);
+
+    initUI();
+}
+
+void DesktopSettingsPage::reloadSelectionOverlays()
+{
+    if (ListView* lv = ListView::instance()) {
+        if (LinDesktop* desktop = qobject_cast<LinDesktop*>(lv->parentWidget())) {
+            if (desktop->selectArea) {
+                desktop->selectArea->reloadColorsFromSettings();
+            }
+        }
+
+        const QVector<LinBox*> allBoxes = lv->boxes();
+        for (LinBox* box : allBoxes) {
+            if (box) {
+                box->refreshSelectionOverlayColor();
+            }
+        }
+    }
+}
+
+void DesktopSettingsPage::initUI()
+{
+    QVBoxLayout* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
+
+    QLabel* titleLabel = createPageTitle(tr("Desktop Customization"), this);
+    titleLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(titleLabel, 0, Qt::AlignLeft);
+    layout->addSpacing(8);
+
+    // 1. Live Preview Panel
+    QWidget* previewContainer = createPanel(this);
+    m_desktopPreviewContainer = previewContainer;
+    previewContainer->setFixedHeight(220);
+    previewContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
+    previewLayout->setContentsMargins(22, 10, 22, 20);
+    previewLayout->setSpacing(6);
+
+    QLabel* previewTitle = createCardTitle(tr("Live Preview"), previewContainer);
+    previewLayout->addWidget(previewTitle);
+    previewLayout->addWidget(createCardSubtitle(tr("Preview the desktop selection rectangle color, contrast, and opacity."), previewContainer));
+
+    m_desktopSelectionPreview = new QLabel(previewContainer);
+    m_desktopSelectionPreview->setMinimumHeight(124);
+    m_desktopSelectionPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_desktopSelectionPreview->setAlignment(Qt::AlignCenter | Qt::AlignHCenter);
+    m_desktopSelectionPreview->setObjectName("previewSurface");
+    previewLayout->addWidget(m_desktopSelectionPreview);
+
+    layout->addWidget(previewContainer, 0);
+
+    // 2. Selection Rectangle Color Panel
+    QWidget* selectionPanel = createPanel(this);
+    selectionPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* selectionLayout = new QVBoxLayout(selectionPanel);
+    selectionLayout->setContentsMargins(22, 18, 22, 18);
+    selectionLayout->setSpacing(0);
+
+    selectionLayout->addWidget(createCardTitle(tr("Selection Rectangle Color"), selectionPanel));
+    selectionLayout->addSpacing(12);
+
+    QWidget* presetsRow = new QWidget(selectionPanel);
+    presetsRow->setObjectName("settingsInnerRow");
+    presetsRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* presetsLayout = new QHBoxLayout(presetsRow);
+    presetsLayout->setContentsMargins(12, 8, 12, 8);
+    presetsLayout->setSpacing(8);
+    QLabel* presetsLabel = new QLabel(tr("Presets"), presetsRow);
+    presetsLabel->setObjectName("rowTitle");
+    presetsLayout->addWidget(presetsLabel);
+    presetsLayout->addStretch();
+
+    m_selectionColorValueEdit = new QLineEdit(presetsRow);
+    m_selectionColorValueEdit->setReadOnly(true);
+    m_selectionColorValueEdit->setAlignment(Qt::AlignCenter);
+    m_selectionColorValueEdit->setMinimumWidth(72);
+    m_selectionColorValueEdit->setMaximumWidth(84);
+    m_selectionColorValueEdit->setFixedHeight(30);
+    m_selectionColorValueEdit->setText(m_selectionPreviewColor.name().toUpper());
+    m_selectionColorValueEdit->setObjectName("valueEdit");
+    presetsLayout->addWidget(m_selectionColorValueEdit);
+
+    const QVector<QColor> presets = {
+        QColor("#F0CF24"),
+        QColor("#63A8F5"),
+        QColor("#00C853"),
+        QColor("#8B45E6"),
+        QColor("#E94B98"),
+        QColor("#FF8A24"),
+        QColor("#AEB4BE")
+    };
+    for (const QColor& preset : presets) {
+        QWidget* presetContainer = new QWidget(presetsRow);
+        presetContainer->setObjectName("colorPresetContainer");
+        QVBoxLayout* presetContainerLayout = new QVBoxLayout(presetContainer);
+        presetContainerLayout->setContentsMargins(0, 0, 0, 0);
+        presetContainerLayout->setSpacing(3);
+
+        QPushButton* button = createColorPreset(preset, presetContainer);
+        button->setFixedSize(24, 24);
+        QLabel* indicator = new QLabel(presetContainer);
+        indicator->setObjectName("colorPresetIndicator");
+        indicator->setProperty("presetColor", preset.name());
+        indicator->setFixedSize(6, 6);
+        indicator->setStyleSheet(QStringLiteral(
+            "QLabel#colorPresetIndicator {"
+            " background: #1870ff;"
+            " border-radius: 3px;"
+            "}"));
+        indicator->setVisible(false);
+
+        presetContainerLayout->addWidget(button, 0, Qt::AlignHCenter);
+        presetContainerLayout->addWidget(indicator, 0, Qt::AlignHCenter);
+        connect(button, &QPushButton::clicked, this, [this, presetsRow, preset]() {
+            m_selectionPreviewColor = preset;
+            if (m_selectionColorValueEdit) {
+                m_selectionColorValueEdit->setText(preset.name().toUpper());
+            }
+            QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+            settings.setValue("Desktop/SelectionRectangleColor", preset.name());
+            settings.sync();
+            reloadSelectionOverlays();
+            updateColorPresetIndicators(presetsRow, preset);
+            updatePreview();
+        });
+        presetsLayout->addWidget(presetContainer);
+    }
+
+    QWidget* pickerContainer = new QWidget(presetsRow);
+    pickerContainer->setObjectName("colorPresetContainer");
+    QVBoxLayout* pickerContainerLayout = new QVBoxLayout(pickerContainer);
+    pickerContainerLayout->setContentsMargins(0, 0, 0, 0);
+    pickerContainerLayout->setSpacing(3);
+
+    QPushButton* pickerButton = new QPushButton(glyph(0xE790), pickerContainer);
+    pickerButton->setObjectName("colorPickerButton");
+    pickerButton->setFixedSize(24, 24);
+    pickerButton->setCursor(Qt::PointingHandCursor);
+    QLabel* pickerIndicator = new QLabel(pickerContainer);
+    pickerIndicator->setObjectName("colorPresetIndicator");
+    pickerIndicator->setProperty("customColorIndicator", true);
+    pickerIndicator->setFixedSize(6, 6);
+    pickerIndicator->setStyleSheet(QStringLiteral(
+        "QLabel#colorPresetIndicator {"
+        " background: #1870ff;"
+        " border-radius: 3px;"
+        "}"));
+    pickerIndicator->setVisible(false);
+    pickerContainerLayout->addWidget(pickerButton, 0, Qt::AlignHCenter);
+    pickerContainerLayout->addWidget(pickerIndicator, 0, Qt::AlignHCenter);
+    presetsLayout->addWidget(pickerContainer);
+    updateColorPresetIndicators(presetsRow, m_selectionPreviewColor);
+    selectionLayout->addWidget(presetsRow);
+    selectionLayout->addWidget(createDivider(selectionPanel));
+
+    auto applySelectionColor = [this, presetsRow](const QColor& color) {
+        if (!color.isValid()) {
+            return;
+        }
+        m_selectionPreviewColor = color;
+        if (m_selectionColorValueEdit) {
+            m_selectionColorValueEdit->setText(color.name().toUpper());
+        }
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleColor", color.name());
+        settings.sync();
+        reloadSelectionOverlays();
+        updateColorPresetIndicators(presetsRow, color);
+        updatePreview();
+    };
+
+    connect(pickerButton, &QPushButton::clicked, this, [this, applySelectionColor]() {
+        QColorDialog* dialog = new QColorDialog(m_selectionPreviewColor, this);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setWindowTitle(tr("Selection Rectangle Color"));
+        dialog->setOption(QColorDialog::NoButtons, true);
+        connect(dialog, &QColorDialog::currentColorChanged, this, [applySelectionColor](const QColor& color) {
+            applySelectionColor(color);
+        });
+        connect(dialog, &QColorDialog::colorSelected, this, [applySelectionColor](const QColor& color) {
+            applySelectionColor(color);
+        });
+        dialog->open();
+    });
+
+    // Contrast Slider
+    QWidget* contrastRow = new QWidget(selectionPanel);
+    contrastRow->setObjectName("settingsInnerRow");
+    contrastRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* contrastLayout = new QHBoxLayout(contrastRow);
+    contrastLayout->setContentsMargins(14, 8, 14, 8);
+    contrastLayout->setSpacing(12);
+    QVBoxLayout* contrastText = new QVBoxLayout();
+    contrastText->setContentsMargins(0, 0, 0, 0);
+    contrastText->setSpacing(2);
+    QLabel* contrastTitle = new QLabel(tr("Contrast"), contrastRow);
+    contrastTitle->setObjectName("rowTitle");
+    contrastTitle->setWordWrap(true);
+    contrastTitle->setMinimumWidth(0);
+    contrastTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    contrastText->addWidget(contrastTitle);
+    contrastLayout->addLayout(contrastText, 1);
+    contrastLayout->addWidget(createGlyphLabel(glyph(0xE706), contrastRow, 18, QColor("#5b6b86")));
+    QSlider* contrastSlider = new QSlider(Qt::Horizontal, contrastRow);
+    contrastSlider->setRange(0, 100);
+    QSettings desktopSettings(settingsConfigPath(), QSettings::IniFormat);
+    contrastSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100));
+    contrastSlider->setMinimumWidth(120);
+    contrastSlider->setMaximumWidth(160);
+    contrastSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    contrastLayout->addWidget(contrastSlider, 2);
+    QLabel* contrastValue = new QLabel(QStringLiteral("%1%").arg(contrastSlider->value()), contrastRow);
+    contrastValue->setObjectName("valueLabel");
+    contrastValue->setFixedWidth(44);
+    contrastValue->setAlignment(Qt::AlignCenter);
+    contrastLayout->addWidget(contrastValue);
+    connect(contrastSlider, &QSlider::valueChanged, this, [this, contrastValue](int value) {
+        contrastValue->setText(QStringLiteral("%1%").arg(value));
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleContrast", value);
+        settings.sync();
+        reloadSelectionOverlays();
+        updatePreview();
+    });
+    selectionLayout->addWidget(contrastRow);
+    selectionLayout->addWidget(createDivider(selectionPanel));
+
+    // Opacity / Strength Slider
+    QWidget* strengthRow = new QWidget(selectionPanel);
+    strengthRow->setObjectName("settingsInnerRow");
+    strengthRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* strengthLayout = new QHBoxLayout(strengthRow);
+    strengthLayout->setContentsMargins(14, 8, 14, 8);
+    strengthLayout->setSpacing(12);
+    QVBoxLayout* strengthText = new QVBoxLayout();
+    strengthText->setContentsMargins(0, 0, 0, 0);
+    strengthText->setSpacing(2);
+    QLabel* strengthTitle = new QLabel(tr("Opacity / Strength"), strengthRow);
+    strengthTitle->setObjectName("rowTitle");
+    strengthTitle->setWordWrap(true);
+    strengthTitle->setMinimumWidth(0);
+    strengthTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    strengthText->addWidget(strengthTitle);
+    strengthLayout->addLayout(strengthText, 1);
+    strengthLayout->addWidget(createGlyphLabel(glyph(0xEB48), strengthRow, 18, QColor("#5b6b86")));
+    QSlider* strengthSlider = new QSlider(Qt::Horizontal, strengthRow);
+    strengthSlider->setRange(20, 100);
+    strengthSlider->setValue(qBound(20, desktopSettings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100));
+    strengthSlider->setMinimumWidth(120);
+    strengthSlider->setMaximumWidth(160);
+    strengthSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    strengthLayout->addWidget(strengthSlider, 2);
+    QLabel* strengthValue = new QLabel(QStringLiteral("%1%").arg(strengthSlider->value()), strengthRow);
+    strengthValue->setObjectName("valueLabel");
+    strengthValue->setFixedWidth(44);
+    strengthValue->setAlignment(Qt::AlignCenter);
+    strengthLayout->addWidget(strengthValue);
+    connect(strengthSlider, &QSlider::valueChanged, this, [this, strengthValue](int value) {
+        strengthValue->setText(QStringLiteral("%1%").arg(value));
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionRectangleOpacity", value);
+        settings.sync();
+        reloadSelectionOverlays();
+        updatePreview();
+    });
+    selectionLayout->addWidget(strengthRow);
+    layout->addWidget(selectionPanel, 0);
+
+    // 3. Desktop Behavior Panel
+    QWidget* behaviorPanel = createPanel(this);
+    behaviorPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* behaviorLayout = new QVBoxLayout(behaviorPanel);
+    behaviorLayout->setContentsMargins(22, 18, 22, 18);
+    behaviorLayout->setSpacing(0);
+    behaviorLayout->addWidget(createCardTitle(tr("Desktop Behavior"), behaviorPanel));
+    behaviorLayout->addSpacing(12);
+
+    ListView* lv = ListView::instance();
+
+    // Toggle: Shortcut Arrows
+    FluentToggleSwitch* arrowToggle = new FluentToggleSwitch(this);
+    arrowToggle->setChecked(lv ? lv->shortcutArrowVisible() : true);
+    connect(arrowToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
+        ListView* lv = ListView::instance();
+        if (lv) lv->setShortcutArrowVisible(checked);
+    });
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE724), tr("Shortcut Arrows"), tr("Toggle visibility of the small arrow on desktop shortcut icons."), arrowToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
+
+    // Toggle: Double Click to Hide
+    FluentToggleSwitch* hideToggle = new FluentToggleSwitch(this);
+    hideToggle->setChecked(lv ? lv->isDoubleClickHideIconsEnabled() : true);
+    connect(hideToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
+        ListView* lv = ListView::instance();
+        if (lv) lv->setDoubleClickHideIconsEnabled(checked);
+    });
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE949), tr("Double Click to Hide"), tr("Quickly show or hide all desktop icons by double-clicking on empty spaces."), hideToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
+
+    // Toggle: Fade Transition on Hide
+    FluentToggleSwitch* fadeToggle = new FluentToggleSwitch(this);
+    fadeToggle->setChecked(lv ? lv->isFadeTransitionOnHideEnabled() : true);
+    connect(fadeToggle, &FluentToggleSwitch::toggled, this, [](bool checked){
+        ListView* lv = ListView::instance();
+        if (lv) lv->setFadeTransitionOnHideEnabled(checked);
+    });
+    behaviorLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Fade Transition on Hide"), tr("Play a smooth opacity fade-in/out transition when hiding or showing desktop elements."), fadeToggle, behaviorPanel));
+
+    layout->addWidget(behaviorPanel, 0);
+
+    // 4. Windows 11 Context Menu Panel
+    layout->addWidget(createWindows11MenuPanel(this), 0);
+
+    layout->addStretch();
+    updatePreview();
+}
+
+QWidget* DesktopSettingsPage::createWindows11MenuPanel(QWidget* parent)
+{
+    QWidget* win11MenuPanel = createPanel(parent);
+    win11MenuPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* win11MenuLayout = new QVBoxLayout(win11MenuPanel);
+    win11MenuLayout->setContentsMargins(22, 18, 22, 18);
+    win11MenuLayout->setSpacing(0);
+    win11MenuLayout->addWidget(createCardTitle(tr("Windows11 Menu"), win11MenuPanel));
+    win11MenuLayout->addSpacing(12);
+
+    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
+    const QString windows11UnsupportedTip = tr("This option is available only on Windows 11 in Release builds.");
+
+    FluentToggleSwitch* win11Toggle = new FluentToggleSwitch(parent);
+    win11Toggle->setChecked(RightMenu::isWindows11SystemContextMenuEnabled());
+    win11Toggle->setEnabled(windows11ContextMenuSupported);
+    if (!windows11ContextMenuSupported) {
+        win11Toggle->setToolTip(windows11UnsupportedTip);
+    }
+
+    connect(win11Toggle, &FluentToggleSwitch::toggled, this, [win11Toggle, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (win11Toggle) {
+                const QSignalBlocker blocker(win11Toggle);
+                win11Toggle->setChecked(false);
+            }
+            return;
+        }
+        RightMenu::setWindows11SystemContextMenuEnabled(checked);
+    });
+
+    win11MenuLayout->addWidget(createSwitchRow(
+        glyph(0xECAA),
+        tr("Enable Windows 11 Context Menu"),
+        tr("Use the modern Windows 11 context menu island for desktop items."),
+        win11Toggle,
+        win11MenuPanel));
+
+    return win11MenuPanel;
+}
+
+void DesktopSettingsPage::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    updatePreview();
+}
+
+void DesktopSettingsPage::updatePreview()
+{
+    if (!m_desktopSelectionPreview) {
+        return;
+    }
+
+    const QSize previewSize = m_desktopSelectionPreview->contentsRect().size();
+    if (previewSize.width() < 2 || previewSize.height() < 2) {
+        return;
+    }
+    QPixmap canvas(previewSize);
+    canvas.fill(Qt::transparent);
+
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    const int minSide = qMin(previewSize.width(), previewSize.height());
+    const int cornerRadius = qBound(6, minSide / 18, 14);
+    const QRect imageRect = centeredPreviewImageRect(previewSize);
+    QPainterPath clipPath;
+    clipPath.addRoundedRect(imageRect.adjusted(0, 0, -1, -1), cornerRadius, cornerRadius);
+    painter.setClipPath(clipPath);
+
+    QRect contentRect = imageRect;
+    QPixmap bgPixmap(":/Assets/DesktopLivePreview.png");
+    if (!bgPixmap.isNull()) {
+        const QPixmap scaledBg = bgPixmap.scaled(imageRect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        painter.drawPixmap(imageRect, scaledBg);
+        painter.fillRect(contentRect, QColor(0, 0, 0, 22));
+    } else {
+        QLinearGradient background(imageRect.topLeft(), imageRect.bottomRight());
+        background.setColorAt(0.0, QColor(221, 235, 255));
+        background.setColorAt(0.52, QColor(241, 247, 255));
+        background.setColorAt(1.0, QColor(178, 205, 243));
+        painter.fillRect(imageRect, background);
+        painter.fillRect(imageRect, QColor(0, 0, 0, 48));
+    }
+
+    const QColor fillColor = desktopSelectionFillColor(m_selectionPreviewColor);
+    const QColor borderColor = desktopSelectionBorderColor(m_selectionPreviewColor);
+    const QRect selectionRect(contentRect.left() + qRound(contentRect.width() * 0.36),
+                              contentRect.top() + qRound(contentRect.height() * 0.12),
+                              qRound(contentRect.width() * 0.32),
+                              qRound(contentRect.height() * 0.64));
+    painter.fillRect(selectionRect, fillColor);
+    const int selectionBorderWidth = qBound(1, minSide / 90, 3);
+    painter.setPen(QPen(borderColor, selectionBorderWidth));
+    painter.drawRect(selectionRect.adjusted(0, 0, -1, -1));
+
+    painter.setClipping(false);
+    painter.setPen(QPen(QColor(0, 0, 0, 32), 1));
+    painter.drawRoundedRect(imageRect.adjusted(0, 0, -1, -1), cornerRadius, cornerRadius);
+
+    painter.setPen(QPen(QColor(0, 0, 0, 38), 1));
+    painter.setBrush(QColor(255, 255, 255, 242));
+    const int handle = qBound(7, minSide / 14, 14);
+    const int handleRadius = qBound(2, handle / 3, 5);
+    const QVector<QPoint> handlePoints = {
+        selectionRect.topLeft(),
+        QPoint(selectionRect.center().x(), selectionRect.top()),
+        selectionRect.topRight(),
+        QPoint(selectionRect.left(), selectionRect.center().y()),
+        QPoint(selectionRect.right(), selectionRect.center().y()),
+        selectionRect.bottomLeft(),
+        QPoint(selectionRect.center().x(), selectionRect.bottom()),
+        selectionRect.bottomRight()
+    };
+    for (const QPoint& point : handlePoints) {
+        painter.drawRoundedRect(QRect(point.x() - handle / 2, point.y() - handle / 2, handle, handle), handleRadius, handleRadius);
+    }
+
+    painter.end();
+    m_desktopSelectionPreview->setPixmap(canvas);
+}
