@@ -409,6 +409,7 @@ public:
 	void rebuildSpatialIndex();
 	void refreshCheckedItem(QRect rect);
 	void showSettings(LinBox* target = nullptr);
+	class SettingUI* settingsWindow() const { return m_settingsWindow.data(); }
 	void showTransientTip(const QString& message, int autoHideMs = 2500);
 	void showDebugPanel();
 	void* linWidgetManager();

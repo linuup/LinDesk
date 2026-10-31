@@ -120,11 +120,23 @@ void showAlreadyRunningDialogAndHandle()
 
     dialog->addActionButton(
         QCoreApplication::translate("LinDesktop", "Restore Desktop"),
-        FluentDialog::ActionType::Primary,
+        FluentDialog::ActionType::Secondary,
         [handled]() {
             if (!*handled) {
                 *handled = true;
                 sendSingleInstanceCommand(QStringLiteral("RESTORE"));
+                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
+            }
+        }
+    );
+
+    dialog->addActionButton(
+        QCoreApplication::translate("LinDesktop", "Open Settings"),
+        FluentDialog::ActionType::Primary,
+        [handled]() {
+            if (!*handled) {
+                *handled = true;
+                sendSingleInstanceCommand(QStringLiteral("SHOW_SETTINGS"));
                 QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
             }
         }
@@ -752,17 +764,34 @@ void LinDesktop::initializeTrayIcon()
         " background: rgba(0, 0, 0, 0.08);"
         " }"
     );
-    m_showAction = m_trayMenu->addAction(tr("Show LinDesk"));
+    QAction* settingsAction = m_trayMenu->addAction(tr("Open Settings"));
+    QAction* desktopSettingsAction = m_trayMenu->addAction(tr("Desktop Settings"));
+    m_trayMenu->addSeparator();
+    m_showAction = m_trayMenu->addAction(tr("Restore Desktop"));
+    m_trayMenu->addSeparator();
     m_exitAction = m_trayMenu->addAction(tr("Exit"));
     m_trayIcon->setContextMenu(m_trayMenu);
 
+    connect(settingsAction, &QAction::triggered, this, [this]() {
+        if (listView) listView->showSettings(nullptr);
+    });
+    connect(desktopSettingsAction, &QAction::triggered, this, [this]() {
+        if (listView) {
+            listView->showSettings(nullptr);
+            if (SettingUI* settingsUI = listView->settingsWindow()) {
+                settingsUI->switchToPage(2);
+            }
+        }
+    });
     connect(m_showAction, &QAction::triggered, this, &LinDesktop::restoreFromTray);
     connect(m_exitAction, &QAction::triggered, this, &LinDesktop::exitFromTray);
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
-            restoreFromTray();
+            if (listView) listView->showSettings(nullptr);
         }
     });
+
+    m_trayIcon->show();
 }
 
 bool LinDesktop::shouldMinimizeToTray() const
@@ -774,12 +803,8 @@ bool LinDesktop::shouldMinimizeToTray() const
 void LinDesktop::restoreFromTray()
 {
     selfHealAndRestoreDesktop();
-    if (m_trayIcon && isVisible()) {
-        if (shouldMinimizeToTray()) {
-            m_trayIcon->hide();
-        } else {
-            m_trayIcon->show();
-        }
+    if (m_trayIcon) {
+        m_trayIcon->show();
     }
 }
 
@@ -1001,28 +1026,18 @@ void LinDesktop::handleSingleInstanceCommand(const QString& command)
     if (!m_trayIcon) {
         initializeTrayIcon();
     }
-    if (command == QStringLiteral("RESTORE")) {
-        // 1. 先唤醒并显示系统托盘
+    if (command == QStringLiteral("SHOW_SETTINGS")) {
         if (m_trayIcon) {
             m_trayIcon->show();
         }
-
-        // 2. 执行桌面自愈重挂载
-        selfHealAndRestoreDesktop();
-
-        // 3. 恢复后再根据设置判断是否恢复隐藏托盘图标
-        if (m_trayIcon && isVisible()) {
-            if (shouldMinimizeToTray()) {
-                // 延时 800ms 平滑隐藏，确保用户视觉看到恢复成功且托盘状态正常回归配置
-                QTimer::singleShot(800, this, [this]() {
-                    if (m_trayIcon && isVisible() && shouldMinimizeToTray()) {
-                        m_trayIcon->hide();
-                    }
-                });
-            } else {
-                m_trayIcon->show();
-            }
+        if (listView) {
+            listView->showSettings(nullptr);
         }
+    } else if (command == QStringLiteral("RESTORE")) {
+        if (m_trayIcon) {
+            m_trayIcon->show();
+        }
+        selfHealAndRestoreDesktop();
     } else if (command == QStringLiteral("SHOW_TRAY")) {
         // 唤醒托盘：保持当前桌面状态，把托盘打开以供随时操作并弹出系统气泡
         if (m_trayIcon) {
@@ -1420,8 +1435,6 @@ void LinDesktop::changeEvent(QEvent* event)
                     m_hasShownTrayHint = true;
                 }
             });
-        } else if (isVisible() && m_trayIcon->isVisible()) {
-            m_trayIcon->hide();
         }
     }
 

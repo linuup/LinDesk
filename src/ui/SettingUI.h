@@ -34,6 +34,7 @@ public:
 
     void setTargetBox(LinBox* target);
     void restoreAndActivate();
+    void switchToPage(int index);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -44,7 +45,6 @@ protected:
 private:
     void initUI();
     void setupStyles();
-    void switchToPage(int index);
     QWidget* getOrCreatePage(int index);
     QWidget* wrapScrollablePage(QWidget* content);
 
