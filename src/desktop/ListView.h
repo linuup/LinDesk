@@ -426,6 +426,10 @@ public:
 	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
 	void endBackgroundSelection();
 	void loadSelectionColors();
+	int fluentSelectionCornerRadius() const { return m_fluentSelectionCornerRadius; }
+	void setFluentSelectionCornerRadius(int radius) { m_fluentSelectionCornerRadius = radius; update(); }
+	int selectionBadgeRadius() const { return m_selectionBadgeRadius; }
+	void setSelectionBadgeRadius(int radius) { m_selectionBadgeRadius = radius; update(); }
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
 	void clearWidgetFocus();
@@ -727,6 +731,8 @@ private:
 	QColor m_selectionBorderColor;
 	bool m_fluentSelectionEnabled = true;
 	bool m_selectionCountBadgeEnabled = false;
+	int m_fluentSelectionCornerRadius = 5;
+	int m_selectionBadgeRadius = 11;
 	bool m_forwardingMouseToWidget = false;
 	bool m_widgetDragPending = false;
 	bool m_draggingWidget = false;

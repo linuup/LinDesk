@@ -5,6 +5,7 @@
 
 class QLabel;
 class QLineEdit;
+class QSlider;
 class FluentToggleSwitch;
 
 class DesktopSettingsPage : public QWidget {
@@ -33,4 +34,8 @@ private:
     QWidget* m_desktopPreviewContainer = nullptr;
     FluentToggleSwitch* m_fluentSelectionToggle = nullptr;
     FluentToggleSwitch* m_selectionCountBadgeToggle = nullptr;
+    QSlider* m_marqueeRadiusSlider = nullptr;
+    QLabel* m_marqueeRadiusValue = nullptr;
+    QSlider* m_badgeRadiusSlider = nullptr;
+    QLabel* m_badgeRadiusValue = nullptr;
 };

@@ -277,6 +277,7 @@ private:
     QColor m_selectionFillColor;
     QColor m_selectionBorderColor;
     bool m_fluentSelectionEnabled = true;
+    int m_fluentSelectionCornerRadius = 5;
     QString m_hoveredItemPath;
     QString m_pressedItemPath;
     QPoint m_pressedItemBoxPos;
