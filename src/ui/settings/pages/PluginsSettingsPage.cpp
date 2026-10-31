@@ -17,6 +17,9 @@ PluginsSettingsPage::PluginsSettingsPage(QWidget* parent)
 
 void PluginsSettingsPage::initUI()
 {
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet("background: #fbfcfe;");
+
     QVBoxLayout* outerLayout = new QVBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
     outerLayout->setSpacing(0);
@@ -24,9 +27,16 @@ void PluginsSettingsPage::initUI()
     QScrollArea* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setStyleSheet("background: transparent;");
+    scroll->setStyleSheet("QScrollArea { background-color: #fbfcfe; border: none; }");
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    if (scroll->viewport()) {
+        scroll->viewport()->setAutoFillBackground(true);
+        QPalette p = scroll->viewport()->palette();
+        p.setColor(QPalette::Window, QColor(251, 252, 254));
+        scroll->viewport()->setPalette(p);
+    }
 
     m_contentWidget = new QWidget(scroll);
     m_mainLayout = new QVBoxLayout(m_contentWidget);

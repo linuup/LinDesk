@@ -61,6 +61,10 @@ void SettingUI::initUI()
 {
     ensureSegoeFluentIconsLoaded();
 
+    if (container()) {
+        container()->setAttribute(Qt::WA_StyledBackground, true);
+    }
+
     QHBoxLayout* mainLayout = new QHBoxLayout();
     centralLayout()->addLayout(mainLayout);
     mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -74,6 +78,7 @@ void SettingUI::initUI()
     // Right Content Area
     QWidget* rightArea = new QWidget(container());
     rightArea->setObjectName("rightArea");
+    rightArea->setAttribute(Qt::WA_StyledBackground, true);
     rightArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout* rightLayout = new QVBoxLayout(rightArea);
     rightLayout->setContentsMargins(0, 0, 0, 0);
@@ -117,6 +122,8 @@ void SettingUI::initUI()
 
     // Content stack with 7 pages
     m_contentStack = new QStackedWidget(container());
+    m_contentStack->setObjectName("contentStack");
+    m_contentStack->setAttribute(Qt::WA_StyledBackground, true);
     m_contentStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     for (int i = 0; i < 7; ++i) {
         QWidget* placeholder = new QWidget(container());
@@ -148,20 +155,7 @@ void SettingUI::switchToPage(int index)
         return;
     }
 
-    // Smooth fade transition
-    QGraphicsOpacityEffect* opacity = new QGraphicsOpacityEffect(page);
-    page->setGraphicsEffect(opacity);
     m_contentStack->setCurrentIndex(index);
-
-    QPropertyAnimation* anim = new QPropertyAnimation(opacity, "opacity", page);
-    anim->setDuration(160);
-    anim->setStartValue(0.15);
-    anim->setEndValue(1.0);
-    anim->setEasingCurve(QEasingCurve::OutCubic);
-    connect(anim, &QPropertyAnimation::finished, page, [page]() {
-        page->setGraphicsEffect(nullptr);
-    });
-    anim->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 QWidget* SettingUI::getOrCreatePage(int index)
@@ -260,13 +254,12 @@ QWidget* SettingUI::wrapScrollablePage(QWidget* content)
     scroll->setFrameShape(QFrame::NoFrame);
     scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scroll->setStyleSheet("QScrollArea { background: transparent; border: none; }");
+    scroll->setStyleSheet("QScrollArea { background-color: #fbfcfe; border: none; }");
 
     if (scroll->viewport()) {
-        scroll->viewport()->setAttribute(Qt::WA_OpaquePaintEvent, true);
         scroll->viewport()->setAutoFillBackground(true);
         QPalette p = scroll->viewport()->palette();
-        p.setColor(QPalette::Window, QColor(249, 251, 255));
+        p.setColor(QPalette::Window, QColor(251, 252, 254));
         scroll->viewport()->setPalette(p);
     }
 
@@ -471,9 +464,13 @@ void SettingUI::setupStyles()
         "   background-color: transparent; "
         "} "
         "QWidget#rightArea { "
-        "   background: rgba(255, 255, 255, 0.72); "
+        "   background: #fbfcfe; "
         "   border-top-right-radius: 12px; "
         "   border-bottom-right-radius: 12px; "
+        "} "
+        "QStackedWidget#contentStack { "
+        "   background: #fbfcfe; "
+        "   border: none; "
         "} "
         "QWidget#settingsWindowControls { "
         "   background: transparent; "
