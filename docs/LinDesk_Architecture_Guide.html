@@ -259,7 +259,7 @@
   └── resources/wallpapers/       # 内置壁纸资源
   </pre>
   <ul>
-    <li><strong>桌面与 Box 持久化</strong>：<code>BoxManager</code> 管理盒子集合，<code>DesktopItemLoader</code> 装载桌面项；图标缓存 <code>IconCacheManager</code>（LRU，上限 4096，支持按前缀失效）负责运行时缓存，不落盘。</li>
+    <li><strong>桌面与 Box 持久化</strong>：<code>BoxManager</code> 管理盒子集合，<code>DesktopItemLoader</code> 装载桌面项；图标缓存 <code>IconCacheManager</code> 实现<strong>两级 LRU 缓存与渐进式管线</strong>：内存级通用扩展名单例共享（99% 命中），磁盘级持久化缩略图（<code>%APPDATA%/LinDesk/IconCache/</code>），配合线程池异步解码、0ms 骨架占位与 100ms 局部渐进平滑淡入。</li>
     <li><strong>组件持久化</strong>：布局（位置/尺寸/zOrder/可见性）经 <code>ConfigManager</code> → <code>registry.json</code>，启动时 <code>restoreFromConfig</code> 恢复；组件数据仓储在 <code>LinWidgetsData/</code>。</li>
     <li><strong>显示名覆盖</strong>：<code>DesktopItemLoader::applyDisplayNameOverride</code> 在 UI 层将特定路径（如 WPS 云盘）显示为自定义名称（中/英分语言），不改物理文件名。</li>
   </ul>

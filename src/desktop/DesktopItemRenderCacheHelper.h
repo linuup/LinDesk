@@ -87,7 +87,13 @@ inline void prepareDesktopRootItemStaticContentCache(DesktopRootItemRenderData& 
         return;
     }
 
-    item.staticContentPixmap = QPixmap(item.staticContentRect.size());
+    const qreal dpr = qMax<qreal>(1.0, item.devicePixelRatio);
+    const QSize logicalSize = item.staticContentRect.size();
+    const QSize physicalSize(qMax(1, qRound(logicalSize.width() * dpr)),
+                             qMax(1, qRound(logicalSize.height() * dpr)));
+
+    item.staticContentPixmap = QPixmap(physicalSize);
+    item.staticContentPixmap.setDevicePixelRatio(dpr);
     item.staticContentPixmap.fill(Qt::transparent);
     QPainter contentPainter(&item.staticContentPixmap);
     contentPainter.setRenderHint(QPainter::Antialiasing);

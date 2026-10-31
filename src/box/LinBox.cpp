@@ -1,4 +1,5 @@
 #include "box/LinBox.h"
+#include <QGraphicsOpacityEffect>
 #include "services/AppPaths.h"
 #include <QSettings>
 #include "services/IconCacheManager.h"
@@ -1271,6 +1272,9 @@ void LinBox::moveEvent(QMoveEvent* event) {
 
 void LinBox::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
+    if (m_collapseAnim && m_collapseAnim->state() == QAbstractAnimation::Running) {
+        return;
+    }
     refreshLayout();
     if (!m_isCapturingBackground && m_glassEffect && event->oldSize() != event->size()) {
         scheduleBlurRefresh();
@@ -2469,7 +2473,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
         p.restore();
     }
 
-    if (m_contentArea && m_scrollArea && m_scrollArea->viewport()) {
+    if (m_contentArea && m_scrollArea && m_scrollArea->isVisible() && m_scrollArea->viewport()) {
         const QPoint contentOrigin = m_contentArea->mapTo(this, QPoint(0, 0));
         p.save();
         p.setClipRect(m_scrollArea->geometry());
@@ -4141,19 +4145,53 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
             m_collapseAnim = new QPropertyAnimation(this, "geometry", this);
             m_collapseAnim->setEasingCurve(QEasingCurve::OutCubic);
             m_collapseAnim->setDuration(200);
-            connect(m_collapseAnim, &QPropertyAnimation::valueChanged, this, [this]() {
+
+            connect(m_collapseAnim, &QPropertyAnimation::valueChanged, this, [this, collapsedHeight]() {
+                if (m_scrollArea) {
+                    const int heightRange = qMax(1, m_originalHeight - collapsedHeight);
+                    const qreal progress = qBound(0.0, static_cast<qreal>(height() - collapsedHeight) / heightRange, 1.0);
+                    QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect());
+                    if (!eff) {
+                        eff = new QGraphicsOpacityEffect(m_scrollArea);
+                        m_scrollArea->setGraphicsEffect(eff);
+                    }
+                    eff->setOpacity(progress);
+                }
                 update();
             });
+
             connect(m_collapseAnim, &QPropertyAnimation::finished, this, [this, collapsedHeight]() {
                 if (m_isCollapsed) {
                     if (m_scrollArea) {
+                        if (m_scrollArea->verticalScrollBar()) {
+                            m_scrollArea->verticalScrollBar()->hide();
+                        }
+                        m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
                         m_scrollArea->hide();
+                    }
+                    if (m_contentArea) {
+                        m_contentArea->setFixedHeight(0);
                     }
                     setFixedHeight(collapsedHeight);
                 } else {
+                    if (m_contentArea) {
+                        m_contentArea->setMinimumHeight(0);
+                        m_contentArea->setMaximumHeight(16777215);
+                    }
+                    if (m_scrollArea) {
+                        m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+                        m_scrollArea->show();
+                        if (QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect())) {
+                            eff->setOpacity(1.0);
+                        }
+                    }
                     setMinimumSize(m_minBoxWidth, m_minBoxHeight);
                     setMaximumHeight(16777215);
                     resize(width(), m_originalHeight);
+                    refreshLayout();
+                    if (!m_isCapturingBackground && m_glassEffect) {
+                        scheduleBlurRefresh();
+                    }
                 }
                 emit geometryChanged(this);
             });
@@ -4166,8 +4204,18 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
         setMinimumHeight(0);
         setMaximumHeight(16777215);
 
-        if (!m_isCollapsed && m_scrollArea) {
-            m_scrollArea->show();
+        if (m_scrollArea) {
+            m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+            if (!m_isCollapsed) {
+                if (m_contentArea) {
+                    m_contentArea->setMinimumHeight(0);
+                    m_contentArea->setMaximumHeight(16777215);
+                }
+                m_scrollArea->show();
+                if (QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect())) {
+                    eff->setOpacity(0.0);
+                }
+            }
         }
 
         QRect startGeom = geometry();
@@ -4190,16 +4238,32 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
     } else {
         if (m_isCollapsed) {
             if (m_scrollArea) {
+                if (m_scrollArea->verticalScrollBar()) {
+                    m_scrollArea->verticalScrollBar()->hide();
+                }
+                m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
                 m_scrollArea->hide();
+            }
+            if (m_contentArea) {
+                m_contentArea->setFixedHeight(0);
             }
             setFixedHeight(collapsedHeight);
         } else {
+            if (m_contentArea) {
+                m_contentArea->setMinimumHeight(0);
+                m_contentArea->setMaximumHeight(16777215);
+            }
             if (m_scrollArea) {
+                m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
                 m_scrollArea->show();
+                if (QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect())) {
+                    eff->setOpacity(1.0);
+                }
             }
             setMinimumSize(m_minBoxWidth, m_minBoxHeight);
             setMaximumHeight(16777215);
             resize(width(), m_originalHeight);
+            refreshLayout();
         }
         emit geometryChanged(this);
     }
@@ -4438,17 +4502,20 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
         boxItems.push_back(remapItem);
     }
 
-    // Auto-Peek on hover item
-    ShellContextMenu::CustomMenuItem autoPeekItem;
-    QIcon autoPeekIcon(":/Assets/view.svg");
-    autoPeekItem.hBitmap = cachedMenuBitmap(QStringLiteral("box.autopeek"), autoPeekIcon, this);
-    autoPeekItem.text = (m_autoPeekEnabled ? tr("Disable Auto-Peek on Hover") : tr("Enable Auto-Peek on Hover")).toStdWString();
-    autoPeekItem.callback = [boxGuard]() {
+    // Manual Toggle Collapse Box
+    ShellContextMenu::CustomMenuItem collapseItem;
+    QIcon collapseIcon(":/Assets/view.svg");
+    collapseItem.hBitmap = cachedMenuBitmap(
+        m_isCollapsed ? QStringLiteral("box.expand") : QStringLiteral("box.collapse"),
+        collapseIcon,
+        this);
+    collapseItem.text = (m_isCollapsed ? tr("Expand Box") : tr("Collapse Box")).toStdWString();
+    collapseItem.callback = [boxGuard]() {
         if (boxGuard) {
-            boxGuard->setAutoPeekEnabled(!boxGuard->isAutoPeekEnabled());
+            boxGuard->toggleCollapse();
         }
     };
-    boxItems.push_back(autoPeekItem);
+    boxItems.push_back(collapseItem);
 
     // Toggle View mode
     ShellContextMenu::CustomMenuItem viewItem;

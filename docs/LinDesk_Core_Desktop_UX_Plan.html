@@ -56,6 +56,7 @@
   .tag.p1{background:#fff8c5;color:#9a6700;border:1px solid #d4a72c;font-weight:600;}
   .tag.p2{background:#dafbe1;color:#1a7f37;border:1px solid #4ac26b;}
   .tag.p3{background:#f0f0f0;color:#57606a;border:1px solid #d0d7de;}
+  .tag.done{background:#dafbe1;color:#1a7f37;border:1px solid #4ac26b;font-weight:600;}
   footer.doc-foot{margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;}
   @media (max-width:560px){
     body{font-size:14px;}
@@ -283,21 +284,24 @@
 
 <section>
   <h2>3. 落地路线图与开发优先级</h2>
+  <div class="note" style="border-left-color:var(--ok);background:#f6fbf7;">
+    <strong>实施进度状态（2026-10-30）</strong>：P0 与 P1 阶段的所有规划项均已全量落地并通过自动化测试验证（100% Passed），包括 LinBox 平滑折叠动画、双击分区与悬停下卷、0 间隙磁吸、盲打跳选定位、Ctrl+Z 撤销、双击隐藏淡入淡出双开关、以及两级 LRU + 磁盘持久化 + 线程池异步渐进式加载管线。
+  </div>
   <div class="tbl-scroll">
   <table>
-    <colgroup><col style="width:12%"><col style="width:36%"><col style="width:20%"><col style="width:14%"><col style="width:18%"></colgroup>
-    <tr><th>优先级</th><th>优化项</th><th>核心模块</th><th>研发工期</th><th>体验提升度</th></tr>
-    <tr><td><span class="tag p0">P0</span></td><td><strong>LinBox 折叠/展开平滑高度缓动动画</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★★★（消除生硬跳变）</td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td><strong>双击标题栏分区规范（文本=重命名 / 空白=折叠）+ 悬停自动展开 (Roll-up)</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★★★（桌面极致整洁的杀手级功能）</td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td><strong>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</strong></td><td><code>LinBox.cpp</code></td><td>1 天</td><td>★★★★★（解决强迫症对不齐的痛苦）</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td><strong>键盘盲打首字母跳选定位 (Type-to-Select)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td>★★★★☆（对齐 Windows 原生习惯）</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td><strong>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td>★★★★☆（误操作救回兜底）</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td><strong>双击空白处隐藏桌面与淡入淡出动效（含设置页独立双开关与右键菜单同步）</strong></td><td><code>ListView_Actions.cpp</code><br><code>SettingUI.cpp</code></td><td>0.5 天</td><td>★★★★☆（看壁纸更优雅，防误触可控）</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td><strong>图标与 IO 管线：两级 LRU 缓存与渐进式异步加载</strong></td><td><code>ListItemData.h</code><br><code>IconCacheManager</code></td><td>1 天</td><td>★★★★★（秒开海量图标，消除主线程卡死）</td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td><strong>真正的一键桌面智能整理分类 (Smart Box)</strong></td><td><code>ListView_Actions.cpp</code></td><td>1.5 天</td><td>★★★★★（初装用户的“第一惊艳功能”）</td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td><strong>拖拽进入 Box 的呼吸发光高亮提示</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td>★★★☆☆（投掷反馈更明确）</td></tr>
-    <tr><td><span class="tag p3">P3</span></td><td><strong>多屏幕跨屏摆放 Box 支持</strong></td><td><code>LinDesktop.cpp</code></td><td>2 天</td><td>★★★★☆（拿下双屏重度办公用户）</td></tr>
-    <tr><td><span class="tag p3">P3</span></td><td><strong>全屏游戏 / PPT 免打扰休眠</strong></td><td><code>LinDesktop.cpp</code></td><td>1 天</td><td>★★★☆☆（极致低能耗与零抢占）</td></tr>
+    <colgroup><col style="width:10%"><col style="width:32%"><col style="width:18%"><col style="width:12%"><col style="width:12%"><col style="width:16%"></colgroup>
+    <tr><th>优先级</th><th>优化项</th><th>核心模块</th><th>研发工期</th><th>状态</th><th>体验提升度</th></tr>
+    <tr><td><span class="tag p0">P0</span></td><td><strong>LinBox 折叠/展开平滑高度缓动动画</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td><span class="tag done">已落地</span></td><td>★★★★★（消除生硬跳变）</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td><strong>双击标题栏分区规范（文本=重命名 / 空白=折叠）+ 悬停自动展开 (Roll-up)</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td><span class="tag done">已落地</span></td><td>★★★★★（桌面极致整洁的杀手级功能）</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td><strong>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</strong></td><td><code>LinBox.cpp</code></td><td>1 天</td><td><span class="tag done">已落地</span></td><td>★★★★★（解决强迫症对不齐的痛苦）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>键盘盲打首字母跳选定位 (Type-to-Select)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td><span class="tag done">已落地</span></td><td>★★★★☆（对齐 Windows 原生习惯）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</strong></td><td><code>ListView.cpp</code></td><td>0.5 天</td><td><span class="tag done">已落地</span></td><td>★★★★☆（误操作救回兜底）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>双击空白处隐藏桌面与淡入淡出动效（含设置页独立双开关与右键菜单同步）</strong></td><td><code>ListView_Actions.cpp</code><br><code>SettingUI.cpp</code></td><td>0.5 天</td><td><span class="tag done">已落地</span></td><td>★★★★☆（看壁纸更优雅，防误触可控）</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>图标与 IO 管线：两级 LRU 缓存与渐进式异步加载</strong></td><td><code>ListItemData.h</code><br><code>IconCacheManager</code></td><td>1 天</td><td><span class="tag done">已落地</span></td><td>★★★★★（秒开海量图标，消除主线程卡死）</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td><strong>真正的一键桌面智能整理分类 (Smart Box)</strong></td><td><code>ListView_Actions.cpp</code></td><td>1.5 天</td><td><span class="tag p2">待办</span></td><td>★★★★★（初装用户的“第一惊艳功能”）</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td><strong>拖拽进入 Box 的呼吸发光高亮提示</strong></td><td><code>LinBox.cpp</code></td><td>0.5 天</td><td><span class="tag p2">待办</span></td><td>★★★☆☆（投掷反馈更明确）</td></tr>
+    <tr><td><span class="tag p3">P3</span></td><td><strong>多屏幕跨屏摆放 Box 支持</strong></td><td><code>LinDesktop.cpp</code></td><td>2 天</td><td><span class="tag p3">待办</span></td><td>★★★★☆（拿下双屏重度办公用户）</td></tr>
+    <tr><td><span class="tag p3">P3</span></td><td><strong>全屏游戏 / PPT 免打扰休眠</strong></td><td><code>LinDesktop.cpp</code></td><td>1 天</td><td><span class="tag p3">待办</span></td><td>★★★☆☆（极致低能耗与零抢占）</td></tr>
   </table>
   </div>
 </section>

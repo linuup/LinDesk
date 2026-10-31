@@ -263,7 +263,7 @@
     <tr><td><code>SystemInfo/SystemInfoService</code></td><td>系统信息采集（CPU / GPU / 内存，基于 Iphlpapi、Dxgi、Pdh）</td></tr>
     <tr><td><code>update/</code></td><td>更新模块：<code>UpdateChecker</code>（版本检查/比较）、<code>UpdateDownloader</code>（下载）、<code>UpdateTypes</code>（数据结构）</td></tr>
     <tr><td><code>HotkeyManager</code></td><td>全局快捷键注册与管理</td></tr>
-    <tr><td><code>IconCacheManager</code></td><td>图标缓存，避免重复提取系统图标</td></tr>
+    <tr><td><code>IconCacheManager</code></td><td>两级图标缓存：内存 LRU 扩展名共享池 + 本地磁盘持久化缓存 (%AppData%/LinDesk/IconCache/) + 线程池异步渐进式加载</td></tr>
     <tr><td><code>LayoutPersistenceService</code></td><td>桌面布局与盒子状态持久化（收集/保存/加载图标位置与显示规则）</td></tr>
     <tr><td><code>DesktopItemLoader</code></td><td>桌面图标加载</td></tr>
     <tr><td><code>DpiCoordinateHelper</code> / <code>DpiScaleHelper</code></td><td>DPI 坐标换算与缩放适配</td></tr>

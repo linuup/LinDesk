@@ -112,15 +112,16 @@
   <table>
     <colgroup><col style="width:10%"><col style="width:34%"><col style="width:42%"><col style="width:14%"></colgroup>
     <tr><th>优先级</th><th>任务事项</th><th>设计说明与落地点</th><th>状态</th></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>LinBox 折叠/展开弹性高度缓动动画</td><td>使用 <code>QEasingCurve::OutCubic</code> 实现 180~220ms 高度弹性动画，消除瞬间尺寸瞬变的机械感（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>双击标题栏折叠 + 悬停自动展开 (Roll-up)</td><td>双击标题栏直接折叠；折叠状态下鼠标悬停 150ms 自动平滑下卷展开，移出后延时收起（<code>LinBox.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>自动悬浮展开开关迁移至设置页</td><td>Roll-up「悬停自动展开」的开关放在设置页（组件/桌面设置区），不放右键菜单——右键菜单只保留手动折叠操作，避免菜单项膨胀（落地点：<code>SettingUI.cpp</code> 组件/桌面设置区 + 右键菜单移除对应项）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>修复收起后内容区残留显示</td><td>Box 折叠收起后内容区仍露出约一行内容（滚动区域未完全收回/尺寸缓存残留），需在 <code>toggleCollapse()</code> 收起终态强制内容区高度为 0 并同步隐藏滚动条，展开时再恢复（<code>LinBox.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>折叠/展开动画卡顿优化</td><td>收起/展开高度动画期间主线程明显卡顿（疑似逐帧触发 <code>QScrollArea</code> 内容 relayout 与全量重绘），改为动画期间仅驱动容器高度、内容区按比例淡隐淡入，避免逐帧布局重算（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</td><td>当拖拽盒子边缘距离屏幕或其它盒子小于 10px 时产生微阻尼对齐，解决手动对不齐的痛苦（<code>LinBox.cpp:mouseMoveEvent</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>键盘盲打首字母跳选定位 (Type-to-Select)</td><td>桌面按键盘盲打字符（如按 <code>W</code>）立即跳选对应首字母图标，对齐 Windows 原生操作习惯（<code>ListView.cpp:keyPressEvent</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</td><td>拦截 <code>Ctrl + Z</code> 调用 Windows Shell Undo 栈，为误删误拖提供反悔安全兜底（<code>ListView.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>双击空白处隐藏桌面的淡入淡出动画</td><td>双击隐藏/恢复桌面图标时加入 150ms 透明度淡出淡入过渡（<code>ListView_Actions.cpp:onMenuShowDesktopIcons</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>LinBox 折叠/展开弹性高度缓动动画</td><td>使用 <code>QEasingCurve::OutCubic</code> 实现 180~220ms 高度弹性动画，消除瞬间尺寸瞬变的机械感（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>双击标题栏折叠 + 悬停自动展开 (Roll-up)</td><td>双击标题栏直接折叠；折叠状态下鼠标悬停 150ms 自动平滑下卷展开，移出后延时收起（<code>LinBox.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>自动悬浮展开开关迁移至设置页</td><td>Roll-up「悬停自动展开」的开关放在设置页（组件/桌面设置区），不放右键菜单——右键菜单只保留手动折叠操作，避免菜单项膨胀（落地点：<code>SettingUI.cpp</code> 组件/桌面设置区 + 右键菜单移除对应项）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>修复收起后内容区残留显示</td><td>Box 折叠收起后内容区仍露出约一行内容（滚动区域未完全收回/尺寸缓存残留），需在 <code>toggleCollapse()</code> 收起终态强制内容区高度为 0 并同步隐藏滚动条，展开时再恢复（<code>LinBox.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>折叠/展开动画卡顿优化</td><td>收起/展开高度动画期间主线程明显卡顿（疑似逐帧触发 <code>QScrollArea</code> 内容 relayout 与全量重绘），改为动画期间仅驱动容器高度、内容区按比例淡隐淡入，避免逐帧布局重算（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>桌面键盘操作回归（Delete/Shift/Ctrl 失效）</td><td>桌面核心体验改造后，原本的桌面键盘操作整体失效——<code>Delete</code> 删除、<code>Shift</code> 多选、<code>Ctrl</code> 组合操作均无响应；疑似按键事件被框选/右键菜单/焦点改动吞掉，或桌面焦点被嵌入式小组件（CEF OSR）/子窗口抢占；需先定位根因再修复（落点：<code>ListView.cpp:keyPressEvent</code> 与焦点链 <code>focusOutEvent</code>/<code>setFocusPolicy</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</td><td>当拖拽盒子边缘距离屏幕或其它盒子小于 10px 时产生微阻尼对齐，解决手动对不齐的痛苦（<code>LinBox.cpp:mouseMoveEvent</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>键盘盲打首字母跳选定位 (Type-to-Select)</td><td>桌面按键盘盲打字符（如按 <code>W</code>）立即跳选对应首字母图标，对齐 Windows 原生操作习惯（<code>ListView.cpp:keyPressEvent</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</td><td>拦截 <code>Ctrl + Z</code> 调用 Windows Shell Undo 栈，为误删误拖提供反悔安全兜底（<code>ListView.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>双击空白处隐藏桌面的淡入淡出动画</td><td>双击隐藏/恢复桌面图标时加入 150ms 透明度淡出淡入过渡（<code>ListView_Actions.cpp:onMenuShowDesktopIcons</code>）</td><td><span class="state done">已完成</span></td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>真正的一键桌面智能整理分类</td><td>重构右键“整理桌面”，自动创建快捷方式/文档/文件夹等标准分类 Box 并批量收纳（<code>ListView_Actions.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>拖拽进入 Box 投掷区呼吸光晕高亮</td><td>文件拖向某个 Box 时，该 Box 边框产生主题色发光呼吸效果，强化投掷目标确认感（<code>LinBox.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
   </table>
@@ -204,6 +205,23 @@
     <li><strong>多图标拖拽单层幽灵图合并渲染</strong>：将 $N$ 个独立顶层 <code>QLabel</code> 窗口重构为单层合并 <code>QPixmap</code> 贴图，拖动窗口移动开销从 $O(N)$ 降低为 $O(1)$，彻底消除 Windows DWM 消息阻塞与微卡顿 <span class="state done">已完成</span></li>
     <li><strong>框选纯 QPainter 直绘与零残影局部重绘</strong>：彻底废弃 <code>SelectArea</code> 子控件树（<code>m_fillWidget</code>、<code>m_borderWidget</code>），直接在 <code>ListView::paintEvent</code> 与 <code>LinBox::paintEvent</code> 顶层绘制；采用联合脏矩形（Union Dirty Rect）更新，物理级根除残影 <span class="state done">已完成</span></li>
     <li><strong>局部绘制 QuadTree 空间索引裁切</strong>：在局部重绘时通过四叉树空间查询候选图标，并提供 32px 安全裕量，保证长文本标签与光晕完整呈现的同时削减 70%~90% 的全量扫描 CPU 开销 <span class="state done">已完成</span></li>
+  </ul>
+  <h3>2.6 桌面核心体验与两级图标 IO 管线 (Core Desktop UX & IO Pipeline P0-P1)</h3>
+  <ul>
+    <li><strong>LinBox 平滑高度缓动折叠/展开</strong>：引入 <code>QPropertyAnimation</code>（200ms <code>OutCubic</code> 缓动曲线），冷启动走无动画瞬切，彻底消除生硬跳变 <span class="state done">已完成</span></li>
+    <li><strong>双击标题栏分区规范 + 悬停自动展开 (Roll-up)</strong>：双击文本行内重命名，双击空白/按钮折叠；折叠盒子鼠标悬停 150ms 自动平滑下卷展开，移出 300ms 延时收起；底部碰撞保护防溢出；设置中心提供 <code>AutoPeekOnHover</code> 与 <code>AutoPeekInstant</code> 独立开关 <span class="state done">已完成</span></li>
+    <li><strong>12px 屏幕与同屏盒子磁吸对齐 (Snap)</strong>：考虑 8px 隐形拉伸手柄计算实际视觉边框，实现相邻盒子 0px 缝隙完美贴合；支持按住 <code>Alt</code> 键实时解耦自由微调 <span class="state done">已完成</span></li>
+    <li><strong>键盘盲打首字母跳选定位 (Type-to-Select)</strong>：800ms 按键缓冲区与防抖，全字串与 GBK 拼音首字母检索，单字母重复敲击轮询，支持激活 Box 内部跳选与 <code>ensureItemVisible</code> 居中平滑滚动 <span class="state done">已完成</span></li>
+    <li><strong>桌面全局撤销快捷键 (Ctrl + Z)</strong>：拦截撤销按键，投递 <code>FCIDM_SHVIEW_UNDO (28699)</code> 桥接 Windows Explorer 原生 Shell Undo 栈，误删误拖无缝救回 <span class="state done">已完成</span></li>
+    <li><strong>双击空白隐藏桌面淡入淡出与双设置开关</strong>：220ms <code>InOutQuad</code> 透明度过渡动效，全屏图标与 Box 同频渐隐至 0.0，隐藏态阻断鼠标命中防误触；设置中心与右键菜单提供 <code>DoubleClickHideIcons</code> 与 <code>FadeTransitionOnHide</code> 独立双向同步开关 <span class="state done">已完成</span></li>
+    <li><strong>两级图标缓存与 IO 管线性能革命</strong>：
+      <ul>
+        <li><strong>第一级（内存 LRU）</strong>：解耦 <code>ListItemData</code> 构造函数中阻塞式 COM 提取，实现惰性求值；针对普通扩展名（<code>.txt</code>、<code>.pdf</code>、<code>.docx</code> 等）以 <code>ext:&lt;suffix&gt;</code> 共享单例对象，冷启动秒开上屏，内存命中率 99%；</li>
+        <li><strong>第二级（磁盘持久化）</strong>：在 <code>%APPDATA%/LinDesk/IconCache/</code> 维护以 <code>MD5(path+mtime+size)</code> 索引的 PNG 缩略图缓存，二次启动 0.1ms 直读；</li>
+        <li><strong>后台异步解码与渐进淡入 (Progressive Fade-In)</strong>：首帧以 0ms 极速返回系统通用轻量占位图（Skeleton），通过 <code>QThreadPool</code> 异步工作线程解码大图与文件夹 Live Preview 缩略图，完成后投递主线程触发 100ms 局部透明度平滑淡入。</li>
+      </ul>
+      <span class="state done">已完成</span>
+    </li>
   </ul>
 </section>
 
