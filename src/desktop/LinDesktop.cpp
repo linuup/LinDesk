@@ -69,16 +69,32 @@ static void sendSingleInstanceCommand(const QString& cmd)
         socket.disconnectFromServer();
     }
 
-    // Channel 2: Broadcast Windows Registered Message
-    if (cmd == QStringLiteral("RESTORE")) {
-        PostMessageW(HWND_BROADCAST, getRestoreWindowMessage(), 0, 0);
-    } else if (cmd == QStringLiteral("SHOW_TRAY")) {
-        PostMessageW(HWND_BROADCAST, getShowTrayWindowMessage(), 0, 0);
+    // Channel 2: Direct Win32 message delivery to LinDesk host window (bypassing WorkerW child-window broadcast barrier)
+    const UINT msg = (cmd == QStringLiteral("RESTORE")) ? getRestoreWindowMessage() : getShowTrayWindowMessage();
+    HWND hostHwnd = reinterpret_cast<HWND>(GetPropW(GetDesktopWindow(), L"LinDesk_HostHwnd"));
+    if (hostHwnd && IsWindow(hostHwnd)) {
+        PostMessageW(hostHwnd, msg, 0, 0);
     }
+    HWND desktopHwnd = CSystemApi::FindRealDesktop();
+    if (desktopHwnd) {
+        EnumChildWindows(desktopHwnd, [](HWND hwnd, LPARAM lParam) -> BOOL {
+            WCHAR title[64] = {0};
+            GetWindowTextW(hwnd, title, 63);
+            if (wcscmp(title, L"LinDesk") == 0) {
+                PostMessageW(hwnd, static_cast<UINT>(lParam), 0, 0);
+                return FALSE;
+            }
+            return TRUE;
+        }, static_cast<LPARAM>(msg));
+    }
+    PostMessageW(HWND_BROADCAST, msg, 0, 0);
 }
 
 void showAlreadyRunningDialogAndHandle()
 {
+    // 弹出层级检测/恢复菜单时，立即唤醒并显示系统托盘图标，让用户知晓其存在
+    sendSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
+
     auto* dialog = new FluentDialog(nullptr);
     dialog->setAttribute(Qt::WA_DeleteOnClose, true);
     dialog->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
@@ -283,6 +299,7 @@ LinDesktop::LinDesktop(QWidget* parent)
     if (HWND hwnd = reinterpret_cast<HWND>(winId())) {
         ChangeWindowMessageFilterEx(hwnd, m_restoreWindowMessage, MSGFLT_ALLOW, nullptr);
         ChangeWindowMessageFilterEx(hwnd, m_showTrayWindowMessage, MSGFLT_ALLOW, nullptr);
+        SetPropW(GetDesktopWindow(), L"LinDesk_HostHwnd", reinterpret_cast<HANDLE>(hwnd));
     }
 #endif
     startSingleInstanceServer();
@@ -290,6 +307,7 @@ LinDesktop::LinDesktop(QWidget* parent)
 
 LinDesktop::~LinDesktop()
 {
+    RemovePropW(GetDesktopWindow(), L"LinDesk_HostHwnd");
     if (m_shellHookRegistered) {
         DeregisterShellHookWindow(reinterpret_cast<HWND>(winId()));
     }
@@ -757,7 +775,11 @@ void LinDesktop::restoreFromTray()
 {
     selfHealAndRestoreDesktop();
     if (m_trayIcon && isVisible()) {
-        m_trayIcon->hide();
+        if (shouldMinimizeToTray()) {
+            m_trayIcon->hide();
+        } else {
+            m_trayIcon->show();
+        }
     }
 }
 
@@ -786,6 +808,7 @@ void LinDesktop::embedToDesktop()
         LONG_PTR exStyle = GetWindowLongPtr(hostWindow, GWL_EXSTYLE);
         exStyle &= ~WS_EX_LAYERED;
         SetWindowLongPtr(hostWindow, GWL_EXSTYLE, exStyle);
+        SetPropW(GetDesktopWindow(), L"LinDesk_HostHwnd", reinterpret_cast<HANDLE>(hostWindow));
 
         m_isEmbedded = true;
         show();
@@ -975,8 +998,11 @@ void LinDesktop::startSingleInstanceServer()
 void LinDesktop::handleSingleInstanceCommand(const QString& command)
 {
     qWarning() << "[LinDesktop] Received single instance command:" << command;
+    if (!m_trayIcon) {
+        initializeTrayIcon();
+    }
     if (command == QStringLiteral("RESTORE")) {
-        // 1. 打开托盘图标
+        // 1. 先唤醒并显示系统托盘
         if (m_trayIcon) {
             m_trayIcon->show();
         }
@@ -984,23 +1010,29 @@ void LinDesktop::handleSingleInstanceCommand(const QString& command)
         // 2. 执行桌面自愈重挂载
         selfHealAndRestoreDesktop();
 
-        // 3. 当程序显示出来时，自动恢复为用户设置的隐藏或显示状态
+        // 3. 恢复后再根据设置判断是否恢复隐藏托盘图标
         if (m_trayIcon && isVisible()) {
-            m_trayIcon->hide();
+            if (shouldMinimizeToTray()) {
+                // 延时 800ms 平滑隐藏，确保用户视觉看到恢复成功且托盘状态正常回归配置
+                QTimer::singleShot(800, this, [this]() {
+                    if (m_trayIcon && isVisible() && shouldMinimizeToTray()) {
+                        m_trayIcon->hide();
+                    }
+                });
+            } else {
+                m_trayIcon->show();
+            }
         }
     } else if (command == QStringLiteral("SHOW_TRAY")) {
-        // 取消恢复桌面：保持当前桌面状态，把托盘打开以供随时操作
+        // 唤醒托盘：保持当前桌面状态，把托盘打开以供随时操作并弹出系统气泡
         if (m_trayIcon) {
             m_trayIcon->show();
-            if (!m_hasShownTrayHint) {
-                m_trayIcon->showMessage(
-                    tr("LinDesk"),
-                    tr("LinDesk is still running in the background. Right-click here to restore or exit."),
-                    QSystemTrayIcon::Information,
-                    3000
-                );
-                m_hasShownTrayHint = true;
-            }
+            m_trayIcon->showMessage(
+                tr("LinDesk"),
+                tr("LinDesk is running in the background. Right-click here to restore or exit."),
+                QSystemTrayIcon::Information,
+                3000
+            );
         }
     }
 }

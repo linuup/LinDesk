@@ -2521,18 +2521,28 @@ void LinBox::paintEvent(QPaintEvent* event) {
             if (dirtyRegion.intersects(boxSelectionRect)) {
                 if (m_fluentSelectionEnabled) {
                     p.setRenderHint(QPainter::Antialiasing, true);
-                    const qreal radius = 4.0;
+                    const qreal radius = 5.0;
+
+                    // 1. 发光外晕
+                    QColor glowColor = m_selectionBorderColor;
+                    if (glowColor.alpha() < 100) glowColor.setAlpha(180);
+                    p.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 50), 2.5));
+                    p.setBrush(Qt::NoBrush);
+                    p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(-1.0, -1.0, 1.0, 1.0), radius + 1.0, radius + 1.0);
+
+                    // 2. 玻璃填充
                     QLinearGradient fillGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
                     fillGrad.setColorAt(0.0, m_selectionFillColor);
                     QColor endFill = m_selectionFillColor;
-                    endFill.setAlpha(qMax(0, endFill.alpha() - 12));
+                    endFill.setAlpha(qMax(0, endFill.alpha() - 15));
                     fillGrad.setColorAt(1.0, endFill);
                     p.setBrush(fillGrad);
 
+                    // 3. 核心发光描边
                     QLinearGradient borderGrad(boxSelectionRect.topLeft(), boxSelectionRect.bottomRight());
-                    borderGrad.setColorAt(0.0, m_selectionBorderColor.lighter(120));
-                    borderGrad.setColorAt(1.0, m_selectionBorderColor);
-                    p.setPen(QPen(QBrush(borderGrad), 1.25));
+                    borderGrad.setColorAt(0.0, glowColor.lighter(130));
+                    borderGrad.setColorAt(1.0, glowColor);
+                    p.setPen(QPen(QBrush(borderGrad), 1.5));
                     p.drawRoundedRect(QRectF(boxSelectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
                 } else {
                     p.setPen(QPen(m_selectionBorderColor, 1));

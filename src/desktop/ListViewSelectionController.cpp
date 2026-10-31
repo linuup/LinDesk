@@ -483,7 +483,7 @@ bool ListViewSelectionController::updateBackgroundSelection(ListView& view, cons
         dirtyRect = previousRect;
     }
     if (!dirtyRect.isNull()) {
-        view.update(dirtyRect.adjusted(-4, -4, 4, 4));
+        view.update(dirtyRect.adjusted(-10, -10, 10, 10));
     }
     view.m_renderedSelectionRect = view.m_selectionRect;
 
@@ -538,7 +538,7 @@ void ListViewSelectionController::endBackgroundSelection(ListView& view)
     view.activateWindow();
     view.setFocus(Qt::MouseFocusReason);
     if (!previousRect.isNull()) {
-        view.update(previousRect.adjusted(-4, -4, 4, 4));
+        view.update(previousRect.adjusted(-10, -10, 10, 10));
     }
 }
 

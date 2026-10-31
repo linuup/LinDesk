@@ -526,42 +526,72 @@ void DesktopSettingsPage::updatePreview()
 
     if (isFluent) {
         painter.setRenderHint(QPainter::Antialiasing, true);
-        const qreal radius = 5.0;
+        const qreal radius = 6.0;
 
+        // 1. 多层发光光晕 (Multi-tier Outer Bloom)
+        QColor glowColor = borderColor;
+        if (glowColor.alpha() < 100) glowColor.setAlpha(180);
+        painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 35), 4.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(QRectF(selectionRect).adjusted(-2.0, -2.0, 2.0, 2.0), radius + 2.0, radius + 2.0);
+
+        painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 80), 2.0));
+        painter.drawRoundedRect(QRectF(selectionRect).adjusted(-0.8, -0.8, 0.8, 0.8), radius + 0.8, radius + 0.8);
+
+        // 2. Acrylic 玻璃填充
         QLinearGradient fillGrad(selectionRect.topLeft(), selectionRect.bottomRight());
         QColor topFill = fillColor;
-        topFill.setAlpha(qMin(255, topFill.alpha() + 18));
+        topFill.setAlpha(qBound(45, topFill.alpha() + 25, 200));
         QColor bottomFill = fillColor;
-        bottomFill.setAlpha(qMax(0, bottomFill.alpha() - 12));
+        bottomFill.setAlpha(qBound(20, bottomFill.alpha() - 15, 160));
         fillGrad.setColorAt(0.0, topFill);
         fillGrad.setColorAt(1.0, bottomFill);
         painter.setBrush(fillGrad);
 
+        // 3. 核心发光描边
         QLinearGradient borderGrad(selectionRect.topLeft(), selectionRect.bottomRight());
-        borderGrad.setColorAt(0.0, borderColor.lighter(125));
-        borderGrad.setColorAt(1.0, borderColor);
-        painter.setPen(QPen(QBrush(borderGrad), 1.5));
+        borderGrad.setColorAt(0.0, glowColor.lighter(135));
+        borderGrad.setColorAt(1.0, glowColor);
+        painter.setPen(QPen(QBrush(borderGrad), 1.8));
         painter.drawRoundedRect(QRectF(selectionRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
 
-        // Inner specular highlight
-        painter.setPen(QPen(QColor(255, 255, 255, 45), 1.0));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(QRectF(selectionRect).adjusted(1.5, 1.5, -1.5, -1.5), radius - 1.0, radius - 1.0);
+        // 4. 顶边高光
+        painter.setPen(QPen(QColor(255, 255, 255, 100), 1.0));
+        painter.drawLine(QPointF(selectionRect.left() + radius + 2, selectionRect.top() + 1.2),
+                         QPointF(selectionRect.right() - radius - 2, selectionRect.top() + 1.2));
 
-        // Preview HUD Pill badge
-        const QString badgeText = QStringLiteral("✓ 1 项");
+        // 5. 四角高光精细定位角标
+        const qreal cornerLen = 8.0;
+        painter.setPen(QPen(QColor(255, 255, 255, 220), 1.8, Qt::SolidLine, Qt::SquareCap));
+        painter.drawLine(QPointF(selectionRect.left() + 2, selectionRect.top() + 2), QPointF(selectionRect.left() + 2 + cornerLen, selectionRect.top() + 2));
+        painter.drawLine(QPointF(selectionRect.left() + 2, selectionRect.top() + 2), QPointF(selectionRect.left() + 2, selectionRect.top() + 2 + cornerLen));
+        painter.drawLine(QPointF(selectionRect.right() - 2, selectionRect.top() + 2), QPointF(selectionRect.right() - 2 - cornerLen, selectionRect.top() + 2));
+        painter.drawLine(QPointF(selectionRect.right() - 2, selectionRect.top() + 2), QPointF(selectionRect.right() - 2, selectionRect.top() + 2 + cornerLen));
+        painter.drawLine(QPointF(selectionRect.left() + 2, selectionRect.bottom() - 2), QPointF(selectionRect.left() + 2 + cornerLen, selectionRect.bottom() - 2));
+        painter.drawLine(QPointF(selectionRect.left() + 2, selectionRect.bottom() - 2), QPointF(selectionRect.left() + 2, selectionRect.bottom() - 2 - cornerLen));
+        painter.drawLine(QPointF(selectionRect.right() - 2, selectionRect.bottom() - 2), QPointF(selectionRect.right() - 2 - cornerLen, selectionRect.bottom() - 2));
+        painter.drawLine(QPointF(selectionRect.right() - 2, selectionRect.bottom() - 2), QPointF(selectionRect.right() - 2, selectionRect.bottom() - 2 - cornerLen));
+
+        // 6. Preview HUD Pill badge
+        const QString badgeText = QStringLiteral("🎯 1 项");
         QFont badgeFont = painter.font();
         badgeFont.setPixelSize(10);
         badgeFont.setBold(true);
         painter.setFont(badgeFont);
         QFontMetrics fm(badgeFont);
-        const int badgeW = fm.horizontalAdvance(badgeText) + 14;
-        const int badgeH = 20;
+        const int badgeW = fm.horizontalAdvance(badgeText) + 16;
+        const int badgeH = 22;
         const QRectF badgeRect(selectionRect.right() - badgeW - 6, selectionRect.bottom() - badgeH - 6, badgeW, badgeH);
-        painter.setPen(QPen(QColor(255, 255, 255, 55), 1.0));
-        painter.setBrush(QColor(22, 26, 34, 215));
+
+        painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 70), 2.0));
+        painter.setBrush(QColor(16, 20, 28, 225));
         painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
-        painter.setPen(QColor(245, 248, 255));
+
+        painter.setPen(QPen(QColor(0, 220, 255, 190), 1.0));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+
+        painter.setPen(QColor(0, 235, 255));
         painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
     } else {
         painter.fillRect(selectionRect, fillColor);
