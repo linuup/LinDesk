@@ -4519,20 +4519,6 @@ void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) 
         boxItems.push_back(remapItem);
     }
 
-    // Manual Toggle Collapse Box
-    ShellContextMenu::CustomMenuItem collapseItem;
-    QIcon collapseIcon(":/Assets/view.svg");
-    collapseItem.hBitmap = cachedMenuBitmap(
-        m_isCollapsed ? QStringLiteral("box.expand") : QStringLiteral("box.collapse"),
-        collapseIcon,
-        this);
-    collapseItem.text = (m_isCollapsed ? tr("Expand Box") : tr("Collapse Box")).toStdWString();
-    collapseItem.callback = [boxGuard]() {
-        if (boxGuard) {
-            boxGuard->toggleCollapse();
-        }
-    };
-    boxItems.push_back(collapseItem);
 
     // Toggle View mode
     ShellContextMenu::CustomMenuItem viewItem;
