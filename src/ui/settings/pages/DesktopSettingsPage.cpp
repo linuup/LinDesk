@@ -16,6 +16,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QSettings>
+#include <QTimer>
 
 using namespace SettingsUICommon;
 
@@ -77,37 +78,25 @@ void DesktopSettingsPage::initUI()
     layout->addWidget(titleLabel, 0, Qt::AlignLeft);
     layout->addSpacing(8);
 
-    // 1. Live Preview Panel
-    QWidget* previewContainer = createPanel(this);
-    m_desktopPreviewContainer = previewContainer;
-    previewContainer->setFixedHeight(220);
-    previewContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    QVBoxLayout* previewLayout = new QVBoxLayout(previewContainer);
-    previewLayout->setContentsMargins(22, 10, 22, 20);
-    previewLayout->setSpacing(6);
-
-    QLabel* previewTitle = createCardTitle(tr("Live Preview"), previewContainer);
-    previewLayout->addWidget(previewTitle);
-    previewLayout->addWidget(createCardSubtitle(tr("Preview the desktop selection rectangle color, contrast, and opacity."), previewContainer));
-
-    m_desktopSelectionPreview = new QLabel(previewContainer);
-    m_desktopSelectionPreview->setMinimumHeight(124);
-    m_desktopSelectionPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_desktopSelectionPreview->setAlignment(Qt::AlignCenter | Qt::AlignHCenter);
-    m_desktopSelectionPreview->setObjectName("previewSurface");
-    previewLayout->addWidget(m_desktopSelectionPreview);
-
-    layout->addWidget(previewContainer, 0);
-
-    // 2. Selection Rectangle Color Panel
+    // Selection Rectangle Color & Style Panel (Compact Inline Preview)
     QWidget* selectionPanel = createPanel(this);
     selectionPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* selectionLayout = new QVBoxLayout(selectionPanel);
     selectionLayout->setContentsMargins(22, 18, 22, 18);
     selectionLayout->setSpacing(0);
 
-    selectionLayout->addWidget(createCardTitle(tr("Selection Rectangle Color"), selectionPanel));
+    selectionLayout->addWidget(createCardTitle(tr("Selection Rectangle Style"), selectionPanel));
+    selectionLayout->addSpacing(4);
+    selectionLayout->addWidget(createCardSubtitle(tr("Preview and customize the color, contrast, and opacity of the desktop drag-selection marquee."), selectionPanel));
     selectionLayout->addSpacing(12);
+
+    m_desktopSelectionPreview = new QLabel(selectionPanel);
+    m_desktopSelectionPreview->setFixedHeight(92);
+    m_desktopSelectionPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_desktopSelectionPreview->setAlignment(Qt::AlignCenter);
+    m_desktopSelectionPreview->setObjectName(QStringLiteral("previewSurface"));
+    selectionLayout->addWidget(m_desktopSelectionPreview);
+    selectionLayout->addSpacing(14);
 
     QWidget* presetsRow = new QWidget(selectionPanel);
     presetsRow->setObjectName("settingsInnerRow");
@@ -412,77 +401,95 @@ void DesktopSettingsPage::resizeEvent(QResizeEvent* event)
     updatePreview();
 }
 
+void DesktopSettingsPage::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    QTimer::singleShot(0, this, [this]() {
+        updatePreview();
+    });
+}
+
 void DesktopSettingsPage::updatePreview()
 {
     if (!m_desktopSelectionPreview) {
         return;
     }
 
-    const QSize previewSize = m_desktopSelectionPreview->contentsRect().size();
-    if (previewSize.width() < 2 || previewSize.height() < 2) {
-        return;
+    QSize previewSize = m_desktopSelectionPreview->contentsRect().size();
+    if (previewSize.width() < 10 || previewSize.height() < 10) {
+        previewSize = QSize(qMax(280, width() - 88), 92);
     }
-    QPixmap canvas(previewSize);
+
+    const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+    const QSize physicalSize(qMax(1, qRound(previewSize.width() * dpr)),
+                             qMax(1, qRound(previewSize.height() * dpr)));
+
+    QPixmap canvas(physicalSize);
+    canvas.setDevicePixelRatio(dpr);
     canvas.fill(Qt::transparent);
 
     QPainter painter(&canvas);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.setRenderHint(QPainter::TextAntialiasing);
 
-    const int minSide = qMin(previewSize.width(), previewSize.height());
-    const int cornerRadius = qBound(6, minSide / 18, 14);
-    const QRect imageRect = centeredPreviewImageRect(previewSize);
+    const int radius = 8;
+    const QRect bounds(0, 0, previewSize.width(), previewSize.height());
+
+    // 1. Draw rounded real wallpaper clip
     QPainterPath clipPath;
-    clipPath.addRoundedRect(imageRect.adjusted(0, 0, -1, -1), cornerRadius, cornerRadius);
+    clipPath.addRoundedRect(bounds, radius, radius);
     painter.setClipPath(clipPath);
 
-    QRect contentRect = imageRect;
-    QPixmap bgPixmap(":/Assets/DesktopLivePreview.png");
-    if (!bgPixmap.isNull()) {
-        const QPixmap scaledBg = bgPixmap.scaled(imageRect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        painter.drawPixmap(imageRect, scaledBg);
-        painter.fillRect(contentRect, QColor(0, 0, 0, 22));
-    } else {
-        QLinearGradient background(imageRect.topLeft(), imageRect.bottomRight());
-        background.setColorAt(0.0, QColor(221, 235, 255));
-        background.setColorAt(0.52, QColor(241, 247, 255));
-        background.setColorAt(1.0, QColor(178, 205, 243));
-        painter.fillRect(imageRect, background);
-        painter.fillRect(imageRect, QColor(0, 0, 0, 48));
-    }
+    QPixmap wp = getDesktopWallpaperThumbnail(previewSize, dpr);
+    painter.drawPixmap(0, 0, wp);
+    // Subtle darkening for crisp contrast
+    painter.fillRect(bounds, QColor(0, 0, 0, 22));
 
+    // 2. Draw mock desktop icons (showing unselected vs selected state)
+    const int iconBaseY = qMax(6, (previewSize.height() - 52) / 2);
+    const int item1X = qMax(24, previewSize.width() * 12 / 100);
+
+    // Left item: Normal unselected document
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(255, 255, 255, 220));
+    painter.drawRoundedRect(item1X + 8, iconBaseY + 2, 24, 28, 3, 3);
+    painter.setBrush(QColor(70, 140, 245, 200));
+    painter.drawRoundedRect(item1X + 11, iconBaseY + 7, 18, 3, 1, 1);
+    painter.drawRoundedRect(item1X + 11, iconBaseY + 13, 14, 3, 1, 1);
+    painter.drawRoundedRect(item1X + 11, iconBaseY + 19, 16, 3, 1, 1);
+    painter.setBrush(QColor(255, 255, 255, 190));
+    painter.drawRoundedRect(item1X + 4, iconBaseY + 34, 32, 6, 2, 2);
+
+    // Center/Right item: Inside selection marquee
+    const int item2X = qMax(item1X + 90, previewSize.width() * 50 / 100);
+    painter.setBrush(QColor(255, 195, 60, 230));
+    painter.drawRoundedRect(item2X + 6, iconBaseY + 4, 30, 24, 3, 3);
+    painter.setBrush(QColor(255, 220, 110, 240));
+    painter.drawRoundedRect(item2X + 6, iconBaseY + 7, 30, 21, 3, 3);
+    painter.setBrush(QColor(0, 120, 215, 210));
+    painter.drawRoundedRect(item2X + 2, iconBaseY + 33, 38, 9, 3, 3);
+    painter.setBrush(Qt::white);
+    painter.drawRoundedRect(item2X + 7, iconBaseY + 36, 28, 3, 1, 1);
+
+    // 3. Draw clean, native Windows 11 drag selection marquee (No crop handles!)
     const QColor fillColor = desktopSelectionFillColor(m_selectionPreviewColor);
     const QColor borderColor = desktopSelectionBorderColor(m_selectionPreviewColor);
-    const QRect selectionRect(contentRect.left() + qRound(contentRect.width() * 0.36),
-                              contentRect.top() + qRound(contentRect.height() * 0.12),
-                              qRound(contentRect.width() * 0.32),
-                              qRound(contentRect.height() * 0.64));
-    painter.fillRect(selectionRect, fillColor);
-    const int selectionBorderWidth = qBound(1, minSide / 90, 3);
-    painter.setPen(QPen(borderColor, selectionBorderWidth));
-    painter.drawRect(selectionRect.adjusted(0, 0, -1, -1));
+    const int selX = qMax(item1X + 60, previewSize.width() * 38 / 100);
+    const int selY = qMax(6, (previewSize.height() - 66) / 2);
+    const int selW = qBound(120, previewSize.width() * 46 / 100, 280);
+    const int selH = 66;
+    const QRect selectionRect(selX, selY, selW, selH);
 
+    painter.fillRect(selectionRect, fillColor);
+    painter.setPen(QPen(borderColor, 1.5));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(selectionRect);
+
+    // 4. Subtle inner card border
     painter.setClipping(false);
     painter.setPen(QPen(QColor(0, 0, 0, 32), 1));
-    painter.drawRoundedRect(imageRect.adjusted(0, 0, -1, -1), cornerRadius, cornerRadius);
-
-    painter.setPen(QPen(QColor(0, 0, 0, 38), 1));
-    painter.setBrush(QColor(255, 255, 255, 242));
-    const int handle = qBound(7, minSide / 14, 14);
-    const int handleRadius = qBound(2, handle / 3, 5);
-    const QVector<QPoint> handlePoints = {
-        selectionRect.topLeft(),
-        QPoint(selectionRect.center().x(), selectionRect.top()),
-        selectionRect.topRight(),
-        QPoint(selectionRect.left(), selectionRect.center().y()),
-        QPoint(selectionRect.right(), selectionRect.center().y()),
-        selectionRect.bottomLeft(),
-        QPoint(selectionRect.center().x(), selectionRect.bottom()),
-        selectionRect.bottomRight()
-    };
-    for (const QPoint& point : handlePoints) {
-        painter.drawRoundedRect(QRect(point.x() - handle / 2, point.y() - handle / 2, handle, handle), handleRadius, handleRadius);
-    }
+    painter.drawRoundedRect(bounds.adjusted(0, 0, -1, -1), radius, radius);
 
     painter.end();
     m_desktopSelectionPreview->setPixmap(canvas);

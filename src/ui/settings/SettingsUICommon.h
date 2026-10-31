@@ -58,5 +58,6 @@ bool settingsCanLoadIconImage(const QString& path);
 QString settingsResolveWidgetIconPath(const QString& packagePath, const QString& iconPath);
 QLabel* createWidgetIconLabel(const QString& id, const QString& iconPath, QWidget* parent, int size = 56);
 QLabel* createWidgetMetaLabel(const QString& title, const QString& value, QWidget* parent);
+QPixmap getDesktopWallpaperThumbnail(const QSize& logicalSize, qreal dpr);
 
 } // namespace SettingsUICommon

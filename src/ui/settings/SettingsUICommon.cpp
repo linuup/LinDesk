@@ -1,4 +1,8 @@
 #include "ui/settings/SettingsUICommon.h"
+#include "services/SysInfoUtil.h"
+#include <QDateTime>
+#include <QPainter>
+#include <QLinearGradient>
 
 namespace SettingsUICommon {
 
@@ -382,6 +386,56 @@ QLabel* createWidgetMetaLabel(const QString& title, const QString& value, QWidge
     label->setTextFormat(Qt::RichText);
     label->setMinimumWidth(110);
     return label;
+}
+
+QPixmap getDesktopWallpaperThumbnail(const QSize& logicalSize, qreal dpr)
+{
+    static QString s_cachedPath;
+    static QImage s_cachedImage;
+    static QDateTime s_cachedTime;
+
+    const QString currentPath = SysInfoUtil::GetRobustWallpaperPath();
+    const bool pathChanged = (currentPath != s_cachedPath);
+    const bool cacheExpired = s_cachedTime.isValid() && s_cachedTime.msecsTo(QDateTime::currentDateTime()) > 15000;
+
+    if (pathChanged || cacheExpired || s_cachedImage.isNull()) {
+        s_cachedPath = currentPath;
+        s_cachedTime = QDateTime::currentDateTime();
+        if (!currentPath.isEmpty() && QFile::exists(currentPath)) {
+            QImageReader reader(currentPath);
+            reader.setAutoTransform(true);
+            s_cachedImage = reader.read();
+        } else {
+            s_cachedImage = QImage();
+        }
+    }
+
+    const QSize physicalSize(qMax(1, qRound(logicalSize.width() * dpr)),
+                             qMax(1, qRound(logicalSize.height() * dpr)));
+
+    QPixmap result(physicalSize);
+    result.setDevicePixelRatio(dpr);
+    result.fill(Qt::transparent);
+
+    QPainter painter(&result);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+
+    if (!s_cachedImage.isNull()) {
+        const QImage scaled = s_cachedImage.scaled(physicalSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        const int cropX = qMax(0, (scaled.width() - physicalSize.width()) / 2);
+        const int cropY = qMax(0, (scaled.height() - physicalSize.height()) / 2);
+        painter.drawImage(QRect(0, 0, logicalSize.width(), logicalSize.height()),
+                          scaled,
+                          QRect(cropX, cropY, physicalSize.width(), physicalSize.height()));
+    } else {
+        QLinearGradient grad(0, 0, logicalSize.width(), logicalSize.height());
+        grad.setColorAt(0.0, QColor(26, 78, 126));
+        grad.setColorAt(0.5, QColor(38, 108, 168));
+        grad.setColorAt(1.0, QColor(10, 30, 56));
+        painter.fillRect(QRect(0, 0, logicalSize.width(), logicalSize.height()), grad);
+    }
+    return result;
 }
 
 } // namespace SettingsUICommon
