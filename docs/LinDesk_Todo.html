@@ -87,7 +87,6 @@
     <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
     <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html">组件通信协议</a>
-    <a href="LinDesk_Core_Desktop_UX_Plan.html">核心体验优化</a>
 </nav>
 
 <header class="doc-head">
@@ -107,7 +106,7 @@
   <h2>1. 待办事项与推进路线图 (Active & Upcoming Tasks)</h2>
 
   <h3>1.1 桌面核心交互与人机工学优化（对标 Fences 5）</h3>
-  <p>详见专篇方案：<a href="LinDesk_Core_Desktop_UX_Plan.html">LinDesk 核心功能体验优化方案与路线图</a></p>
+  <p>核心优化体验方案（P0/P1）已全量落地并归档至架构与模块指南，本节持续追踪剩余进阶交互待办项。</p>
   <div class="tbl-scroll">
   <table>
     <colgroup><col style="width:10%"><col style="width:34%"><col style="width:42%"><col style="width:14%"></colgroup>
@@ -121,9 +120,11 @@
     <tr><td><span class="tag p0">P0</span></td><td>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</td><td>当拖拽盒子边缘距离屏幕或其它盒子小于 10px 时产生微阻尼对齐，解决手动对不齐的痛苦（<code>LinBox.cpp:mouseMoveEvent</code>）</td><td><span class="state done">已完成</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>键盘盲打首字母跳选定位 (Type-to-Select)</td><td>桌面按键盘盲打字符（如按 <code>W</code>）立即跳选对应首字母图标，对齐 Windows 原生操作习惯（<code>ListView.cpp:keyPressEvent</code>）</td><td><span class="state done">已完成</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</td><td>拦截 <code>Ctrl + Z</code> 调用 Windows Shell Undo 栈，为误删误拖提供反悔安全兜底（<code>ListView.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>双击空白处隐藏桌面的淡入淡出动画</td><td>双击隐藏/恢复桌面图标时加入 150ms 透明度淡出淡入过渡（<code>ListView_Actions.cpp:onMenuShowDesktopIcons</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>真正的一键桌面智能整理分类</td><td>重构右键“整理桌面”，自动创建快捷方式/文档/文件夹等标准分类 Box 并批量收纳（<code>ListView_Actions.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>拖拽进入 Box 投掷区呼吸光晕高亮</td><td>文件拖向某个 Box 时，该 Box 边框产生主题色发光呼吸效果，强化投掷目标确认感（<code>LinBox.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>双击空白处隐藏桌面的淡入淡出动画</td><td>双击隐藏/恢复桌面图标时加入 220ms 透明度淡出淡入过渡与双向绑定设置开关（<code>ListView_Actions.cpp:onMenuShowDesktopIcons</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>图标与 IO 管线：两级 LRU 缓存与渐进式异步加载</td><td>第一级内存 LRU 扩展名共享（99% 命中），第二级磁盘持久化（%APPDATA%/LinDesk/IconCache/），0ms 骨架占位 + 线程池异步解码 + 100ms 局部透明度渐进淡入（<code>ListItemData.h</code> / <code>IconCacheManager</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>真正的一键桌面智能整理分类 (Smart Auto-Organization)</td><td>重构右键“整理桌面”，自动建立或复用标准分类盒子（快捷方式、文件夹、常用文档、压缩包与安装包），自动将散落在桌面的文件按类型归集至相应盒子，保留原生固定项（此电脑、回收站），并支持规则设置（例如“新保存到桌面的文档自动进入文档盒子”）（<code>ListView_Actions.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>拖拽进入 Box 投掷区呼吸光晕高亮 (Drop Target Accent Glow)</td><td>文件拖向某个 Box 时，该 Box 边框产生主题色发光呼吸效果，强化投掷目标确认感（<code>LinBox.cpp:dragEnterEvent / dragLeaveEvent</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>多文件拖拽层叠缩略图与数字角标 (Drag Badge)</td><td>框选多个文件拖动时生成最多 3 张微倾斜的层叠图标阴影，并在右下方绘制药丸状数字角标（如 <code>+6</code>），对齐 Windows 11 视觉质感（<code>ListView.cpp</code> / <code>ListViewDragDropHelper</code>）</td><td><span class="state todo">待办</span></td></tr>
   </table>
   </div>
 
@@ -222,6 +223,7 @@
       </ul>
       <span class="state done">已完成</span>
     </li>
+    <li><strong>多比例 High-DPI 缩放适配与防模糊 (High-DPI Adaptation)</strong>：全面支持 125%、150%、175%、200% 等非 100% 缩放比率；桌面图标网格计算全链路基于 <code>scaledPx()</code> 缩放；<code>TextRenderCache</code> 动态绑定屏幕 <code>devicePixelRatio</code>，高分屏文字抗锯齿高清光栅化无模糊；4K/超宽屏壁纸物理分辨率同步解码；LinBox 毛玻璃模糊半径与暗度自适应 DPI；右键菜单移除冗余的收起/展开菜单项，保持精简 <span class="state done">已完成</span></li>
   </ul>
 </section>
 
