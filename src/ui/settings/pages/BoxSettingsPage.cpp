@@ -141,9 +141,6 @@ void BoxSettingsPage::updateControlsFromTarget()
     if (m_layeredDepthToggle) {
         m_layeredDepthToggle->setChecked(sourceBox->layeredZDepth());
     }
-    if (m_adaptiveTintToggle) {
-        m_adaptiveTintToggle->setChecked(sourceBox->adaptiveWallpaperTint());
-    }
     if (m_dragPulseToggle) {
         m_dragPulseToggle->setChecked(sourceBox->activeDragPulse());
     }
@@ -156,7 +153,6 @@ void BoxSettingsPage::updateControlsFromTarget()
     m_previewOpacity = sourceBox->backgroundOpacity();
     m_previewGlass = sourceBox->glassEffect();
     m_previewLayeredDepth = sourceBox->layeredZDepth();
-    m_previewAdaptiveTint = sourceBox->adaptiveWallpaperTint();
     m_previewDragPulse = sourceBox->activeDragPulse();
     updatePreview();
 }
@@ -447,36 +443,6 @@ void BoxSettingsPage::initUI()
         }
     });
     styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Layered Glass Depth"), tr("Render high-specular titlebar and deep frosted body with 3D glass depth."), m_layeredDepthToggle, stylePanel));
-    styleLayout->addWidget(createDivider(stylePanel));
-
-    // Adaptive Tint Toggle
-    m_adaptiveTintToggle = new FluentToggleSwitch(this);
-    bool initialAdaptiveTint = false;
-    if (LinBox* sourceBox = controlSourceBox()) {
-        initialAdaptiveTint = sourceBox->adaptiveWallpaperTint();
-    } else if (BoxManager* bm = BoxManager::instance()) {
-        initialAdaptiveTint = bm->unifiedAdaptiveWallpaperTint();
-    }
-    m_adaptiveTintToggle->setChecked(initialAdaptiveTint, false);
-    connect(m_adaptiveTintToggle, &FluentToggleSwitch::toggled, this, [this](bool v){
-        QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
-        settings.setValue(QStringLiteral("Box/AdaptiveWallpaperTint"), v);
-        settings.sync();
-        if (BoxManager* bm = BoxManager::instance()) {
-            bm->setAllBoxesAdaptiveWallpaperTint(v);
-        }
-        for (const auto& boxPtr : m_allBoxes) {
-            if (LinBox* box = boxPtr.data()) {
-                box->setAdaptiveWallpaperTint(v);
-            }
-        }
-        m_previewAdaptiveTint = v;
-        updatePreview();
-        if (ListView* lv = ListView::instance()) {
-            lv->requestSaveBoxes();
-        }
-    });
-    styleLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Adaptive Wallpaper Color"), tr("Automatically extract and blend colors from the underlying desktop wallpaper."), m_adaptiveTintToggle, stylePanel));
 
     layout->addWidget(stylePanel, 0);
     layout->addSpacing(14);
@@ -633,12 +599,6 @@ void BoxSettingsPage::updatePreview()
 
     // Box background base color
     QColor baseColor = m_previewColor.isValid() ? m_previewColor : QColor(40, 40, 40);
-    if (m_previewAdaptiveTint) {
-        QColor adaptive = LinBox::extractWallpaperDominantColor(wp);
-        if (adaptive.isValid()) {
-            baseColor = adaptive;
-        }
-    }
 
     // Drop shadow & Ambient Glow Pulse
     painter.setPen(Qt::NoPen);
