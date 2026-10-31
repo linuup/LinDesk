@@ -436,8 +436,10 @@ QRect ListViewSelectionController::desktopSelectionRectForItem(const ListView& v
 
 void ListViewSelectionController::beginBackgroundSelection(ListView& view, const QPoint& startPos)
 {
+    view.clearWidgetFocus();
     view.clearCheckedItem();
-    view.setFocus();
+    view.activateWindow();
+    view.setFocus(Qt::MouseFocusReason);
     if (view.mouseGrabber() != &view) {
         view.grabMouse();
     }
@@ -533,6 +535,8 @@ void ListViewSelectionController::endBackgroundSelection(ListView& view)
     if (view.mouseGrabber() == &view) {
         view.releaseMouse();
     }
+    view.activateWindow();
+    view.setFocus(Qt::MouseFocusReason);
     if (!previousRect.isNull()) {
         view.update(previousRect.adjusted(-2, -2, 2, 2));
     }

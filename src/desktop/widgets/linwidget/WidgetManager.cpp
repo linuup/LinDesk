@@ -1504,7 +1504,11 @@ bool WidgetManager::forwardMouseEvent(QMouseEvent* event)
         if (event->type() == QEvent::MouseMove) {
             osr->sendMouseMove(localPos.x(), localPos.y());
         } else if (event->type() == QEvent::MouseButtonPress) {
-            setFocusedWidget(wid);
+            if (wid != QStringLiteral("__default_page__")) {
+                setFocusedWidget(wid);
+            } else {
+                clearWidgetFocus();
+            }
             osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), false, 1);
         } else if (event->type() == QEvent::MouseButtonRelease) {
             osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), true, 1);
@@ -1542,6 +1546,12 @@ bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
 
 void WidgetManager::setFocusedWidget(const QString& instanceId)
 {
+    if (instanceId == QStringLiteral("__default_page__")) {
+        if (!m_focusedInstanceId.isEmpty()) {
+            clearWidgetFocus();
+        }
+        return;
+    }
     if (m_focusedInstanceId == instanceId) {
         return;
     }
@@ -1572,7 +1582,7 @@ void WidgetManager::clearWidgetFocus()
 
 bool WidgetManager::forwardKeyEvent(QKeyEvent* event)
 {
-    if (!event || m_focusedInstanceId.isEmpty()) {
+    if (!event || m_focusedInstanceId.isEmpty() || m_focusedInstanceId == QStringLiteral("__default_page__")) {
         return false;
     }
     auto* osr = m_osrBrowsers.value(m_focusedInstanceId, nullptr);

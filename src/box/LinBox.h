@@ -127,6 +127,7 @@ protected:
     void dragLeaveEvent(QDragLeaveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void focusInEvent(QFocusEvent* event) override;
     void onIconLoaded(const QString& memKey, const QString& filePath);
     void onIconFadeTimerTimeout();
 

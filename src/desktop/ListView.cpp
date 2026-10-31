@@ -1542,11 +1542,18 @@ void ListView::mousePressEvent(QMouseEvent* event)
     }
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
+            clearWidgetFocus();
             this->activateWindow();
             this->setFocus(Qt::MouseFocusReason);
 
             const QString itemPath = normalizeDesktopItemPath(hitState->model.filePath);
-            const Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
+            Qt::KeyboardModifiers modifiers = event->modifiers() | QApplication::keyboardModifiers();
+            if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) {
+                modifiers |= Qt::ControlModifier;
+            }
+            if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) {
+                modifiers |= Qt::ShiftModifier;
+            }
 
             if (modifiers & Qt::ControlModifier) {
                 const bool selected = isDesktopPathSelected(itemPath);
@@ -1557,28 +1564,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
                 }
                 m_wasSelectedBeforeClick = false;
             } else if (modifiers & Qt::ShiftModifier) {
-                QStringList orderedPaths;
-                for (const auto& state : m_itemStates) {
-                    if (shouldPaintDesktopModelState(state)) {
-                        orderedPaths.append(normalizeDesktopItemPath(state.model.filePath));
-                    }
-                }
-
-                const QString anchorPath = m_anchorDesktopPath.isEmpty() ? itemPath : m_anchorDesktopPath;
-                const int anchorIndex = orderedPaths.indexOf(anchorPath);
-                const int itemIndex = orderedPaths.indexOf(itemPath);
-                if (anchorIndex >= 0 && itemIndex >= 0) {
-                    QStringList rangePaths;
-                    const int start = qMin(anchorIndex, itemIndex);
-                    const int end = qMax(anchorIndex, itemIndex);
-                    for (int i = start; i <= end; ++i) {
-                        rangePaths.append(orderedPaths.at(i));
-                    }
-                    applyDesktopSelection(rangePaths, itemPath, false);
-                } else {
-                    applyDesktopSelection({ itemPath }, itemPath, true);
-                    m_anchorDesktopPath = itemPath;
-                }
+                selectRangeToPath(itemPath, nullptr);
                 m_wasSelectedBeforeClick = false;
             } else {
                 if (!isDesktopPathSelected(itemPath)) {
@@ -1607,6 +1593,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
         }
 
         clearHoveredDesktopItem();
+        clearWidgetFocus();
         beginBackgroundSelection(event->pos());
         event->accept();
         return;
@@ -1700,6 +1687,20 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     event->ignore();
+}
+
+void ListView::clearWidgetFocus()
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        bridge.clearWidgetFocus();
+    }
+}
+
+void ListView::focusInEvent(QFocusEvent* event)
+{
+    clearWidgetFocus();
+    QWidget::focusInEvent(event);
 }
 
 void ListView::beginBackgroundSelection(const QPoint& startPos)
@@ -1899,17 +1900,23 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+    const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
+                                     !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+    if (hasDesktopSelection) {
+        if (bridge.isLoaded()) {
+            bridge.clearWidgetFocus();
+        }
+    } else if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
         event->accept();
         return;
     }
     // 键盘按键事件处理：检测修饰键与快捷键组合
-    const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
-    const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
+    const bool shiftPressed = (event->modifiers() & Qt::ShiftModifier) || ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
+    const bool ctrlPressed = (event->modifiers() & Qt::ControlModifier) || ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
 
-    const bool shortcutUndo = ctrlPressed && (event->key() == Qt::Key_Z);
-    if (shortcutUndo || event->matches(QKeySequence::Undo)) {
+    const bool shortcutUndo = (ctrlPressed && event->key() == Qt::Key_Z) || event->matches(QKeySequence::Undo);
+    if (shortcutUndo) {
         if (handleUndo()) {
             event->accept();
             qDebug() << "Ctrl+Z Undo triggered";
@@ -1917,17 +1924,19 @@ void ListView::keyPressEvent(QKeyEvent* event)
         }
     }
 
-    const bool extendSelection = (event->modifiers() & Qt::ShiftModifier) || shiftPressed;
-    const bool shortcutPaste = ctrlPressed && (event->key() == Qt::Key_V);
+    const bool extendSelection = shiftPressed;
+    const bool shortcutPaste = (ctrlPressed && event->key() == Qt::Key_V) || event->matches(QKeySequence::Paste);
     const bool shortcutNewFolder = ctrlPressed && extendSelection && (event->key() == Qt::Key_N);
-    const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
 
-    qDebug() << QString("Press Key: %1, Shift: %2, Delete: %3, permanentDelete: %4")
-            .arg(QKeySequence(event->key()).toString())
-            .arg(shiftPressed ? "Yes" : "No")
-            .arg(event->key() == Qt::Key_Delete ? "Yes" : "No")
-            .arg(permanentDelete ? "Yes" : "No");
-    if (event->matches(QKeySequence::SelectAll)) {
+    // Delete 键处理（包括 Shift+Delete 永久删除与常规删除）
+    if (event->key() == Qt::Key_Delete) {
+        onMenuDelete(shiftPressed);
+        event->accept();
+        qDebug() << QString("Delete triggered: permanent=%1").arg(shiftPressed ? "Yes" : "No");
+        return;
+    }
+
+    if ((ctrlPressed && event->key() == Qt::Key_A) || event->matches(QKeySequence::SelectAll)) {
         QStringList desktopPaths;
         for (const auto& state : m_itemStates) {
             if (shouldPaintDesktopModelState(state)) {
@@ -1940,26 +1949,19 @@ void ListView::keyPressEvent(QKeyEvent* event)
         qDebug() << "Select All triggered";
         return;
     }
-    if (event->matches(QKeySequence::Copy)) {
+    if ((ctrlPressed && event->key() == Qt::Key_C) || event->matches(QKeySequence::Copy)) {
         writeSelectionToClipboard(false);
         event->accept();
         qDebug() << "Copy triggered";
         return;
     }
-    //first judge if it's a Shift+Delete for permanent delete, if not, then handle regular Delete key
-    if (permanentDelete) {
-        onMenuDelete(true);
-        event->accept();
-        qDebug() << "Permanent Delete triggered";
-        return;
-    }
-    if (event->matches(QKeySequence::Cut)) {
+    if ((ctrlPressed && event->key() == Qt::Key_X) || event->matches(QKeySequence::Cut)) {
         writeSelectionToClipboard(true);
         event->accept();
         qDebug() << "Cut triggered";
         return;
     }
-    if (event->matches(QKeySequence::Paste)) {
+    if (shortcutPaste) {
         clearCutMarks();
         onMenuPaste();
         event->accept();
@@ -1967,7 +1969,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
         return;
     }
     
-    if (shortcutPaste) {
+    if (ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V) {
         onMenuPasteShortcut();
         event->accept();
         qDebug() << "Paste Shortcut triggered";
@@ -2094,14 +2096,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
             return;
         }
     }
-    if (event->key() == Qt::Key_Delete) {
-        /*const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
-        bool permanently = (modifiers & Qt::ShiftModifier);*/
-        onMenuDelete(false);
-        event->accept();
-        qDebug() << "Delete triggered: Deleted selected items";
-        return;
-    }
+
     
     const QString text = event->text();
     if (!text.isEmpty() && text.at(0).isPrint() &&
@@ -2120,8 +2115,10 @@ void ListView::keyPressEvent(QKeyEvent* event)
 
 void ListView::keyReleaseEvent(QKeyEvent* event)
 {
+    const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
+                                     !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+    if (!hasDesktopSelection && bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
         event->accept();
         return;
     }

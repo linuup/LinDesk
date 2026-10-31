@@ -1241,10 +1241,14 @@ void LinDesktop::unembedFromDesktop()
 
 void LinDesktop::mousePressEvent(QMouseEvent* event)
 {
+    if (listView) {
+        listView->clearWidgetFocus();
+    }
     if (event->button() == Qt::LeftButton && listView) {
+        listView->activateWindow();
+        listView->setFocus(Qt::MouseFocusReason);
         listView->beginBackgroundSelection(event->pos());
         m_lastSelectRect = QRect();
-        listView->setFocus(Qt::MouseFocusReason);
         if (!mouseGrabber()) {
             grabMouse();
         }
@@ -1256,7 +1260,24 @@ void LinDesktop::mousePressEvent(QMouseEvent* event)
 
 void LinDesktop::keyPressEvent(QKeyEvent* event)
 {
+    if (listView) {
+        QApplication::sendEvent(listView, event);
+        if (event->isAccepted()) {
+            return;
+        }
+    }
     QWidget::keyPressEvent(event);
+}
+
+void LinDesktop::keyReleaseEvent(QKeyEvent* event)
+{
+    if (listView) {
+        QApplication::sendEvent(listView, event);
+        if (event->isAccepted()) {
+            return;
+        }
+    }
+    QWidget::keyReleaseEvent(event);
 }
 
 void LinDesktop::mouseMoveEvent(QMouseEvent* event)

@@ -2020,9 +2020,20 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
 
 void LinBox::activateForKeyboardFocus()
 {
+    if (ListView* lv = ListView::instance()) {
+        lv->clearWidgetFocus();
+    }
     raise();
     activateWindow();
     setFocus(Qt::MouseFocusReason);
+}
+
+void LinBox::focusInEvent(QFocusEvent* event)
+{
+    if (ListView* lv = ListView::instance()) {
+        lv->clearWidgetFocus();
+    }
+    QWidget::focusInEvent(event);
 }
 
 void LinBox::mouseMoveEvent(QMouseEvent* event) {
@@ -2190,7 +2201,13 @@ bool LinBox::handleItemMousePress(QMouseEvent* event, const QPoint& boxPos)
     }
 
     const QString itemPath = hitState->model.filePath;
-    const Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
+    Qt::KeyboardModifiers modifiers = event->modifiers() | QApplication::keyboardModifiers();
+    if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) {
+        modifiers |= Qt::ControlModifier;
+    }
+    if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) {
+        modifiers |= Qt::ShiftModifier;
+    }
     const QString normalizedItemPath = normalizeBoxItemPath(itemPath);
     const bool wasAlreadySelected = lv->selectedItemPaths().contains(normalizedItemPath);
     activateForKeyboardFocus();
@@ -3834,27 +3851,31 @@ void LinBox::dropEvent(QDropEvent* event) {
 void LinBox::keyPressEvent(QKeyEvent* event) {
     ListView* lv = ListView::instance();
     if (lv) {
-        const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
-        const bool extendSelection = event->modifiers() & Qt::ShiftModifier;
-        const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
-        const bool shortcutPaste = ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V;
-        const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
-        const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
-        //输出对应的键值
-        qDebug() << QString("Press Key: %1, Shift: %2, Delete: %3, permanentDelete: %4")
-            .arg(QKeySequence(event->key()).toString())
-            .arg(shiftPressed ? "Yes" : "No")
-            .arg(event->key() == Qt::Key_Delete ? "Yes" : "No")
-            .arg(permanentDelete ? "Yes" : "No");
+        lv->clearWidgetFocus();
 
-        //first judge if it's a Shift+Delete for permanent delete, if not, then handle regular Delete key
-        if (permanentDelete) {
-            lv->onMenuDelete(true);
+        const bool shiftPressed = (event->modifiers() & Qt::ShiftModifier) || ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
+        const bool ctrlPressed = (event->modifiers() & Qt::ControlModifier) || ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
+        const bool extendSelection = shiftPressed;
+        const bool shortcutUndo = (ctrlPressed && event->key() == Qt::Key_Z) || event->matches(QKeySequence::Undo);
+        const bool shortcutPaste = (ctrlPressed && event->key() == Qt::Key_V) || event->matches(QKeySequence::Paste);
+        const bool shortcutPasteLink = ctrlPressed && shiftPressed && event->key() == Qt::Key_V;
+        const bool shortcutNewFolder = ctrlPressed && extendSelection && event->key() == Qt::Key_N;
+
+        if (shortcutUndo) {
+            if (lv->handleUndo()) {
+                event->accept();
+                return;
+            }
+        }
+
+        if (event->key() == Qt::Key_Delete) {
+            lv->onMenuDelete(shiftPressed);
             event->accept();
-            qDebug() << "[Box]-Permanent Delete triggered";
+            qDebug() << "[Box]-Delete triggered, permanent=" << shiftPressed;
             return;
         }
-        if (event->matches(QKeySequence::SelectAll)) {
+
+        if ((ctrlPressed && event->key() == Qt::Key_A) || event->matches(QKeySequence::SelectAll)) {
             QStringList allPaths;
             allPaths.reserve(m_itemStates.size());
             for (const DesktopRootItemState& state : m_itemStates) {
@@ -3864,17 +3885,17 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             event->accept();
             return;
         }
-        if (event->matches(QKeySequence::Copy)) {
+        if ((ctrlPressed && event->key() == Qt::Key_C) || event->matches(QKeySequence::Copy)) {
             lv->writeSelectionToClipboard(false);
             event->accept();
             return;
         }
-        if (event->matches(QKeySequence::Cut)) {
+        if ((ctrlPressed && event->key() == Qt::Key_X) || event->matches(QKeySequence::Cut)) {
             lv->writeSelectionToClipboard(true);
             event->accept();
             return;
         }
-        if (event->matches(QKeySequence::Paste)) {
+        if (shortcutPaste || shortcutPasteLink) {
             lv->clearCutMarks();
             const QStringList filePaths = clipboardLocalFilePathsForBox();
             if (filePaths.isEmpty()) {
@@ -3883,7 +3904,7 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             }
 
             const bool isCutOperation = clipboardContainsCutItemsForBox();
-            const bool preferShortcut = lv->shouldCreateShortcutForExternalDrop(filePaths);
+            const bool preferShortcut = shortcutPasteLink || lv->shouldCreateShortcutForExternalDrop(filePaths);
             bool ok = false;
 
             if (isFolderMapped()) {
@@ -3913,35 +3934,6 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
             if (ok && isCutOperation) {
                 QGuiApplication::clipboard()->clear();
             }
-            event->accept();
-            return;
-        }
-        if (shortcutPaste) {
-            lv->clearCutMarks();
-            const QStringList filePaths = clipboardLocalFilePathsForBox();
-            if (filePaths.isEmpty()) {
-                event->accept();
-                return;
-            }
-
-            bool ok = false;
-            if (isFolderMapped()) {
-                const QString targetFolder = normalizeMappedFolderPath(mappedFolderPath());
-                ok = lv->createShortcutsInFolder(filePaths, targetFolder);
-                if (ok) {
-                    lv->reloadMappedFolderBox(this);
-                    refreshLayout();
-                    update();
-                }
-            } else {
-                ok = lv->importPathsToBox(filePaths, this, true, -1, true);
-                if (ok) {
-                    refreshLayout();
-                    update();
-                    raise();
-                }
-            }
-
             event->accept();
             return;
         }
@@ -4015,27 +4007,6 @@ void LinBox::keyPressEvent(QKeyEvent* event) {
         if (event->key() == Qt::Key_F2 && lv->selectedItemPaths().size() == 1) {
             RenameManager::instance()->startRename(lv->selectedItemPaths().first());
             event->accept();
-            return;
-        }
-    }
-    const bool ctrlPressed = event->modifiers() & Qt::ControlModifier;
-    const bool shortcutUndo = ctrlPressed && (event->key() == Qt::Key_Z);
-    if (shortcutUndo || event->matches(QKeySequence::Undo)) {
-        if (ListView* lv = ListView::instance()) {
-            if (lv->handleUndo()) {
-                event->accept();
-                return;
-            }
-        }
-    }
-
-    if (event->key() == Qt::Key_Delete) {
-        if (lv) {
-            const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
-            bool shiftPressed = modifiers & Qt::ShiftModifier;
-            lv->onMenuDelete(shiftPressed);
-            event->accept();
-            qDebug() << "[Box]-Delete triggered, Shift pressed:" << shiftPressed;
             return;
         }
     }

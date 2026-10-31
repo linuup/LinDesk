@@ -54,6 +54,7 @@ void LinBox::dragMoveEvent(QDragMoveEvent*) {}
 void LinBox::dragLeaveEvent(QDragLeaveEvent*) {}
 void LinBox::dropEvent(QDropEvent*) {}
 void LinBox::keyPressEvent(QKeyEvent*) {}
+void LinBox::focusInEvent(QFocusEvent*) {}
 QVector<QString> LinBox::itemPaths() const { return {}; }
 void LinBox::refreshStyles() {}
 

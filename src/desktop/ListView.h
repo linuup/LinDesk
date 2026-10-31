@@ -428,6 +428,7 @@ public:
 	void loadSelectionColors();
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
+	void clearWidgetFocus();
 
 	// 事件处理
 protected:
@@ -440,6 +441,7 @@ protected:
 	void wheelEvent(QWheelEvent* event) override;
 	void keyPressEvent(QKeyEvent* event) override;
 	void keyReleaseEvent(QKeyEvent* event) override;
+	void focusInEvent(QFocusEvent* event) override;
 	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 	void inputMethodEvent(QInputMethodEvent* event) override;
 	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
