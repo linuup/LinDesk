@@ -2589,7 +2589,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
 
         // 3. Subtle acceptance tint overlay
         QColor acceptTint = accentColor;
-        acceptTint.setAlpha(18);
+        acceptTint.setAlpha(36);
         p.fillRect(contentRect, acceptTint);
 
         p.restore();
@@ -2600,77 +2600,93 @@ void LinBox::paintEvent(QPaintEvent* event) {
         p.save();
         p.setRenderHint(QPainter::Antialiasing, true);
 
-        // Determine base theme accent color with luminous saturation
+        // 1. Compute vibrant, high-energy accent color (preserve full saturation!)
         QColor beamColor = effectiveBackgroundColor();
-        if (beamColor.saturation() < 50 || beamColor.value() < 60) {
-            beamColor = QColor(56, 189, 248); // Electric sky blue (#38BDF8)
+        if (!beamColor.isValid() || beamColor.saturation() < 35 || beamColor.value() < 40) {
+            beamColor = QColor(0, 210, 255); // High-voltage Electric Cyan (#00D2FF)
         } else {
-            beamColor = beamColor.lighter(135);
+            int h, s, v;
+            beamColor.getHsv(&h, &s, &v);
+            s = qBound(190, s + 50, 255); // High saturation, never wash out into white
+            v = qBound(225, v + 25, 255); // Vivid brightness
+            beamColor.setHsv(h, s, v);
         }
 
         if (m_showType == BoxShowType::List_ShowType) {
             // === List Mode: Horizontal Flow Line with Start Anchor Bead ===
-            const QRectF lineRect(indicatorRect.x() + 4, indicatorRect.y(), indicatorRect.width() - 8, qMax(2.0, (qreal)indicatorRect.height()));
+            const QRectF lineRect(indicatorRect.x() + 4, indicatorRect.y(), indicatorRect.width() - 8, qMax(2.5, (qreal)indicatorRect.height()));
 
-            // 1. Ambient Bloom Glow
+            // 1. Outer Ambient Glow (Vivid colored aura)
             const QRectF glowRect = lineRect.adjusted(-2, -3, 2, 3);
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 45));
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 80));
             p.drawRoundedRect(glowRect, 3.5, 3.5);
 
-            // 2. Horizontal Luminous Capsule
+            // 2. Horizontal Flow Line with rich gradient
             QLinearGradient listGrad(lineRect.topLeft(), lineRect.topRight());
             listGrad.setColorAt(0.0, QColor(255, 255, 255, 240));
-            listGrad.setColorAt(0.12, beamColor);
-            listGrad.setColorAt(0.80, beamColor);
-            listGrad.setColorAt(1.0, QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 20));
+            listGrad.setColorAt(0.06, beamColor);
+            listGrad.setColorAt(0.75, beamColor);
+            listGrad.setColorAt(1.0, QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 25));
             p.setBrush(listGrad);
             p.drawRoundedRect(lineRect, lineRect.height() / 2.0, lineRect.height() / 2.0);
 
-            // 3. Start Bead (Terminal Pin at left)
+            // 3. Start Magnetic Pin Bead
             const QPointF beadCenter(lineRect.left(), lineRect.center().y());
-            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 80));
-            p.drawEllipse(beadCenter, 5.0, 5.0);
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 110));
+            p.drawEllipse(beadCenter, 5.5, 5.5);
+            p.setBrush(beamColor);
+            p.drawEllipse(beadCenter, 3.5, 3.5);
             p.setBrush(Qt::white);
-            p.drawEllipse(beadCenter, 2.8, 2.8);
+            p.drawEllipse(beadCenter, 1.5, 1.5);
         } else {
             // === Icon / Grid Mode: Vertical Luminous Pin & Beam ===
-            const qreal beamW = qMax<qreal>(3.0, (qreal)scaledPx(this, 3));
+            const qreal beamW = qMax<qreal>(3.5, (qreal)scaledPx(this, 3));
             const qreal centerX = indicatorRect.center().x();
-            const QRectF beamRect(centerX - beamW / 2.0, indicatorRect.top() + 4, beamW, indicatorRect.height() - 8);
+            const QRectF beamRect(centerX - beamW / 2.0, indicatorRect.top() + 3, beamW, indicatorRect.height() - 6);
 
-            // 1. Ambient Bloom Glow (soft aura for clear visibility over any background)
+            // 1. Outer Ambient Glow Halo (saturated color aura)
             const QRectF haloRect = beamRect.adjusted(-3.5, -2.0, 3.5, 2.0);
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 45));
-            p.drawRoundedRect(haloRect, 4.5, 4.5);
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 85));
+            p.drawRoundedRect(haloRect, 5.0, 5.0);
 
-            // 2. Core Luminous Capsule
+            // 2. Core Luminous Capsule (saturated gradient from top to bottom)
+            int h, s, v;
+            beamColor.getHsv(&h, &s, &v);
+            QColor shiftColor;
+            shiftColor.setHsv((h + 20) % 360, s, v);
+
             QLinearGradient beamGrad(beamRect.topLeft(), beamRect.bottomLeft());
-            beamGrad.setColorAt(0.0, beamColor.lighter(125));
-            beamGrad.setColorAt(0.5, beamColor);
-            beamGrad.setColorAt(1.0, beamColor.lighter(125));
+            beamGrad.setColorAt(0.0, beamColor);
+            beamGrad.setColorAt(0.5, shiftColor);
+            beamGrad.setColorAt(1.0, beamColor);
             p.setBrush(beamGrad);
             p.drawRoundedRect(beamRect, beamW / 2.0, beamW / 2.0);
 
-            // 3. Specular Core Highlight Line
-            p.setPen(QPen(QColor(255, 255, 255, 175), 1.0));
-            p.drawLine(QPointF(centerX, beamRect.top() + 3), QPointF(centerX, beamRect.bottom() - 3));
+            // 3. Subtle micro-specular core line
+            p.setPen(QPen(QColor(255, 255, 255, 110), 1.0));
+            p.drawLine(QPointF(centerX, beamRect.top() + 4), QPointF(centerX, beamRect.bottom() - 4));
 
-            // 4. Terminal Magnetic Anchor Pins (Top & Bottom Beads)
+            // 4. Terminal Magnetic Anchor Pins (Top & Bottom Jewel Beads)
             const QPointF topPin(centerX, beamRect.top());
             const QPointF bottomPin(centerX, beamRect.bottom());
 
             p.setPen(Qt::NoPen);
-            // Outer bead halo
-            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 85));
-            p.drawEllipse(topPin, 4.5, 4.5);
-            p.drawEllipse(bottomPin, 4.5, 4.5);
+            // Outer halo
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 110));
+            p.drawEllipse(topPin, 5.0, 5.0);
+            p.drawEllipse(bottomPin, 5.0, 5.0);
 
-            // Inner specular white core
+            // Solid vibrant bead core
+            p.setBrush(beamColor);
+            p.drawEllipse(topPin, 3.2, 3.2);
+            p.drawEllipse(bottomPin, 3.2, 3.2);
+
+            // Inner specular white glint
             p.setBrush(Qt::white);
-            p.drawEllipse(topPin, 2.2, 2.2);
-            p.drawEllipse(bottomPin, 2.2, 2.2);
+            p.drawEllipse(topPin, 1.4, 1.4);
+            p.drawEllipse(bottomPin, 1.4, 1.4);
         }
 
         p.restore();
@@ -3737,6 +3753,11 @@ void LinBox::dragMoveEvent(QDragMoveEvent* event) {
         if (m_dragTip) m_dragTip->hide();
         event->ignore();
         return;
+    }
+
+    if (m_activeDragPulse && !m_isDragHovered) {
+        m_isDragHovered = true;
+        update();
     }
 
     ListView* lv = ListView::instance();
