@@ -36,6 +36,8 @@
 #include <vector>
 #include "ui/SettingUI.h"
 #include "desktop/ListView.h"
+#include "desktop/LinDesktop.h"
+#include "services/SysInfoUtil.h"
 #include "desktop/FilenameEditor.h"
 #include "desktop/DesktopRootItemState.h"
 #include "app/AppFonts.h"
@@ -2595,19 +2597,83 @@ void LinBox::paintEvent(QPaintEvent* event) {
 
     const QRect indicatorRect = insertionIndicatorRect();
     if (!indicatorRect.isNull()) {
-        p.setPen(Qt::NoPen);
-        if (m_showType == BoxShowType::Icon_ShowType && indicatorRect.width() <= 4) {
-            const QColor accent(0, 255, 255, 235);
-            p.setBrush(accent);
-            p.drawRect(indicatorRect);
-        } else if (m_showType == BoxShowType::Icon_ShowType) {
-            const QColor accent(0, 255, 255, 235);
-            p.setBrush(accent);
-            p.drawRect(indicatorRect);
+        p.save();
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        // Determine base theme accent color with luminous saturation
+        QColor beamColor = effectiveBackgroundColor();
+        if (beamColor.saturation() < 50 || beamColor.value() < 60) {
+            beamColor = QColor(56, 189, 248); // Electric sky blue (#38BDF8)
         } else {
-            p.setBrush(QColor(0, 255, 255, 230));
-            p.drawRect(indicatorRect);
+            beamColor = beamColor.lighter(135);
         }
+
+        if (m_showType == BoxShowType::List_ShowType) {
+            // === List Mode: Horizontal Flow Line with Start Anchor Bead ===
+            const QRectF lineRect(indicatorRect.x() + 4, indicatorRect.y(), indicatorRect.width() - 8, qMax(2.0, (qreal)indicatorRect.height()));
+
+            // 1. Ambient Bloom Glow
+            const QRectF glowRect = lineRect.adjusted(-2, -3, 2, 3);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 45));
+            p.drawRoundedRect(glowRect, 3.5, 3.5);
+
+            // 2. Horizontal Luminous Capsule
+            QLinearGradient listGrad(lineRect.topLeft(), lineRect.topRight());
+            listGrad.setColorAt(0.0, QColor(255, 255, 255, 240));
+            listGrad.setColorAt(0.12, beamColor);
+            listGrad.setColorAt(0.80, beamColor);
+            listGrad.setColorAt(1.0, QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 20));
+            p.setBrush(listGrad);
+            p.drawRoundedRect(lineRect, lineRect.height() / 2.0, lineRect.height() / 2.0);
+
+            // 3. Start Bead (Terminal Pin at left)
+            const QPointF beadCenter(lineRect.left(), lineRect.center().y());
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 80));
+            p.drawEllipse(beadCenter, 5.0, 5.0);
+            p.setBrush(Qt::white);
+            p.drawEllipse(beadCenter, 2.8, 2.8);
+        } else {
+            // === Icon / Grid Mode: Vertical Luminous Pin & Beam ===
+            const qreal beamW = qMax<qreal>(3.0, (qreal)scaledPx(this, 3));
+            const qreal centerX = indicatorRect.center().x();
+            const QRectF beamRect(centerX - beamW / 2.0, indicatorRect.top() + 4, beamW, indicatorRect.height() - 8);
+
+            // 1. Ambient Bloom Glow (soft aura for clear visibility over any background)
+            const QRectF haloRect = beamRect.adjusted(-3.5, -2.0, 3.5, 2.0);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 45));
+            p.drawRoundedRect(haloRect, 4.5, 4.5);
+
+            // 2. Core Luminous Capsule
+            QLinearGradient beamGrad(beamRect.topLeft(), beamRect.bottomLeft());
+            beamGrad.setColorAt(0.0, beamColor.lighter(125));
+            beamGrad.setColorAt(0.5, beamColor);
+            beamGrad.setColorAt(1.0, beamColor.lighter(125));
+            p.setBrush(beamGrad);
+            p.drawRoundedRect(beamRect, beamW / 2.0, beamW / 2.0);
+
+            // 3. Specular Core Highlight Line
+            p.setPen(QPen(QColor(255, 255, 255, 175), 1.0));
+            p.drawLine(QPointF(centerX, beamRect.top() + 3), QPointF(centerX, beamRect.bottom() - 3));
+
+            // 4. Terminal Magnetic Anchor Pins (Top & Bottom Beads)
+            const QPointF topPin(centerX, beamRect.top());
+            const QPointF bottomPin(centerX, beamRect.bottom());
+
+            p.setPen(Qt::NoPen);
+            // Outer bead halo
+            p.setBrush(QColor(beamColor.red(), beamColor.green(), beamColor.blue(), 85));
+            p.drawEllipse(topPin, 4.5, 4.5);
+            p.drawEllipse(bottomPin, 4.5, 4.5);
+
+            // Inner specular white core
+            p.setBrush(Qt::white);
+            p.drawEllipse(topPin, 2.2, 2.2);
+            p.drawEllipse(bottomPin, 2.2, 2.2);
+        }
+
+        p.restore();
     }
 
     const QRect placeholderRect = mappedPlaceholderRect();
@@ -4528,30 +4594,95 @@ QPixmap LinBox::captureBackgroundPixmap() const
         return QPixmap();
     }
 
+    const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+    const QRect captureRect = geometry();
+    const QSize physicalSize(qMax(1, qRound(captureRect.width() * dpr)),
+                             qMax(1, qRound(captureRect.height() * dpr)));
+
+    QPixmap background(physicalSize);
+    background.setDevicePixelRatio(dpr);
+    background.fill(Qt::transparent);
+
+    // 1. Search for ancestor LinDesktop to retrieve the pristine, unpolluted wallpaper.
+    LinDesktop* desktop = nullptr;
+    for (QWidget* w = parentWidget(); w; w = w->parentWidget()) {
+        if (auto* d = qobject_cast<LinDesktop*>(w)) {
+            desktop = d;
+            break;
+        }
+    }
+
+    bool hasWallpaper = false;
+    if (desktop && !desktop->scaledWallpaperPixmap().isNull()) {
+        const QPixmap& wp = desktop->scaledWallpaperPixmap();
+        const qreal wpDpr = qMax<qreal>(1.0, wp.devicePixelRatio());
+        const QPoint posInDesktop = mapTo(desktop, QPoint(0, 0));
+        const QRect cropPhysical(qRound(posInDesktop.x() * wpDpr),
+                                 qRound(posInDesktop.y() * wpDpr),
+                                 qRound(width() * wpDpr),
+                                 qRound(height() * wpDpr));
+        const QRect validCrop = cropPhysical.intersected(QRect(0, 0, wp.width(), wp.height()));
+        if (!validCrop.isEmpty()) {
+            QPainter p(&background);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            const QPixmap cropped = wp.copy(validCrop);
+            p.drawPixmap(0, 0, width(), height(), cropped);
+            hasWallpaper = true;
+        }
+    }
+
+    // 2. If LinDesktop is not found or has no wallpaper pixmap, load Windows wallpaper directly.
+    if (!hasWallpaper) {
+        static QPixmap s_cachedWp;
+        static QString s_cachedWpPath;
+        static qint64 s_lastCheckMs = 0;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now - s_lastCheckMs > 1500 || s_cachedWp.isNull()) {
+            s_lastCheckMs = now;
+            const QString wpPath = SysInfoUtil::GetRobustWallpaperPath();
+            if (!wpPath.isEmpty() && (wpPath != s_cachedWpPath || s_cachedWp.isNull())) {
+                QPixmap raw;
+                if (raw.load(wpPath)) {
+                    s_cachedWp = raw;
+                    s_cachedWpPath = wpPath;
+                }
+            }
+        }
+
+        if (!s_cachedWp.isNull()) {
+            QPainter p(&background);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            const QRect screenGeom = QApplication::primaryScreen()
+                ? QApplication::primaryScreen()->geometry()
+                : QRect(0, 0, 1920, 1080);
+            const QPoint globalPos = mapToGlobal(QPoint(0, 0));
+            const qreal ratioX = (qreal)s_cachedWp.width() / (qreal)qMax(1, screenGeom.width());
+            const qreal ratioY = (qreal)s_cachedWp.height() / (qreal)qMax(1, screenGeom.height());
+            const QRect srcRect(qRound((globalPos.x() - screenGeom.x()) * ratioX),
+                                qRound((globalPos.y() - screenGeom.y()) * ratioY),
+                                qRound(width() * ratioX),
+                                qRound(height() * ratioY));
+            const QRect validSrc = srcRect.intersected(QRect(0, 0, s_cachedWp.width(), s_cachedWp.height()));
+            if (!validSrc.isEmpty()) {
+                p.drawPixmap(QRect(0, 0, width(), height()), s_cachedWp, validSrc);
+                hasWallpaper = true;
+            }
+        }
+    }
+
+    if (!hasWallpaper) {
+        background.fill(QColor(30, 30, 30));
+    }
+
+    // 3. Render sibling widgets underneath (strictly excluding this LinBox!)
     QWidget* sourceParent = parentWidget();
     if (sourceParent) {
-        const QRect captureRect = geometry();
-        const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
-        const QSize physicalSize(qMax(1, qRound(captureRect.width() * dpr)),
-                                 qMax(1, qRound(captureRect.height() * dpr)));
-        QPixmap background(physicalSize);
-        if (dpr > 1.0) {
-            background.setDevicePixelRatio(dpr);
-        }
-        background.fill(Qt::transparent);
-
         LinBox* self = const_cast<LinBox*>(this);
         self->m_isCapturingBackground = true;
 
         QPainter painter(&background);
         painter.setRenderHint(QPainter::Antialiasing, false);
         painter.translate(-captureRect.topLeft());
-
-        sourceParent->render(
-            &painter,
-            QPoint(),
-            QRegion(captureRect),
-            QWidget::DrawWindowBackground | QWidget::IgnoreMask);
 
         const QObjectList childObjects = sourceParent->children();
         for (QObject* childObject : childObjects) {
@@ -4573,23 +4704,9 @@ QPixmap LinBox::captureBackgroundPixmap() const
         }
 
         self->m_isCapturingBackground = false;
-
-        // When parentWidget (ListView) has WA_TranslucentBackground, the wallpaper is
-        // rendered underneath ListView by CEF/canvas layer, so sourceParent->render
-        // yields transparent/near-transparent content.
-        // Fall back to screen capture if the result is effectively transparent.
-        if (!isPixmapEffectivelyTransparent(background, 10)) {
-            return background;
-        }
     }
 
-    const QRect globalRect(mapToGlobal(QPoint(0, 0)), size());
-    QScreen* screen = windowHandle() ? windowHandle()->screen() : QApplication::screenAt(globalRect.center());
-    if (!screen) {
-        screen = QApplication::primaryScreen();
-    }
-    return screen ? screen->grabWindow(0, globalRect.x(), globalRect.y(), globalRect.width(), globalRect.height())
-                  : QPixmap();
+    return background;
 }
 
 void LinBox::updateBlurCache()

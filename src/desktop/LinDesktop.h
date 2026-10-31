@@ -53,6 +53,7 @@ public:
 
     bool showDefaultWallpaper() const;
     void setShowDefaultWallpaper(bool show);
+    const QPixmap& scaledWallpaperPixmap() const { return m_scaledBackImagePixmap; }
 
     void onWallpaperChanged();
 
