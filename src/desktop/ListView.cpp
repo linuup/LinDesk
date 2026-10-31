@@ -2923,7 +2923,8 @@ void ListView::syncViewModeSizes() {
             break;
     }
 
-    const int newTier = ListItemData::calculateIconSourceTier(m_iconWidth);
+    const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+    const int newTier = ListItemData::calculateIconSourceTier(qRound(m_iconWidth * dpr));
     if (ListItemData::s_targetIconSize != newTier) {
         ListItemData::s_targetIconSize = newTier;
         IconCacheManager::instance().invalidateIconsByPrefix(QStringLiteral(""));
@@ -2947,6 +2948,7 @@ DesktopRenderParams ListView::currentRenderParams() const
     params.smallIconW = scalePx(kSmallIconW);
     params.iconTextGap = kDesktopIconTextGap;
     params.dpiScale = currentDpiScale();
+    params.devicePixelRatio = qMax<qreal>(1.0, devicePixelRatioF());
     params.labelFont = font();
     params.showShortcutArrow = m_iconShowRule.showShortCutArrow;
     return params;

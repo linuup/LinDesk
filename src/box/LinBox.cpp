@@ -360,6 +360,7 @@ DesktopRenderParams buildBoxRenderParams(const LinBox* box, LinBox::BoxShowType 
     params.smallIconW = scaledPx(box, 62);
     params.iconTextGap = (showType == LinBox::BoxShowType::List_ShowType) ? scaledPx(box, 4) : scaledPx(box, 8);
     params.dpiScale = DpiScaleHelper::uiScaleForWidget(box);
+    params.devicePixelRatio = box ? qMax<qreal>(1.0, box->devicePixelRatioF()) : 1.0;
     params.labelFont = AppFonts::uiFont(9);
     params.showShortcutArrow = true;
     return params;
@@ -554,8 +555,9 @@ QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float 
     constexpr int kScreenAlpha = 32;
     constexpr int kNoiseAlpha = 20;
 
-    const QSize originalSize = source.size();
+    const qreal dpr = source.devicePixelRatio();
     const QImage sourceImage = source.toImage();
+    const QSize originalSize = sourceImage.size();
 
     // Acrylic recipe from Microsoft guidance:
     // background, blur, exclusion blend, tint overlay, noise.
@@ -609,6 +611,9 @@ QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float 
 
     applyNoiseLayer(restored, kNoiseAlpha);
 
+    if (dpr > 1.0) {
+        restored.setDevicePixelRatio(dpr);
+    }
     return QPixmap::fromImage(restored);
 }
 
@@ -2281,7 +2286,13 @@ bool LinBox::startItemDrag(const QPoint& boxPos)
     }
 
     if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
-        QPixmap ghostPixmap(ghostBounds.size());
+        const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+        const QSize physicalSize(qMax(1, qRound(ghostBounds.width() * dpr)),
+                                 qMax(1, qRound(ghostBounds.height() * dpr)));
+        QPixmap ghostPixmap(physicalSize);
+        if (dpr > 1.0) {
+            ghostPixmap.setDevicePixelRatio(dpr);
+        }
         ghostPixmap.fill(Qt::transparent);
 
         QPainter painter(&ghostPixmap);
@@ -4357,7 +4368,13 @@ QPixmap LinBox::captureBackgroundPixmap() const
     QWidget* sourceParent = parentWidget();
     if (sourceParent) {
         const QRect captureRect = geometry();
-        QPixmap background(captureRect.size());
+        const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+        const QSize physicalSize(qMax(1, qRound(captureRect.width() * dpr)),
+                                 qMax(1, qRound(captureRect.height() * dpr)));
+        QPixmap background(physicalSize);
+        if (dpr > 1.0) {
+            background.setDevicePixelRatio(dpr);
+        }
         background.fill(Qt::transparent);
 
         LinBox* self = const_cast<LinBox*>(this);

@@ -1892,7 +1892,13 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
             const QSize baseSize = primaryData.itemRect.size();
             const QSize pixmapSize(baseSize.width() + pad * 2, baseSize.height() + pad * 2);
 
-            dragPixmap = QPixmap(pixmapSize);
+            const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+            const QSize physicalPixmapSize(qMax(1, qRound(pixmapSize.width() * dpr)),
+                                          qMax(1, qRound(pixmapSize.height() * dpr)));
+            dragPixmap = QPixmap(physicalPixmapSize);
+            if (dpr > 1.0) {
+                dragPixmap.setDevicePixelRatio(dpr);
+            }
             dragPixmap.fill(Qt::transparent);
 
             QPainter painter(&dragPixmap);
@@ -1928,7 +1934,13 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
             hotSpot.setX(qBound(0, hotSpot.x(), qMax(0, dragPixmap.width() - 1)));
             hotSpot.setY(qBound(0, hotSpot.y(), qMax(0, dragPixmap.height() - 1)));
         } else {
-            dragPixmap = QPixmap(ghostBounds.size());
+            const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+            const QSize physicalGhostSize(qMax(1, qRound(ghostBounds.width() * dpr)),
+                                          qMax(1, qRound(ghostBounds.height() * dpr)));
+            dragPixmap = QPixmap(physicalGhostSize);
+            if (dpr > 1.0) {
+                dragPixmap.setDevicePixelRatio(dpr);
+            }
             dragPixmap.fill(Qt::transparent);
 
             QPainter painter(&dragPixmap);

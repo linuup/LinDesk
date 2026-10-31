@@ -397,9 +397,12 @@ void LinDesktop::loadBackImageInternal(bool sync)
         return;
     }
 
-    const QSize wallpaperTargetSize = size().isValid() && !size().isEmpty()
+    const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+    const QSize logicalWallpaperSize = size().isValid() && !size().isEmpty()
         ? size()
         : (QApplication::primaryScreen() ? QApplication::primaryScreen()->geometry().size() : QSize(1920, 1080));
+    const QSize wallpaperTargetSize(qMax(1, qRound(logicalWallpaperSize.width() * dpr)),
+                                   qMax(1, qRound(logicalWallpaperSize.height() * dpr)));
 
     if (sync) {
         m_pendingWallpaperPath.clear();
@@ -496,8 +499,8 @@ void LinDesktop::applyFallbackWallpaper(const QString& path, const QString& reas
 
 void LinDesktop::rebuildScaledWallpaperPixmaps()
 {
-    const QSize targetSize = size();
-    if (!targetSize.isValid()) {
+    const QSize targetLogicalSize = size();
+    if (!targetLogicalSize.isValid()) {
         m_scaledBackImagePixmap = QPixmap();
         m_prevScaledBackImagePixmap = QPixmap();
         m_backImagePixmap = QPixmap();
@@ -505,8 +508,12 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
         return;
     }
 
+    const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+    const QSize targetPhysicalSize(qMax(1, qRound(targetLogicalSize.width() * dpr)),
+                                  qMax(1, qRound(targetLogicalSize.height() * dpr)));
+
     // 若当前尺寸已匹配且已经生成过 scaled pixmap，无需重复重构
-    if (!m_scaledBackImagePixmap.isNull() && m_scaledBackImagePixmap.size() == targetSize && m_backImagePixmap.isNull()) {
+    if (!m_scaledBackImagePixmap.isNull() && m_scaledBackImagePixmap.size() == targetPhysicalSize && qFuzzyCompare(m_scaledBackImagePixmap.devicePixelRatio(), dpr) && m_backImagePixmap.isNull()) {
         return;
     }
 
@@ -517,33 +524,37 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
             fallback.fill(Qt::black);
             m_backImagePixmap = fallback;
         } else {
-            const QImage img = loadWallpaperImageScaled(m_currentWallpaperPath, targetSize);
+            const QImage img = loadWallpaperImageScaled(m_currentWallpaperPath, targetPhysicalSize);
             if (!img.isNull()) {
                 m_backImagePixmap = QPixmap::fromImage(img);
             }
         }
     }
 
-    const auto buildFittedPixmap = [targetSize](const QPixmap& source) {
+    const auto buildFittedPixmap = [targetPhysicalSize, dpr](const QPixmap& source) {
         if (source.isNull()) {
             return QPixmap();
         }
         if (source.size() == QSize(1, 1)) {
-            QPixmap fitted(targetSize);
+            QPixmap fitted(targetPhysicalSize);
             fitted.fill(source.toImage().pixelColor(0, 0));
+            if (dpr > 1.0) fitted.setDevicePixelRatio(dpr);
             return fitted;
         }
 
-        QPixmap fitted(targetSize);
+        QPixmap fitted(targetPhysicalSize);
         fitted.fill(Qt::transparent);
 
         QPainter painter(&fitted);
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-        QPixmap scaled = source.scaled(targetSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-        const int x = (targetSize.width() - scaled.width()) / 2;
-        const int y = (targetSize.height() - scaled.height()) / 2;
+        QPixmap scaled = source.scaled(targetPhysicalSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        const int x = (targetPhysicalSize.width() - scaled.width()) / 2;
+        const int y = (targetPhysicalSize.height() - scaled.height()) / 2;
         painter.drawPixmap(x, y, scaled);
+        if (dpr > 1.0) {
+            fitted.setDevicePixelRatio(dpr);
+        }
         return fitted;
     };
 

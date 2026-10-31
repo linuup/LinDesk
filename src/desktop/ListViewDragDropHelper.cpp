@@ -432,7 +432,13 @@ void ListViewDragDropHelper::createDragGhosts(ListView& listView, const QPoint& 
         return;
     }
 
-    QPixmap pixmap(combinedRect.size());
+    const qreal dpr = qMax<qreal>(1.0, listView.devicePixelRatioF());
+    const QSize physicalSize(qMax(1, qRound(combinedRect.width() * dpr)),
+                             qMax(1, qRound(combinedRect.height() * dpr)));
+    QPixmap pixmap(physicalSize);
+    if (dpr > 1.0) {
+        pixmap.setDevicePixelRatio(dpr);
+    }
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
