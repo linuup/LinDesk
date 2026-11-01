@@ -6,6 +6,8 @@
   <title>LinDesk 动态壁纸管理中心与壁纸工坊交互原型</title>
   <link rel="stylesheet" href="style.css">
   <style>
+    .hidden { display: none !important; }
+
     @keyframes pulse-subtle {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.65; transform: scale(1.15); }
@@ -774,20 +776,24 @@
 
     // Tab Switcher
     function switchMainTab(tab) {
-      document.getElementById('tab-gallery').classList.add('hidden');
-      document.getElementById('tab-studio').classList.add('hidden');
-      document.getElementById('tab-desktop').classList.add('hidden');
-      document.getElementById('tab-widgets').classList.add('hidden');
-
-      const tabs = ['gallery', 'studio', 'desktop', 'widgets'];
-      tabs.forEach(t => {
+      const allTabs = ['gallery', 'studio', 'desktop', 'widgets'];
+      allTabs.forEach(t => {
+        const pane = document.getElementById(`tab-${t}`);
+        if (pane) {
+          pane.classList.add('hidden');
+          pane.style.display = 'none';
+        }
         const btn = document.getElementById(`nav-${t}`);
         if (btn) {
           btn.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-1.5";
         }
       });
 
-      document.getElementById(`tab-${tab}`).classList.remove('hidden');
+      const activePane = document.getElementById(`tab-${tab}`);
+      if (activePane) {
+        activePane.classList.remove('hidden');
+        activePane.style.display = 'block';
+      }
       const activeBtn = document.getElementById(`nav-${tab}`);
       if (activeBtn) {
         activeBtn.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-1.5";
@@ -813,7 +819,11 @@
       }
 
       // Close context menu if moving away
-      document.getElementById('mock-context-menu').classList.add('hidden');
+      const ctxMenu = document.getElementById('mock-context-menu');
+      if (ctxMenu) {
+        ctxMenu.classList.add('hidden');
+        ctxMenu.style.display = 'none';
+      }
     }
 
     // Toggle mouse physics
