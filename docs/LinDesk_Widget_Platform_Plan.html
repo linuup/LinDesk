@@ -88,7 +88,6 @@
     <a href="LinDesk_Widget_Platform_Plan.html" class="active">组件平台</a>
     <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html">组件通信协议</a>
-    <a href="LinDesk_Core_Desktop_UX_Plan.html">核心体验优化</a>
 </nav>
 
 <header class="doc-head">
@@ -150,6 +149,39 @@
     <li><strong>IME</strong>：组合/提交/取消已实现；<span class="tag check">待补</span> 候选框查询回调（OnIMECandidateCountToQuery，P1 可选，参考 cefclient osr_ime_handler_win.cpp）。</li>
   </ul>
   <p class="note warn"><strong>P0 待办</strong>：组件包目录<strong>监听热加载</strong>（新增包目录即时注册、删除即时清理）+ <strong>启动对账</strong>（用户手动删包后注册表失效条目自动清理/标记不可用）。任务见 8.1。</p>
+
+  <h3>2.4 CEF 运行时端到端安装、开启与生命周期闭环流程（待办规划） <span class="tag p1">P1</span></h3>
+  <p><strong>现状痛点剖析</strong>：当前在本地开发编译时，CMake 自动将 <code>LinWidgetRuntime.dll</code> 及 CEF 二进制拷贝至 <code>&lt;appDir&gt;/runtime/linwidget/</code>，导致 <code>RuntimeInstaller::isRuntimeInstalled()</code> 始终返回 <code>true</code>，主程序在用户毫不知情下自动后台挂载 CEF 并直接弹出默认页；而在 <code>SettingUI.cpp</code> 中，底层 <code>RuntimeInstaller</code> 的在线下载与解压函数尚未接入完整的 UI 状态卡片。</p>
+  <p><strong>端到端标准用户流程设计（后续落地规范）</strong>：</p>
+  <div class="tbl-scroll">
+    <table>
+      <thead>
+        <tr><th>状态</th><th>系统行为与资源开销</th><th>设置页 UI 表现与用户动作</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>未安装态<br>(NotInstalled)</strong></td>
+          <td>主程序绝对不初始化 CEF，0 进程，0 显存占用，前台不出现任何默认占位页，保持纯绿色零开销。</td>
+          <td>组件设置页展示【组件系统运行时（CEF OSR）未安装】引导卡片（标注包体积约 150MB、功能介绍）；提供 <code>[一键在线安装]</code> 与 <code>[本地 zip 离线包安装]</code> 两个明确按钮。</td>
+        </tr>
+        <tr>
+          <td><strong>安装流<br>(Installing)</strong></td>
+          <td>主程序调用 <code>RuntimeInstaller::downloadAndInstallLatestRuntime()</code>，接管网络流式下载与进度事件。</td>
+          <td>卡片呈现 Fluent 进度条，实时显示下载进度百分比、已下载大小与网络速率；下载完成后自动进行 SHA-256 哈希完整性校验，原子解压至 <code>&lt;userData&gt;/runtime/linwidget/</code> 并动态 <code>LoadLibrary</code>。</td>
+        </tr>
+        <tr>
+          <td><strong>已安装态<br>(Installed)</strong></td>
+          <td>运行时就绪，支持小组件与动态壁纸自由启停；无活动组件时默认页全屏渲染且像素级穿透。</td>
+          <td>卡片显示【已就绪】，呈现已安装版本号、磁盘占用体积、<code>[检查更新]</code>、<code>[重新加载]</code> 与 <code>[卸载运行时]</code> 按钮。</td>
+        </tr>
+        <tr>
+          <td><strong>卸载流<br>(Uninstalling)</strong></td>
+          <td>彻底停止所有活动组件与壁纸，调用 <code>unloadRuntime()</code> 释放动态库句柄，删除 <code>runtime/linwidget/</code> 目录；<strong>严格保留用户数据与已下载组件包</strong>。</td>
+          <td>弹出二次确认模态弹窗（明确说明保留用户数据）；确认后安全卸载，界面平滑退回未安装态，全程不重启主程序。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </section>
 
 <section>
@@ -226,14 +258,29 @@
 </section>
 
 <section>
-  <h2>7. 壁纸组件（role: wallpaper）</h2>
+  <h2>7. 壁纸组件（role: wallpaper）与壁纸工坊 (Wallpaper Studio)</h2>
+  <h3>7.1 架构层级与生命周期 <span class="tag keep">已落地</span></h3>
   <p>动态壁纸 = 组件系统内的特殊组件类型（<code>manifest.role: "wallpaper"</code>），与普通组件共用包规范、OSR 实例、消息桥、权限模型与 Canvas 合成；<strong>不做独立运行时</strong>。壁纸 = 全屏 OSR 实例，帧合成层级最低（普通组件之下、系统壁纸之上）；单例（同时仅一个活动壁纸）、不可拖拽、点击穿透。</p>
   <p class="note keep">P0 已落地：role 分流 + <code>startWallpaper</code> 全屏渲染、桌面视口绑定、层级与穿透、单例持久化（启动恢复/切换停旧）、内置壁纸包（图片/视频/轮播/本地文件选择骨架）。</p>
+
+  <h3>7.2 壁纸工坊 (Wallpaper Studio)：可视化配置编辑器 <span class="tag p1">P1</span></h3>
+  <p>虽然组件系统底层面向 AI 生成（复杂动态算法、Canvas 粒子、天气联动），但对于终端用户，<strong>90% 的高频日常需求是自由设置本地收藏的静态壁纸或 MP4/WebM 视频</strong>。为避免简陋的“文件浏览”按钮引发比例变形、大黑边、音量爆音与桌面图标看不清等问题，规划专用的<strong>可视化配置编辑器——“壁纸工坊 (Wallpaper Studio)”</strong>：</p>
+  <ul>
+    <li><strong>双轮驱动分工</strong>：AI 产出高级动效骨架与着色器模板；工坊编辑器负责普通用户媒体资产拖拽、所见即所得裁切、滤镜与参数装配；</li>
+    <li><strong>16:9 实时画板预览</strong>：等比还原屏幕，配备【桌面图标模拟剪影】浮层，所见即所得肉眼验证壁纸与图标的对比度；</li>
+    <li><strong>排版适配四模式</strong>：填充裁剪 (Cover)、等比完整 (Contain)、拉伸 (Stretch)、平铺 (Tile)；</li>
+    <li><strong>易读性滤镜</strong>：提供遮罩暗化 (0%~80%) 与背景高斯模糊 (0~20px) 滑块，保护桌面文件文字清晰辨识；</li>
+    <li><strong>视频音频控制</strong>：静音切换、音量无级调节 (0~100%)、播放速率 (0.5x~2.0x)；</li>
+    <li><strong>导出与生效</strong>：一键应用至当前桌面；一键导出标准 <code>.lw</code> 壁纸包。</li>
+  </ul>
+
+  <h3>7.3 视频性能治理 <span class="tag p1">P1</span></h3>
+  <p>视频壁纸按 30fps/60fps 帧率节流，与 5.4 生命周期策略一致：窗口最小化、全屏 3D 游戏或休眠时挂起暂停渲染，确保 CPU/GPU 0.0% 零抢占。</p>
   <table>
     <colgroup><col style="width:10%"><col style="width:50%"><col style="width:40%"></colgroup>
     <tr><th>级别</th><th>任务</th><th>说明</th></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>壁纸设置 UI（组件管理窗口内）+ 本地文件选择（wallpaper_set_source / get_source 消息 + 主程序文件对话框）+ 遮底/恢复系统壁纸联动完善</td><td>设置入口；停止时恢复系统壁纸</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>视频性能治理（内容帧率、最小化暂停）</td><td>与 5.4 生命周期策略一致</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>壁纸工坊 (Wallpaper Studio) 可视化编辑器 + 本地文件拖拽装载 + 易读性滤镜</td><td>16:9 画板、图标浮层、Cover/Contain 适配、暗度/模糊保护图标、音量控制、导出 .lw</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>视频性能治理（内容帧率、最小化/全屏游戏暂停）</td><td>与 5.4 生命周期策略一致</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>在线 URL 壁纸（network 权限验证）</td><td>权限模型实战用例</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>多屏 / 多壁纸（可选）</td><td>暂不承诺</td></tr>
   </table>
@@ -278,6 +325,7 @@
     <tr><td><code>ListView.cpp</code>（鼠标事件）+ 运行时桥</td><td><strong>组件 Ctrl+拖拽移动</strong>：命中 + Ctrl → 移动模式（不转发 OSR）→ 实时更新 geometry（桥导出 get/set_widget_geometry，复用 moveWidget）→ 抬起持久化；Ctrl+点击仍转发；壁纸/默认页不可拖</td><td><span class="tag keep">已落地</span></td><td>6.1</td></tr>
     <tr><td>设置页组件区完善</td><td>组件列表 + [下载组件] + [检查更新] + [卸载] + [打开组件管理]；入口按运行时/组件显隐</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
     <tr><td>组件管理窗口</td><td>两栏窗口 + 权限开关 / 数据管理 / 运行状态 / 重启 / 日志；消息走 widget_manager 收敛类型</td><td><span class="tag keep">已落地</span></td><td>6.2</td></tr>
+    <tr><td>SettingUI 运行时完整安装/卸载/状态机 UI 对接</td><td>未安装引导卡片 + 在线流式下载进度条 + SHA-256 校验 + 本地 zip 离线安装 + 安全卸载确认弹窗</td><td><span class="tag p1">P1</span></td><td>2.4</td></tr>
     <tr><td>settings schema 渲染</td><td>manifest settingsSchema → 自动渲染设置对话框；与 settings.html 并存</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
   </table>
 
@@ -285,7 +333,8 @@
   <table>
     <colgroup><col style="width:30%"><col style="width:44%"><col style="width:12%"><col style="width:14%"></colgroup>
     <tr><th>文件 / 位置</th><th>任务</th><th>级别</th><th>章节</th></tr>
-    <tr><td>壁纸设置 UI + 文件选择 + 视频性能治理</td><td>wallpaper_set_source/get_source、设置窗口、帧率/最小化暂停</td><td><span class="tag p1">P1</span></td><td>7</td></tr>
+    <tr><td>壁纸工坊与可视化编辑器 (Wallpaper Studio)</td><td>16:9 实时画板 + 本地图片/视频拖拽 + Cover/Contain 适配 + 音量控制 + 暗度/模糊文字保护滤镜 + 导出 .lw 包</td><td><span class="tag p1">P1</span></td><td>7.2</td></tr>
+    <tr><td>视频性能治理（帧率控制 + 最小化挂起）</td><td>wallpaper_set_source/get_source、内容帧率节流、全屏独占暂停</td><td><span class="tag p1">P1</span></td><td>7.3</td></tr>
     <tr><td>在线 URL 壁纸 / 多屏多壁纸</td><td>network 权限验证；多屏（可选）</td><td><span class="tag p2">P2</span></td><td>7</td></tr>
   </table>
 </section>
@@ -297,7 +346,7 @@
     <tr><th>级别</th><th>内容</th><th>验收要点</th></tr>
     <tr><td><span class="tag p0">P0</span></td><td>运行时拆分/安装/卸载、CEF 缺口、壁纸 P0、组件目录扫描注册 <span class="tag keep">已落地</span>；<strong>目录监听热加载 + 启动对账</strong> 待补</td><td>组件包目录增删即时生效；注册表无失效条目</td></tr>
     <tr><td><span class="tag keep">已落地</span></td><td><strong>第 6 章体验层全闭环</strong>：组件 Ctrl+拖拽移动、组件管理窗口（双栏）、设置页组件区动作完善、manifest.settingsSchema 自动渲染</td><td>按住 Ctrl 拖动组件到任意位置且重启恢复；双栏管理窗口权限/数据/运行状态闭环；settingsSchema 自动生成表单并即时生效</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>组件市场 + 作者层（示例仓库/校验器/诊断包/意图保留）+ 权限申请流与订阅推送 + 壁纸设置 UI</td><td>在线装/卸/更新组件全流程可用；诊断包可直接喂 AI 完成增量修复；拒绝权限后 API 返回 DENIED 且不重复弹窗</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>组件市场 + 作者层（示例仓库/校验器/诊断包/意图保留）+ 权限申请流与订阅推送 + 壁纸工坊 (Wallpaper Studio)</td><td>在线装/卸/更新组件全流程可用；诊断包可直接喂 AI 完成增量修复；壁纸工坊提供拖拽导入图片/视频与实时排版滤镜调节全闭环</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>生命周期挂起/恢复 + 沙箱收尾</td><td>全新机器"装主程序 → 安装组件系统 → 下载组件包 → 启用 → 卸载"全流程可用；最小化后组件帧暂停</td></tr>
     <tr><td><span class="tag p3">P3</span></td><td>组件间通信 + 桌面集成扩展点（拖放/文件/快捷键）</td><td>组件间通信按来源隔离并需用户授权</td></tr>
   </table>

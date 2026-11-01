@@ -98,7 +98,6 @@
     <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
     <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html">组件通信协议</a>
-    <a href="LinDesk_Core_Desktop_UX_Plan.html">核心体验优化</a>
 </nav>
 
 <header class="doc-head">
@@ -169,8 +168,8 @@
     <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
     <tr><th>关键类</th><th>职责</th></tr>
     <tr><td><code>LinDesktop</code></td><td>桌面画布根控件：组合 ListView、SelectArea、组件画布、桌面监控，处理鼠标事件与透明度过渡</td></tr>
-    <tr><td><code>ListView</code></td><td>图标列表视图，绘制每个列表项（图标、覆盖层、文件名）</td></tr>
-    <tr><td><code>SelectArea</code></td><td>拖拽框选区域，绘制选择框，支持多选/单选</td></tr>
+    <tr><td><code>ListView</code></td><td>图标列表视图，单层自绘 QPainter 统一管线；集成盲打跳选定位（Type-to-Select）、双击空白隐藏桌面淡入淡出（220ms InOutQuad）、Ctrl+Z 撤销桥接、High-DPI 全链路缩放与 QuadTree 裁剪</td></tr>
+    <tr><td><code>SelectArea</code></td><td>纯 QPainter 直绘框选矩形，联合脏矩形局部重绘，零残影且无子控件树开销</td></tr>
     <tr><td><code>ListViewModel</code> / <code>DesktopRootItemModel</code></td><td>列表与桌面根项的数据模型</td></tr>
     <tr><td><code>DesktopRootItemState</code> / <code>DesktopRootItemRenderData</code></td><td>桌面根项的状态与渲染数据</td></tr>
     <tr><td><code>DesktopItemRenderCacheHelper</code></td><td>图标项渲染缓存，提升重绘性能</td></tr>
@@ -223,7 +222,7 @@
   <table>
     <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
     <tr><th>关键类</th><th>职责</th></tr>
-    <tr><td><code>LinBox</code></td><td>盒子控件：图标/列表两种显示模式、折叠、拖拽落点预览、内联重命名、映射文件夹状态（正常/缺失/无权限）</td></tr>
+    <tr><td><code>LinBox</code></td><td>桌面收纳盒控件：平滑弹性高度折叠缓动（200ms OutCubic）、标题栏四分区双击命中模型（文本重命名/空白折叠/图标打开目录）、鼠标悬停自动展开 (Auto-Peek Roll-up)、12px 屏幕与同屏盒子 0 缝隙磁吸对齐、High-DPI 亚克力毛玻璃适配</td></tr>
     <tr><td><code>BoxManager</code></td><td>盒子生命周期管理（创建/销毁/查找/置顶）、布局与图标归属持久化（saveAll/loadAll）、文件归属查询</td></tr>
   </table>
   </div>
@@ -263,7 +262,7 @@
     <tr><td><code>SystemInfo/SystemInfoService</code></td><td>系统信息采集（CPU / GPU / 内存，基于 Iphlpapi、Dxgi、Pdh）</td></tr>
     <tr><td><code>update/</code></td><td>更新模块：<code>UpdateChecker</code>（版本检查/比较）、<code>UpdateDownloader</code>（下载）、<code>UpdateTypes</code>（数据结构）</td></tr>
     <tr><td><code>HotkeyManager</code></td><td>全局快捷键注册与管理</td></tr>
-    <tr><td><code>IconCacheManager</code></td><td>图标缓存，避免重复提取系统图标</td></tr>
+    <tr><td><code>IconCacheManager</code></td><td>两级图标缓存：内存级通用扩展名单例共享池（99% 命中）+ 本地磁盘持久化缓存 (%APPDATA%/LinDesk/IconCache/) + 线程池异步解码与 0ms 骨架占位 + 100ms 局部渐进淡入</td></tr>
     <tr><td><code>LayoutPersistenceService</code></td><td>桌面布局与盒子状态持久化（收集/保存/加载图标位置与显示规则）</td></tr>
     <tr><td><code>DesktopItemLoader</code></td><td>桌面图标加载</td></tr>
     <tr><td><code>DpiCoordinateHelper</code> / <code>DpiScaleHelper</code></td><td>DPI 坐标换算与缩放适配</td></tr>

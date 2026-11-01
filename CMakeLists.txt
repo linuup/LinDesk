@@ -229,8 +229,6 @@ if(EXISTS "${CEF_ROOT}/include/cef_app.h")
         "src/desktop/widgets/runtime_export.h"
         "src/desktop/widgets/runtime_export.cpp"
         "src/services/AppPaths.h"
-        "src/services/IconCacheManager.h"
-        "src/services/IconCacheManager.cpp"
         "src/services/DpiScaleHelper.h"
         "src/services/SystemInfo/SystemInfoService.h"
         "src/services/SystemInfo/SystemInfoService.cpp"

@@ -243,3 +243,45 @@ TEST_F(StoreAppIconCompatTest, IconCacheManager_InvalidateItemCache)
     EXPECT_EQ(mgr.iconCount(), 0);
     EXPECT_EQ(mgr.imageCount(), 0);
 }
+
+TEST_F(StoreAppIconCompatTest, IconCacheManager_DiskPersistence)
+{
+    auto& mgr = IconCacheManager::instance();
+    const QString filePath = QStringLiteral("C:/test/file_cache_verify.png");
+    const qint64 mtime = 123456789;
+    const int sizeTier = 48;
+
+    const QString diskKey = mgr.computeDiskKey(filePath, mtime, sizeTier);
+    EXPECT_FALSE(diskKey.isEmpty());
+
+    QImage testImg(48, 48, QImage::Format_ARGB32);
+    testImg.fill(Qt::yellow);
+
+    mgr.saveDiskCache(diskKey, testImg);
+    EXPECT_TRUE(mgr.hasDiskCache(diskKey));
+
+    QImage loaded = mgr.loadDiskCache(diskKey);
+    EXPECT_FALSE(loaded.isNull());
+    EXPECT_EQ(loaded.width(), 48);
+    EXPECT_EQ(loaded.height(), 48);
+    EXPECT_EQ(loaded.pixelColor(24, 24), QColor(Qt::yellow));
+}
+
+TEST_F(StoreAppIconCompatTest, IconCacheManager_Placeholders)
+{
+    auto& mgr = IconCacheManager::instance();
+    QPixmap folderPix = mgr.genericFolderPlaceholder(48);
+    EXPECT_FALSE(folderPix.isNull());
+    EXPECT_EQ(folderPix.width(), 48);
+    EXPECT_EQ(folderPix.height(), 48);
+
+    QPixmap appPix = mgr.genericAppPlaceholder(48);
+    EXPECT_FALSE(appPix.isNull());
+    EXPECT_EQ(appPix.width(), 48);
+    EXPECT_EQ(appPix.height(), 48);
+
+    QPixmap filePix = mgr.genericFilePlaceholder(48);
+    EXPECT_FALSE(filePix.isNull());
+    EXPECT_EQ(filePix.width(), 48);
+    EXPECT_EQ(filePix.height(), 48);
+}

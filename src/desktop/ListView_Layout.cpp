@@ -250,7 +250,7 @@ bool ListView::applyGridAlignedDesktopDropLayout(const QStringList& draggedPaths
         if (!draggedPathSet.contains(normalizedPath)) {
             continue;
         }
-        const QPoint cell = normalizedCellForPos(localPosFromGhostWidget(ghost.widget));
+        const QPoint cell = normalizedCellForPos(localPosForGhost(ghost));
         previewMinCellX = qMin(previewMinCellX, cell.x());
         previewMinCellY = qMin(previewMinCellY, cell.y());
         hasPreviewCells = true;
@@ -1235,7 +1235,7 @@ void ListView::applyViewModeMetricsChange(int oldIconWidth,
     return;
 }
 
-void ListView::saveBoxes() {
+void ListView::saveBoxes(bool async) {
     if (m_isLoadingPersistence) {
         return;
     }
@@ -1257,7 +1257,7 @@ void ListView::saveBoxes() {
         BoxManager::instance()->allBoxes()
     );
     m_savedIconPositions = persistenceService.toSavedIconPositions(state.iconPositions);
-    persistenceService.save(m_persistencePath, state);
+    persistenceService.save(m_persistencePath, state, async);
 }
 
 void ListView::requestSaveBoxes() {
@@ -1541,7 +1541,7 @@ void ListView::createBoxFromSavedData(const QString& title, const QRect& geom, b
     
     box->setGeometry(safeGeometry);
     box->setShowType(safeShowType);
-    if (collapsed) box->toggleCollapse();
+    if (collapsed) box->setCollapsed(true, false, false);
 
     if (m_iconShowRule.showDesktopIcons) {
         box->show();

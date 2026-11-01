@@ -275,6 +275,44 @@ QPoint ListView::localPosFromGhostWidget(const QWidget* ghostWidget) const
     return mapFromGlobal(ghostWidget->pos());
 }
 
+QPoint ListView::localPosForGhost(const GhostInfo& ghost) const
+{
+    const QPoint mousePos = m_lastGhostMousePos.isNull() ? QCursor::pos() : m_lastGhostMousePos;
+    return mapFromGlobal(mousePos) + ghost.offset;
+}
+
+void ListView::clearDragGhosts()
+{
+    if (m_combinedGhostWidget) {
+        m_combinedGhostWidget->hide();
+        m_combinedGhostWidget->deleteLater();
+        m_combinedGhostWidget = nullptr;
+    }
+    for (auto& ghost : m_ghosts) {
+        if (ghost.widget && ghost.widget != m_combinedGhostWidget) {
+            ghost.widget->hide();
+            ghost.widget->deleteLater();
+        }
+        ghost.widget = nullptr;
+    }
+    m_ghosts.clear();
+}
+
+void ListView::loadSelectionColors()
+{
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    const QColor baseColor(settings.value(QStringLiteral("Desktop/SelectionRectangleColor"), QStringLiteral("#64A0F0")).toString());
+    const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
+    const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
+    m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
+    QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
+    QColor borderColor = fillColor.darker(110);
+    fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
+    borderColor.setAlpha(qBound(95, contrast * 230 / 100, 230));
+    m_selectionFillColor = fillColor;
+    m_selectionBorderColor = borderColor;
+}
+
 bool ListView::rectIntersectsDesktopBlockedArea(const QRect& rect) const
 {
     for (const QRect& componentRect : desktopBlockedOccupiedRects()) {
@@ -330,6 +368,11 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         this, &ListView::onWindowsShowHiddenFilesChanged);
     m_windowsConfigMonitor->startListening();
     m_showHiddenFiles = m_windowsConfigMonitor->showHiddenFiles();
+
+    m_iconFadeTimer = new QTimer(this);
+    m_iconFadeTimer->setInterval(16);
+    connect(m_iconFadeTimer, &QTimer::timeout, this, &ListView::onIconFadeTimerTimeout);
+    connect(&IconCacheManager::instance(), &IconCacheManager::iconLoaded, this, &ListView::onIconLoaded);
 
     m_fsRelayoutTimer = new QTimer(this);
     m_fsRelayoutTimer->setSingleShot(true);
@@ -401,7 +444,9 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
     // Initialize BoxManager
     BoxManager::instance(this);
     BoxManager::instance()->setPersistencePath(m_persistencePath);
-    connect(BoxManager::instance(), &BoxManager::saveRequested, this, &ListView::saveBoxes);
+    connect(BoxManager::instance(), &BoxManager::saveRequested, this, [this]() {
+        saveBoxes();
+    });
 
     this->initialize();
     this->initRightMenuConnections();
@@ -424,6 +469,8 @@ ListView::ListView(QWidget* parent) : QWidget(parent),
         this->raise();
         this->initializeLinWidgets();
     });
+
+    loadSelectionColors();
 }
 
 void* ListView::linWidgetManager()
@@ -655,47 +702,12 @@ bool ListView::nativeEvent(const QByteArray& eventType, void* message, long* res
         QPoint globalPos = QCursor::pos();
         QPoint clientPos = mapFromGlobal(globalPos);
 
-        auto& bridge = LinWidgetRuntimeBridge::instance();
-        if (bridge.isLoaded()) {
-            // Ordinary widgets (Clock, Weather, Notes, etc.) always pass through,
-            // EXCEPT if we are using composition windowless hosting where ListView needs to forward the input!
-            if (bridge.isWidgetAt(clientPos)) {
-                if (result) {
-                    *result = HTCLIENT;
-                }
-                return true;
+        // ListView 统一接管桌面画布的全部输入消息（包括桌面图标、LinBox、小组件与动态交互壁纸），统一由顶层状态机仲裁
+        if (rect().contains(clientPos)) {
+            if (result) {
+                *result = HTCLIENT;
             }
-
-            const bool isWallpaperActive = bridge.hasActiveWallpaper();
-            const bool isWallpaperInteractive = isWallpaperActive && bridge.isWallpaperInteractive();
-
-            if (isWallpaperInteractive) {
-                // Keep HTCLIENT if cursor is over a desktop icon
-                if (findDesktopStateAt(clientPos)) {
-                    // Fall through to default HTCLIENT handling
-                } else {
-                    // Check if cursor is over any LinBox child widget
-                    bool overBox = false;
-                    for (LinBox* box : boxes()) {
-                        if (!box || !box->isVisible()) {
-                            continue;
-                        }
-                        // mapFromGlobal to get position relative to the box
-                        const QPoint boxLocal = box->mapFromGlobal(globalPos);
-                        if (box->rect().contains(boxLocal)) {
-                            overBox = true;
-                            break;
-                        }
-                    }
-                    if (!overBox) {
-                        // Empty desktop space with active interactive wallpaper: pass through
-                        if (result) {
-                            *result = HTTRANSPARENT;
-                        }
-                        return true;
-                    }
-                }
-            }
+            return true;
         }
     }
 
@@ -729,7 +741,7 @@ ListView::~ListView() {
     if (m_instance == this) {
         m_instance = nullptr;
     }
-    saveBoxes();
+    saveBoxes(false);
     
     // Clean up drag tip
     if (m_dragTip) {
@@ -742,14 +754,7 @@ ListView::~ListView() {
         m_infoTip = nullptr;
     }
     
-    // Clean up ghost widgets
-    for (auto& ghost : m_ghosts) {
-        if (ghost.widget) {
-            delete ghost.widget;
-            ghost.widget = nullptr;
-        }
-    }
-    m_ghosts.clear();
+    clearDragGhosts();
 
 }
 DesktopRootItemState* ListView::findAnyItemStateByPath(const QString& filePath)
@@ -1338,12 +1343,20 @@ void ListView::paintEvent(QPaintEvent* event)
         return;
     }
 
+    const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
+    const qreal currentOpacity = isFading ? m_desktopElementsOpacity : (m_iconShowRule.showDesktopIcons ? 1.0 : 0.0);
+    if (currentOpacity <= 0.0) {
+        return;
+    }
+    painter.setOpacity(currentOpacity);
+
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
             return;
         }
 
-        if (!dirtyRegion.intersects(state.model.renderData.itemRect)) {
+        if (!dirtyRegion.intersects(state.model.renderData.itemRect) &&
+            !dirtyRegion.intersects(state.model.renderData.textRect)) {
             return;
         }
 
@@ -1351,19 +1364,47 @@ void ListView::paintEvent(QPaintEvent* event)
         paintDesktopRootItemStatic(painter, state.model.renderData);
     };
 
-    // Paint normal items first so expanded filename labels can sit above siblings.
-    for (const auto& state : m_itemStates) {
-        if (state.model.renderData.expandedFullName) {
-            continue;
-        }
-        paintDesktopState(state);
-    }
+    const QRect dirtyBoundingRect = dirtyRegion.boundingRect();
+    const bool useSpatialIndex = m_spatialIndex &&
+                                 !m_spatialIndexDirty &&
+                                 m_spatialIndexBounds == this->rect() &&
+                                 dirtyBoundingRect.isValid() &&
+                                 dirtyBoundingRect != rect() &&
+                                 dirtyRegion.rectCount() <= 20 &&
+                                 m_itemStates.size() >= 16;
 
-    for (const auto& state : m_itemStates) {
-        if (!state.model.renderData.expandedFullName) {
-            continue;
+    if (useSpatialIndex) {
+        const QRect queryRect = dirtyBoundingRect.adjusted(-32, -32, 32, 32);
+        const QVector<DesktopRootItemState*> candidates = m_spatialIndex->query(queryRect);
+
+        for (const DesktopRootItemState* state : candidates) {
+            if (!state || state->model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(*state);
         }
-        paintDesktopState(state);
+
+        for (const DesktopRootItemState* state : candidates) {
+            if (!state || !state->model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(*state);
+        }
+    } else {
+        // Paint normal items first so expanded filename labels can sit above siblings.
+        for (const auto& state : m_itemStates) {
+            if (state.model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(state);
+        }
+
+        for (const auto& state : m_itemStates) {
+            if (!state.model.renderData.expandedFullName) {
+                continue;
+            }
+            paintDesktopState(state);
+        }
     }
 
     // 2. 如果处于浮动模式（小组件在图标上方），后置绘制 CEF OSR 画布
@@ -1383,6 +1424,130 @@ void ListView::paintEvent(QPaintEvent* event)
     }
 
     paintLinWidgetBlockedCellsOverlay(painter, dirtyRegion);
+
+    if (m_isSelecting && !m_renderedSelectionRect.isNull() && m_renderedSelectionRect.isValid() && dirtyRegion.intersects(m_renderedSelectionRect)) {
+        painter.save();
+        const QRect selRect = m_renderedSelectionRect;
+
+        if (m_fluentSelectionEnabled) {
+            painter.setRenderHint(QPainter::Antialiasing, true);
+            const qreal radius = 6.0;
+
+            // 1. 多重外发光柔光晕 (Multi-tier Outer Bloom Glow)
+            QColor glowColor = m_selectionBorderColor;
+            if (glowColor.alpha() < 100) {
+                glowColor.setAlpha(180);
+            }
+            // 外层柔光散开 (外扩 3.5px)
+            painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 35), 4.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(QRectF(selRect).adjusted(-2.0, -2.0, 2.0, 2.0), radius + 2.0, radius + 2.0);
+
+            // 内层微光光晕 (外扩 1.5px)
+            painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 80), 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.drawRoundedRect(QRectF(selRect).adjusted(-0.8, -0.8, 0.8, 0.8), radius + 0.8, radius + 0.8);
+
+            // 2. Acrylic / Glass 半透明渐变填充
+            QLinearGradient fillGrad(selRect.topLeft(), selRect.bottomRight());
+            QColor topFill = m_selectionFillColor;
+            topFill.setAlpha(qBound(45, topFill.alpha() + 25, 200));
+            QColor bottomFill = m_selectionFillColor;
+            bottomFill.setAlpha(qBound(20, bottomFill.alpha() - 15, 160));
+            fillGrad.setColorAt(0.0, topFill);
+            fillGrad.setColorAt(1.0, bottomFill);
+            painter.setBrush(fillGrad);
+
+            // 3. 核心发光描边 (Vibrant Neon Accent Border)
+            QLinearGradient borderGrad(selRect.topLeft(), selRect.bottomRight());
+            QColor bTop = glowColor.lighter(135);
+            bTop.setAlpha(240);
+            QColor bBottom = glowColor;
+            bBottom.setAlpha(200);
+            borderGrad.setColorAt(0.0, bTop);
+            borderGrad.setColorAt(1.0, bBottom);
+            painter.setPen(QPen(QBrush(borderGrad), 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.drawRoundedRect(QRectF(selRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
+
+            // 4. 顶边玻璃微光高光反射 (Top Specular Highlight)
+            if (selRect.width() > 20 && selRect.height() > 16) {
+                painter.setPen(QPen(QColor(255, 255, 255, 95), 1.0));
+                painter.drawLine(QPointF(selRect.left() + radius + 2, selRect.top() + 1.2),
+                                 QPointF(selRect.right() - radius - 2, selRect.top() + 1.2));
+            }
+
+            // 5. 四角高光精细定位角标 (L-shaped Precision Corner Brackets)
+            if (selRect.width() >= 32 && selRect.height() >= 32) {
+                const qreal cornerLen = qMin(10.0, qMin(selRect.width() / 4.0, selRect.height() / 4.0));
+                painter.setPen(QPen(QColor(255, 255, 255, 200), 1.8, Qt::SolidLine, Qt::SquareCap));
+
+                // Top-Left
+                painter.drawLine(QPointF(selRect.left() + 2, selRect.top() + 2), QPointF(selRect.left() + 2 + cornerLen, selRect.top() + 2));
+                painter.drawLine(QPointF(selRect.left() + 2, selRect.top() + 2), QPointF(selRect.left() + 2, selRect.top() + 2 + cornerLen));
+
+                // Top-Right
+                painter.drawLine(QPointF(selRect.right() - 2, selRect.top() + 2), QPointF(selRect.right() - 2 - cornerLen, selRect.top() + 2));
+                painter.drawLine(QPointF(selRect.right() - 2, selRect.top() + 2), QPointF(selRect.right() - 2, selRect.top() + 2 + cornerLen));
+
+                // Bottom-Left
+                painter.drawLine(QPointF(selRect.left() + 2, selRect.bottom() - 2), QPointF(selRect.left() + 2 + cornerLen, selRect.bottom() - 2));
+                painter.drawLine(QPointF(selRect.left() + 2, selRect.bottom() - 2), QPointF(selRect.left() + 2, selRect.bottom() - 2 - cornerLen));
+
+                // Bottom-Right
+                painter.drawLine(QPointF(selRect.right() - 2, selRect.bottom() - 2), QPointF(selRect.right() - 2 - cornerLen, selRect.bottom() - 2));
+                painter.drawLine(QPointF(selRect.right() - 2, selRect.bottom() - 2), QPointF(selRect.right() - 2, selRect.bottom() - 2 - cornerLen));
+            }
+
+            // 6. 实时框选统计 HUD 微胶囊气泡 (随时动态呈现数量或尺寸)
+            if (selRect.width() >= 64 && selRect.height() >= 38) {
+                const int count = m_selectedDesktopPaths.size();
+                QString badgeText;
+                if (count > 0) {
+                    badgeText = QStringLiteral("🎯 %1 项").arg(count);
+                } else {
+                    badgeText = QStringLiteral("%1 × %2").arg(selRect.width()).arg(selRect.height());
+                }
+
+                QFont badgeFont = painter.font();
+                badgeFont.setPixelSize(10);
+                badgeFont.setBold(true);
+                painter.setFont(badgeFont);
+
+                QFontMetrics fm(badgeFont);
+                const int badgeW = fm.horizontalAdvance(badgeText) + 16;
+                const int badgeH = 22;
+                const int badgeX = qMax(selRect.left() + 6, selRect.right() - badgeW - 6);
+                const int badgeY = qMax(selRect.top() + 6, selRect.bottom() - badgeH - 6);
+                const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
+
+                // 胶囊外发光
+                painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 60), 2.0));
+                painter.setBrush(QColor(16, 20, 28, 225));
+                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+
+                // 胶囊描边
+                if (count > 0) {
+                    painter.setPen(QPen(QColor(0, 220, 255, 180), 1.0));
+                } else {
+                    painter.setPen(QPen(QColor(255, 255, 255, 60), 1.0));
+                }
+                painter.setBrush(Qt::NoBrush);
+                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+
+                // 文字
+                painter.setPen(QColor(0, 0, 0, 160));
+                painter.drawText(badgeRect.translated(0, 1), Qt::AlignCenter, badgeText);
+                painter.setPen(count > 0 ? QColor(0, 235, 255) : QColor(230, 238, 250));
+                painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
+            }
+        } else {
+            // 经典 Windows 原生矩形选框
+            painter.setPen(QPen(m_selectionBorderColor, 1));
+            painter.setBrush(m_selectionFillColor);
+            painter.drawRect(selRect.adjusted(0, 0, -1, -1));
+        }
+
+        painter.restore();
+    }
 }
 
 void ListView::contextMenuEvent(QContextMenuEvent* event)
@@ -1390,6 +1555,7 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 #ifdef Q_OS_WIN
     logListViewDpiTrace("contextMenu", this, event->pos(), event->globalPos());
 #endif
+    m_pendingWallpaperClick = false;
     if (event->reason() == QContextMenuEvent::Mouse && this->rect().contains(event->pos())) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
             const QString itemPath = normalizeDesktopItemPath(hitState->model.filePath);
@@ -1459,11 +1625,18 @@ void ListView::mousePressEvent(QMouseEvent* event)
     }
     if (event->button() == Qt::LeftButton) {
         if (DesktopRootItemState* hitState = findDesktopStateAt(event->pos())) {
+            clearWidgetFocus();
             this->activateWindow();
             this->setFocus(Qt::MouseFocusReason);
 
             const QString itemPath = normalizeDesktopItemPath(hitState->model.filePath);
-            const Qt::KeyboardModifiers modifiers = QApplication::keyboardModifiers();
+            Qt::KeyboardModifiers modifiers = event->modifiers() | QApplication::keyboardModifiers();
+            if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) {
+                modifiers |= Qt::ControlModifier;
+            }
+            if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0) {
+                modifiers |= Qt::ShiftModifier;
+            }
 
             if (modifiers & Qt::ControlModifier) {
                 const bool selected = isDesktopPathSelected(itemPath);
@@ -1474,28 +1647,7 @@ void ListView::mousePressEvent(QMouseEvent* event)
                 }
                 m_wasSelectedBeforeClick = false;
             } else if (modifiers & Qt::ShiftModifier) {
-                QStringList orderedPaths;
-                for (const auto& state : m_itemStates) {
-                    if (shouldPaintDesktopModelState(state)) {
-                        orderedPaths.append(normalizeDesktopItemPath(state.model.filePath));
-                    }
-                }
-
-                const QString anchorPath = m_anchorDesktopPath.isEmpty() ? itemPath : m_anchorDesktopPath;
-                const int anchorIndex = orderedPaths.indexOf(anchorPath);
-                const int itemIndex = orderedPaths.indexOf(itemPath);
-                if (anchorIndex >= 0 && itemIndex >= 0) {
-                    QStringList rangePaths;
-                    const int start = qMin(anchorIndex, itemIndex);
-                    const int end = qMax(anchorIndex, itemIndex);
-                    for (int i = start; i <= end; ++i) {
-                        rangePaths.append(orderedPaths.at(i));
-                    }
-                    applyDesktopSelection(rangePaths, itemPath, false);
-                } else {
-                    applyDesktopSelection({ itemPath }, itemPath, true);
-                    m_anchorDesktopPath = itemPath;
-                }
+                selectRangeToPath(itemPath, nullptr);
                 m_wasSelectedBeforeClick = false;
             } else {
                 if (!isDesktopPathSelected(itemPath)) {
@@ -1524,6 +1676,20 @@ void ListView::mousePressEvent(QMouseEvent* event)
         }
 
         clearHoveredDesktopItem();
+        clearWidgetFocus();
+
+        const bool hasInteractiveWallpaper = bridge.isLoaded() &&
+                                             bridge.hasActiveWallpaper() &&
+                                             bridge.isWallpaperInteractive();
+        if (hasInteractiveWallpaper) {
+            // 待决的壁纸点击：记录按下点与按钮，进入拖拽防抖仲裁（等待判断用户是原地点击壁纸还是拉框选桌面图标）
+            m_pendingWallpaperClick = true;
+            m_pendingWallpaperPressPos = event->pos();
+            m_pendingWallpaperButton = event->button();
+            event->accept();
+            return;
+        }
+
         beginBackgroundSelection(event->pos());
         event->accept();
         return;
@@ -1541,13 +1707,26 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
                 event->accept();
                 return;
             }
-        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-            if (bridge.forwardMouseEvent(event)) {
-                event->accept();
-                return;
-            }
         }
     }
+
+    // 拖拽阈值仲裁：检查是否有待决的壁纸点击
+    if (m_pendingWallpaperClick) {
+        const int dragDistance = (event->pos() - m_pendingWallpaperPressPos).manhattanLength();
+        if (dragDistance > QApplication::startDragDistance()) {
+            // 移动超出防抖阈值（通常 6px）：用户意图明确为“桌面框选”，放弃壁纸点击，立即启动桌面框选
+            m_pendingWallpaperClick = false;
+            beginBackgroundSelection(m_pendingWallpaperPressPos);
+            QRect rect;
+            updateBackgroundSelection(event->pos(), &rect);
+            event->accept();
+            return;
+        }
+        // 仍在 6px 防抖阈值内，暂缓派发
+        event->accept();
+        return;
+    }
+
     // handle multi-dragging
     if (m_isDragging && !m_ghosts.isEmpty()) {
         QPoint mousePos = event->globalPos();
@@ -1566,28 +1745,24 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
     if (m_isSelecting) {
         QRect rect;
-        const bool shouldShowSelection = updateBackgroundSelection(event->pos(), &rect);
-        if (LinDesktop* desktop = findLinDesktopAncestor(parentWidget())) {
-            if (desktop->selectArea) {
-                desktop->selectArea->setSelectionRect(rect);
-            }
-            if (shouldShowSelection) {
-                if (desktop->selectArea && !desktop->selectArea->isVisible()) {
-                    desktop->selectArea->show();
-                }
-                if (desktop->selectArea) {
-                    desktop->selectArea->lower();
-                }
-            } else {
-                desktop->clearSelectionOverlay();
-            }
-        }
+        updateBackgroundSelection(event->pos(), &rect);
         event->accept();
         return;
     }
 
+    // 正常移动状态：
+    // 1. 如果光标位于小组件上方，小组件响应 hover
+    if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+        bridge.forwardMouseEvent(event);
+    }
+
+    // 2. 桌面图标响应 hover
     updateHoveredDesktopItem(event->pos());
 
+    // 3. 动态壁纸粒子跟随 (非互斥广播，60fps 节流)
+    if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+        bridge.forwardMouseMoveToWallpaper(event->pos());
+    }
 
     event->ignore();
 
@@ -1603,14 +1778,24 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
                 event->accept();
                 return;
             }
-        } else if (bridge.isWidgetLayerEmbedded() && !m_isDragging && !m_isSelecting && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-            if (bridge.forwardMouseEvent(event)) {
-                event->accept();
-                return;
-            }
         }
     }
-    // No-op for Item-based drags, as QDropEvent now handles them
+
+    // 1. 待决的壁纸点击（原地释放，移动距离未超出 6px）
+    if (m_pendingWallpaperClick) {
+        m_pendingWallpaperClick = false;
+        // 桌面空白处点击常规行为：清空图标选中
+        clearCheckedItem();
+        // 派发 Click 给动态壁纸 (Press + Release)
+        if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+            bridge.forwardMouseClickToWallpaper(m_pendingWallpaperPressPos, m_pendingWallpaperButton, false, 1);
+            bridge.forwardMouseClickToWallpaper(event->pos(), event->button(), true, 1);
+        }
+        event->accept();
+        return;
+    }
+
+    // 2. 图标拖拽结束
     if (m_isDragging) {
         if (!m_draggedDesktopPath.isEmpty()) {
             finalizeActiveDrag(nullptr, event);
@@ -1622,7 +1807,7 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
     }
     clearDesktopAutoArrangeReorderPreview();
     
-    // Clear selection state if we were selecting background
+    // 3. 桌面框选结束
     if (m_isSelecting) {
         if (LinDesktop* desktop = findLinDesktopAncestor(parentWidget())) {
             desktop->clearSelectionOverlay();
@@ -1632,6 +1817,26 @@ void ListView::mouseReleaseEvent(QMouseEvent* event)
         return;
     }
     event->ignore();
+}
+
+void ListView::clearWidgetFocus()
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        bridge.clearWidgetFocus();
+    }
+}
+
+void ListView::focusInEvent(QFocusEvent* event)
+{
+    clearWidgetFocus();
+    QWidget::focusInEvent(event);
+}
+
+void ListView::focusOutEvent(QFocusEvent* event)
+{
+    m_pendingWallpaperClick = false;
+    QWidget::focusOutEvent(event);
 }
 
 void ListView::beginBackgroundSelection(const QPoint& startPos)
@@ -1802,6 +2007,13 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
             event->accept();
             return;
         }
+
+        // 空白处且未启用双击隐藏图标时，可将双击转发给壁纸
+        if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+            bridge.forwardMouseClickToWallpaper(event->pos(), event->button(), false, 2);
+            event->accept();
+            return;
+        }
     }
     QWidget::mouseDoubleClickEvent(event);
 }
@@ -1826,31 +2038,56 @@ void ListView::wheelEvent(QWheelEvent* event)
         }
     }
 
+    // 转发给动态交互壁纸（如缩放或粒子滚动交互）
+    if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
+        if (bridge.forwardWheelToWallpaper(event->pos(), event->angleDelta())) {
+            event->accept();
+            return;
+        }
+    }
+
     QWidget::wheelEvent(event);
 }
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+    const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
+                                     !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+    if (hasDesktopSelection) {
+        if (bridge.isLoaded()) {
+            bridge.clearWidgetFocus();
+        }
+    } else if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
         event->accept();
         return;
     }
     // 键盘按键事件处理：检测修饰键与快捷键组合
-    const bool shiftPressed = GetAsyncKeyState(VK_SHIFT) & 0x8000;
-    const bool ctrlPressed = GetAsyncKeyState(VK_CONTROL) & 0x8000;
+    const bool shiftPressed = (event->modifiers() & Qt::ShiftModifier) || ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
+    const bool ctrlPressed = (event->modifiers() & Qt::ControlModifier) || ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
 
-    const bool extendSelection = (event->modifiers() & Qt::ShiftModifier) || shiftPressed;
-    const bool shortcutPaste = ctrlPressed && (event->key() == Qt::Key_V);
+    const bool shortcutUndo = (ctrlPressed && event->key() == Qt::Key_Z) || event->matches(QKeySequence::Undo);
+    if (shortcutUndo) {
+        if (handleUndo()) {
+            event->accept();
+            qDebug() << "Ctrl+Z Undo triggered";
+            return;
+        }
+    }
+
+    const bool extendSelection = shiftPressed;
+    const bool shortcutPaste = (ctrlPressed && event->key() == Qt::Key_V) || event->matches(QKeySequence::Paste);
     const bool shortcutNewFolder = ctrlPressed && extendSelection && (event->key() == Qt::Key_N);
-    const bool permanentDelete = shiftPressed && (event->key() == Qt::Key_Delete);
 
-    qDebug() << QString("Press Key: %1, Shift: %2, Delete: %3, permanentDelete: %4")
-            .arg(QKeySequence(event->key()).toString())
-            .arg(shiftPressed ? "Yes" : "No")
-            .arg(event->key() == Qt::Key_Delete ? "Yes" : "No")
-            .arg(permanentDelete ? "Yes" : "No");
-    if (event->matches(QKeySequence::SelectAll)) {
+    // Delete 键处理（包括 Shift+Delete 永久删除与常规删除）
+    if (event->key() == Qt::Key_Delete) {
+        onMenuDelete(shiftPressed);
+        event->accept();
+        qDebug() << QString("Delete triggered: permanent=%1").arg(shiftPressed ? "Yes" : "No");
+        return;
+    }
+
+    if ((ctrlPressed && event->key() == Qt::Key_A) || event->matches(QKeySequence::SelectAll)) {
         QStringList desktopPaths;
         for (const auto& state : m_itemStates) {
             if (shouldPaintDesktopModelState(state)) {
@@ -1863,26 +2100,19 @@ void ListView::keyPressEvent(QKeyEvent* event)
         qDebug() << "Select All triggered";
         return;
     }
-    if (event->matches(QKeySequence::Copy)) {
+    if ((ctrlPressed && event->key() == Qt::Key_C) || event->matches(QKeySequence::Copy)) {
         writeSelectionToClipboard(false);
         event->accept();
         qDebug() << "Copy triggered";
         return;
     }
-    //first judge if it's a Shift+Delete for permanent delete, if not, then handle regular Delete key
-    if (permanentDelete) {
-        onMenuDelete(true);
-        event->accept();
-        qDebug() << "Permanent Delete triggered";
-        return;
-    }
-    if (event->matches(QKeySequence::Cut)) {
+    if ((ctrlPressed && event->key() == Qt::Key_X) || event->matches(QKeySequence::Cut)) {
         writeSelectionToClipboard(true);
         event->accept();
         qDebug() << "Cut triggered";
         return;
     }
-    if (event->matches(QKeySequence::Paste)) {
+    if (shortcutPaste) {
         clearCutMarks();
         onMenuPaste();
         event->accept();
@@ -1890,7 +2120,7 @@ void ListView::keyPressEvent(QKeyEvent* event)
         return;
     }
     
-    if (shortcutPaste) {
+    if (ctrlPressed && (event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_V) {
         onMenuPasteShortcut();
         event->accept();
         qDebug() << "Paste Shortcut triggered";
@@ -2017,22 +2247,29 @@ void ListView::keyPressEvent(QKeyEvent* event)
             return;
         }
     }
-    if (event->key() == Qt::Key_Delete) {
-        /*const Qt::KeyboardModifiers modifiers = event->modifiers() | QGuiApplication::keyboardModifiers();
-        bool permanently = (modifiers & Qt::ShiftModifier);*/
-        onMenuDelete(false);
-        event->accept();
-        qDebug() << "Delete triggered: Deleted selected items";
-        return;
-    }
+
     
+    const QString text = event->text();
+    if (!text.isEmpty() && text.at(0).isPrint() &&
+        !ctrlPressed && !(event->modifiers() & Qt::AltModifier) &&
+        event->key() != Qt::Key_Escape && event->key() != Qt::Key_Return && event->key() != Qt::Key_Enter &&
+        event->key() != Qt::Key_Delete && event->key() != Qt::Key_Backspace && event->key() != Qt::Key_Tab &&
+        event->key() != Qt::Key_Space) {
+        if (handleTypeToSelect(text, nullptr)) {
+            event->accept();
+            return;
+        }
+    }
+
     QWidget::keyPressEvent(event);
 }
 
 void ListView::keyReleaseEvent(QKeyEvent* event)
 {
+    const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
+                                     !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+    if (!hasDesktopSelection && bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
         event->accept();
         return;
     }
@@ -2098,6 +2335,9 @@ ListView* ListView::instance(QWidget* parent) {
 
 void ListView::initialize()
 {
+    QSettings deskSettings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_iconShowRule.doubleClickHideIcons = deskSettings.value(QStringLiteral("Desktop/DoubleClickHideIcons"), true).toBool();
+    m_fadeTransitionOnHide = deskSettings.value(QStringLiteral("Desktop/FadeTransitionOnHide"), true).toBool();
     // === 读取 Windows 原生桌面配置（自动排列、对齐网格）===
     bool osAutoArrange = false;
     bool osSnapToGrid = false;
@@ -2831,7 +3071,8 @@ void ListView::syncViewModeSizes() {
             break;
     }
 
-    const int newTier = ListItemData::calculateIconSourceTier(m_iconWidth);
+    const qreal dpr = qMax<qreal>(1.0, devicePixelRatioF());
+    const int newTier = ListItemData::calculateIconSourceTier(qRound(m_iconWidth * dpr));
     if (ListItemData::s_targetIconSize != newTier) {
         ListItemData::s_targetIconSize = newTier;
         IconCacheManager::instance().invalidateIconsByPrefix(QStringLiteral(""));
@@ -2855,6 +3096,7 @@ DesktopRenderParams ListView::currentRenderParams() const
     params.smallIconW = scalePx(kSmallIconW);
     params.iconTextGap = kDesktopIconTextGap;
     params.dpiScale = currentDpiScale();
+    params.devicePixelRatio = qMax<qreal>(1.0, devicePixelRatioF());
     params.labelFont = font();
     params.showShortcutArrow = m_iconShowRule.showShortCutArrow;
     return params;
@@ -3387,7 +3629,8 @@ void ListView::removeDesktopStateByPath(const QString& filePath)
 
 bool ListView::shouldPaintDesktopModelState(const DesktopRootItemState& state) const
 {
-    if (!m_iconShowRule.showDesktopIcons) {
+    const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
+    if (!m_iconShowRule.showDesktopIcons && (!isFading || m_desktopElementsOpacity <= 0.0)) {
         return false;
     }
     if (!state.model.isReady) {
@@ -3762,3 +4005,45 @@ void ListView::setShortcutArrowVisible(bool visible) {
 }
 
 
+
+void ListView::onIconLoaded(const QString& memKey, const QString& filePath)
+{
+    Q_UNUSED(memKey);
+    DesktopRootItemState* state = findDesktopStateByPath(filePath);
+    if (state && state->model.visible) {
+        state->renderDataDirty = true;
+        m_fadingIconStartTimes[filePath] = QDateTime::currentMSecsSinceEpoch();
+        if (!m_iconFadeTimer->isActive()) {
+            m_iconFadeTimer->start();
+        }
+        update(state->model.renderData.itemRect);
+    }
+}
+
+void ListView::onIconFadeTimerTimeout()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool anyFading = false;
+    for (auto it = m_fadingIconStartTimes.begin(); it != m_fadingIconStartTimes.end();) {
+        const qint64 elapsed = now - it.value();
+        DesktopRootItemState* state = findDesktopStateByPath(it.key());
+        if (state && state->model.visible) {
+            if (elapsed < 100) {
+                state->model.renderData.iconOpacity = qBound(0.1, (qreal)elapsed / 100.0, 1.0);
+                update(state->model.renderData.itemRect);
+                anyFading = true;
+                ++it;
+            } else {
+                state->model.renderData.iconOpacity = 1.0;
+                prepareDesktopRootItemStaticContentCache(state->model.renderData);
+                update(state->model.renderData.itemRect);
+                it = m_fadingIconStartTimes.erase(it);
+            }
+        } else {
+            it = m_fadingIconStartTimes.erase(it);
+        }
+    }
+    if (!anyFading || m_fadingIconStartTimes.isEmpty()) {
+        m_iconFadeTimer->stop();
+    }
+}

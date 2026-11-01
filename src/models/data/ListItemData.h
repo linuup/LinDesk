@@ -18,6 +18,7 @@
 #include <QContextMenuEvent>
 #include <QRect>
 #include "services/SysInfoUtil.h"
+#include "services/IconCacheManager.h"
 // //1 隐藏 0 显示
 #define APP_MY_COMPUTER_CLS   "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}" // 计算机/此电脑
 #define APP_NETWORK_CLS       "::{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" // 网络
@@ -106,7 +107,7 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 			m_clsid = m_iconItem.path;
 		}
 
-		initIcon();
+		// initIcon() deferred to lazy access
 	};
 
 	void setIconItem(const IconItem& item) {
@@ -241,7 +242,12 @@ ListItemData& operator=(const ListItemData&) = delete;*/
 	const QString filePath() const { return m_iconItem.path; }
 	const QFileInfo& fileInfo() const { return m_fileInfo; }
 	const IconItem& itemData() const { return m_iconItem; }
-	const QIcon& icon() const { return m_icon; }
+	const QIcon& icon() const {
+		if (m_icon.isNull()) {
+			const_cast<ListItemData*>(this)->initIcon();
+		}
+		return m_icon;
+	}
 
 	const QString getCLSID() const { return m_clsid; }
 	// QDateTime lastModified() const { return m_lastModified; }
@@ -449,7 +455,14 @@ public:
 					newIcon = icon_provider.icon(targetData);
 				}
 				if (newIcon.isNull() && !isShortcut) {
-					newIcon = icon_provider.icon(m_fileInfo);
+					if (!fileSuffix.isEmpty() && fileSuffix != "exe") {
+						const QString extKey = QString("ext:%1|base|%2").arg(fileSuffix).arg(tierSourceSize);
+						newIcon = IconCacheManager::instance().getIcon(extKey, [&]() {
+							return icon_provider.icon(m_fileInfo);
+						});
+					} else {
+						newIcon = icon_provider.icon(m_fileInfo);
+					}
 				}
 			}
 		}

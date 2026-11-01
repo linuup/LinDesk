@@ -23,6 +23,13 @@ inline QString userConfigDir()
     return dirPath;
 }
 
+inline QString userIconCacheDir()
+{
+    const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("IconCache"));
+    QDir().mkpath(dirPath);
+    return dirPath;
+}
+
 inline QString userPluginConfigDir()
 {
     const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("plugins"));

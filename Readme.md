@@ -38,19 +38,27 @@ LinDesk 是一款专为 Windows 平台打造的现代化桌面整理与 HTML 桌
    - **双架构交付与自动更新**：支持 Windows x64 与 x86 双架构 CMake 编译构建，Inno Setup 参数化打包，以及 GitHub Release 自动化发布脚本。
 5. **单元测试与质量保障**
    - 包含 8 个独立 GoogleTest 测试套件，覆盖系统信息、协议信封、日志器、持久化格式、运行时桥、运行时安装器、商店图标兼容与显示名覆盖，测试通过率 100%。
+6. **桌面人机工学交互与 High-DPI 全面适配**
+   - **LinBox 动效与吸附**：平滑弹性高度缓动折叠（200ms `OutCubic`）、标题栏四分区双击命中（文字重命名 / 空白折叠 / 图标打开资源管理器）、鼠标悬停自动下卷展开（Auto-Peek Roll-up）、12px 屏幕边缘与相邻盒子 0 间隙磁吸（按住 `Alt` 自由微调）；
+   - **原生键盘直觉**：盲打首字母跳选定位（Type-to-Select，800ms 缓冲区，全字串与拼音首字母检索，支持盒子内跳选与平滑居中滚动）；全局撤销快捷键（`Ctrl + Z` 桥接 Windows Explorer Shell Undo 栈）；
+   - **双击隐藏桌面动效**：双击桌面空白处触发 220ms `InOutQuad` 透明度平滑淡入淡出过渡，设置中心与右键菜单提供独立双向同步开关；
+   - **High-DPI 缩放与防模糊**：全链路采用 `scaledPx()` 缩放，完美适配 125%/150%/175%/200% 等非 100% 缩放比率；`TextRenderCache` 动态绑定 `devicePixelRatio` 消除文字毛刺发虚；4K 壁纸物理分辨率同步解码；毛玻璃模糊半径自适应 DPI；
+   - **基础性能大重构**：多图标拖拽单层幽灵图合并渲染（$O(N) \to O(1)$ 开销）；纯 QPainter 直绘框选矩形与联合脏矩形局部刷新（零残影）；QuadTree 空间四叉树裁剪削减 70%~90% 冗余重绘开销；两级 LRU 图标缓存与渐进式异步加载。
 
 ---
 
 ### ⏳ 进行中与规划待办 (Roadmap & Todo)
-1. **桌面交互性能优化（P0）**：
-   - **Box 移动卡顿与撕裂修复**：彻底消除拖动 LinBox 时的同步阻塞 `repaint()` 与高频 `raise()`，落地跨层向宿主 `LinDesktop` 同步映射父级脏矩形的高性能异步刷新管线（方案详见 `docs/LinDesk_Box_Move_Lag_Plan.html`）。
-2. **右键菜单增强（P1）**：
-   - Win11 原生菜单顶部横向快捷图标栏（剪贴板存在文件时展示 Paste / Paste shortcut 快捷按钮）。
-3. **小组件生态进阶（P2）**：
+1. **桌面智能收纳与进阶交互（P2）**：
+   - **一键智能分类整理**：自动识别并归集快捷方式、常用文档、压缩包、文件夹到对应标准 Box，保留固定项，支持新增文件自动归集规则；
+   - **拖拽进入 Box 投掷反馈**：文件拖向某个 Box 时提供克制的主题色边框高亮反馈。
+2. **多屏幕扩展与能耗优化（P2/P3）**：
+   - **多显示器跨屏几何**：破除单屏绑定，支持多屏 Virtual Geometry 跨屏自由摆放 Box；
+   - **全屏独占免打扰休眠**：独占全屏 3D 游戏 / PPT 放映时自动挂起组件渲染，实现 CPU/GPU 0.0% 零抢占。
+3. **小组件生态进阶（P1/P2）**：
    - 天气小组件离线与超时持续重试机制（避免 3 次失败后停止刷新）；
    - 便签组件多实例设置页统一维护管理；
    - LinWidget 进程权限细粒度沙箱隔离与崩溃自动恢复心跳。
-4. **渲染加速（P2）**：
+4. **渲染加速（P2/P3）**：
    - 基于 OpenGL / DirectComposition 的全桌面 GPU 硬件加速管线实现（当前已有开关入口）。
 5. **剪贴板工具增强（P3）**：
    - 剪贴板历史记录、监控与快速贴附工具。
@@ -168,8 +176,8 @@ LinDesk/
 │   ├── LinDesk_Architecture_Guide.html  # 核心架构指南（统一绘制管线与 CEF 运行时）
 │   ├── LinDesk_Todo.html                # 全量任务清单与进度跟踪
 │   ├── LinDesk_Widget_Platform_Plan.html# 组件系统设计方案与任务拆解
-│   ├── LinDesk_Box_Move_Lag_Plan.html   # Box 移动卡顿根因分析与重构计划
-│   └── LinWidget_Protocol.md            # LinWidget 协议与组件开发权威规范
+│   ├── LinDesk_Widget_Management_Interaction_Plan.html # 组件管理与交互方案
+│   └── LinWidget_Protocol.html          # LinWidget 协议与组件开发权威规范
 │
 ├── Plugins/OCRModule/          # OCR 截图文字识别动态库插件工程
 ├── W11MenuUI/                  # Win11 原生菜单宿主 (Win11MenuIsland.vcxproj)
@@ -191,11 +199,11 @@ LinDesk/
 | **[文档中心 (Index)](docs/LinDesk_Docs_Index.html)** | 全局文档体系总索引、推荐阅读路径 | 所有人 |
 | **[产品介绍 (Product Intro)](docs/LinDesk_Product_Intro.html)** | 产品定位、设计哲学、功能清单、技术栈 | 用户 / 产品 / 开发者 |
 | **[模块介绍 (Module Guide)](docs/LinDesk_Module_Guide.html)** | 源码模块细化解析、依赖拓扑、测试矩阵 | 核心开发者 |
-| **[架构指南 (Architecture Guide)](docs/LinDesk_Architecture_Guide.html)** | CEF OSR 离屏渲染管线、动态加载桥、LDBX 数据持久化 | 架构师 / 开发者 |
-| **[任务清单 (Todo List)](docs/LinDesk_Todo.html)** | 已完成功能点与待办事项对照表 | 开发者 / 测试 |
+| **[架构指南 (Architecture Guide)](docs/LinDesk_Architecture_Guide.html)** | CEF OSR 离屏渲染管线、核心人机工学交互、High-DPI 缩放、持久化 | 架构师 / 开发者 |
+| **[任务清单 (Todo List)](docs/LinDesk_Todo.html)** | 全局单一真实来源：已完成里程碑与待办事项对照表 | 开发者 / 测试 |
 | **[组件方案 (Widget Platform)](docs/LinDesk_Widget_Platform_Plan.html)** | LinWidget 架构演进、运行时安装/卸载与路线图 | 组件与平台开发者 |
-| **[组件协议与规范 (LinWidget Protocol)](docs/LinWidget_Protocol.md)** | HTML5 小组件 Manifest 规范、Bridge 消息与 API 字典 | 小组件开发者 / AI Agent |
-| **[Box 卡顿修复计划 (Box Lag Plan)](docs/LinDesk_Box_Move_Lag_Plan.html)** | Box 移动卡顿撕裂根因剖析与跨层脏矩形重构方案 | 性能优化专项 |
+| **[组件管理与交互 (Widget UX)](docs/LinDesk_Widget_Management_Interaction_Plan.html)** | 组件管理 HTML/SPA 化、消灭壁纸框选冲突、智能缩放手柄 | 开发者 / 架构师 |
+| **[组件协议与规范 (LinWidget Protocol)](docs/LinWidget_Protocol.html)** | HTML5 小组件 Manifest 规范、Bridge 双向 IPC 与 API 字典 | 小组件开发者 / AI Agent |
 
 ---
 

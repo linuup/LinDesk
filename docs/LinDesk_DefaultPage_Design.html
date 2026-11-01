@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinDesk 组件系统首页 · 设计稿</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect x='5.5' y='5.5' width='10' height='10' rx='2.5' fill='%238b5cf6'/%3E%3Crect x='5.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='5.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3C/svg%3E">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: #f5f5f7;
+      color: #1d1d1f;
+      padding: 48px 24px 72px;
+    }
+
+    .wrap {
+      max-width: 1060px;
+      margin: 0 auto;
+    }
+
+    .page-head {
+      margin-bottom: 36px;
+    }
+
+    .page-head h1 {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .page-head p {
+      margin-top: 8px;
+      font-size: 15px;
+      color: rgba(29, 29, 31, 0.6);
+    }
+
+    .stage {
+      position: relative;
+      border-radius: 20px;
+      overflow: hidden;
+      padding: 48px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      transition: background 0.4s ease;
+    }
+
+    .stage.dark {
+      background: linear-gradient(135deg, #0a0d14 0%, #0e1726 55%, #05070b 100%);
+    }
+
+    .stage.light {
+      background: linear-gradient(135deg, #dbe4ee 0%, #c7d2e0 60%, #b6c3d4 100%);
+    }
+
+    .tone-switch {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+      padding: 3px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      z-index: 5;
+    }
+
+    .tone-switch button {
+      font: inherit;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: rgba(29, 29, 31, 0.7);
+      cursor: pointer;
+    }
+
+    .tone-switch button.active {
+      background: #fff;
+      color: #1d1d1f;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+
+    /* —— 组件系统首页面板（与成品一致）—— */
+    .panel {
+      width: min(820px, 100%);
+      padding: 30px 32px 26px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.14);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      color: rgba(30, 41, 59, 0.6);
+    }
+
+    .head-note {
+      font-size: 12px;
+      letter-spacing: 0.4px;
+      color: rgba(30, 41, 59, 0.45);
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: rgba(30, 41, 59, 0.45);
+      margin-bottom: 10px;
+    }
+
+    .wallpaper-main {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      height: 210px;
+      margin-bottom: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+      background: #0f172a;
+    }
+
+    .wallpaper-main img.wp-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: opacity, transform;
+    }
+
+    /* Apple 风格壁纸切换：新图淡入 + 微缩放，旧图淡出，双层交叉过渡 */
+    .wallpaper-main .wp-front {
+      z-index: 1;
+    }
+
+    .wallpaper-main .wp-back {
+      opacity: 0;
+      transform: scale(1.04);
+    }
+
+    .wallpaper-main .wp-back.in {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .wallpaper-main .wp-front.out {
+      opacity: 0;
+    }
+
+    .wp-shade {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 72px;
+      background: linear-gradient(to top, rgba(2, 6, 23, 0.55), transparent);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .wp-meta {
+      position: absolute;
+      left: 16px;
+      bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 3;
+    }
+
+    .wp-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+    }
+
+    .wp-tag {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .wallpaper-thumbs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+      margin-bottom: 22px;
+    }
+
+    .thumb {
+      position: relative;
+      height: 54px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      overflow: hidden;
+      cursor: pointer;
+      background: #0f172a;
+    }
+
+    .thumb img.thumb-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .thumb.active {
+      box-shadow: 0 0 0 2px #8b5cf6;
+    }
+
+    .thumb-label {
+      position: absolute;
+      left: 9px;
+      bottom: 7px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #fff;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+    }
+
+    .widget-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .widget-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.55);
+    }
+
+    .w-icon {
+      flex: none;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .w-icon svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .w-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .w-desc {
+      margin-top: 2px;
+      font-size: 11.5px;
+      color: rgba(51, 65, 85, 0.65);
+    }
+
+    .panel-foot {
+      text-align: center;
+      font-size: 13px;
+      color: rgba(51, 65, 85, 0.6);
+      letter-spacing: 0.2px;
+    }
+
+    .panel-foot .hl {
+      color: #6d28d9;
+      font-weight: 500;
+    }
+
+    section {
+      margin-top: 40px;
+    }
+
+    section h2 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.1px;
+      margin-bottom: 14px;
+    }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+    }
+
+    .spec {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 18px 20px;
+    }
+
+    .spec .k {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: rgba(29, 29, 31, 0.45);
+      margin-bottom: 8px;
+    }
+
+    .spec .v {
+      font-size: 14px;
+      line-height: 1.7;
+      color: #1d1d1f;
+    }
+
+    .spec .v code {
+      font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+      font-size: 13px;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+
+    ul.notes {
+      list-style: none;
+      margin-top: 8px;
+    }
+
+    ul.notes li {
+      position: relative;
+      padding-left: 18px;
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(29, 29, 31, 0.8);
+    }
+
+    ul.notes li::before {
+      content: "";
+      position: absolute;
+      left: 2px;
+      top: 10px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(29, 29, 31, 0.35);
+    }
+
+    .callout {
+      margin-top: 36px;
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 20px 24px;
+      font-size: 14px;
+      line-height: 1.8;
+      color: rgba(29, 29, 31, 0.85);
+    }
+
+    .callout strong {
+      color: #1d1d1f;
+    }
+
+    .callout code {
+      font-family: "SFMono-Regular", Consolas, "Courier New", monospace;
+      font-size: 13px;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 28px 16px 56px;
+      }
+
+      .stage {
+        padding: 32px 12px;
+      }
+
+      .panel {
+        padding: 22px 18px;
+        border-radius: 18px;
+      }
+
+      .widget-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .wallpaper-main {
+        height: 150px;
+      }
+
+      .tone-switch {
+        top: 12px;
+        right: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header class="page-head">
+      <h1>LinDesk 组件系统 · 首页设计稿</h1>
+      <p>壁纸精选 + 组件推荐的展示页 · Apple 风格 · 替换 src/resources/LinWidgetRuntime/default_page.html</p>
+    </header>
+
+    <div class="stage dark" id="stage">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="brand">LINWIDGET</span>
+          <span class="head-note">组件 · 壁纸 · 桌面</span>
+        </div>
+        <div class="section-label">壁纸精选</div>
+        <div class="wallpaper-main" id="wpMain">
+          <img class="wp-img wp-front" id="wpFront" src="assets/wallpaper-aurora.jpg" alt="极光雪岭">
+          <img class="wp-img wp-back" id="wpBack" src="" alt="">
+          <div class="wp-shade"></div>
+          <div class="wp-meta">
+            <span class="wp-name" id="wpName">极光 · 雪岭</span>
+            <span class="wp-tag">4K 风景</span>
+          </div>
+        </div>
+        <div class="wallpaper-thumbs" id="wpThumbs">
+          <div class="thumb active" data-src="assets/wallpaper-aurora.jpg" data-name="极光 · 雪岭"><img class="thumb-img" src="assets/wallpaper-aurora.jpg" alt=""><span class="thumb-label">极光 · 雪岭</span></div>
+          <div class="thumb" data-src="assets/wallpaper-lake.jpg" data-name="雪山 · 镜湖"><img class="thumb-img" src="assets/wallpaper-lake.jpg" alt=""><span class="thumb-label">雪山 · 镜湖</span></div>
+          <div class="thumb" data-src="assets/wallpaper-forest.jpg" data-name="晨雾 · 林间"><img class="thumb-img" src="assets/wallpaper-forest.jpg" alt=""><span class="thumb-label">晨雾 · 林间</span></div>
+        </div>
+        <div class="section-label">组件精选</div>
+        <div class="widget-grid">
+          <div class="widget-card">
+            <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="1.6"><circle cx="12" cy="13" r="7"/><path d="M12 10v3.2l2.1 1.3"/><path d="M9 3h6" stroke="#8b5cf6"/></svg></span>
+            <span><div class="w-name">时钟</div><div class="w-desc">时间与专注</div></span>
+          </div>
+          <div class="widget-card">
+            <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="1.6"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19"/></svg></span>
+            <span><div class="w-name">天气</div><div class="w-desc">桌面天气一览</div></span>
+          </div>
+          <div class="widget-card">
+            <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.6"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h4.5"/></svg></span>
+            <span><div class="w-name">待办</div><div class="w-desc">把重要的事放在眼前</div></span>
+          </div>
+          <div class="widget-card">
+            <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.6"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span>
+            <span><div class="w-name">系统监控</div><div class="w-desc">CPU 与内存实时状态</div></span>
+          </div>
+          <div class="widget-card">
+            <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.6"><path d="M5 3.5h12a2 2 0 0 1 2 2V20l-2.5-1.8L14 20l-2-1.8L10 20l-2.5-1.8L5 20V5.5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 11.5h8"/></svg></span>
+            <span><div class="w-name">便签</div><div class="w-desc">随手记下想法</div></span>
+          </div>
+          <div class="widget-card">
+            <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.6"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M8 14h3M14.5 14H16M8 17h5" stroke="#8b5cf6"/></svg></span>
+            <span><div class="w-name">日历</div><div class="w-desc">日程随手可见</div></span>
+          </div>
+        </div>
+        <div class="panel-foot">在<span class="hl">设置 · 组件</span>中启用组件，或下载更多壁纸与小组件</div>
+      </div>
+      <div class="tone-switch">
+        <button data-tone="dark" class="active">深色壁纸</button>
+        <button data-tone="light">浅色壁纸</button>
+      </div>
+    </div>
+
+    <section>
+      <h2>设计规格</h2>
+      <div class="spec-grid">
+        <div class="spec">
+          <div class="k">版面结构</div>
+          <div class="v">
+            顶栏：字标 <code>LINWIDGET</code> + 定位说明<br>
+            壁纸精选：主图 250px + 三档缩略图切换<br>
+            组件精选：3×2 卡片网格（时钟/天气/待办/监控/便签/日历）<br>
+            底部：一句引导文案
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">壁纸预览</div>
+          <div class="v">
+            三张真实风景壁纸：极光·雪岭 / 雪山·镜湖 / 晨雾·林间<br>
+            图片存于 <code>docs/assets/</code>（cover 裁切），落地可替换为组件包内置壁纸资源
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">材料</div>
+          <div class="v">
+            面板 <code>rgba(255,255,255,.16)</code><br>
+            <code>blur(28px) saturate(160%)</code> · 圆角 28px<br>
+            组件卡片 <code>rgba(255,255,255,.5)</code> + 1px 白描边
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">色彩</div>
+          <div class="v">
+            文字主色 <code>#1e293b</code> · 副文 72% 透明度<br>
+            强调仅两处：壁纸选中框与引导词 <code>#6d28d9</code><br>
+            组件图标各自品牌色（蓝/青/紫/绿/琥珀/青绿）
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">动效</div>
+          <div class="v">
+            面板一次淡入 <code>0.5s cubic-bezier(.22,1,.36,1)</code><br>
+            缩略图点击切换主图（无装饰动画）<br>
+            无 hover 变换 · 无光晕 · 无脉冲
+          </div>
+        </div>
+        <div class="spec">
+          <div class="k">交互约束</div>
+          <div class="v">
+            透明区域穿透给桌面（现状保留）<br>
+            缩略图点击为真实交互（前端切换）<br>
+            不做无功能的假按钮 · <code>user-select: none</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>设计要点</h2>
+      <ul class="notes">
+        <li><strong>定位</strong>：默认页是组件系统的「首页」，面向新用户展示产品能力（壁纸 + 组件），替代只写"你好"的空状态页；</li>
+        <li><strong>壁纸精选</strong>：直接对齐已落地的壁纸组件三档主题，点缩略图切换主图，一眼看到"壁纸能做成什么样"；</li>
+        <li><strong>组件精选</strong>：展示内置组件的图标、名称、一句话能力，形成"开箱即用"的产品介绍；</li>
+        <li><strong>克制的 Apple 感</strong>：一张毛玻璃面板 + 系统字体层级 + 纯色文字，无渐变标题、无光晕、无装饰动效；</li>
+        <li><strong>示意说明</strong>：壁纸精选为真实风景照片（极光图源 NASA/CC BY，均存于 <code>docs/assets/</code>），落地建议替换为组件包内置壁纸资源；组件图标为内联 SVG 线性稿，可换真实组件截图。</li>
+      </ul>
+    </section>
+
+    <div class="callout">
+      <strong>交付</strong>：成品文件 <code>docs/LinDesk_DefaultPage_Final.html</code>，直接整文件替换
+      <code>src/resources/LinWidgetRuntime/default_page.html</code>；纯静态、无外链、无脚本依赖（缩略图切换为内联 JS），
+      无需重编 C++。若后续组件市场落地，此页可升级为动态推荐（拉取已安装组件与市场精选），本次为静态精选版。
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var stage = document.getElementById('stage');
+      var btns = Array.prototype.slice.call(document.querySelectorAll('.tone-switch button'));
+      btns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var tone = btn.getAttribute('data-tone');
+          stage.className = 'stage ' + tone;
+          btns.forEach(function (b) {
+            b.classList.toggle('active', b === btn);
+          });
+        });
+      });
+      var name = document.getElementById('wpName');
+      var front = document.getElementById('wpFront');
+      var back = document.getElementById('wpBack');
+      var thumbs = Array.prototype.slice.call(document.querySelectorAll('#wpThumbs .thumb'));
+      var animating = false;
+      thumbs.forEach(function (t) {
+        t.addEventListener('click', function () {
+          var src = t.getAttribute('data-src');
+          var label = t.getAttribute('data-name');
+          if (animating || src === front.getAttribute('src')) {
+            return;
+          }
+          animating = true;
+          var pre = new Image();
+          pre.onload = function () {
+            name.textContent = label;
+            back.src = src;
+            back.classList.add('in');
+            front.classList.add('out');
+            thumbs.forEach(function (b) {
+              b.classList.toggle('active', b === t);
+            });
+            setTimeout(function () {
+              front.src = src;
+              front.classList.remove('out');
+              back.classList.remove('in');
+              back.src = '';
+              animating = false;
+            }, 560);
+          };
+          pre.src = src;
+        });
+      });
+    })();
+  </script>
+</body>
+
+</html>

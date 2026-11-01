@@ -22,6 +22,7 @@
 #include <QScopedPointer>
 #include <QPointer>
 #include <QElapsedTimer>
+#include <QPropertyAnimation>
 #include <QtGlobal>
 
 class LinDirectoryMonitor;
@@ -51,8 +52,11 @@ public:
     void setBoxTitle(const QString& title);
     void setResizeBorderWidth(int width);
     void toggleCollapse();
+    void toggleCollapse(bool isAutoPeek);
+    void setCollapsed(bool collapsed, bool animated = true, bool isAutoPeek = false);
     int resizeBorderWidth() const { return m_borderWidth; }
     void refreshLayout();
+    void ensureItemVisible(const QString& filePath);
     QRect globalRenameEditorRectForPath(const QString& filePath) const;
     void previewGhostDropAt(const QPoint& boxPos, const QStringList& draggedPaths, Qt::KeyboardModifiers modifiers);
     void clearDropPreview();
@@ -63,6 +67,11 @@ public:
     QString boxTitle() const { return m_title; }
     BoxShowType showType() const { return m_showType; }
     bool isCollapsed() const { return m_isCollapsed; }
+    bool isAutoPeeking() const { return m_isAutoPeeking; }
+    bool isAutoPeekEnabled() const { return m_autoPeekEnabled; }
+    void setAutoPeekEnabled(bool enabled);
+    bool isAutoPeekInstant() const { return m_autoPeekInstant; }
+    void setAutoPeekInstant(bool instant);
     int originalHeight() const { return m_originalHeight; }
     QVector<QString> itemPaths() const;
     const QVector<DesktopRootItemState>& itemStates() const { return m_itemStates; }
@@ -92,6 +101,7 @@ public:
 
     void refreshStyles();
     void refreshSelectionOverlayColor();
+    void loadSelectionColors();
     void setRefreshFlashing(bool flashing);
     bool isRefreshFlashing() const { return m_flashingForRefresh; }
 
@@ -117,6 +127,9 @@ protected:
     void dragLeaveEvent(QDragLeaveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void focusInEvent(QFocusEvent* event) override;
+    void onIconLoaded(const QString& memKey, const QString& filePath);
+    void onIconFadeTimerTimeout();
 
 private:
     enum ResizeDir {
@@ -182,6 +195,8 @@ private:
     bool remapMappedFolderInteractively();
     void checkMappedFolderStateAndRefresh();
     void updateDpiMetrics();
+    void handleBoxMouseEnter();
+    void handleBoxMouseLeave();
 
     BoxShowType m_showType = BoxShowType::Icon_ShowType;
     QVector<DesktopRootItemState> m_itemStates;
@@ -200,6 +215,12 @@ private:
     bool m_isResizing = false;
     bool m_isMoving = false;
     bool m_isCollapsed = false;
+    bool m_isAutoPeeking = false;
+    bool m_autoPeekEnabled = true;
+    bool m_autoPeekInstant = false;
+    class QTimer* m_hoverExpandTimer = nullptr;
+    class QTimer* m_hoverCollapseTimer = nullptr;
+    class QPropertyAnimation* m_collapseAnim = nullptr;
     int m_originalHeight = 300;
     ResizeDir m_resizeDir = None;
     QPoint m_dragStartPos;
@@ -233,6 +254,10 @@ private:
     bool m_flashingForRefresh = false;
     bool m_isSelectingItems = false;
     QPoint m_selectionStartPos;
+    QRect m_selectionRect;
+    QColor m_selectionFillColor;
+    QColor m_selectionBorderColor;
+    bool m_fluentSelectionEnabled = true;
     QString m_hoveredItemPath;
     QString m_pressedItemPath;
     QPoint m_pressedItemBoxPos;
@@ -247,6 +272,8 @@ private:
     int m_reorderInsertIndex = -1;
     bool m_reorderIndicatorAfterPrev = false;
     QScopedPointer<LinDirectoryMonitor> m_mappedFolderMonitor;
+    QHash<QString, qint64> m_fadingIconStartTimes;
+    class QTimer* m_iconFadeTimer = nullptr;
 };
 
 #endif // LINBOX_H

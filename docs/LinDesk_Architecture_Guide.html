@@ -87,7 +87,6 @@
     <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
     <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html">组件通信协议</a>
-    <a href="LinDesk_Core_Desktop_UX_Plan.html">核心体验优化</a>
 </nav>
 
 <header class="doc-head">
@@ -149,6 +148,35 @@
   <ul>
     <li>桌面宿主窗口监听（<code>startDesktopHostWindowMonitor</code>）：监测 <code>EVENT_OBJECT_CREATE / DESTROY</code>。</li>
     <li>层级脱落时触发恢复（<code>scheduleLinWidgetLayerRecovery</code> / <code>syncLinWidgetLayer</code>）。</li>
+  </ul>
+
+  <h3>2.4 桌面核心人机工学交互与动效架构</h3>
+  <ul>
+    <li><strong>LinBox 缓动折叠与自动悬停展开 (Roll-up / Auto-Peek)</strong>：
+      折叠与展开驱动采用 <code>QPropertyAnimation</code>（200ms <code>OutCubic</code> 缓动曲线），冷启动状态瞬切无跳闪；
+      在折叠状态下，鼠标光标悬停标题栏达 150ms 后盒子自动下卷展开，移出盒子区域 300ms 延时收起；
+      内置防溢出边界防护（碰撞底部任务栏时自动上翻），设置中心提供 <code>AutoPeekOnHover</code> 与 <code>AutoPeekInstant</code> 独立开关控制。
+    </li>
+    <li><strong>标题栏双击分区命中模型 (Hit-Testing Partition)</strong>：
+      按命中优先级分四区：① 折叠与视图切换按钮直接触发原生动作；② 映射图标区双击在资源管理器中打开目标物理文件夹；③ 标题文本热区（<code>mappedTitleHitRect</code>，依据实际绘制文本宽度与内边距紧凑计算）双击进入重命名；④ 其余空白区双击执行 <code>toggleCollapse()</code> 折叠/展开，彻底消除双击误触发重命名的冲突。
+    </li>
+    <li><strong>12px 屏幕边缘与相邻盒子磁吸 (Magnetic Snapping)</strong>：
+      考虑 8px 隐形拉伸手柄准确换算实际视觉几何，当拖拽盒子边缘接近屏幕工作区或其它盒子小于 12px 时产生微阻尼并自动对齐坐标，实现相邻盒子 0px 缝隙完美贴合；支持按住 <code>Alt</code> 键实时脱离吸附自由微调。
+    </li>
+    <li><strong>盲打跳选定位 (Type-to-Select) 与 Shell 撤销桥接 (Ctrl + Z)</strong>：
+      在 <code>ListView::keyPressEvent</code> 中维护 800ms 按键缓冲区与防抖计时器，支持全字符串与 GBK 拼音首字母检索，连续敲击同字符在匹配项间轮询切换，支持激活 Box 内部跳选与居中平滑滚动；拦截 <code>Ctrl + Z</code> 发送 <code>FCIDM_SHVIEW_UNDO (28699)</code> 消息无缝桥接 Windows Explorer Shell 原生撤销栈。
+    </li>
+    <li><strong>双击空白隐藏桌面淡入淡出过渡管线</strong>：
+      引入 220ms <code>InOutQuad</code> 透明度过渡动画，驱动 <code>m_desktopHideOpacity</code> 变量，全屏普通图标与 Box 容器同频渐隐；隐藏态自动阻断鼠标命中防误触；设置中心与桌面右键菜单提供 <code>DoubleClickHideIcons</code> 与 <code>FadeTransitionOnHide</code> 独立且双向同步绑定的配置项。
+    </li>
+  </ul>
+
+  <h3>2.5 高分屏 High-DPI 缩放适配与防模糊</h3>
+  <ul>
+    <li><strong>全链路缩放计算体系</strong>：全局网格尺寸、图标间距、选中外边框、内边距全量收口于 <code>scaledPx()</code> 缩放计算，严格杜绝硬编码像素；无论 100%、125%、150%、175% 还是 200% 缩放比率，桌面布局与元素均精准按比例呈现。</li>
+    <li><strong>文字渲染高精光栅化 (TextRenderCache)</strong>：桌面图标文本标签在 <code>TextRenderCache</code> 缓存绘制时，不仅记录文本与配色哈希，更将 <code>devicePixelRatio</code> 纳入缓存 Key，并在高分屏下按物理像素尺寸生成 QPixmap，彻底消除 125%/150% 缩放下字体发虚、边缘毛刺问题。</li>
+    <li><strong>壁纸物理分辨率同步解码</strong>：壁纸在桌面底座 <code>LinDesktop</code> 解码时，按 <code>screenSize * devicePixelRatio</code> 缩放至屏幕物理像素，再以高画质双三次插值渲染，消除 4K 高分屏壁纸拉伸模糊。</li>
+    <li><strong>毛玻璃滤镜与菜单精简</strong>：LinBox Win11 亚克力与毛玻璃模糊半径自适应 DPI 缩放，避免高缩放下模糊衰减；右键菜单去除冗余的“收起盒子”条目，统一由右上角折叠按钮与双击空白承载。</li>
   </ul>
 </section>
 
@@ -259,7 +287,7 @@
   └── resources/wallpapers/       # 内置壁纸资源
   </pre>
   <ul>
-    <li><strong>桌面与 Box 持久化</strong>：<code>BoxManager</code> 管理盒子集合，<code>DesktopItemLoader</code> 装载桌面项；图标缓存 <code>IconCacheManager</code>（LRU，上限 4096，支持按前缀失效）负责运行时缓存，不落盘。</li>
+    <li><strong>桌面与 Box 持久化</strong>：<code>BoxManager</code> 管理盒子集合，<code>DesktopItemLoader</code> 装载桌面项；图标缓存 <code>IconCacheManager</code> 实现<strong>两级 LRU 缓存与渐进式管线</strong>：内存级通用扩展名单例共享（99% 命中），磁盘级持久化缩略图（<code>%APPDATA%/LinDesk/IconCache/</code>），配合线程池异步解码、0ms 骨架占位与 100ms 局部渐进平滑淡入。</li>
     <li><strong>组件持久化</strong>：布局（位置/尺寸/zOrder/可见性）经 <code>ConfigManager</code> → <code>registry.json</code>，启动时 <code>restoreFromConfig</code> 恢复；组件数据仓储在 <code>LinWidgetsData/</code>。</li>
     <li><strong>显示名覆盖</strong>：<code>DesktopItemLoader::applyDisplayNameOverride</code> 在 UI 层将特定路径（如 WPS 云盘）显示为自定义名称（中/英分语言），不改物理文件名。</li>
   </ul>

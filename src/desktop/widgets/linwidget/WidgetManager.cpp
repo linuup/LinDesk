@@ -1466,10 +1466,9 @@ QString WidgetManager::widgetAt(const QPoint& clientPos) const
         if (!m_runningWidgets.contains(instance.instanceId)) {
             continue;
         }
+        // 壁纸属于底层全屏背景，不作为局部小组件返回，由专属壁纸管道处理
         if (instance.instanceId.startsWith(QStringLiteral("wallpaper:"))) {
-            if (!m_activeWallpaperInteractive) {
-                continue; // 点击穿透壁纸
-            }
+            continue;
         }
         if (m_layout.contains(instance.instanceId)) {
             WidgetLayoutState state = m_layout.state(instance.instanceId);
@@ -1504,7 +1503,11 @@ bool WidgetManager::forwardMouseEvent(QMouseEvent* event)
         if (event->type() == QEvent::MouseMove) {
             osr->sendMouseMove(localPos.x(), localPos.y());
         } else if (event->type() == QEvent::MouseButtonPress) {
-            setFocusedWidget(wid);
+            if (wid != QStringLiteral("__default_page__")) {
+                setFocusedWidget(wid);
+            } else {
+                clearWidgetFocus();
+            }
             osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), false, 1);
         } else if (event->type() == QEvent::MouseButtonRelease) {
             osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), true, 1);
@@ -1540,8 +1543,69 @@ bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
     return false;
 }
 
+bool WidgetManager::forwardMouseMoveToWallpaper(const QPoint& clientPos)
+{
+    if (!m_enabled || !m_cefOsrEnabled || m_activeWallpaperId.isEmpty() || !m_activeWallpaperInteractive) {
+        return false;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return false;
+    }
+
+    // 60fps 频率限制 (16ms 间隔)，平滑广播光标位置，避免高频 IPC 洪峰
+    static qint64 s_lastMoveMs = 0;
+    static QPoint s_lastPos;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (clientPos == s_lastPos || (now - s_lastMoveMs < 16 && (clientPos - s_lastPos).manhattanLength() < 4)) {
+        return true;
+    }
+    s_lastMoveMs = now;
+    s_lastPos = clientPos;
+
+    const QPoint localPos = clientPos - osr->geometry().topLeft();
+    osr->sendMouseMove(localPos.x(), localPos.y());
+    return true;
+}
+
+bool WidgetManager::forwardMouseClickToWallpaper(const QPoint& clientPos, Qt::MouseButton button, bool isRelease, int clickCount)
+{
+    if (!m_enabled || !m_cefOsrEnabled || m_activeWallpaperId.isEmpty() || !m_activeWallpaperInteractive) {
+        return false;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return false;
+    }
+
+    const QPoint localPos = clientPos - osr->geometry().topLeft();
+    osr->sendMouseClick(localPos.x(), localPos.y(), button, isRelease, clickCount);
+    return true;
+}
+
+bool WidgetManager::forwardWheelToWallpaper(const QPoint& clientPos, const QPoint& angleDelta)
+{
+    if (!m_enabled || !m_cefOsrEnabled || m_activeWallpaperId.isEmpty() || !m_activeWallpaperInteractive) {
+        return false;
+    }
+    auto* osr = m_osrBrowsers.value(m_activeWallpaperId, nullptr);
+    if (!osr) {
+        return false;
+    }
+
+    const QPoint localPos = clientPos - osr->geometry().topLeft();
+    osr->sendMouseWheel(localPos.x(), localPos.y(), angleDelta.x(), angleDelta.y());
+    return true;
+}
+
 void WidgetManager::setFocusedWidget(const QString& instanceId)
 {
+    if (instanceId == QStringLiteral("__default_page__")) {
+        if (!m_focusedInstanceId.isEmpty()) {
+            clearWidgetFocus();
+        }
+        return;
+    }
     if (m_focusedInstanceId == instanceId) {
         return;
     }
@@ -1572,7 +1636,7 @@ void WidgetManager::clearWidgetFocus()
 
 bool WidgetManager::forwardKeyEvent(QKeyEvent* event)
 {
-    if (!event || m_focusedInstanceId.isEmpty()) {
+    if (!event || m_focusedInstanceId.isEmpty() || m_focusedInstanceId == QStringLiteral("__default_page__")) {
         return false;
     }
     auto* osr = m_osrBrowsers.value(m_focusedInstanceId, nullptr);
@@ -1709,8 +1773,13 @@ void WidgetManager::updateDefaultCefPage()
     }
 
     QRect canvasRect;
-    if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
+    if (LinCef::LinWidgetCanvasWidget::hostWidget() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().isValid() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().width() > 100) {
+        canvasRect = LinCef::LinWidgetCanvasWidget::hostWidget()->rect();
+    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
         canvasRect = m_canvasWidget->rect();
+    } else if (QGuiApplication::primaryScreen()) {
+        canvasRect = QGuiApplication::primaryScreen()->geometry();
+        canvasRect.moveTo(0, 0);
     } else {
         canvasRect = QRect(0, 0, 1920, 1080);
     }
@@ -1718,6 +1787,9 @@ void WidgetManager::updateDefaultCefPage()
     if (m_defaultOsrBrowser) {
         if (m_defaultOsrBrowser->geometry() != canvasRect) {
             m_defaultOsrBrowser->setGeometry(canvasRect);
+            if (m_canvasWidget) {
+                m_canvasWidget->updateWidgetGeometry(QStringLiteral("__default_page__"), canvasRect);
+            }
         }
         return;
     }

@@ -43,6 +43,7 @@ struct DesktopRenderParams {
     int smallIconW = 62;
     int iconTextGap = 8;
     qreal dpiScale = 1.0;
+    qreal devicePixelRatio = 1.0;
     QFont labelFont;
     bool showShortcutArrow = true;
 };

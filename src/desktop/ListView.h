@@ -139,6 +139,11 @@ friend class ListViewDragDropHelper;
 friend class ListViewSelectionController;
 
 public:
+	struct GhostInfo {
+		QLabel* widget = nullptr;
+		QString filePath;
+		QPoint offset;
+	};
 	// 枚举定义
 	enum class IconPosMode {
 		AlignIconToGrid,  // 对齐网格
@@ -352,7 +357,7 @@ public:
 	bool importPathsToBox(const QStringList& sourcePaths, LinBox* targetBox, bool copyMode, int insertIndex = -1, bool preferShortcut = false);
 	void reloadMappedFolderBox(LinBox* box);
 	void clearMappedFolderBox(LinBox* box);
-	void saveBoxes();
+	void saveBoxes(bool async = true);
 	void requestSaveBoxes();
 	void createBoxFromSavedData(const QString& title, const QRect& geom, bool collapsed, int origH, int showType, const QStringList& files, const QColor& color, float opacity, bool glass, const QString& explicitId = "", const QString& mappedFolderPath = "", bool refresh = true);
 
@@ -389,6 +394,8 @@ public:
 	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
 	void setDoubleClickHideIconsEnabled(bool enabled);
 	bool isDoubleClickHideIconsEnabled() const;
+	void setFadeTransitionOnHideEnabled(bool enabled);
+	bool isFadeTransitionOnHideEnabled() const { return m_fadeTransitionOnHide; }
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	bool desktopIconsVisible() const;
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
@@ -418,8 +425,10 @@ public:
 	void beginBackgroundSelection(const QPoint& startPos);
 	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
 	void endBackgroundSelection();
+	void loadSelectionColors();
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
+	void clearWidgetFocus();
 
 	// 事件处理
 protected:
@@ -432,6 +441,8 @@ protected:
 	void wheelEvent(QWheelEvent* event) override;
 	void keyPressEvent(QKeyEvent* event) override;
 	void keyReleaseEvent(QKeyEvent* event) override;
+	void focusInEvent(QFocusEvent* event) override;
+	void focusOutEvent(QFocusEvent* event) override;
 	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 	void inputMethodEvent(QInputMethodEvent* event) override;
 	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
@@ -475,6 +486,8 @@ private:
 	QPoint resolveNearestFreeCreatePosition(const QPoint& requestedPos) const;
 	QMap<QString, QPoint> resolveDesktopDragFinalPositions(const QStringList& draggedPaths, const QPoint& releasePos, const QHash<QString, QPoint>& previewPositions = QHash<QString, QPoint>()) const;
 	QPoint localPosFromGhostWidget(const QWidget* ghostWidget) const;
+	QPoint localPosForGhost(const GhostInfo& ghost) const;
+	void clearDragGhosts();
 	bool rectIntersectsDesktopBlockedArea(const QRect& rect) const;
 	QPoint resolveNearestGridAreaForDrag(const QVector<QPoint>& relativeCells, const QPoint& preferredTopLeftCell, const QSet<quint64>& occupiedSlots) const;
 	void moveDesktopGhostsForPreview(const QPoint& globalPos);
@@ -557,6 +570,8 @@ private:
 	void finalizeActiveDrag(LinBox* box, QMouseEvent* event);
 	void updateGhostDragHoverPreview(const QPoint& globalPos);
 	void clearDestroyedBoxRuntimeState(LinBox* box);
+	void onIconLoaded(const QString& memKey, const QString& filePath);
+	void onIconFadeTimerTimeout();
 
 public slots:
 	// 目录监控
@@ -571,6 +586,10 @@ public slots:
 	void onMenuAutoArrangeIcons();
 	void onMenuAlignIconsToGrid();
 	void onMenuShowDesktopIcons();
+	void toggleDesktopIconsVisibility(bool animated = true);
+	void setDesktopIconsVisibility(bool visible, bool animated = true);
+	bool handleTypeToSelect(const QString& typedText, LinBox* activeBox = nullptr);
+	bool handleUndo();
 	void onMenuDoubleClickHideIcons();
 	void onMenuSortByName();
 	void onMenuSortBySize();
@@ -606,11 +625,7 @@ private:
 	friend class ListViewMappedBoxHelper;
     void executeMenuSort(SortOrderType sortType, const QString& debugName);
 
-	struct GhostInfo {
-		QLabel* widget;
-		QString filePath;
-		QPoint offset;
-	};
+
 
 private:
 	// 静态成员
@@ -650,6 +665,9 @@ private:
 	QSet<QString>& m_selectedDesktopPathSet;
 	QVector<QString> m_selectedBoxPaths;
 	QVector<GhostInfo> m_ghosts;
+	QLabel* m_combinedGhostWidget = nullptr;
+	QPoint m_combinedGhostOffset;
+	QPoint m_lastGhostMousePos;
 	QStringList m_desktopReorderDraggedPaths;
 	QRect m_desktopReorderIndicatorRect;
 	int m_desktopReorderInsertIndex = -1;
@@ -693,9 +711,21 @@ private:
 	QElapsedTimer m_backgroundSelectionFrameTimer;
 
 	// 状态标志
+	bool m_fadeTransitionOnHide = true;
+	qreal m_desktopElementsOpacity = 1.0;
+	class QVariantAnimation* m_desktopHideAnim = nullptr;
+	QString m_typeSearchBuffer;
+	class QTimer* m_typeSearchTimer = nullptr;
+	QHash<QString, qint64> m_fadingIconStartTimes;
+	class QTimer* m_iconFadeTimer = nullptr;
+
 	bool m_isMultiSelection = false;
 	bool m_isDragging = false;
 	bool m_isSelecting = false;
+	QRect m_renderedSelectionRect;
+	QColor m_selectionFillColor;
+	QColor m_selectionBorderColor;
+	bool m_fluentSelectionEnabled = true;
 	bool m_forwardingMouseToWidget = false;
 	bool m_widgetDragPending = false;
 	bool m_draggingWidget = false;
@@ -706,6 +736,10 @@ private:
 	Qt::MouseButton m_pendingWidgetPressButton = Qt::NoButton;
 	Qt::MouseButtons m_pendingWidgetPressButtons = Qt::NoButton;
 	Qt::KeyboardModifiers m_pendingWidgetPressModifiers = Qt::NoModifier;
+
+	bool m_pendingWallpaperClick = false;
+	QPoint m_pendingWallpaperPressPos;
+	Qt::MouseButton m_pendingWallpaperButton = Qt::NoButton;
 
 	enum WidgetResizeEdge {
 		ResizeEdgeNone = 0,

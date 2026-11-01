@@ -348,12 +348,9 @@ public:
         m_centralLayout = new QVBoxLayout();
         m_mainVLayout->addLayout(m_centralLayout);
 
-        auto* shadow = new QGraphicsDropShadowEffect(this);
-        shadow->setBlurRadius(20);
-        shadow->setXOffset(0);
-        shadow->setYOffset(4);
-        shadow->setColor(QColor(0, 0, 0, 50));
-        m_container->setGraphicsEffect(shadow);
+        // Note: QGraphicsDropShadowEffect on a full top-level container forces full-surface
+        // CPU Gaussian blur rasterization on every repaint/scroll/hover.
+        // We use crisp hardware-rendered borders without CPU blur bottlenecks.
 
         setWindowBtnMode(None); // Default
     }
@@ -466,17 +463,7 @@ protected:
         // ALWAYS 0 margins to remove any white/transparent buffer
         m_rootLayout->setContentsMargins(0, 0, 0, 0); 
         
-        if (maximized) {
-            m_container->setGraphicsEffect(nullptr); 
-        } else {
-            // Re-apply shadow carefully
-            if (!m_container->graphicsEffect()) {
-                auto* shadow = new QGraphicsDropShadowEffect(this);
-                shadow->setBlurRadius(20); shadow->setXOffset(0); shadow->setYOffset(4);
-                shadow->setColor(QColor(0, 0, 0, 60));
-                m_container->setGraphicsEffect(shadow);
-            }
-        }
+        // Maximized layout state update
 
         m_container->setStyleSheet(
             QString("QWidget#fluentBaseContainer { "

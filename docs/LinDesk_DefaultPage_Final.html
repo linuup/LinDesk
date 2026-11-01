@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinDesk Widgets</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect x='5.5' y='5.5' width='10' height='10' rx='2.5' fill='%238b5cf6'/%3E%3Crect x='5.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='5.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3C/svg%3E">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    /* —— 精选面板：Apple 风 ultraThin 毛玻璃 —— */
+    .panel {
+      width: min(940px, calc(100vw - 96px));
+      max-height: calc(100vh - 96px);
+      overflow-y: auto;
+      padding: 34px 38px 30px;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.14);
+      animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .panel::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .panel::-webkit-scrollbar-thumb {
+      background: rgba(30, 41, 59, 0.2);
+      border-radius: 2px;
+    }
+
+    /* 顶栏：字标 + 定位说明 */
+    .panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 22px;
+    }
+
+    .brand {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      color: rgba(30, 41, 59, 0.6);
+    }
+
+    .head-note {
+      font-size: 12px;
+      letter-spacing: 0.4px;
+      color: rgba(30, 41, 59, 0.45);
+    }
+
+    /* 壁纸精选 */
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: rgba(30, 41, 59, 0.45);
+      margin-bottom: 12px;
+    }
+
+    .wallpaper-main {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      height: 250px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+      background: #0f172a;
+    }
+
+    .wallpaper-main img.wp-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: opacity, transform;
+    }
+
+    /* Apple 风格壁纸切换：新图淡入 + 微缩放，旧图淡出，双层交叉过渡 */
+    .wallpaper-main .wp-front {
+      z-index: 1;
+    }
+
+    .wallpaper-main .wp-back {
+      opacity: 0;
+      transform: scale(1.04);
+    }
+
+    .wallpaper-main .wp-back.in {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .wallpaper-main .wp-front.out {
+      opacity: 0;
+    }
+
+    /* 底部渐变遮罩：保证主图文字可读 */
+    .wp-shade {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 84px;
+      background: linear-gradient(to top, rgba(2, 6, 23, 0.55), transparent);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .wallpaper-main .wp-meta {
+      position: absolute;
+      left: 18px;
+      bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 3;
+    }
+
+    .wp-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+    }
+
+    .wp-tag {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .wallpaper-thumbs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 26px;
+    }
+
+    .thumb {
+      position: relative;
+      height: 64px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      overflow: hidden;
+      cursor: pointer;
+      background: #0f172a;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .thumb img.thumb-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .thumb.active {
+      box-shadow: 0 0 0 2px #8b5cf6;
+    }
+
+    .thumb .thumb-label {
+      position: absolute;
+      left: 10px;
+      bottom: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #fff;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+    }
+
+    /* 组件精选 */
+    .widget-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 26px;
+    }
+
+    .widget-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.55);
+    }
+
+    .widget-card .w-icon {
+      flex: none;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .widget-card .w-icon svg {
+      width: 26px;
+      height: 26px;
+    }
+
+    .widget-card .w-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .widget-card .w-desc {
+      margin-top: 2px;
+      font-size: 12px;
+      color: rgba(51, 65, 85, 0.65);
+    }
+
+    /* 底部引导 */
+    .panel-foot {
+      text-align: center;
+      padding-top: 4px;
+      font-size: 13px;
+      color: rgba(51, 65, 85, 0.6);
+      letter-spacing: 0.2px;
+    }
+
+    .panel-foot .hl {
+      color: #6d28d9;
+      font-weight: 500;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    @media (max-width: 720px) {
+      body {
+        align-items: flex-start;
+        padding: 24px 0;
+      }
+
+      .panel {
+        width: calc(100vw - 48px);
+        max-height: none;
+        padding: 24px 20px;
+        border-radius: 22px;
+      }
+
+      .wallpaper-main {
+        height: 180px;
+      }
+
+      .wallpaper-thumbs {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .widget-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 组件系统首页：无活动组件时展示壁纸精选与组件推荐；透明区域穿透桌面 -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="brand">LINWIDGET</span>
+      <span class="head-note">组件 · 壁纸 · 桌面</span>
+    </div>
+
+    <div class="section-label">壁纸精选</div>
+    <div class="wallpaper-main" id="wpMain">
+      <img class="wp-img wp-front" id="wpFront" src="assets/wallpaper-aurora.jpg" alt="极光雪岭">
+      <img class="wp-img wp-back" id="wpBack" src="" alt="">
+      <div class="wp-shade"></div>
+      <div class="wp-meta">
+        <span class="wp-name" id="wpName">极光 · 雪岭</span>
+        <span class="wp-tag">4K 风景</span>
+      </div>
+    </div>
+    <div class="wallpaper-thumbs" id="wpThumbs">
+      <div class="thumb active" data-src="assets/wallpaper-aurora.jpg" data-name="极光 · 雪岭"><img class="thumb-img" src="assets/wallpaper-aurora.jpg" alt=""><span class="thumb-label">极光 · 雪岭</span></div>
+      <div class="thumb" data-src="assets/wallpaper-lake.jpg" data-name="雪山 · 镜湖"><img class="thumb-img" src="assets/wallpaper-lake.jpg" alt=""><span class="thumb-label">雪山 · 镜湖</span></div>
+      <div class="thumb" data-src="assets/wallpaper-forest.jpg" data-name="晨雾 · 林间"><img class="thumb-img" src="assets/wallpaper-forest.jpg" alt=""><span class="thumb-label">晨雾 · 林间</span></div>
+    </div>
+
+    <div class="section-label">组件精选</div>
+    <div class="widget-grid">
+      <div class="widget-card">
+        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="1.6"><circle cx="12" cy="13" r="7"/><path d="M12 10v3.2l2.1 1.3"/><path d="M9 3h6" stroke="#8b5cf6"/></svg></span>
+        <span><div class="w-name">时钟</div><div class="w-desc">时间与专注</div></span>
+      </div>
+      <div class="widget-card">
+        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="1.6"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19"/></svg></span>
+        <span><div class="w-name">天气</div><div class="w-desc">桌面天气一览</div></span>
+      </div>
+      <div class="widget-card">
+        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.6"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h4.5"/></svg></span>
+        <span><div class="w-name">待办</div><div class="w-desc">把重要的事放在眼前</div></span>
+      </div>
+      <div class="widget-card">
+        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.6"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span>
+        <span><div class="w-name">系统监控</div><div class="w-desc">CPU 与内存实时状态</div></span>
+      </div>
+      <div class="widget-card">
+        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.6"><path d="M5 3.5h12a2 2 0 0 1 2 2V20l-2.5-1.8L14 20l-2-1.8L10 20l-2.5-1.8L5 20V5.5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 11.5h8"/></svg></span>
+        <span><div class="w-name">便签</div><div class="w-desc">随手记下想法</div></span>
+      </div>
+      <div class="widget-card">
+        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.6"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M8 14h3M14.5 14H16M8 17h5" stroke="#8b5cf6"/></svg></span>
+        <span><div class="w-name">日历</div><div class="w-desc">日程随手可见</div></span>
+      </div>
+    </div>
+
+    <div class="panel-foot">
+      在<span class="hl">设置 · 组件</span>中启用组件，或下载更多壁纸与小组件
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // 壁纸精选：Apple 风格切换（双层交叉淡入淡出 + 微缩放），纯前端，不改动组件系统
+      var front = document.getElementById('wpFront');
+      var back = document.getElementById('wpBack');
+      var name = document.getElementById('wpName');
+      var thumbs = Array.prototype.slice.call(document.querySelectorAll('#wpThumbs .thumb'));
+      var animating = false;
+
+      thumbs.forEach(function (t) {
+        t.addEventListener('click', function () {
+          var src = t.getAttribute('data-src');
+          var label = t.getAttribute('data-name');
+          if (animating || src === front.getAttribute('src')) {
+            return;
+          }
+          animating = true;
+          var pre = new Image();
+          pre.onload = function () {
+            name.textContent = label;
+            back.src = src;
+            back.classList.add('in');
+            front.classList.add('out');
+            thumbs.forEach(function (b) { b.classList.toggle('active', b === t); });
+            setTimeout(function () {
+              front.src = src;
+              front.classList.remove('out');
+              back.classList.remove('in');
+              back.src = '';
+              animating = false;
+            }, 560);
+          };
+          pre.src = src;
+        });
+      });
+    })();
+  </script>
+</body>
+
+</html>
