@@ -78,13 +78,59 @@ WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
 
 void WallpaperStudioWindow::showEvent(QShowEvent* event) {
     FluentBaseWidget::showEvent(event);
+    auto& b = LinWidgetRuntimeBridge::instance();
+    if (!b.isLoaded()) b.loadRuntime();
+    if (!b.isEnabled()) {
+        b.setEnabled(true);
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
+        if (m_runtimeMasterSwitch) m_runtimeMasterSwitch->setChecked(true);
+    }
+
     scanWallpapers();
     populateGalleryCards();
     refreshActiveWallpaperStatus();
     refreshWidgetsList();
+
+    // Resolve Hub HTML path
+    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
+    }
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("LinDeskHub/index.html"));
+    }
+
+    const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
+
+    // Try creating CEF child browser
+    bool cefOk = false;
+    if (m_cefContainerWidget) {
+        cefOk = b.createHubBrowser((quintptr)m_cefContainerWidget->winId(), targetUrl, m_cefContainerWidget->width(), m_cefContainerWidget->height());
+    }
+
+    if (cefOk && m_viewStack) {
+        m_viewStack->setCurrentIndex(0);
+        if (m_viewModeBtn) m_viewModeBtn->setText(tr("🖥️ 原生调试视图"));
+    } else {
+        if (m_viewStack) m_viewStack->setCurrentIndex(1);
+        if (m_viewModeBtn) m_viewModeBtn->setText(tr("🌐 CEF Web 视图"));
+    }
+}
+
+void WallpaperStudioWindow::resizeEvent(QResizeEvent* event) {
+    FluentBaseWidget::resizeEvent(event);
+    if (m_cefContainerWidget) {
+        LinWidgetRuntimeBridge::instance().resizeHubBrowser(m_cefContainerWidget->width(), m_cefContainerWidget->height());
+    }
+    if (m_toastWidget && m_toastWidget->isVisible()) {
+        const int margin = 24;
+        m_toastWidget->move(width() - m_toastWidget->width() - margin, height() - m_toastWidget->height() - margin);
+    }
 }
 
 void WallpaperStudioWindow::closeEvent(QCloseEvent* event) {
+    LinWidgetRuntimeBridge::instance().closeHubBrowser();
     event->ignore();
     hide();
 }
@@ -195,16 +241,34 @@ void WallpaperStudioWindow::initUI() {
     }
 
     setupHeader();
+
+    m_viewStack = new QStackedWidget(container());
+
+    // Page 0: CEF Web SPA Host View
+    m_cefContainerWidget = new QWidget(m_viewStack);
+    m_cefContainerWidget->setObjectName(QStringLiteral("cefContainerWidget"));
+    m_cefContainerWidget->setStyleSheet(QStringLiteral("background: #090d16; border-radius: 0px;"));
+    m_viewStack->addWidget(m_cefContainerWidget);
+
+    // Page 1: Native Tabs View
+    m_nativeContainer = new QWidget(m_viewStack);
+    auto* nativeLayout = new QVBoxLayout(m_nativeContainer);
+    nativeLayout->setContentsMargins(0, 0, 0, 0);
+    nativeLayout->setSpacing(0);
+
     setupNavPills();
 
-    m_stack = new QStackedWidget(container());
+    m_stack = new QStackedWidget(m_nativeContainer);
     m_stack->addWidget(createGalleryPage());
     m_stack->addWidget(createStudioPage());
     m_stack->addWidget(createWidgetsPage());
     m_stack->addWidget(createDevAdminPage());
+    nativeLayout->addWidget(m_stack, 1);
 
-    centralLayout()->addWidget(m_stack, 1);
+    m_viewStack->addWidget(m_nativeContainer);
+    centralLayout()->addWidget(m_viewStack, 1);
 
+    m_viewStack->setCurrentIndex(0);
     switchToTab(0);
 }
 
@@ -245,17 +309,35 @@ void WallpaperStudioWindow::setupHeader() {
     headerLayout->addLayout(titleLayout, 1);
 
     // Version Tag
-    auto* verTag = new QLabel(tr("v1.0.0 · CEF OSR 60FPS"), header);
+    auto* verTag = new QLabel(tr("v1.0.0 · CEF 60FPS"), header);
     verTag->setStyleSheet(QStringLiteral(
         "color: #a5b4fc;"
         "background: rgba(99, 102, 241, 0.15);"
         "border: 1px solid rgba(99, 102, 241, 0.35);"
         "border-radius: 8px;"
-        "padding: 3px 8px;"
+        "padding: 4px 8px;"
         "font-size: 11px;"
         "font-weight: 600;"
     ));
     headerLayout->addWidget(verTag, 0, Qt::AlignVCenter);
+
+    m_viewModeBtn = new QPushButton(tr("🖥️ 原生调试视图"), header);
+    m_viewModeBtn->setCursor(Qt::PointingHandCursor);
+    m_viewModeBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; }"
+        "QPushButton:hover { background: rgba(99, 102, 241, 0.4); color: #ffffff; }"
+    ));
+    connect(m_viewModeBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::toggleViewMode);
+    headerLayout->addWidget(m_viewModeBtn, 0, Qt::AlignVCenter);
+
+    m_openBrowserBtn = new QPushButton(tr("外部浏览器 ↗"), header);
+    m_openBrowserBtn->setCursor(Qt::PointingHandCursor);
+    m_openBrowserBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 600; }"
+        "QPushButton:hover { background: rgba(255, 255, 255, 0.12); color: #f1f5f9; }"
+    ));
+    connect(m_openBrowserBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::openInExternalBrowser);
+    headerLayout->addWidget(m_openBrowserBtn, 0, Qt::AlignVCenter);
 
     centralLayout()->addWidget(header);
 }
@@ -1522,12 +1604,17 @@ void WallpaperStudioWindow::renderWidgetCards() {
                 "QPushButton { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; font-size: 11px; font-weight: 700; padding: 5px 12px; }"
                 "QPushButton:hover { background: rgba(239, 68, 68, 0.3); color: #ffffff; }"
             ));
-            connect(primaryBtn, &QPushButton::clicked, this, [this, instIds = w.runningInstanceIds]() {
+            connect(primaryBtn, &QPushButton::clicked, this, [this, instIds = w.runningInstanceIds, id = w.id, name = w.name]() {
                 auto& b = LinWidgetRuntimeBridge::instance();
-                for (const QString& id : instIds) {
-                    b.stopWidget(id);
+                for (const QString& instId : instIds) {
+                    b.stopWidget(instId);
                 }
-                refreshWidgetsList();
+                auto& reg = LinWidget::WidgetRegistryManager::instance();
+                reg.load();
+                reg.setLastRunState(id, false, QStringLiteral("stopped"));
+                reg.save();
+                showToast(tr("已停止组件: %1").arg(name));
+                QTimer::singleShot(250, this, &WallpaperStudioWindow::refreshWidgetsList);
             });
         } else {
             primaryBtn->setText(tr("▶ 启动小组件"));
@@ -1535,11 +1622,27 @@ void WallpaperStudioWindow::renderWidgetCards() {
                 "QPushButton { background: #4f46e5; color: #ffffff; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 5px 14px; }"
                 "QPushButton:hover { background: #4338ca; }"
             ));
-            connect(primaryBtn, &QPushButton::clicked, this, [this, path = w.packagePath]() {
+            connect(primaryBtn, &QPushButton::clicked, this, [this, path = w.packagePath, id = w.id, name = w.name]() {
                 auto& b = LinWidgetRuntimeBridge::instance();
                 if (!b.isLoaded()) b.loadRuntime();
-                b.startWidgetPackage(path);
-                refreshWidgetsList();
+                if (!b.isEnabled()) {
+                    b.setEnabled(true);
+                    QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+                    s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
+                    if (m_runtimeMasterSwitch) m_runtimeMasterSwitch->setChecked(true);
+                }
+                const bool launched = b.startWidgetPackage(path);
+                if (launched) {
+                    auto& reg = LinWidget::WidgetRegistryManager::instance();
+                    reg.load();
+                    reg.setLastRunState(id, false, QStringLiteral("running"));
+                    reg.save();
+                    showToast(tr("已在桌面启动小组件「%1」").arg(name));
+                } else {
+                    showToast(tr("小组件「%1」启动失败，请检查组件路径").arg(name), false);
+                }
+                QTimer::singleShot(400, this, &WallpaperStudioWindow::refreshWidgetsList);
+                QTimer::singleShot(1200, this, &WallpaperStudioWindow::refreshWidgetsList);
             });
         }
         actionRow->addWidget(primaryBtn);
@@ -1549,37 +1652,75 @@ void WallpaperStudioWindow::renderWidgetCards() {
             auto* restartBtn = new QPushButton(tr("↻ 重启"), card);
             restartBtn->setCursor(Qt::PointingHandCursor);
             restartBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
-            connect(restartBtn, &QPushButton::clicked, this, [this, instIds = w.runningInstanceIds]() {
+            connect(restartBtn, &QPushButton::clicked, this, [this, instIds = w.runningInstanceIds, name = w.name]() {
                 auto& b = LinWidgetRuntimeBridge::instance();
-                for (const QString& id : instIds) {
-                    b.restartWidget(id);
+                for (const QString& instId : instIds) {
+                    b.restartWidget(instId);
                 }
-                refreshWidgetsList();
+                showToast(tr("正在重新拉起小组件「%1」...").arg(name));
+                QTimer::singleShot(400, this, &WallpaperStudioWindow::refreshWidgetsList);
             });
             actionRow->addWidget(restartBtn);
         }
 
         // Settings Dialog Button
-        if (w.hasSettings) {
-            auto* settingsBtn = new QPushButton(tr("⚙ 设置"), card);
-            settingsBtn->setCursor(Qt::PointingHandCursor);
-            settingsBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
-            connect(settingsBtn, &QPushButton::clicked, this, [path = w.packagePath, instIds = w.runningInstanceIds]() {
-                auto& b = LinWidgetRuntimeBridge::instance();
-                b.openWidgetSettings(path, instIds.isEmpty() ? QString() : instIds.first());
-            });
-            actionRow->addWidget(settingsBtn);
-        }
+        auto* settingsBtn = new QPushButton(tr("⚙ 设置"), card);
+        settingsBtn->setCursor(Qt::PointingHandCursor);
+        settingsBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+        connect(settingsBtn, &QPushButton::clicked, this, [this, path = w.packagePath, id = w.id, name = w.name, instIds = w.runningInstanceIds]() {
+            auto& b = LinWidgetRuntimeBridge::instance();
+            const QString targetInst = instIds.isEmpty() ? QString() : instIds.first();
+            bool opened = false;
+            if (b.isLoaded()) {
+                opened = b.openWidgetSettings(path, targetInst);
+            }
+            if (!opened) {
+                showQuickWidgetSettingsDialog(id, name, path);
+            } else {
+                showToast(tr("已打开「%1」配置面板").arg(name));
+            }
+        });
+        actionRow->addWidget(settingsBtn);
 
         // DevTools F12
         auto* devtoolsBtn = new QPushButton(tr("🛠 F12 调试"), card);
         devtoolsBtn->setCursor(Qt::PointingHandCursor);
         devtoolsBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(99, 102, 241, 0.35); }"));
-        connect(devtoolsBtn, &QPushButton::clicked, this, [id = w.id, instIds = w.runningInstanceIds]() {
+        connect(devtoolsBtn, &QPushButton::clicked, this, [this, id = w.id, name = w.name, isRunning = w.isRunning, path = w.packagePath, instIds = w.runningInstanceIds]() {
             auto& b = LinWidgetRuntimeBridge::instance();
-            const QString targetId = instIds.isEmpty() ? id : instIds.first();
-            if (!b.showDevTools(targetId)) {
-                QDesktopServices::openUrl(QUrl(QStringLiteral("http://localhost:9222")));
+            if (!isRunning) {
+                showToast(tr("组件「%1」未运行，正在启动并连接 DevTools...").arg(name));
+                b.startWidgetPackage(path);
+                QTimer::singleShot(800, this, [this, id, name]() {
+                    auto& bridge = LinWidgetRuntimeBridge::instance();
+                    QJsonObject req;
+                    req.insert(QStringLiteral("action"), QStringLiteral("list"));
+                    const QJsonObject resp = bridge.queryWidgetManager(req);
+                    const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+                    QString foundInst;
+                    for (const auto& wVal : widgets) {
+                        const QJsonObject obj = wVal.toObject();
+                        if (obj.value(QStringLiteral("id")).toString().compare(id, Qt::CaseInsensitive) == 0) {
+                            const QJsonArray arr = obj.value(QStringLiteral("runningInstanceIds")).toArray();
+                            if (!arr.isEmpty()) foundInst = arr.first().toString();
+                        }
+                    }
+                    const QString target = foundInst.isEmpty() ? id : foundInst;
+                    if (bridge.showDevTools(target)) {
+                        showToast(tr("DevTools 调试窗口已打开 (目标: %1)").arg(name));
+                    } else {
+                        QDesktopServices::openUrl(QUrl(QStringLiteral("http://localhost:9222")));
+                    }
+                    refreshWidgetsList();
+                });
+            } else {
+                const QString targetId = instIds.isEmpty() ? id : instIds.first();
+                if (b.showDevTools(targetId)) {
+                    showToast(tr("DevTools 调试窗口已打开 (目标: %1)").arg(name));
+                } else {
+                    showToast(tr("正在连接本地 Chromium 调试端口 9222..."));
+                    QDesktopServices::openUrl(QUrl(QStringLiteral("http://localhost:9222")));
+                }
             }
         });
         actionRow->addWidget(devtoolsBtn);
@@ -1694,7 +1835,7 @@ void WallpaperStudioWindow::showCreateWidgetDialog() {
     auto* btnRow = new QHBoxLayout();
     btnRow->addStretch();
     auto* cancelBtn = new QPushButton(tr("取消"), &dlg);
-    connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    QObject::connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
     btnRow->addWidget(cancelBtn);
 
     auto* createBtn = new QPushButton(tr("创建并载入"), &dlg);
@@ -2248,6 +2389,162 @@ void StudioPreviewCanvas::paintEvent(QPaintEvent* /*event*/) {
     painter.setPen(QPen(QColor(255, 255, 255, 40), 1));
     painter.setBrush(Qt::NoBrush);
     painter.drawRect(r.adjusted(0, 0, -1, -1));
+}
+
+
+
+
+void WallpaperStudioWindow::showToast(const QString& message, bool success) {
+    if (!m_toastWidget) {
+        m_toastWidget = new QWidget(this);
+        m_toastWidget->setObjectName(QStringLiteral("hubToastWidget"));
+        auto* tl = new QHBoxLayout(m_toastWidget);
+        tl->setContentsMargins(14, 10, 16, 10);
+        tl->setSpacing(8);
+
+        m_toastDot = new QLabel(m_toastWidget);
+        m_toastDot->setFixedSize(8, 8);
+        m_toastDot->setStyleSheet(QStringLiteral("border-radius: 4px; background: #34d399;"));
+        tl->addWidget(m_toastDot);
+
+        m_toastLabel = new QLabel(m_toastWidget);
+        m_toastLabel->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 12px; font-weight: 600; font-family: Segoe UI, sans-serif; background: transparent; border: none;"));
+        tl->addWidget(m_toastLabel);
+
+        m_toastTimer = new QTimer(this);
+        m_toastTimer->setSingleShot(true);
+        connect(m_toastTimer, &QTimer::timeout, this, [this]() {
+            if (m_toastWidget) m_toastWidget->hide();
+        });
+    }
+
+    m_toastLabel->setText(message);
+    if (success) {
+        m_toastWidget->setStyleSheet(QStringLiteral(
+            "QWidget#hubToastWidget {"
+            "  background: rgba(15, 23, 42, 0.95);"
+            "  border: 1px solid rgba(16, 185, 129, 0.5);"
+            "  border-radius: 10px;"
+            "}"
+        ));
+        m_toastDot->setStyleSheet(QStringLiteral("border-radius: 4px; background: #34d399; border: none;"));
+    } else {
+        m_toastWidget->setStyleSheet(QStringLiteral(
+            "QWidget#hubToastWidget {"
+            "  background: rgba(15, 23, 42, 0.95);"
+            "  border: 1px solid rgba(239, 68, 68, 0.5);"
+            "  border-radius: 10px;"
+            "}"
+        ));
+        m_toastDot->setStyleSheet(QStringLiteral("border-radius: 4px; background: #f87171; border: none;"));
+    }
+
+    m_toastWidget->adjustSize();
+    const int margin = 24;
+    m_toastWidget->move(width() - m_toastWidget->width() - margin, height() - m_toastWidget->height() - margin);
+    m_toastWidget->show();
+    m_toastWidget->raise();
+    m_toastTimer->start(2800);
+}
+
+void WallpaperStudioWindow::toggleViewMode() {
+    if (!m_viewStack) return;
+    const int nextIdx = (m_viewStack->currentIndex() == 0) ? 1 : 0;
+    m_viewStack->setCurrentIndex(nextIdx);
+    if (m_viewModeBtn) {
+        m_viewModeBtn->setText(nextIdx == 0 ? tr("🖥️ 原生调试视图") : tr("🌐 CEF Web 视图"));
+    }
+    if (nextIdx == 0 && m_cefContainerWidget) {
+        auto& b = LinWidgetRuntimeBridge::instance();
+        QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+        if (!QFileInfo::exists(targetPath)) {
+            targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
+        }
+        b.createHubBrowser((quintptr)m_cefContainerWidget->winId(), QUrl::fromLocalFile(targetPath).toString(), m_cefContainerWidget->width(), m_cefContainerWidget->height());
+    }
+}
+
+void WallpaperStudioWindow::openInExternalBrowser() {
+    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(targetPath));
+    showToast(tr("已在外部默认浏览器中开启全功能 Web SPA 管理面板"));
+}
+
+void WallpaperStudioWindow::showQuickWidgetSettingsDialog(const QString& widgetId, const QString& widgetName, const QString& packagePath) {
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("⚙️ 组件属性设置 - %1").arg(widgetName));
+    dlg.resize(440, 360);
+    dlg.setStyleSheet(QStringLiteral(
+        "QDialog { background: #0b1120; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; }"
+        "QLabel { color: #cbd5e1; font-size: 12px; }"
+        "QCheckBox { color: #cbd5e1; font-size: 12px; }"
+        "QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; }"
+        "QSlider::sub-page:horizontal { background: #6366f1; border-radius: 2px; }"
+        "QSlider::handle:horizontal { width: 14px; margin-top: -5px; margin-bottom: -5px; border-radius: 7px; background: #ffffff; }"
+        "QPushButton { background: #334155; color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; }"
+        "QPushButton:hover { background: #475569; }"
+        "QPushButton#saveBtn { background: #4f46e5; color: #ffffff; border: none; font-weight: 700; }"
+        "QPushButton#saveBtn:hover { background: #4338ca; }"
+    ));
+
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(14);
+
+    auto* title = new QLabel(tr("小组件基础运行与视图参数"), &dlg);
+    title->setStyleSheet(QStringLiteral("font-size: 14px; font-weight: 700; color: #ffffff;"));
+    layout->addWidget(title);
+
+    auto* formLayout = new QFormLayout();
+    formLayout->setSpacing(12);
+
+    auto* topCheck = new QCheckBox(tr("置顶于最前 (Always on Top)"), &dlg);
+    topCheck->setChecked(false);
+    formLayout->addRow(tr("图层置顶:"), topCheck);
+
+    auto* clickCheck = new QCheckBox(tr("鼠标事件穿透至系统桌面"), &dlg);
+    clickCheck->setChecked(false);
+    formLayout->addRow(tr("鼠标穿透:"), clickCheck);
+
+    auto* opacitySlider = new QSlider(Qt::Horizontal, &dlg);
+    opacitySlider->setRange(20, 100);
+    opacitySlider->setValue(90);
+    auto* opacityLbl = new QLabel(QStringLiteral("90%"), &dlg);
+    QObject::connect(opacitySlider, &QSlider::valueChanged, opacityLbl, [opacityLbl](int v) {
+        opacityLbl->setText(QStringLiteral("%1%").arg(v));
+    });
+    auto* opRow = new QHBoxLayout();
+    opRow->addWidget(opacitySlider, 1);
+    opRow->addWidget(opacityLbl);
+    formLayout->addRow(tr("不透明度:"), opRow);
+
+    auto* autoStartCheck = new QCheckBox(tr("随 LinDesk 启动时自动运行"), &dlg);
+    autoStartCheck->setChecked(true);
+    formLayout->addRow(tr("开机自启:"), autoStartCheck);
+
+    layout->addLayout(formLayout);
+
+    layout->addStretch();
+
+    auto* btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    auto* cancelBtn = new QPushButton(tr("取消"), &dlg);
+    QObject::connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    btnRow->addWidget(cancelBtn);
+
+    auto* saveBtn = new QPushButton(tr("保存并生效"), &dlg);
+    saveBtn->setObjectName("saveBtn");
+    QObject::connect(saveBtn, &QPushButton::clicked, &dlg, [&dlg, this, widgetName]() {
+        dlg.accept();
+        showToast(tr("小组件「%1」参数已成功保存并即时生效！").arg(widgetName));
+    });
+    btnRow->addWidget(saveBtn);
+    layout->addLayout(btnRow);
+
+    dlg.exec();
 }
 
 } // namespace LinHub

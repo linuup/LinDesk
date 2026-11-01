@@ -419,6 +419,84 @@ LINWIDGET_EXPORT bool linwidget_validate_package(const char* packagePath, char* 
     return res.ok && !res.hasErrors();
 }
 
+#if defined(LINDESK_HAS_CEF)
+#include "include/cef_client.h"
+#include "include/cef_browser.h"
+#include "include/cef_life_span_handler.h"
+
+static CefRefPtr<CefBrowser> s_hubBrowser = nullptr;
+static HWND s_hubBrowserHwnd = nullptr;
+
+class HubClientHandler : public CefClient,
+                         public CefLifeSpanHandler {
+public:
+    CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+
+    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+        s_hubBrowser = browser;
+        if (browser && browser->GetHost()) {
+            s_hubBrowserHwnd = browser->GetHost()->GetWindowHandle();
+        }
+    }
+
+    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+        s_hubBrowser = nullptr;
+        s_hubBrowserHwnd = nullptr;
+    }
+
+    IMPLEMENT_REFCOUNTING(HubClientHandler);
+};
+
+LINWIDGET_EXPORT bool linwidget_create_hub_browser(quintptr parentHwnd, const char* hubUrl, int w, int h)
+{
+    if (!LinCef::CefManager::instance()->initialize()) {
+        return false;
+    }
+
+    if (s_hubBrowser && s_hubBrowserHwnd && IsWindow(s_hubBrowserHwnd)) {
+        MoveWindow(s_hubBrowserHwnd, 0, 0, w, h, TRUE);
+        return true;
+    }
+
+    CefWindowInfo windowInfo;
+    CefRect rect(0, 0, w, h);
+    windowInfo.SetAsChild(reinterpret_cast<HWND>(parentHwnd), rect);
+
+    CefBrowserSettings settings;
+    settings.background_color = 0xff090d16;
+
+    CefRefPtr<HubClientHandler> handler = new HubClientHandler();
+    const std::wstring urlW = hubUrl ? QString::fromUtf8(hubUrl).toStdWString() : L"about:blank";
+    return CefBrowserHost::CreateBrowser(windowInfo, handler, urlW, settings, nullptr, nullptr);
+}
+
+LINWIDGET_EXPORT void linwidget_resize_hub_browser(int w, int h)
+{
+    if (s_hubBrowserHwnd && IsWindow(s_hubBrowserHwnd)) {
+        SetWindowPos(s_hubBrowserHwnd, nullptr, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+}
+
+LINWIDGET_EXPORT void linwidget_close_hub_browser()
+{
+    if (s_hubBrowser && s_hubBrowser->GetHost()) {
+        s_hubBrowser->GetHost()->CloseBrowser(true);
+        s_hubBrowser = nullptr;
+        s_hubBrowserHwnd = nullptr;
+    }
+}
+
+LINWIDGET_EXPORT bool linwidget_has_hub_browser()
+{
+    return s_hubBrowser != nullptr && s_hubBrowserHwnd != nullptr && IsWindow(s_hubBrowserHwnd);
+}
+#else
+LINWIDGET_EXPORT bool linwidget_create_hub_browser(quintptr, const char*, int, int) { return false; }
+LINWIDGET_EXPORT void linwidget_resize_hub_browser(int, int) {}
+LINWIDGET_EXPORT void linwidget_close_hub_browser() {}
+LINWIDGET_EXPORT bool linwidget_has_hub_browser() { return false; }
+#endif
+
 #endif // LINWIDGET_RUNTIME_EXPORTS
 
 // ==============================================================================
@@ -491,6 +569,10 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
     m_pfnActiveWallpaperIsDevelopment = nullptr;
     m_pfnOpenWidgetSettings = nullptr;
     m_pfnValidatePackage = nullptr;
+    m_pfnCreateHubBrowser = nullptr;
+    m_pfnResizeHubBrowser = nullptr;
+    m_pfnCloseHubBrowser = nullptr;
+    m_pfnHasHubBrowser = nullptr;
 }
 
 bool LinWidgetRuntimeBridge::isLoaded() const
@@ -594,6 +676,10 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_query_manager", m_pfnQueryManager);
     RESOLVE_FN("linwidget_show_devtools", m_pfnShowDevTools);
     RESOLVE_FN("linwidget_validate_package", m_pfnValidatePackage);
+    RESOLVE_FN("linwidget_create_hub_browser", m_pfnCreateHubBrowser);
+    RESOLVE_FN("linwidget_resize_hub_browser", m_pfnResizeHubBrowser);
+    RESOLVE_FN("linwidget_close_hub_browser", m_pfnCloseHubBrowser);
+    RESOLVE_FN("linwidget_has_hub_browser", m_pfnHasHubBrowser);
 
     #undef RESOLVE_FN
 #endif
@@ -923,4 +1009,31 @@ bool LinWidgetRuntimeBridge::validatePackage(const QString& packagePath, QString
         *outReport = QString::fromUtf8(buf);
     }
     return ok;
+}
+
+
+bool LinWidgetRuntimeBridge::createHubBrowser(quintptr parentHwnd, const QString& hubUrl, int w, int h)
+{
+    if (!m_pfnCreateHubBrowser) return false;
+    const QByteArray urlUtf8 = hubUrl.toUtf8();
+    return m_pfnCreateHubBrowser(parentHwnd, urlUtf8.constData(), w, h);
+}
+
+void LinWidgetRuntimeBridge::resizeHubBrowser(int w, int h)
+{
+    if (m_pfnResizeHubBrowser) {
+        m_pfnResizeHubBrowser(w, h);
+    }
+}
+
+void LinWidgetRuntimeBridge::closeHubBrowser()
+{
+    if (m_pfnCloseHubBrowser) {
+        m_pfnCloseHubBrowser();
+    }
+}
+
+bool LinWidgetRuntimeBridge::hasHubBrowser()
+{
+    return m_pfnHasHubBrowser ? m_pfnHasHubBrowser() : false;
 }

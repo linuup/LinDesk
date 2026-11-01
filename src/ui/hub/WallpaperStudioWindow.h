@@ -85,9 +85,14 @@ public slots:
     void toggleWidgetPermission(const QString& widgetId, const QString& permission, bool currentGranted);
     void clearWidgetStorage(const QString& widgetId, const QString& widgetName);
     void uninstallWidget(const QString& widgetId, const QString& widgetName, const QString& packagePath, const QStringList& runningInstanceIds);
+    void showQuickWidgetSettingsDialog(const QString& widgetId, const QString& widgetName, const QString& packagePath);
+    void showToast(const QString& message, bool success = true);
+    void toggleViewMode();
+    void openInExternalBrowser();
 
 protected:
     void showEvent(QShowEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
 
 private:
@@ -171,6 +176,19 @@ private:
     // Dev elements
     QLabel* m_ipcLogView = nullptr;
     QTimer* m_statusTimer = nullptr;
+
+    // Web / CEF hosting
+    QWidget* m_cefContainerWidget = nullptr;
+    QStackedWidget* m_viewStack = nullptr; // Page 0: CEF Web SPA, Page 1: Native Tabs
+    QPushButton* m_viewModeBtn = nullptr;
+    QPushButton* m_openBrowserBtn = nullptr;
+    QWidget* m_nativeContainer = nullptr;
+
+    // In-window toast notification
+    QWidget* m_toastWidget = nullptr;
+    QLabel* m_toastLabel = nullptr;
+    QLabel* m_toastDot = nullptr;
+    QTimer* m_toastTimer = nullptr;
 };
 
 // 16:9 实时画板部件 (模拟屏幕视口、桌面图标浮层与滤镜)

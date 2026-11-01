@@ -83,6 +83,10 @@ LINWIDGET_EXPORT bool linwidget_open_widget_settings(const char* packagePath, co
 LINWIDGET_EXPORT bool linwidget_show_devtools(const char* instanceId);
 LINWIDGET_EXPORT bool linwidget_validate_package(const char* packagePath, char* outReportBuffer, int bufferSize);
 LINWIDGET_EXPORT int linwidget_query_manager(const char* requestJson, char* outResponseBuffer, int bufferSize);
+LINWIDGET_EXPORT bool linwidget_create_hub_browser(quintptr parentHwnd, const char* hubUrl, int w, int h);
+LINWIDGET_EXPORT void linwidget_resize_hub_browser(int w, int h);
+LINWIDGET_EXPORT void linwidget_close_hub_browser();
+LINWIDGET_EXPORT bool linwidget_has_hub_browser();
 #endif
 
 // 主程序侧持有的动态桥接单例（负责 LoadLibrary、符号解析与判空转发）
@@ -148,6 +152,10 @@ public:
     bool showDevTools(const QString& instanceId);
     bool validatePackage(const QString& packagePath, QString* outReport = nullptr);
     QJsonObject queryWidgetManager(const QJsonObject& request);
+    bool createHubBrowser(quintptr parentHwnd, const QString& hubUrl, int w, int h);
+    void resizeHubBrowser(int w, int h);
+    void closeHubBrowser();
+    bool hasHubBrowser();
 
 private:
     LinWidgetRuntimeBridge();
@@ -210,4 +218,8 @@ private:
     bool (*m_pfnShowDevTools)(const char*) = nullptr;
     bool (*m_pfnValidatePackage)(const char*, char*, int) = nullptr;
     int (*m_pfnQueryManager)(const char*, char*, int) = nullptr;
+    bool (*m_pfnCreateHubBrowser)(quintptr, const char*, int, int) = nullptr;
+    void (*m_pfnResizeHubBrowser)(int, int) = nullptr;
+    void (*m_pfnCloseHubBrowser)() = nullptr;
+    bool (*m_pfnHasHubBrowser)() = nullptr;
 };
