@@ -14,6 +14,7 @@
 #include <QJsonArray>
 #include <QColorDialog>
 #include <QDesktopServices>
+#include <QFormLayout>
 #include <QUrl>
 #include <QSettings>
 #include <cmath>
@@ -1109,7 +1110,13 @@ QWidget* WallpaperStudioWindow::createWidgetsPage() {
     topRow->addLayout(boundsRow);
 
     // Top action buttons
-    auto* addDevBtn = new QPushButton(tr("➕ 添加开发工程"), controlCard);
+    auto* newWidgetBtn = new QPushButton(tr("➕ 新建组件"), controlCard);
+    newWidgetBtn->setCursor(Qt::PointingHandCursor);
+    newWidgetBtn->setStyleSheet(QStringLiteral("QPushButton { background: #4f46e5; color: #ffffff; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 5px 12px; } QPushButton:hover { background: #4338ca; }"));
+    connect(newWidgetBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::showCreateWidgetDialog);
+    topRow->addWidget(newWidgetBtn);
+
+    auto* addDevBtn = new QPushButton(tr("📂 导入工程"), controlCard);
     addDevBtn->setCursor(Qt::PointingHandCursor);
     addDevBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(99, 102, 241, 0.25); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 12px; } QPushButton:hover { background: rgba(99, 102, 241, 0.4); }"));
     connect(addDevBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::addDevelopmentWidget);
@@ -1286,6 +1293,16 @@ void WallpaperStudioWindow::refreshWidgetsList() {
         m_allWidgets.append(item);
     }
 
+    int runningCount = 0;
+    for (const auto& w : m_allWidgets) {
+        if (w.isRunning) runningCount++;
+    }
+    if (m_tabWidgetsBtn) {
+        m_tabWidgetsBtn->setText(runningCount > 0 
+            ? tr("🧩 桌面组件管理 (%1 运行中)").arg(runningCount)
+            : tr("🧩 桌面组件管理"));
+    }
+
     renderWidgetCards();
 }
 
@@ -1398,13 +1415,18 @@ void WallpaperStudioWindow::renderWidgetCards() {
 
         // Middle Row: Storage & Permissions
         auto* metaRow = new QHBoxLayout();
-        metaRow->setSpacing(12);
+        metaRow->setSpacing(16);
 
-        // Storage used
+        // Storage used + Visual quota bar
+        auto* storageCol = new QVBoxLayout();
+        storageCol->setSpacing(3);
+
+        auto* storageLblRow = new QHBoxLayout();
+        storageLblRow->setSpacing(6);
         const double kb = w.storageUsedBytes / 1024.0;
         auto* storageLbl = new QLabel(tr("💾 本地存储: %1 KB / 16 MB").arg(kb, 0, 'f', 1), card);
         storageLbl->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-family: Consolas, monospace; background: transparent; border: none;"));
-        metaRow->addWidget(storageLbl);
+        storageLblRow->addWidget(storageLbl);
 
         if (w.storageUsedBytes > 0) {
             auto* clearBtn = new QPushButton(tr("清空"), card);
@@ -1413,10 +1435,23 @@ void WallpaperStudioWindow::renderWidgetCards() {
             connect(clearBtn, &QPushButton::clicked, this, [this, id = w.id, name = w.name]() {
                 clearWidgetStorage(id, name);
             });
-            metaRow->addWidget(clearBtn);
+            storageLblRow->addWidget(clearBtn);
         }
+        storageLblRow->addStretch();
+        storageCol->addLayout(storageLblRow);
 
-        metaRow->addSpacing(16);
+        auto* quotaBar = new QProgressBar(card);
+        quotaBar->setFixedHeight(4);
+        quotaBar->setRange(0, 100);
+        const int pct = qBound(0, static_cast<int>((w.storageUsedBytes * 100.0) / (16.0 * 1024.0 * 1024.0)), 100);
+        quotaBar->setValue(pct);
+        quotaBar->setTextVisible(false);
+        quotaBar->setStyleSheet(QStringLiteral(
+            "QProgressBar { background: rgba(51, 65, 85, 0.6); border: none; border-radius: 2px; }"
+            "QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #10b981); border-radius: 2px; }"
+        ));
+        storageCol->addWidget(quotaBar);
+        metaRow->addLayout(storageCol, 1);
 
         // Permission Pills
         auto* permTitle = new QLabel(tr("授权:"), card);
@@ -1446,6 +1481,33 @@ void WallpaperStudioWindow::renderWidgetCards() {
 
         metaRow->addStretch();
         cardLayout->addLayout(metaRow);
+
+        // Multi-instance indicators
+        if (w.isRunning && w.runningInstanceIds.size() > 1) {
+            auto* instRow = new QHBoxLayout();
+            instRow->setSpacing(6);
+            auto* instTitle = new QLabel(tr("多实例运行:"), card);
+            instTitle->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 10px; font-weight: 600; background: transparent; border: none;"));
+            instRow->addWidget(instTitle);
+
+            for (int i = 0; i < w.runningInstanceIds.size(); ++i) {
+                const QString instId = w.runningInstanceIds[i];
+                auto* instChip = new QPushButton(tr("实例 #%1 ✕").arg(i + 1), card);
+                instChip->setToolTip(tr("实例 ID: %1 (点击单独停止此实例)").arg(instId));
+                instChip->setCursor(Qt::PointingHandCursor);
+                instChip->setStyleSheet(QStringLiteral(
+                    "QPushButton { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }"
+                    "QPushButton:hover { background: rgba(239, 68, 68, 0.3); color: #fca5a5; border-color: rgba(239, 68, 68, 0.5); }"
+                ));
+                connect(instChip, &QPushButton::clicked, this, [this, instId]() {
+                    LinWidgetRuntimeBridge::instance().stopWidget(instId);
+                    refreshWidgetsList();
+                });
+                instRow->addWidget(instChip);
+            }
+            instRow->addStretch();
+            cardLayout->addLayout(instRow);
+        }
 
         // Bottom Action Buttons
         auto* actionRow = new QHBoxLayout();
@@ -1570,6 +1632,185 @@ void WallpaperStudioWindow::renderWidgetCards() {
     }
 
     m_widgetsListLayout->addStretch(1);
+}
+
+void WallpaperStudioWindow::showCreateWidgetDialog() {
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("➕ 新建桌面小组件 (Create LinWidget)"));
+    dlg.resize(480, 360);
+    dlg.setStyleSheet(QStringLiteral(
+        "QDialog { background: #0b1120; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; }"
+        "QLabel { color: #cbd5e1; font-size: 12px; }"
+        "QLineEdit { background: #1e293b; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 6px 10px; font-size: 12px; }"
+        "QLineEdit:focus { border-color: #6366f1; }"
+        "QPushButton { background: #334155; color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; }"
+        "QPushButton:hover { background: #475569; }"
+        "QPushButton#createBtn { background: #4f46e5; color: #ffffff; border: none; font-weight: 700; }"
+        "QPushButton#createBtn:hover { background: #4338ca; }"
+    ));
+
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->setContentsMargins(24, 20, 24, 20);
+    layout->setSpacing(14);
+
+    auto* headLbl = new QLabel(tr("创建全新 LinWidget 独立小组件项目"), &dlg);
+    headLbl->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 700; color: #ffffff;"));
+    layout->addWidget(headLbl);
+
+    auto* formLayout = new QFormLayout();
+    formLayout->setSpacing(12);
+
+    auto* nameEdit = new QLineEdit(&dlg);
+    nameEdit->setPlaceholderText(tr("例如：极简时钟"));
+    nameEdit->setText(tr("新组件"));
+    formLayout->addRow(tr("组件名称:"), nameEdit);
+
+    auto* idEdit = new QLineEdit(&dlg);
+    idEdit->setPlaceholderText(tr("唯一标识符，例如：my-clock"));
+    idEdit->setText(QStringLiteral("my-widget-%1").arg(QDateTime::currentSecsSinceEpoch() % 10000));
+    formLayout->addRow(tr("组件 ID:"), idEdit);
+
+    auto* dirRow = new QHBoxLayout();
+    auto* dirEdit = new QLineEdit(&dlg);
+    dirEdit->setText(AppPaths::userLinWidgetsDir());
+    auto* browseBtn = new QPushButton(tr("浏览..."), &dlg);
+    connect(browseBtn, &QPushButton::clicked, &dlg, [&dlg, dirEdit]() {
+        const QString sel = QFileDialog::getExistingDirectory(&dlg, tr("选择小组件保存目录"), dirEdit->text());
+        if (!sel.isEmpty()) dirEdit->setText(sel);
+    });
+    dirRow->addWidget(dirEdit, 1);
+    dirRow->addWidget(browseBtn);
+    formLayout->addRow(tr("保存目录:"), dirRow);
+
+    layout->addLayout(formLayout);
+
+    auto* tipLbl = new QLabel(tr("💡 创建后将自动生成 manifest.json、index.html 并立即注册进开发列表，方便实时调试。"), &dlg);
+    tipLbl->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px;"));
+    tipLbl->setWordWrap(true);
+    layout->addWidget(tipLbl);
+
+    layout->addStretch();
+
+    auto* btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    auto* cancelBtn = new QPushButton(tr("取消"), &dlg);
+    connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    btnRow->addWidget(cancelBtn);
+
+    auto* createBtn = new QPushButton(tr("创建并载入"), &dlg);
+    createBtn->setObjectName("createBtn");
+    btnRow->addWidget(createBtn);
+    connect(createBtn, &QPushButton::clicked, &dlg, [&dlg, nameEdit, idEdit, dirEdit, this]() {
+        const QString name = nameEdit->text().trimmed();
+        const QString id = idEdit->text().trimmed();
+        const QString baseDir = dirEdit->text().trimmed();
+        if (name.isEmpty() || id.isEmpty() || baseDir.isEmpty()) {
+            QMessageBox::warning(&dlg, tr("输入提示"), tr("请填写组件名称与 ID。"));
+            return;
+        }
+
+        const QString projectDir = QDir(baseDir).filePath(id);
+        QDir().mkpath(projectDir);
+
+        // Generate manifest.json
+        QJsonObject manifest;
+        manifest.insert(QStringLiteral("id"), id);
+        manifest.insert(QStringLiteral("name"), name);
+        manifest.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
+        manifest.insert(QStringLiteral("description"), tr("基于 LinWidget CEF 架构的独立轻量桌面小组件。"));
+        manifest.insert(QStringLiteral("author"), QStringLiteral("LinDesk Developer"));
+        manifest.insert(QStringLiteral("entry"), QStringLiteral("index.html"));
+        manifest.insert(QStringLiteral("role"), QStringLiteral("widget"));
+        manifest.insert(QStringLiteral("width"), 280);
+        manifest.insert(QStringLiteral("height"), 200);
+        manifest.insert(QStringLiteral("transparent"), true);
+        manifest.insert(QStringLiteral("frameless"), true);
+        manifest.insert(QStringLiteral("resizable"), true);
+        manifest.insert(QStringLiteral("multiInstance"), false);
+
+        QJsonArray permissions;
+        permissions.append(QStringLiteral("storage"));
+        permissions.append(QStringLiteral("network"));
+        manifest.insert(QStringLiteral("permissions"), permissions);
+
+        QFile mFile(QDir(projectDir).filePath(QStringLiteral("manifest.json")));
+        if (mFile.open(QIODevice::WriteOnly)) {
+            mFile.write(QJsonDocument(manifest).toJson(QJsonDocument::Indented));
+            mFile.close();
+        }
+
+        // Generate index.html
+        QFile hFile(QDir(projectDir).filePath(QStringLiteral("index.html")));
+        if (hFile.open(QIODevice::WriteOnly)) {
+            const QString html = QStringLiteral(
+                "<!DOCTYPE html>\n"
+                "<html>\n"
+                "<head>\n"
+                "  <meta charset=\"utf-8\">\n"
+                "  <title>%1</title>\n"
+                "  <style>\n"
+                "    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }\n"
+                "    body {\n"
+                "      background: rgba(15, 23, 42, 0.85);\n"
+                "      backdrop-filter: blur(16px);\n"
+                "      border: 1px solid rgba(255, 255, 255, 0.12);\n"
+                "      border-radius: 16px;\n"
+                "      color: #f8fafc;\n"
+                "      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n"
+                "      height: 100vh;\n"
+                "      display: flex;\n"
+                "      flex-direction: column;\n"
+                "      padding: 16px;\n"
+                "      overflow: hidden;\n"
+                "    }\n"
+                "    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }\n"
+                "    .title { font-size: 13px; font-weight: 700; color: #a5b4fc; }\n"
+                "    .content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }\n"
+                "    .time { font-size: 28px; font-weight: 800; font-family: monospace; color: #ffffff; }\n"
+                "    .btn { background: #4f46e5; color: #fff; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12px; cursor: pointer; transition: all 0.2s; }\n"
+                "    .btn:hover { background: #4338ca; }\n"
+                "  </style>\n"
+                "</head>\n"
+                "<body>\n"
+                "  <div class=\"header\">\n"
+                "    <div class=\"title\">%1</div>\n"
+                "    <span style=\"font-size: 10px; color: #94a3b8;\">LinWidget</span>\n"
+                "  </div>\n"
+                "  <div class=\"content\">\n"
+                "    <div id=\"clock\" class=\"time\">12:00:00</div>\n"
+                "    <button class=\"btn\" onclick=\"handleClick()\">交互点击测试</button>\n"
+                "  </div>\n"
+                "  <script>\n"
+                "    function updateTime() {\n"
+                "      document.getElementById('clock').innerText = new Date().toLocaleTimeString();\n"
+                "    }\n"
+                "    setInterval(updateTime, 1000);\n"
+                "    updateTime();\n"
+                "    let count = 0;\n"
+                "    function handleClick() {\n"
+                "      count++;\n"
+                "      alert('已点击 ' + count + ' 次！LinWidget 运行正常。');\n"
+                "    }\n"
+                "  </script>\n"
+                "</body>\n"
+                "</html>\n"
+            ).arg(name);
+            hFile.write(html.toUtf8());
+            hFile.close();
+        }
+
+        // Register to Dev list
+        auto& reg = LinWidget::WidgetRegistryManager::instance();
+        reg.load();
+        reg.addDevelopmentProject(projectDir);
+        reg.save();
+        dlg.accept();
+        refreshWidgetsList();
+        QMessageBox::information(this, tr("创建成功"), tr("组件 [%1] 已成功创建并添加到列表！").arg(name));
+    });
+
+    layout->addLayout(btnRow);
+    dlg.exec();
 }
 
 void WallpaperStudioWindow::addDevelopmentWidget() {

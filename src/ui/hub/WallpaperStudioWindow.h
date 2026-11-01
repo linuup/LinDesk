@@ -12,6 +12,7 @@
 #include <QSlider>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QProgressBar>
 #include <QPointer>
 #include <QTimer>
 #include <QPaintEvent>
@@ -79,6 +80,7 @@ public slots:
 
     // Widget Management Slots
     void refreshWidgetsList();
+    void showCreateWidgetDialog();
     void addDevelopmentWidget();
     void toggleWidgetPermission(const QString& widgetId, const QString& permission, bool currentGranted);
     void clearWidgetStorage(const QString& widgetId, const QString& widgetName);
