@@ -694,13 +694,55 @@ void DesktopSettingsPage::initUI()
 
     layout->addWidget(behaviorPanel, 0);
 
-
+    // 4. Windows 11 Context Menu Panel
+    layout->addWidget(createWindows11MenuPanel(this), 0);
 
     layout->addStretch();
     updatePreview();
 }
 
 
+
+QWidget* DesktopSettingsPage::createWindows11MenuPanel(QWidget* parent)
+{
+    QWidget* win11MenuPanel = createPanel(parent);
+    win11MenuPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* win11MenuLayout = new QVBoxLayout(win11MenuPanel);
+    win11MenuLayout->setContentsMargins(22, 18, 22, 18);
+    win11MenuLayout->setSpacing(0);
+    win11MenuLayout->addWidget(createCardTitle(tr("Windows11 Menu"), win11MenuPanel));
+    win11MenuLayout->addSpacing(12);
+
+    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
+    const QString windows11UnsupportedTip = tr("This option is available only on Windows 11 in Release builds.");
+
+    FluentToggleSwitch* win11Toggle = new FluentToggleSwitch(parent);
+    win11Toggle->setChecked(RightMenu::isWindows11SystemContextMenuEnabled());
+    win11Toggle->setEnabled(windows11ContextMenuSupported);
+    if (!windows11ContextMenuSupported) {
+        win11Toggle->setToolTip(windows11UnsupportedTip);
+    }
+
+    connect(win11Toggle, &FluentToggleSwitch::toggled, this, [win11Toggle, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (win11Toggle) {
+                const QSignalBlocker blocker(win11Toggle);
+                win11Toggle->setChecked(false);
+            }
+            return;
+        }
+        RightMenu::setWindows11SystemContextMenuEnabled(checked);
+    });
+
+    win11MenuLayout->addWidget(createSwitchRow(
+        glyph(0xECAA),
+        tr("Enable Windows 11 Context Menu"),
+        tr("Use the modern Windows 11 context menu island for desktop items."),
+        win11Toggle,
+        win11MenuPanel));
+
+    return win11MenuPanel;
+}
 
 void DesktopSettingsPage::resizeEvent(QResizeEvent* event)
 {
@@ -839,41 +881,6 @@ void DesktopSettingsPage::updatePreview()
                              QPointF(selectionRect.right() - inset, selectionRect.top() + bWidth / 2.0));
         }
 
-        // 4. 独立开关控制的极简微胶囊徽章 (纯净数字，彻底移除任何圆点)
-        if (showBadge) {
-            const QString badgeText = QStringLiteral("2");
-            QFont badgeFont = painter.font();
-            badgeFont.setPixelSize(10);
-            badgeFont.setWeight(QFont::Medium);
-            painter.setFont(badgeFont);
-
-            QFontMetrics fm(badgeFont);
-            const int textW = fm.horizontalAdvance(badgeText);
-            const int badgeH = 18;
-            const int padH = 6;
-            const int badgeW = qMax(18, textW + padH * 2);
-
-            const qreal badgeCorner = qBound(0.0, static_cast<qreal>(badgeCornerInt), badgeH / 2.0);
-            const qreal badgeX = selectionRect.right() - badgeW - 5;
-            const qreal badgeY = selectionRect.bottom() - badgeH - 5;
-            const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
-
-            // a. 极轻柔环境微阴影
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(0, 0, 0, 40));
-            painter.drawRoundedRect(badgeRect.translated(0, 1.0), badgeCorner, badgeCorner);
-
-            // b. 半透明极简微磨砂黑底
-            painter.setBrush(QColor(22, 24, 28, 205));
-
-            // c. 0.75px 极细微透描边
-            painter.setPen(QPen(QColor(255, 255, 255, 40), 0.75));
-            painter.drawRoundedRect(badgeRect, badgeCorner, badgeCorner);
-
-            // d. 纯白清晰数字 (无红点，无任何多余元素，纯净通透)
-            painter.setPen(QColor(250, 252, 255));
-            painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
-        }
     } else {
         const qreal borderWVal = qBound(0.0, settings.value("Desktop/SelectionBorderWidth", 1.0).toReal(), 3.0);
         painter.fillRect(selectionRect, fillColor);
@@ -883,6 +890,44 @@ void DesktopSettingsPage::updatePreview()
             const qreal halfW = borderWVal / 2.0;
             painter.drawRect(QRectF(selectionRect).adjusted(halfW, halfW, -halfW, -halfW));
         }
+    }
+
+    // 4. 独立开关控制的极简微胶囊徽章 (纯净数字，现代毛玻璃选框与经典选框均全面支持)
+    if (showBadge) {
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        const int badgeCornerInt = qBound(0, settings.value("Desktop/SelectionBadgeRadius", 11).toInt(), 11);
+        const QString badgeText = QStringLiteral("2");
+        QFont badgeFont = painter.font();
+        badgeFont.setPixelSize(10);
+        badgeFont.setWeight(QFont::Medium);
+        painter.setFont(badgeFont);
+
+        QFontMetrics fm(badgeFont);
+        const int textW = fm.horizontalAdvance(badgeText);
+        const int badgeH = 18;
+        const int padH = 6;
+        const int badgeW = qMax(18, textW + padH * 2);
+
+        const qreal badgeCorner = qBound(0.0, static_cast<qreal>(badgeCornerInt), badgeH / 2.0);
+        const qreal badgeX = selectionRect.right() - badgeW - 5;
+        const qreal badgeY = selectionRect.bottom() - badgeH - 5;
+        const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
+
+        // a. 极轻柔环境微阴影
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(0, 0, 0, 40));
+        painter.drawRoundedRect(badgeRect.translated(0, 1.0), badgeCorner, badgeCorner);
+
+        // b. 半透明极简微磨砂黑底
+        painter.setBrush(QColor(22, 24, 28, 205));
+
+        // c. 0.75px 极细微透描边
+        painter.setPen(QPen(QColor(255, 255, 255, 40), 0.75));
+        painter.drawRoundedRect(badgeRect, badgeCorner, badgeCorner);
+
+        // d. 纯白清晰数字 (无红点，无任何多余元素，纯净通透)
+        painter.setPen(QColor(250, 252, 255));
+        painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
     }
 
     // 4. Subtle inner card border

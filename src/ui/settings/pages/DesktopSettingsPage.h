@@ -27,6 +27,7 @@ protected:
 
 private:
     void initUI();
+    QWidget* createWindows11MenuPanel(QWidget* parent);
     static void reloadSelectionOverlays();
     void queueSettingsSync();
     QTimer* m_settingsSyncTimer = nullptr;

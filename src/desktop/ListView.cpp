@@ -1627,44 +1627,6 @@ void ListView::paintEvent(QPaintEvent* event)
                                  QPointF(selRect.right() - inset, selRect.top() + bWidth / 2.0));
             }
 
-            // 4. 独立开关控制的极简轻量微胶囊徽章 (纯净数字，彻底移除任何圆点)
-            if (m_selectionCountBadgeEnabled) {
-                const int count = m_selectedDesktopPaths.size();
-                if (count > 0 && selRect.width() >= 44 && selRect.height() >= 28) {
-                    const QString badgeText = QString::number(count);
-                    QFont badgeFont = painter.font();
-                    badgeFont.setPixelSize(10);
-                    badgeFont.setWeight(QFont::Medium);
-                    painter.setFont(badgeFont);
-
-                    QFontMetrics fm(badgeFont);
-                    const int textW = fm.horizontalAdvance(badgeText);
-                    const int badgeH = 18;
-                    const int padH = 6;
-                    const int badgeW = qMax(18, textW + padH * 2);
-
-                    const qreal badgeCorner = qBound(0.0, static_cast<qreal>(m_selectionBadgeRadius), badgeH / 2.0);
-                    const qreal badgeX = selRect.right() - badgeW - 5;
-                    const qreal badgeY = selRect.bottom() - badgeH - 5;
-                    const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
-
-                    // a. 极轻柔环境微阴影
-                    painter.setPen(Qt::NoPen);
-                    painter.setBrush(QColor(0, 0, 0, 40));
-                    painter.drawRoundedRect(badgeRect.translated(0, 1.0), badgeCorner, badgeCorner);
-
-                    // b. 半透明极简微磨砂黑底
-                    painter.setBrush(QColor(22, 24, 28, 205));
-
-                    // c. 0.75px 极细微透描边
-                    painter.setPen(QPen(QColor(255, 255, 255, 40), 0.75));
-                    painter.drawRoundedRect(badgeRect, badgeCorner, badgeCorner);
-
-                    // d. 纯白清晰数字 (无红点，无任何多余元素，纯净通透)
-                    painter.setPen(QColor(250, 252, 255));
-                    painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
-                }
-            }
         } else {
             // 经典 Windows 原生矩形选框 (先填充内部半透明底色，再绘制可选边框)
             const qreal bWidth = qBound(0.0, m_selectionBorderWidth, 3.0);
@@ -1674,6 +1636,46 @@ void ListView::paintEvent(QPaintEvent* event)
                 painter.setBrush(Qt::NoBrush);
                 const qreal halfW = bWidth / 2.0;
                 painter.drawRect(QRectF(selRect).adjusted(halfW, halfW, -halfW, -halfW));
+            }
+        }
+
+        // 4. 独立开关控制的极简轻量微胶囊徽章 (纯净数字，现代毛玻璃选框与经典选框均全面支持)
+        if (m_selectionCountBadgeEnabled) {
+            const int count = m_selectedDesktopPaths.size();
+            if (count > 0 && selRect.width() >= 44 && selRect.height() >= 28) {
+                painter.setRenderHint(QPainter::Antialiasing, true);
+                const QString badgeText = QString::number(count);
+                QFont badgeFont = painter.font();
+                badgeFont.setPixelSize(10);
+                badgeFont.setWeight(QFont::Medium);
+                painter.setFont(badgeFont);
+
+                QFontMetrics fm(badgeFont);
+                const int textW = fm.horizontalAdvance(badgeText);
+                const int badgeH = 18;
+                const int padH = 6;
+                const int badgeW = qMax(18, textW + padH * 2);
+
+                const qreal badgeCorner = qBound(0.0, static_cast<qreal>(m_selectionBadgeRadius), badgeH / 2.0);
+                const qreal badgeX = selRect.right() - badgeW - 5;
+                const qreal badgeY = selRect.bottom() - badgeH - 5;
+                const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
+
+                // a. 极轻柔环境微阴影
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(0, 0, 0, 40));
+                painter.drawRoundedRect(badgeRect.translated(0, 1.0), badgeCorner, badgeCorner);
+
+                // b. 半透明极简微磨砂黑底
+                painter.setBrush(QColor(22, 24, 28, 205));
+
+                // c. 0.75px 极细微透描边
+                painter.setPen(QPen(QColor(255, 255, 255, 40), 0.75));
+                painter.drawRoundedRect(badgeRect, badgeCorner, badgeCorner);
+
+                // d. 纯白清晰数字 (无红点，无任何多余元素，纯净通透)
+                painter.setPen(QColor(250, 252, 255));
+                painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
             }
         }
 
