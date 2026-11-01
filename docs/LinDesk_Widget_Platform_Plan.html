@@ -93,8 +93,8 @@
   <h1>LinDesk 组件系统方案（单进程 · 运行时动态加载）</h1>
   <div class="meta">
     <span>读者：antigravity / 开发者</span>
-    <span>结构：第 2 章=已落地地基；第 3-7 章=待办设计；第 8 章=任务总表；第 9-10 章=路线与风险</span>
-    <span>更新：2026-10-27</span>
+    <span>结构：第 2 章=已落地地基；第 3-6 章=组件体系设计；第 7 章=壁纸工坊与 Hub 中心；第 8 章=任务总表；第 9-10 章=路线与风险</span>
+    <span>更新：2026-11-01</span>
   </div>
 </header>
 
@@ -105,7 +105,7 @@
     <li><strong>运行时拆分与动态加载闭环</strong>：<code>LinWidgetRuntime.dll</code> 独立目标 + C 导出桥（LoadLibrary/卸载/门控）；<code>RuntimeInstaller</code> 安装/卸载/版本管理；设置页组件系统区入口；打包脚本 <code>scripts/package_linwidget_runtime.ps1</code>。<span class="tag keep">已落地</span></li>
     <li><strong>CEF 四项缺口</strong>：本地资源 scheme（<code>linwidget://</code>）、console 捕获、网络权限沙箱（OnBeforeResourceLoad）、IME 组合/提交/取消——均已实现。<span class="tag keep">已落地</span>（仅 IME 候选框回调待接线，P1 可选）</li>
     <li><strong>组件注册表与协议规范</strong>：registry.json 读写、<code>docs/LinWidget_Protocol.md</code> 定稿。<span class="tag keep">已落地</span></li>
-    <li><strong>壁纸组件 P0</strong>：role=wallpaper 全屏渲染、层级、穿透、单例持久化、内置壁纸包。<span class="tag keep">已落地</span></li>
+    <li><strong>壁纸组件 P0 与壁纸工坊/Hub 中心（第 7 章）</strong>：role=wallpaper 全屏渲染、层级、穿透、单例持久化、内置壁纸包；<strong>LinDesk Hub 独立现代化悬浮工坊窗口 (1120×720)</strong> + <strong>桌面右键与设置页双激活入口</strong> + <strong>16:9 所见即所得实时画板与桌面图标模拟浮层</strong> + <strong>对标 Wallpaper Engine 的 properties 声明式参数规范与 property_update 实时 IPC 派发</strong>。<span class="tag keep">已落地</span></li>
     <li><strong>体验层全能力闭环（第 6 章）</strong>：<strong>组件 Ctrl+拖拽移动</strong>（ListView 拦截 + 视口防出界 + 抬起持久化 + Ctrl 单击无损转发 OSR + 壁纸/默认页不可拖拽）；<strong>双栏组件管理窗口</strong>（<code>widget_manager</code> 统一请求/响应协议 + 权限逐项开关 + 16MB 存储配额监控/清空/导出 + 累计崩溃计数与日志）；<strong>设置 UI 与 manifest.settingsSchema 自动渲染</strong>（表单控件生成 + 回写 widget.json + 广播 settings_changed，主设置页组件区动作栏与显隐联动）。<span class="tag keep">已落地</span></li>
   </ul>
   <h3>待办全景（设计细节见第 3-7 章，任务分解见第 8 章）</h3>
@@ -259,42 +259,190 @@
 </section>
 
 <section>
-  <h2>7. 动态壁纸工坊 (Wallpaper Studio) 与独立 CEF 管理中心 (LinDesk Hub)</h2>
-  <h3>7.1 架构演进：从嵌套 QWidget 到独立 CEF SPA 窗口 <span class="tag current">重构确立</span></h3>
-  <p>动态壁纸（<code>role: "wallpaper"</code>）具有全屏视觉冲击力与沉浸感，与局部摆放的便签、时钟等桌面小组件具有截然不同的心智模型。原有将壁纸管理深层嵌套于常规设置窗口二级 Tab 的方案已被淘汰，全面演进为<strong>独立 CEF 承载的现代化 Web 单页应用——LinDesk Hub（壁纸工坊与组件管理中心）</strong>：</p>
+  <h2>7. 动态壁纸工坊 (Wallpaper Studio) 与独立 CEF 管理中心 (LinDesk Hub) <span class="tag keep">已落地实装</span></h2>
+  
+  <h3>7.1 架构演进：从嵌套 QWidget 到独立解耦 Hub 窗口</h3>
+  <p>动态壁纸（<code>role: "wallpaper"</code>）具有全屏视觉冲击力与沉浸感，与局部摆放的便签、时钟等桌面小组件具有截然不同的心智模型。原有将壁纸管理深层嵌套于常规设置窗口二级 Tab 的方案已被淘汰，全面演进为<strong>独立承载的现代化单页应用——LinDesk Hub（壁纸工坊与组件管理中心）</strong>：</p>
+  
+  <div class="note keep">
+    <strong>落地亮点</strong>：采用 Fluent Frameless 现代化窗口设计（默认尺寸 <code>1120 × 720</code>），配备 4-Tab 导航（🖼️ 壁纸画廊、🎨 壁纸工坊 Studio、🧩 桌面组件管理、🛠️ 开发者后台），提供单例保活秒开、16:9 所见即所得实时画板、桌面图标透视验证浮层及对标 Wallpaper Engine 的声明式参数系统。
+  </div>
+
+  <h4>系统交互与通信拓扑</h4>
+  <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
++-------------------------------------------------------------------------------------------------+
+|                                     LinDesk 桌面宿主进程 (Main Process)                          |
+|                                                                                                 |
+|   +---------------------------------------+         +---------------------------------------+   |
+|   | 桌面空白处右键菜单 (RightMenu)          |         | 主设置界面 (DesktopSettingsPage)       |   |
+|   | 🎨 动态壁纸与工坊... (wallpaper_studio) |         | [ 打开壁纸工坊与中心 ] (Open Studio)    |   |
+|   +-------------------+-------------------+         +-------------------+-------------------+   |
+|                       |                                                 |                       |
+|                       +------------------------+------------------------+                       |
+|                                                |                                                |
+|                                                v                                                |
+|                   +----------------------------------------------------------+                  |
+|                   | LinHub::WallpaperStudioWindow (单例 1120x720 Fluent 窗口) |                  |
+|                   |  - 4-Tab 导航 (画廊 / 工坊 Studio / 组件 / 开发者后台)   |                  |
+|                   |  - 16:9 StudioPreviewCanvas (实时物理动画/图标浮层模拟)  |                  |
+|                   |  - 声明式 properties 动态控件生成器 (Slider/Color/Switch)|                  |
+|                   |  - 本地配置持久化 (LinWidgetsData/wallpaper/properties)   |                  |
+|                   +----------------------------+-----------------------------+                  |
+|                                                |                                                |
+|                      +-------------------------+-------------------------+                      |
+|                      |                                                   |                      |
+|                      v                                                   v                      |
+|   +------------------------------------+              +------------------------------------+    |
+|   | LinWidgetRuntimeBridge (运行时桥接) |              | Web SPA 资产包 (LinWidgets/LinDeskHub) |   |
+|   |  - startWallpaper(pkgPath)         |              |  - manifest.json (role: "hub")     |   |
+|   |  - stopWallpaper(restoreSystem)    |              |  - index.html (Tailwind+Canvas)    |   |
+|   |  - setWallpaperInteractive(bool)   |              |  - 可在独立 CEF 容器中直接运行     |   |
+|   |  - showDevTools("wallpaper")       |              +------------------------------------+    |
+|   +------------------+-----------------+                                                        |
++----------------------|--------------------------------------------------------------------------+
+                       v
++-------------------------------------------------------------------------------------------------+
+|                            LinWidgetRuntime.dll (CEF OSR 运行时沙箱)                              |
+|                                                                                                 |
+|   +-------------------------------------+       IPC 信令: property_update                        |
+|   | CefOsrBrowserInstance               | -------------------------------------+                |
+|   |  - 全屏动态壁纸 OSR 离屏渲染         |                                      |                |
+|   |  - 像素级透明与输入穿透             |                                      v                |
+|   |  - OnBeforeResourceLoad 沙箱        |                    +--------------------------------+ |
+|   +-------------------------------------+                    | 壁纸页面 (index.html / script) | |
+|                                                              |  - 监听 message 事件           | |
+|                                                              |  - 实时更新 Shader/物理粒子参数| |
+|                                                              +--------------------------------+ |
++-------------------------------------------------------------------------------------------------+
+  </pre>
+
+  <h3>7.2 壁纸工坊 (Wallpaper Studio)：所见即所得编辑器</h3>
+  <p>终端用户拥有强烈的零代码个性化诉求（更换 4K 大图、参数微调或 MP4/WebM 视频）。壁纸工坊提供全流程可视化调节：</p>
   <ul>
-    <li><strong>解耦独立大窗口</strong>：由无边框 Fluent 窗口承载，提供适合 16:9 画幅展示的全尺寸视野（默认 1100×680），具备 Win11 亚克力磨砂、窗口圆角、Snap 布局与单例保活秒开特性；</li>
-    <li><strong>双模界面划分（前台用户视图 + 开发者后台控制台）</strong>：
+    <li><strong>16:9 实时画板预览 (StudioPreviewCanvas)</strong>：以 16:9 黄金比例等比还原现代高清/4K 屏幕视口，画布内运行真实的粒子引力仿真与动态渲染循环；</li>
+    <li><strong>桌面图标模拟浮层 (Desktop Icons Mock Overlay)</strong>：首创在画板上叠加半透明真实桌面图标排布网格与文本标签，用户可一键开启/关闭，肉眼直观验证动态背景在复杂光影下是否会导致桌面图标文字不可辨识；</li>
+    <li><strong>文字保护与易读性滤镜</strong>：
       <ul>
-        <li><strong>前台用户端</strong>：动态壁纸画廊中心（Hero 运行看板、16:9 卡片网格、一键应用、拖拽导入）与壁纸工坊可视化编辑器；</li>
-        <li><strong>开发者后台控制台 (Dev Admin Inspector)</strong>：实例监视器（PID/FPS/内存）、IPC 消息总线审查器、权限沙箱矩阵（网络/存储/桌面权限强制开关）、实时 Console 日志流与一键唤起 Chromium DevTools。</li>
+        <li><strong>遮罩暗化 (Dimming Mask 0%~80%)</strong>：无级调节半透明黑色遮罩，压制背景高亮区域；</li>
+        <li><strong>毛玻璃高斯模糊 (Backdrop Blur 0~20px)</strong>：虚化壁纸高频噪点与复杂几何边缘，凸显前景桌面图标；</li>
       </ul>
     </li>
-    <li><strong>轻量 IPC 桥</strong>：C++ 宿主端仅保留极简的 JSON-RPC 消息代理，复杂的网格动画、所见即所得画板、滤镜调节全部由 Web 驱动，主程序 C++ 代码大幅瘦身。</li>
-  </ul>
-
-  <h3>7.2 壁纸工坊 (Wallpaper Studio)：所见即所得编辑器 <span class="tag p1">P1</span></h3>
-  <p>终端用户拥有强烈的零代码个性化诉求（更换 4K 大图或 MP4/WebM 视频）。壁纸工坊提供全流程可视化调节：</p>
-  <ul>
-    <li><strong>16:9 实时画板预览</strong>：等比还原屏幕视口，支持实时物理动画与视频播放；</li>
-    <li><strong>桌面图标模拟浮层 (Desktop Icons Mock Overlay)</strong>：首创在画板上叠加半透明典型桌面图标剪影，用户肉眼直观验证壁纸是否主体过亮、是否影响桌面文件文字辨识；</li>
-    <li><strong>排版适配四模式</strong>：填充裁剪 (Cover)、等比完整 (Contain)、拉伸 (Stretch)、平铺 (Tile)；</li>
-    <li><strong>文字保护与易读性滤镜</strong>：提供遮罩暗化 (0%~80%) 与背景高斯模糊 (0~20px) 滑块，确保桌面图标文字清晰锐利；</li>
-    <li><strong>视频音频控制</strong>：背景静音开关、无级音量滑块 (0~100%)、播放速率 (0.5x~2.0x)。</li>
+    <li><strong>物理交互与音频控制</strong>：鼠标引力/粒子扰动实时开关、背景音量调节 (0~100%) 与全屏独占暂停。</li>
   </ul>
 
   <h3>7.3 开发者声明式参数规范（对标 Wallpaper Engine 标准）</h3>
-  <p>为避免硬编码具体壁纸参数，基座与开发者确立清晰职责分界：</p>
-  <ul>
-    <li><strong>开发者在 <code>manifest.json</code> 中声明 <code>properties</code></strong>（支持 slider, color, boolean, select）；</li>
-    <li><strong>基座工坊自动动态解析并生成 Fluent UI 控件面板</strong>，免除开发者编写 UI 的负担；</li>
-    <li><strong>基座通过 IPC Bridge 实时向网页派发 <code>property_update</code> 事件</strong>，并在本地自动持久化存储用户的自定义参数。</li>
-  </ul>
+  <p>为彻底摆脱为每款壁纸手写专属设置窗口的低效繁琐，LinDesk 规范基座与壁纸作者的职责分界：<strong>壁纸作者仅需在 manifest.json 中以 JSON Schema 声明参数，基座工坊自动动态生成界面控件，并经 IPC 实时向网页广播更新。</strong></p>
 
-  <h3>7.4 双级唤起入口规范</h3>
+  <h4>1. manifest.json 声明式定义语法</h4>
+  <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
+{
+  "id": "lindesk.wallpaper.gargantua",
+  "name": "Gargantua Relativistic Black Hole",
+  "role": "wallpaper",
+  "entry": "index.html",
+  "properties": {
+    "particleCount": {
+      "type": "slider",
+      "text": "吸积盘粒子密度 (Particle Density)",
+      "min": 100,
+      "max": 1200,
+      "step": 50,
+      "value": 450
+    },
+    "rotationSpeed": {
+      "type": "slider",
+      "text": "相对论旋转角速度 (Relativistic Spin)",
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "value": 4
+    },
+    "lensingGlowColor": {
+      "type": "color",
+      "text": "引力透镜光晕色调 (Gravitational Lensing Hue)",
+      "value": "#fdba74"
+    },
+    "enableDopplerBeaming": {
+      "type": "boolean",
+      "text": "多普勒射束相对论增亮 (Doppler Beaming)",
+      "value": true
+    },
+    "colorScheme": {
+      "type": "select",
+      "text": "星际色谱风格 (Cosmic Palette)",
+      "options": [
+        { "label": "经典黑洞黄昏 (Interstellar Amber)", "value": "amber" },
+        { "label": "超大质量蓝巨星 (Supermassive Blue)", "value": "blue" },
+        { "label": "量子引力奇点 (Quantum Violet)", "value": "violet" }
+      ],
+      "value": "amber"
+    }
+  }
+}
+  </pre>
+
+  <h4>2. 运行时 IPC 信令契约 (property_update)</h4>
+  <p>用户在工坊中拖动滑块或挑选颜色时，工坊向当前运行的壁纸网页即时发送如下信令：</p>
+  <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
+// 宿主 -> 网页 OSR 窗口派发
+{
+  "type": "property_update",
+  "key": "particleCount",
+  "value": 600,
+  "timestamp": 1730452800120
+}
+  </pre>
+
+  <h4>3. 壁纸前端 JavaScript 极简监听模板</h4>
+  <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
+window.addEventListener('message', function (e) {
+  const data = e.data || {};
+  if (data.type === 'property_update') {
+    switch (data.key) {
+      case 'particleCount':
+        updateParticleCount(data.value);
+        break;
+      case 'rotationSpeed':
+        engine.spinVelocity = data.value * 0.005;
+        break;
+      case 'lensingGlowColor':
+        engine.glowColor = data.value;
+        break;
+      case 'colorScheme':
+        engine.switchPalette(data.value);
+        break;
+    }
+  }
+});
+  </pre>
+
+  <h3>7.4 双级激活入口落地</h3>
+  <div class="tbl-scroll">
+    <table>
+      <thead>
+        <tr><th>入口途径</th><th>触发位置</th><th>界面动作与内部实现</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>入口 1：桌面右键快捷上下文菜单</strong></td>
+          <td>桌面空白处单击鼠标右键，或展开 Windows 11 Fluent 桌面菜单</td>
+          <td>点击 <code>🎨 动态壁纸与工坊...</code>（内部命令 <code>wallpaper_studio</code>）触发 <code>RightMenu::onWallpaperStudio()</code>，调用 <code>LinHub::WallpaperStudioWindow::showStudio()</code> 瞬时置顶激活。</td>
+        </tr>
+        <tr>
+          <td><strong>入口 2：主设置中心推荐卡片</strong></td>
+          <td>打开 LinDesk 设置 -> 桌面设置 (DesktopSettingsPage)</td>
+          <td>在行为面板后呈现专属大卡片【动态壁纸工坊与中心 (LinDesk Hub)】，点击 <code>[ 打开工坊 ]</code> 按钮直达。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>7.5 开发者后台控制台 (Dev Admin Inspector)</h3>
   <ul>
-    <li><strong>入口 1（桌面快捷右键）</strong>：桌面空白处右键菜单集成 <code>🎨 动态壁纸与工坊...</code>，随手即开；</li>
-    <li><strong>入口 2（主设置中心直达）</strong>：桌面设置页提供推荐卡片 <code>[ 🎨 打开动态壁纸与组件工坊 ]</code>。</li>
+    <li><strong>硬件与实例监控看板</strong>：实时跟踪 CEF OSR 进程 PID、离屏渲染 FPS（标称 60FPS 节流）、专用显存占用与内存物理工作集；</li>
+    <li><strong>IPC 消息总线审查器</strong>：可视化监视 <code>linwidget://bridge/postMessage</code> 消息日志，展示信令名称、载荷 JSON、延迟毫秒数与响应状态码；</li>
+    <li><strong>Chromium DevTools (F12)</strong>：一键唤起真实 Chromium 开发者控制台或开启 <code>http://localhost:9222</code> 远程断点调试通道；</li>
+    <li><strong>一键导出脱敏诊断包</strong>：自动汇总环境拓扑、注册表快照、CEF 崩溃日志与 IPC 交互追踪，供 AI 或开发者直接定位故障。</li>
   </ul>
 </section>
 
@@ -341,11 +489,14 @@
     <tr><td>settings schema 渲染</td><td>manifest settingsSchema → 自动渲染设置对话框；与 settings.html 并存</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
   </table>
 
-  <h3>8.5 壁纸组件（设计：第 7 章）</h3>
+  <h3>8.5 壁纸组件与 Hub 中心（设计：第 7 章 <span class="tag keep">已落地实装</span>）</h3>
   <table>
     <colgroup><col style="width:30%"><col style="width:44%"><col style="width:12%"><col style="width:14%"></colgroup>
     <tr><th>文件 / 位置</th><th>任务</th><th>级别</th><th>章节</th></tr>
-    <tr><td>壁纸工坊与可视化编辑器 (Wallpaper Studio)</td><td>16:9 实时画板 + 本地图片/视频拖拽 + Cover/Contain 适配 + 音量控制 + 暗度/模糊文字保护滤镜 + 导出 .lw 包</td><td><span class="tag p1">P1</span></td><td>7.2</td></tr>
+    <tr><td><code>src/ui/hub/WallpaperStudioWindow.cpp</code></td><td><strong>LinDesk Hub 与壁纸工坊窗口实装</strong>：1120×720 Fluent 架构、4-Tab 导航、Hero 运行看板、16:9 实时物理画板、桌面图标透视浮层、遮罩暗化与模糊滤镜滑块、底层壁纸桥接调用</td><td><span class="tag keep">已落地</span></td><td>7.1 / 7.2</td></tr>
+    <tr><td><code>src/desktop/RightMenu.cpp</code> & <code>DesktopSettingsPage.cpp</code></td><td><strong>双级激活入口</strong>：桌面右键菜单 <code>🎨 动态壁纸与工坊...</code> + 设置中心直达大卡片</td><td><span class="tag keep">已落地</span></td><td>7.4</td></tr>
+    <tr><td><code>src/resources/LinWidgets/LinDeskHub/</code></td><td><strong>Web SPA 独立包模板</strong>：manifest.json + index.html，可在独立 CEF 窗口中作为现代单页应用加载</td><td><span class="tag keep">已落地</span></td><td>7.1</td></tr>
+    <tr><td><code>manifest.json</code> properties 声明式规范</td><td>对标 Wallpaper Engine 标准，支持 slider/color/boolean/select 动态生成控件与 property_update 实时 IPC</td><td><span class="tag keep">已落地</span></td><td>7.3</td></tr>
     <tr><td>视频性能治理（帧率控制 + 最小化挂起）</td><td>wallpaper_set_source/get_source、内容帧率节流、全屏独占暂停</td><td><span class="tag p1">P1</span></td><td>7.3</td></tr>
     <tr><td>在线 URL 壁纸 / 多屏多壁纸</td><td>network 权限验证；多屏（可选）</td><td><span class="tag p2">P2</span></td><td>7</td></tr>
   </table>
@@ -358,7 +509,8 @@
     <tr><th>级别</th><th>内容</th><th>验收要点</th></tr>
     <tr><td><span class="tag p0">P0</span></td><td>运行时拆分/安装/卸载、CEF 缺口、壁纸 P0、组件目录扫描注册 <span class="tag keep">已落地</span>；<strong>目录监听热加载 + 启动对账</strong> 待补</td><td>组件包目录增删即时生效；注册表无失效条目</td></tr>
     <tr><td><span class="tag keep">已落地</span></td><td><strong>第 6 章体验层全闭环</strong>：组件 Ctrl+拖拽移动、组件管理窗口（双栏）、设置页组件区动作完善、manifest.settingsSchema 自动渲染</td><td>按住 Ctrl 拖动组件到任意位置且重启恢复；双栏管理窗口权限/数据/运行状态闭环；settingsSchema 自动生成表单并即时生效</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>组件市场 + 作者层（示例仓库/校验器/诊断包/意图保留）+ 权限申请流与订阅推送 + 壁纸工坊 (Wallpaper Studio)</td><td>在线装/卸/更新组件全流程可用；诊断包可直接喂 AI 完成增量修复；壁纸工坊提供拖拽导入图片/视频与实时排版滤镜调节全闭环</td></tr>
+    <tr><td><span class="tag keep">已落地</span></td><td><strong>第 7 章壁纸工坊 (Wallpaper Studio) 与 LinDesk Hub</strong>：1120×720 Fluent 悬浮独立大窗口、双级激活入口（桌面右键+设置卡片）、16:9 实时画板、桌面图标浮层、声明式 properties 规范与 property_update IPC 闭环</td><td>桌面右键一键呼出工坊；16:9 画布实时动画与图标透视；支持声明式参数动态生成与壁纸启停</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>组件市场 + 作者层（示例仓库/校验器/诊断包/意图保留）+ 权限申请流与订阅推送</td><td>在线装/卸/更新组件全流程可用；诊断包可直接喂 AI 完成增量修复</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>生命周期挂起/恢复 + 沙箱收尾</td><td>全新机器"装主程序 → 安装组件系统 → 下载组件包 → 启用 → 卸载"全流程可用；最小化后组件帧暂停</td></tr>
     <tr><td><span class="tag p3">P3</span></td><td>组件间通信 + 桌面集成扩展点（拖放/文件/快捷键）</td><td>组件间通信按来源隔离并需用户授权</td></tr>
   </table>

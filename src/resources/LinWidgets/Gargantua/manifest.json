@@ -11,5 +11,43 @@
   "permissions": [
     "desktop",
     "storage"
-  ]
+  ],
+  "properties": {
+    "particleCount": {
+      "type": "slider",
+      "text": "吸积盘粒子密度 (Particle Density)",
+      "min": 100,
+      "max": 1200,
+      "step": 50,
+      "value": 450
+    },
+    "rotationSpeed": {
+      "type": "slider",
+      "text": "相对论旋转速度 (Spin Speed)",
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "value": 5
+    },
+    "lensingGlowColor": {
+      "type": "color",
+      "text": "引力透镜光晕色调 (Lensing Hue)",
+      "value": "#fdba74"
+    },
+    "enableDopplerBeaming": {
+      "type": "boolean",
+      "text": "多普勒射束增亮 (Doppler Beaming)",
+      "value": true
+    },
+    "colorScheme": {
+      "type": "select",
+      "text": "星际色谱风格 (Cosmic Palette)",
+      "options": [
+        { "label": "经典黑洞黄昏 (Amber)", "value": "amber" },
+        { "label": "超大质量蓝巨星 (Blue)", "value": "blue" },
+        { "label": "量子引力奇点 (Violet)", "value": "violet" }
+      ],
+      "value": "amber"
+    }
+  }
 }

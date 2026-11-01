@@ -5,19 +5,35 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QStackedWidget>
 #include <QScrollArea>
 #include <QSlider>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QPointer>
 #include <QTimer>
 #include <QPaintEvent>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
+#include <QMap>
 #include "ui/Fluent/FluentBaseWidget.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 
 namespace LinHub {
 
 class StudioPreviewCanvas;
+
+struct WallpaperItem {
+    QString id;
+    QString name;
+    QString tag;
+    QString description;
+    QString packagePath;
+    QString thumbStyle;
+    QJsonObject propertiesSchema;
+};
 
 class WallpaperStudioWindow : public FluentBaseWidget {
     Q_OBJECT
@@ -36,6 +52,7 @@ public slots:
     void toggleMousePhysics(bool enabled);
     void importLocalMedia();
     void exportDiagnosticsPackage();
+    void selectWallpaperForStudio(const QString& wallpaperId);
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -50,9 +67,18 @@ private:
     QWidget* createWidgetsPage();
     QWidget* createDevAdminPage();
 
+    void scanWallpapers();
+    void populateGalleryCards();
     void refreshActiveWallpaperStatus();
     void updateStudioDimming(int val);
     void updateStudioBlur(int val);
+
+    void loadAndGeneratePropertyControls(const QString& wallpaperId);
+    void dispatchPropertyUpdate(const QString& key, const QJsonValue& val);
+    QJsonObject loadSavedProperties(const QString& wallpaperId) const;
+    void saveProperties(const QString& wallpaperId, const QJsonObject& props);
+    QString resolveWallpaperPath(const QString& wallpaperId) const;
+    void appendIpcLog(const QString& direction, const QString& msg);
 
 private:
     static QPointer<WallpaperStudioWindow> s_instance;
@@ -70,6 +96,8 @@ private:
     QLabel* m_heroDesc = nullptr;
     FluentToggleSwitch* m_heroMousePhysicsToggle = nullptr;
     QPushButton* m_heroStopBtn = nullptr;
+    QGridLayout* m_galleryGridLayout = nullptr;
+    QWidget* m_galleryGridContainer = nullptr;
 
     // Studio elements
     StudioPreviewCanvas* m_studioCanvas = nullptr;
@@ -78,7 +106,16 @@ private:
     QSlider* m_blurSlider = nullptr;
     QLabel* m_blurValLabel = nullptr;
     QCheckBox* m_mockIconsCheckbox = nullptr;
-    QString m_currentEditingWallpaper = QStringLiteral("gargantua");
+    QString m_currentEditingWallpaper = QStringLiteral("lindesk.wallpaper.gargantua");
+
+    // Dynamic properties panel in Studio
+    QWidget* m_dynamicPropertiesContainer = nullptr;
+    QVBoxLayout* m_dynamicPropertiesLayout = nullptr;
+    QLabel* m_propertiesTitle = nullptr;
+    QMap<QString, QJsonValue> m_currentPropertyValues;
+
+    // Available wallpapers
+    QList<WallpaperItem> m_availableWallpapers;
 
     // Dev elements
     QLabel* m_ipcLogView = nullptr;
@@ -94,6 +131,8 @@ public:
     void setBlurRadius(int blurPx);
     void setShowDesktopIcons(bool show);
     void setWallpaperType(const QString& type);
+    void setParticleDensity(int density);
+    void setAccentColor(const QColor& color);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -103,6 +142,8 @@ private:
     int m_blurRadius = 0;
     bool m_showDesktopIcons = true;
     QString m_wallpaperType = QStringLiteral("gargantua");
+    int m_particleDensity = 30;
+    QColor m_accentColor = QColor(255, 140, 20);
     QTimer* m_animTimer = nullptr;
     qreal m_animTime = 0.0;
 };

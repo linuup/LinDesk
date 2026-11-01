@@ -11,5 +11,33 @@
   "permissions": [
     "storage",
     "desktop"
-  ]
+  ],
+  "properties": {
+    "particleCount": {
+      "type": "slider",
+      "text": "量子粒子密度 (Quantum Particles)",
+      "min": 50,
+      "max": 600,
+      "step": 25,
+      "value": 240
+    },
+    "fluidSpeed": {
+      "type": "slider",
+      "text": "流体极光流速 (Aurora Speed)",
+      "min": 1,
+      "max": 8,
+      "step": 1,
+      "value": 3
+    },
+    "singularityColor": {
+      "type": "color",
+      "text": "引力奇点主色调 (Singularity Color)",
+      "value": "#6366f1"
+    },
+    "reactiveMouseWave": {
+      "type": "boolean",
+      "text": "鼠标引力波动感知 (Mouse Physics)",
+      "value": true
+    }
+  }
 }
