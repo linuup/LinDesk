@@ -3,7 +3,7 @@
 #endif
 
 #ifndef AppVersion
-#define AppVersion "1.2.1"
+#define AppVersion "1.3.0"
 #endif
 
 #ifndef AppExeName
@@ -15,7 +15,7 @@
 #endif
 
 #ifndef BuildDir
-#define BuildDir "D:/Desktop/LinDesk/build/Release"
+#define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
 #endif
 
 #ifndef PackageOutputDir
