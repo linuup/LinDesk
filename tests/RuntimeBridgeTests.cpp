@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QPainter>
 #include <QImage>
+#include <QKeyEvent>
 #include "desktop/widgets/runtime_export.h"
 
 class RuntimeBridgeTest : public ::testing::Test {
@@ -57,6 +58,10 @@ TEST_F(RuntimeBridgeTest, UnloadedStateIsSafeAndDormant)
     EXPECT_FALSE(bridge.forwardMouseEvent(nullptr));
     EXPECT_FALSE(bridge.forwardWheelEvent(nullptr));
     EXPECT_FALSE(bridge.forwardKeyEvent(nullptr));
+    QKeyEvent ctrlEvent(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier);
+    EXPECT_FALSE(bridge.forwardKeyEvent(&ctrlEvent));
+    QKeyEvent ctrlRelease(QEvent::KeyRelease, Qt::Key_Control, Qt::NoModifier);
+    EXPECT_FALSE(bridge.forwardKeyEvent(&ctrlRelease));
     EXPECT_FALSE(bridge.forwardInputMethodEvent(nullptr));
 }
 

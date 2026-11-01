@@ -394,8 +394,17 @@ public:
 	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
 	void setDoubleClickHideIconsEnabled(bool enabled);
 	bool isDoubleClickHideIconsEnabled() const;
+
+	struct ItemHideTransform {
+		qreal opacity = 1.0;
+		qreal scale = 1.0;
+		qreal dy = 0.0;
+	};
+
 	void setFadeTransitionOnHideEnabled(bool enabled);
 	bool isFadeTransitionOnHideEnabled() const { return m_fadeTransitionOnHide; }
+	ItemHideTransform computeItemHideTransform(const QPointF& itemCenter) const;
+	void applyBoxHideTransform(LinBox* box);
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
 	bool desktopIconsVisible() const;
 	ViewMode viewMode() const { return m_iconShowRule.viewMode; }
@@ -409,6 +418,7 @@ public:
 	void rebuildSpatialIndex();
 	void refreshCheckedItem(QRect rect);
 	void showSettings(LinBox* target = nullptr);
+	class SettingUI* settingsWindow() const { return m_settingsWindow.data(); }
 	void showTransientTip(const QString& message, int autoHideMs = 2500);
 	void showDebugPanel();
 	void* linWidgetManager();
@@ -426,6 +436,12 @@ public:
 	bool updateBackgroundSelection(const QPoint& currentPos, QRect* selectionRect = nullptr);
 	void endBackgroundSelection();
 	void loadSelectionColors();
+	int fluentSelectionCornerRadius() const { return m_fluentSelectionCornerRadius; }
+	void setFluentSelectionCornerRadius(int radius) { m_fluentSelectionCornerRadius = radius; update(); }
+	int selectionBadgeRadius() const { return m_selectionBadgeRadius; }
+	void setSelectionBadgeRadius(int radius) { m_selectionBadgeRadius = radius; update(); }
+	qreal selectionBorderWidth() const { return m_selectionBorderWidth; }
+	void setSelectionBorderWidth(qreal width) { m_selectionBorderWidth = width; update(); }
 	bool isBackgroundSelectionActive() const { return m_isSelecting; }
 	QRect backgroundSelectionRect() const { return m_selectionRect; }
 	void clearWidgetFocus();
@@ -443,7 +459,6 @@ protected:
 	void keyReleaseEvent(QKeyEvent* event) override;
 	void focusInEvent(QFocusEvent* event) override;
 	void focusOutEvent(QFocusEvent* event) override;
-	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 	void inputMethodEvent(QInputMethodEvent* event) override;
 	QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
@@ -619,6 +634,8 @@ public slots:
 	void armPendingShellNewTargetBox(LinBox* box);
 	void clearPendingShellNewTargetBox();
 	void openLinWidgetSettings(const QString& instanceId);
+	void showWidgetContextMenu(const QString& instanceId, const QPoint& globalPos);
+	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 
 private:
 	// 友元声明
@@ -712,6 +729,7 @@ private:
 
 	// 状态标志
 	bool m_fadeTransitionOnHide = true;
+	QPoint m_hideAnimationOriginPos;
 	qreal m_desktopElementsOpacity = 1.0;
 	class QVariantAnimation* m_desktopHideAnim = nullptr;
 	QString m_typeSearchBuffer;
@@ -726,6 +744,10 @@ private:
 	QColor m_selectionFillColor;
 	QColor m_selectionBorderColor;
 	bool m_fluentSelectionEnabled = true;
+	bool m_selectionCountBadgeEnabled = false;
+	int m_fluentSelectionCornerRadius = 5;
+	int m_selectionBadgeRadius = 11;
+	qreal m_selectionBorderWidth = 1.0;
 	bool m_forwardingMouseToWidget = false;
 	bool m_widgetDragPending = false;
 	bool m_draggingWidget = false;

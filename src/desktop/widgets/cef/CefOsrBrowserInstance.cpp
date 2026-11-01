@@ -3,6 +3,10 @@
 #include "desktop/widgets/cef/CefManager.h"
 
 #include <QDebug>
+#include <QApplication>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #ifdef LINDESK_HAS_CEF
 #include <include/cef_life_span_handler.h>
@@ -593,10 +597,25 @@ void CefOsrBrowserInstance::sendMouseClick(int x, int y, Qt::MouseButton button,
         return;
     }
 
+    uint32_t modifiers = 0;
+    const Qt::KeyboardModifiers qMods = QApplication::keyboardModifiers();
+#ifdef _WIN32
+    if ((qMods & Qt::ShiftModifier) || ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)) modifiers |= EVENTFLAG_SHIFT_DOWN;
+    if ((qMods & Qt::ControlModifier) || ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)) modifiers |= EVENTFLAG_CONTROL_DOWN;
+    if ((qMods & Qt::AltModifier) || ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0)) modifiers |= EVENTFLAG_ALT_DOWN;
+#else
+    if (qMods & Qt::ShiftModifier) modifiers |= EVENTFLAG_SHIFT_DOWN;
+    if (qMods & Qt::ControlModifier) modifiers |= EVENTFLAG_CONTROL_DOWN;
+    if (qMods & Qt::AltModifier) modifiers |= EVENTFLAG_ALT_DOWN;
+#endif
+    if (button == Qt::LeftButton) modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
+    else if (button == Qt::RightButton) modifiers |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
+    else if (button == Qt::MiddleButton) modifiers |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+
     CefMouseEvent mouseEvent;
     mouseEvent.x = x;
     mouseEvent.y = y;
-    mouseEvent.modifiers = 0;
+    mouseEvent.modifiers = modifiers;
 
     cef_mouse_button_type_t btnType = MBT_LEFT;
     if (button == Qt::RightButton) {
@@ -677,9 +696,16 @@ void CefOsrBrowserInstance::sendKeyEvent(QKeyEvent* event)
     }
 
     uint32_t modifiers = 0;
-    if (event->modifiers() & Qt::ShiftModifier) modifiers |= EVENTFLAG_SHIFT_DOWN;
-    if (event->modifiers() & Qt::ControlModifier) modifiers |= EVENTFLAG_CONTROL_DOWN;
-    if (event->modifiers() & Qt::AltModifier) modifiers |= EVENTFLAG_ALT_DOWN;
+    const Qt::KeyboardModifiers qMods = event->modifiers() | QApplication::keyboardModifiers();
+#ifdef _WIN32
+    if ((qMods & Qt::ShiftModifier) || event->key() == Qt::Key_Shift || ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0)) modifiers |= EVENTFLAG_SHIFT_DOWN;
+    if ((qMods & Qt::ControlModifier) || event->key() == Qt::Key_Control || ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)) modifiers |= EVENTFLAG_CONTROL_DOWN;
+    if ((qMods & Qt::AltModifier) || event->key() == Qt::Key_Alt || ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0)) modifiers |= EVENTFLAG_ALT_DOWN;
+#else
+    if ((qMods & Qt::ShiftModifier) || event->key() == Qt::Key_Shift) modifiers |= EVENTFLAG_SHIFT_DOWN;
+    if ((qMods & Qt::ControlModifier) || event->key() == Qt::Key_Control) modifiers |= EVENTFLAG_CONTROL_DOWN;
+    if ((qMods & Qt::AltModifier) || event->key() == Qt::Key_Alt) modifiers |= EVENTFLAG_ALT_DOWN;
+#endif
 
     CefKeyEvent cefEvent;
     cefEvent.modifiers = modifiers;

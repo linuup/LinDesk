@@ -3,6 +3,8 @@
 #include "desktop/ListView.h"
 #include "monitor/LinDirectoryMonitor.h"
 #include "services/DpiScaleHelper.h"
+#include "services/AppPaths.h"
+#include <QSettings>
 #include <QWidget>
 #include <QFile>
 #include <QFileInfo>
@@ -70,6 +72,10 @@ BoxManager::BoxManager(QObject* parent)
     m_saveTimer->setSingleShot(true);
     m_saveTimer->setInterval(150);
     connect(m_saveTimer, &QTimer::timeout, this, [this]() { emit saveRequested(); });
+
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_unifiedLayeredZDepth = settings.value(QStringLiteral("Box/LayeredZDepth"), true).toBool();
+    m_unifiedActiveDragPulse = settings.value(QStringLiteral("Box/ActiveDragPulse"), true).toBool();
 }
 
 BoxManager::~BoxManager() {
@@ -122,6 +128,8 @@ void BoxManager::applyUnifiedStyleToBox(LinBox* box) {
     box->setBackgroundColor(targetColor);
     box->setBackgroundOpacity(targetOpacity);
     box->setGlassEffect(targetGlass);
+    box->setLayeredZDepth(m_unifiedLayeredZDepth);
+    box->setActiveDragPulse(m_unifiedActiveDragPulse);
     box->refreshStyles();
 }
 
@@ -900,4 +908,18 @@ void BoxManager::setAllBoxesBackgroundOpacity(float opacity) {
         if (LinBox* box = ptr.data()) box->setBackgroundOpacity(opacity);
     }
     requestSave();
+}
+
+void BoxManager::setAllBoxesLayeredZDepth(bool enabled) {
+    m_unifiedLayeredZDepth = enabled;
+    for (auto& ptr : m_boxes) {
+        if (LinBox* box = ptr.data()) box->setLayeredZDepth(enabled);
+    }
+}
+
+void BoxManager::setAllBoxesActiveDragPulse(bool enabled) {
+    m_unifiedActiveDragPulse = enabled;
+    for (auto& ptr : m_boxes) {
+        if (LinBox* box = ptr.data()) box->setActiveDragPulse(enabled);
+    }
 }

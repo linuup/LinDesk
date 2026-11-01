@@ -196,6 +196,7 @@ void ContextMenuSettingsPage::initUI()
     QVBoxLayout* filterToggleLayout = new QVBoxLayout(filterTogglePanel);
     filterToggleLayout->setContentsMargins(22, 10, 22, 10);
     filterToggleLayout->setSpacing(0);
+
     FluentToggleSwitch* enableFilterToggle = new FluentToggleSwitch(filterTogglePanel);
     enableFilterToggle->setChecked(RightMenu::isShellMenuExclusionEnabled());
     filterToggleLayout->addWidget(createSwitchRow(

@@ -111,19 +111,7 @@
   <table>
     <colgroup><col style="width:10%"><col style="width:34%"><col style="width:42%"><col style="width:14%"></colgroup>
     <tr><th>优先级</th><th>任务事项</th><th>设计说明与落地点</th><th>状态</th></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>LinBox 折叠/展开弹性高度缓动动画</td><td>使用 <code>QEasingCurve::OutCubic</code> 实现 180~220ms 高度弹性动画，消除瞬间尺寸瞬变的机械感（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>双击标题栏折叠 + 悬停自动展开 (Roll-up)</td><td>双击标题栏直接折叠；折叠状态下鼠标悬停 150ms 自动平滑下卷展开，移出后延时收起（<code>LinBox.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>自动悬浮展开开关迁移至设置页</td><td>Roll-up「悬停自动展开」的开关放在设置页（组件/桌面设置区），不放右键菜单——右键菜单只保留手动折叠操作，避免菜单项膨胀（落地点：<code>SettingUI.cpp</code> 组件/桌面设置区 + 右键菜单移除对应项）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>修复收起后内容区残留显示</td><td>Box 折叠收起后内容区仍露出约一行内容（滚动区域未完全收回/尺寸缓存残留），需在 <code>toggleCollapse()</code> 收起终态强制内容区高度为 0 并同步隐藏滚动条，展开时再恢复（<code>LinBox.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>折叠/展开动画卡顿优化</td><td>收起/展开高度动画期间主线程明显卡顿（疑似逐帧触发 <code>QScrollArea</code> 内容 relayout 与全量重绘），改为动画期间仅驱动容器高度、内容区按比例淡隐淡入，避免逐帧布局重算（<code>LinBox.cpp:toggleCollapse</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>桌面键盘操作回归（Delete/Shift/Ctrl 失效）</td><td>桌面核心体验改造后，原本的桌面键盘操作整体失效——<code>Delete</code> 删除、<code>Shift</code> 多选、<code>Ctrl</code> 组合操作均无响应；疑似按键事件被框选/右键菜单/焦点改动吞掉，或桌面焦点被嵌入式小组件（CEF OSR）/子窗口抢占；需先定位根因再修复（落点：<code>ListView.cpp:keyPressEvent</code> 与焦点链 <code>focusOutEvent</code>/<code>setFocusPolicy</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>移动盒子磁吸屏幕与邻近盒子对齐 (Snap)</td><td>当拖拽盒子边缘距离屏幕或其它盒子小于 10px 时产生微阻尼对齐，解决手动对不齐的痛苦（<code>LinBox.cpp:mouseMoveEvent</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>键盘盲打首字母跳选定位 (Type-to-Select)</td><td>桌面按键盘盲打字符（如按 <code>W</code>）立即跳选对应首字母图标，对齐 Windows 原生操作习惯（<code>ListView.cpp:keyPressEvent</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>桌面全局撤销快捷键 (<code>Ctrl + Z</code>)</td><td>拦截 <code>Ctrl + Z</code> 调用 Windows Shell Undo 栈，为误删误拖提供反悔安全兜底（<code>ListView.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>双击空白处隐藏桌面的淡入淡出动画</td><td>双击隐藏/恢复桌面图标时加入 220ms 透明度淡出淡入过渡与双向绑定设置开关（<code>ListView_Actions.cpp:onMenuShowDesktopIcons</code>）</td><td><span class="state done">已完成</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>图标与 IO 管线：两级 LRU 缓存与渐进式异步加载</td><td>第一级内存 LRU 扩展名共享（99% 命中），第二级磁盘持久化（%APPDATA%/LinDesk/IconCache/），0ms 骨架占位 + 线程池异步解码 + 100ms 局部透明度渐进淡入（<code>ListItemData.h</code> / <code>IconCacheManager</code>）</td><td><span class="state done">已完成</span></td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>真正的一键桌面智能整理分类 (Smart Auto-Organization)</td><td>重构右键“整理桌面”，自动建立或复用标准分类盒子（快捷方式、文件夹、常用文档、压缩包与安装包），自动将散落在桌面的文件按类型归集至相应盒子，保留原生固定项（此电脑、回收站），并支持规则设置（例如“新保存到桌面的文档自动进入文档盒子”）（<code>ListView_Actions.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>拖拽进入 Box 投掷区呼吸光晕高亮 (Drop Target Accent Glow)</td><td>文件拖向某个 Box 时，该 Box 边框产生主题色发光呼吸效果，强化投掷目标确认感（<code>LinBox.cpp:dragEnterEvent / dragLeaveEvent</code>）</td><td><span class="state todo">待办</span></td></tr>
   </table>
   </div>
 
@@ -223,6 +211,8 @@
       <span class="state done">已完成</span>
     </li>
     <li><strong>多比例 High-DPI 缩放适配与防模糊 (High-DPI Adaptation)</strong>：全面支持 125%、150%、175%、200% 等非 100% 缩放比率；桌面图标网格计算全链路基于 <code>scaledPx()</code> 缩放；<code>TextRenderCache</code> 动态绑定屏幕 <code>devicePixelRatio</code>，高分屏文字抗锯齿高清光栅化无模糊；4K/超宽屏壁纸物理分辨率同步解码；LinBox 毛玻璃模糊半径与暗度自适应 DPI；右键菜单移除冗余的收起/展开菜单项，保持精简 <span class="state done">已完成</span></li>
+    <li><strong>收起终态零残留 (Collapse Zero-Residual)</strong>：折叠收起时内容区高度强制收敛至 0 并同步隐藏滚动条，展开时再恢复，消除折叠后仍露出约一行内容的显示缺陷（<code>LinBox.cpp:toggleCollapse</code>）<span class="state done">已完成</span></li>
+    <li><strong>桌面键盘操作回归修复 (Keyboard Regression Fix)</strong>：桌面核心体验改造后 <code>Delete</code> 删除 / <code>Shift</code> 多选 / <code>Ctrl</code> 组合键整体失效，修复桌面焦点链与 <code>keyPressEvent</code> 事件路由，恢复原生键盘操作（<code>ListView.cpp</code>）<span class="state done">已完成</span></li>
   </ul>
 </section>
 

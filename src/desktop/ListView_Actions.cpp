@@ -937,10 +937,6 @@ namespace PinyinHelper {
 namespace {
     void applyBoxFadeOpacity(LinBox* box, qreal opacity) {
         if (!box) return;
-        if (opacity >= 0.999) {
-            box->setGraphicsEffect(nullptr);
-            return;
-        }
         QGraphicsOpacityEffect* effect = qobject_cast<QGraphicsOpacityEffect*>(box->graphicsEffect());
         if (!effect) {
             effect = new QGraphicsOpacityEffect(box);
@@ -955,6 +951,9 @@ void ListView::onMenuShowDesktopIcons() {
 }
 
 void ListView::toggleDesktopIconsVisibility(bool animated) {
+    if (animated && m_hideAnimationOriginPos.isNull()) {
+        m_hideAnimationOriginPos = mapFromGlobal(QCursor::pos());
+    }
     setDesktopIconsVisibility(!m_iconShowRule.showDesktopIcons, animated);
 }
 
@@ -973,6 +972,12 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
             this->rightMenu->setShowDesktopIconsChecked(visible);
         }
         syncBoxVisibilityWithDesktopIcons();
+        const auto boxes = BoxManager::instance()->allBoxes();
+        for (const auto& boxPtr : boxes) {
+            if (LinBox* box = boxPtr.data()) {
+                box->setGraphicsEffect(nullptr);
+            }
+        }
         updateAllItemRenderData();
         rebuildSpatialIndex();
         update();
@@ -985,35 +990,28 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
 
     if (!m_desktopHideAnim) {
         m_desktopHideAnim = new QVariantAnimation(this);
-        m_desktopHideAnim->setDuration(220);
-        m_desktopHideAnim->setEasingCurve(QEasingCurve::OutCubic);
+        m_desktopHideAnim->setEasingCurve(QEasingCurve::Linear);
         connect(m_desktopHideAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
             m_desktopElementsOpacity = value.toReal();
             const auto boxes = BoxManager::instance()->allBoxes();
             for (const auto& boxPtr : boxes) {
                 if (LinBox* box = boxPtr.data()) {
-                    applyBoxFadeOpacity(box, m_desktopElementsOpacity);
+                    applyBoxHideTransform(box);
                 }
             }
             update();
         });
         connect(m_desktopHideAnim, &QVariantAnimation::finished, this, [this]() {
-            if (!m_iconShowRule.showDesktopIcons) {
-                const auto boxes = BoxManager::instance()->allBoxes();
-                for (const auto& boxPtr : boxes) {
-                    if (LinBox* box = boxPtr.data()) {
+            const auto boxes = BoxManager::instance()->allBoxes();
+            for (const auto& boxPtr : boxes) {
+                if (LinBox* box = boxPtr.data()) {
+                    if (!m_iconShowRule.showDesktopIcons) {
                         box->hide();
-                        box->setGraphicsEffect(nullptr);
                     }
-                }
-            } else {
-                const auto boxes = BoxManager::instance()->allBoxes();
-                for (const auto& boxPtr : boxes) {
-                    if (LinBox* box = boxPtr.data()) {
-                        box->setGraphicsEffect(nullptr);
-                    }
+                    box->setGraphicsEffect(nullptr);
                 }
             }
+            m_hideAnimationOriginPos = QPoint();
             update();
         });
     }
@@ -1021,6 +1019,8 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
     if (m_desktopHideAnim->state() == QAbstractAnimation::Running) {
         m_desktopHideAnim->stop();
     }
+
+    m_desktopHideAnim->setDuration(220);
 
     m_iconShowRule.showDesktopIcons = visible;
     if (this->rightMenu) {
@@ -1035,7 +1035,7 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
                     box->show();
                 }
                 box->raise();
-                applyBoxFadeOpacity(box, m_desktopElementsOpacity);
+                applyBoxHideTransform(box);
             }
         }
         m_desktopHideAnim->setStartValue(m_desktopElementsOpacity);
@@ -1079,6 +1079,44 @@ void ListView::setFadeTransitionOnHideEnabled(bool enabled) {
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
     settings.setValue(QStringLiteral("Desktop/FadeTransitionOnHide"), enabled);
     settings.sync();
+}
+
+ListView::ItemHideTransform ListView::computeItemHideTransform(const QPointF& itemCenter) const {
+    ItemHideTransform xform;
+    const qreal P = m_desktopElementsOpacity;
+    const bool isTargetVisible = m_iconShowRule.showDesktopIcons;
+
+    const QPointF origin = m_hideAnimationOriginPos.isNull() ? rect().center() : m_hideAnimationOriginPos;
+    const qreal dist = QLineF(origin, itemCenter).length();
+    const qreal maxDist = qMax<qreal>(120.0, std::hypot(width(), height()));
+    const qreal delayFrac = qBound(0.0, (dist / maxDist) * 0.25, 0.25);
+
+    qreal localP = P;
+    if (isTargetVisible) {
+        localP = qBound(0.0, (P - delayFrac) / (1.0 - delayFrac), 1.0);
+    } else {
+        const qreal elapsed = 1.0 - P;
+        const qreal localElapsed = qBound(0.0, (elapsed - delayFrac) / (1.0 - delayFrac), 1.0);
+        localP = 1.0 - localElapsed;
+    }
+
+    xform.opacity = localP;
+    xform.scale = 1.0;
+
+    if (isTargetVisible) {
+        const qreal springOvershoot = 2.0 * std::sin(localP * 3.1415926535) * (1.0 - localP);
+        xform.dy = (1.0 - localP) * 8.0 - springOvershoot;
+    } else {
+        xform.dy = (1.0 - localP) * 8.0;
+    }
+
+    return xform;
+}
+
+void ListView::applyBoxHideTransform(LinBox* box) {
+    if (!box) return;
+    const auto xform = computeItemHideTransform(box->geometry().center());
+    applyBoxFadeOpacity(box, xform.opacity);
 }
 
 bool ListView::handleTypeToSelect(const QString& typedText, LinBox* activeBox) {
@@ -1880,7 +1918,8 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
     QPixmap dragPixmap;
     QPoint hotSpot;
     if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
-        const bool isOversized = ghostBounds.width() > 400 || ghostBounds.height() > 400 || ghostItems.size() > 20;
+        constexpr int kMaxDragGhostItemCount = 20;
+        const bool isOversized = ghostItems.size() > kMaxDragGhostItemCount || ghostBounds.width() > 2560 || ghostBounds.height() > 2560;
         if (isOversized) {
             const DesktopRootItemState* hitState = findDesktopStateAt(clickPos);
             DesktopRootItemRenderData primaryData = (hitState && hitState->model.visible)

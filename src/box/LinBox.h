@@ -99,6 +99,16 @@ public:
     void scheduleBlurRefresh();
     void updateBlurCache();
 
+    bool layeredZDepth() const { return m_layeredZDepth; }
+    void setLayeredZDepth(bool enabled);
+
+    bool activeDragPulse() const { return m_activeDragPulse; }
+    void setActiveDragPulse(bool enabled);
+
+    QColor effectiveBackgroundColor() const;
+
+    void loadVisualEffectSettings();
+
     void refreshStyles();
     void refreshSelectionOverlayColor();
     void loadSelectionColors();
@@ -218,6 +228,7 @@ private:
     bool m_isAutoPeeking = false;
     bool m_autoPeekEnabled = true;
     bool m_autoPeekInstant = false;
+    bool m_manualCollapseHoverSuppressed = false;
     class QTimer* m_hoverExpandTimer = nullptr;
     class QTimer* m_hoverCollapseTimer = nullptr;
     class QPropertyAnimation* m_collapseAnim = nullptr;
@@ -241,6 +252,9 @@ private:
     MappedFolderState m_mappedFolderState = MappedFolderState::Normal;
     qreal m_dpiScale = 1.0;
     bool m_isMappedFolderLoading = false;
+    bool m_layeredZDepth = true;
+    bool m_activeDragPulse = true;
+    bool m_isDragHovered = false;
 
 private:
     QPointer<class FluentDragTip> m_dragTip;
@@ -258,6 +272,8 @@ private:
     QColor m_selectionFillColor;
     QColor m_selectionBorderColor;
     bool m_fluentSelectionEnabled = true;
+    int m_fluentSelectionCornerRadius = 5;
+    qreal m_selectionBorderWidth = 1.0;
     QString m_hoveredItemPath;
     QString m_pressedItemPath;
     QPoint m_pressedItemBoxPos;

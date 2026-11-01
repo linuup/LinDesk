@@ -1,6 +1,7 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
 #include "desktop/RenameManager.h"
+#include "desktop/widgets/runtime_export.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInfoTip.h"
@@ -120,11 +121,23 @@ void showAlreadyRunningDialogAndHandle()
 
     dialog->addActionButton(
         QCoreApplication::translate("LinDesktop", "Restore Desktop"),
-        FluentDialog::ActionType::Primary,
+        FluentDialog::ActionType::Secondary,
         [handled]() {
             if (!*handled) {
                 *handled = true;
                 sendSingleInstanceCommand(QStringLiteral("RESTORE"));
+                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
+            }
+        }
+    );
+
+    dialog->addActionButton(
+        QCoreApplication::translate("LinDesktop", "Open Settings"),
+        FluentDialog::ActionType::Primary,
+        [handled]() {
+            if (!*handled) {
+                *handled = true;
+                sendSingleInstanceCommand(QStringLiteral("SHOW_SETTINGS"));
                 QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
             }
         }
@@ -752,17 +765,34 @@ void LinDesktop::initializeTrayIcon()
         " background: rgba(0, 0, 0, 0.08);"
         " }"
     );
-    m_showAction = m_trayMenu->addAction(tr("Show LinDesk"));
+    QAction* settingsAction = m_trayMenu->addAction(tr("Open Settings"));
+    QAction* desktopSettingsAction = m_trayMenu->addAction(tr("Desktop Settings"));
+    m_trayMenu->addSeparator();
+    m_showAction = m_trayMenu->addAction(tr("Restore Desktop"));
+    m_trayMenu->addSeparator();
     m_exitAction = m_trayMenu->addAction(tr("Exit"));
     m_trayIcon->setContextMenu(m_trayMenu);
 
+    connect(settingsAction, &QAction::triggered, this, [this]() {
+        if (listView) listView->showSettings(nullptr);
+    });
+    connect(desktopSettingsAction, &QAction::triggered, this, [this]() {
+        if (listView) {
+            listView->showSettings(nullptr);
+            if (SettingUI* settingsUI = listView->settingsWindow()) {
+                settingsUI->switchToPage(2);
+            }
+        }
+    });
     connect(m_showAction, &QAction::triggered, this, &LinDesktop::restoreFromTray);
     connect(m_exitAction, &QAction::triggered, this, &LinDesktop::exitFromTray);
     connect(m_trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
-            restoreFromTray();
+            if (listView) listView->showSettings(nullptr);
         }
     });
+
+    m_trayIcon->show();
 }
 
 bool LinDesktop::shouldMinimizeToTray() const
@@ -774,12 +804,8 @@ bool LinDesktop::shouldMinimizeToTray() const
 void LinDesktop::restoreFromTray()
 {
     selfHealAndRestoreDesktop();
-    if (m_trayIcon && isVisible()) {
-        if (shouldMinimizeToTray()) {
-            m_trayIcon->hide();
-        } else {
-            m_trayIcon->show();
-        }
+    if (m_trayIcon) {
+        m_trayIcon->show();
     }
 }
 
@@ -1001,28 +1027,18 @@ void LinDesktop::handleSingleInstanceCommand(const QString& command)
     if (!m_trayIcon) {
         initializeTrayIcon();
     }
-    if (command == QStringLiteral("RESTORE")) {
-        // 1. 先唤醒并显示系统托盘
+    if (command == QStringLiteral("SHOW_SETTINGS")) {
         if (m_trayIcon) {
             m_trayIcon->show();
         }
-
-        // 2. 执行桌面自愈重挂载
-        selfHealAndRestoreDesktop();
-
-        // 3. 恢复后再根据设置判断是否恢复隐藏托盘图标
-        if (m_trayIcon && isVisible()) {
-            if (shouldMinimizeToTray()) {
-                // 延时 800ms 平滑隐藏，确保用户视觉看到恢复成功且托盘状态正常回归配置
-                QTimer::singleShot(800, this, [this]() {
-                    if (m_trayIcon && isVisible() && shouldMinimizeToTray()) {
-                        m_trayIcon->hide();
-                    }
-                });
-            } else {
-                m_trayIcon->show();
-            }
+        if (listView) {
+            listView->showSettings(nullptr);
         }
+    } else if (command == QStringLiteral("RESTORE")) {
+        if (m_trayIcon) {
+            m_trayIcon->show();
+        }
+        selfHealAndRestoreDesktop();
     } else if (command == QStringLiteral("SHOW_TRAY")) {
         // 唤醒托盘：保持当前桌面状态，把托盘打开以供随时操作并弹出系统气泡
         if (m_trayIcon) {
@@ -1292,22 +1308,79 @@ void LinDesktop::mousePressEvent(QMouseEvent* event)
 
 void LinDesktop::keyPressEvent(QKeyEvent* event)
 {
-    if (listView) {
-        QApplication::sendEvent(listView, event);
-        if (event->isAccepted()) {
+    // 1. 防重入保护：避免 Qt 内部 sendEvent 引起的递归与栈溢出
+    static bool s_inKeyPressDispatch = false;
+    if (s_inKeyPressDispatch) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    // 2. 焦点检查：若 listView 已经是焦点部件，说明该按键本就是 listView 冒泡上来的，绝不可反向 sendEvent 造成死循环
+    if (!listView || QApplication::focusWidget() == listView) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    // 3. 独立修饰键保护：单按 Ctrl/Shift/Alt/Meta 等修饰键在桌面层不产生独立动作，
+    // 若嵌入式小组件处于激活状态则直接桥接给小组件，否则直接忽略，禁止派发非自发事件触发 ShortcutOverride 递归。
+    const int key = event->key();
+    if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+        if (key == Qt::Key_Control && listView) {
+            listView->refreshWidgetResizeHint(listView->mapFromGlobal(QCursor::pos()), true);
+        }
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+            event->accept();
             return;
         }
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    // 4. 安全受控的非修饰键转发
+    s_inKeyPressDispatch = true;
+    QApplication::sendEvent(listView, event);
+    s_inKeyPressDispatch = false;
+
+    if (event->isAccepted()) {
+        return;
     }
     QWidget::keyPressEvent(event);
 }
 
 void LinDesktop::keyReleaseEvent(QKeyEvent* event)
 {
-    if (listView) {
-        QApplication::sendEvent(listView, event);
-        if (event->isAccepted()) {
+    static bool s_inKeyReleaseDispatch = false;
+    if (s_inKeyReleaseDispatch) {
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+
+    if (!listView || QApplication::focusWidget() == listView) {
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+
+    const int key = event->key();
+    if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+        if (key == Qt::Key_Control && listView) {
+            listView->refreshWidgetResizeHint(listView->mapFromGlobal(QCursor::pos()), false);
+        }
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+            event->accept();
             return;
         }
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+
+    s_inKeyReleaseDispatch = true;
+    QApplication::sendEvent(listView, event);
+    s_inKeyReleaseDispatch = false;
+
+    if (event->isAccepted()) {
+        return;
     }
     QWidget::keyReleaseEvent(event);
 }
@@ -1420,8 +1493,6 @@ void LinDesktop::changeEvent(QEvent* event)
                     m_hasShownTrayHint = true;
                 }
             });
-        } else if (isVisible() && m_trayIcon->isVisible()) {
-            m_trayIcon->hide();
         }
     }
 

@@ -305,6 +305,10 @@ void ListView::loadSelectionColors()
     const int opacity = qBound(20, settings.value(QStringLiteral("Desktop/SelectionRectangleOpacity"), 75).toInt(), 100);
     const int contrast = qBound(0, settings.value(QStringLiteral("Desktop/SelectionRectangleContrast"), 60).toInt(), 100);
     m_fluentSelectionEnabled = settings.value(QStringLiteral("Desktop/FluentSelectionMarquee"), true).toBool();
+    m_selectionCountBadgeEnabled = settings.value(QStringLiteral("Desktop/SelectionCountBadgeEnabled"), false).toBool();
+    m_fluentSelectionCornerRadius = qBound(0, settings.value(QStringLiteral("Desktop/SelectionCornerRadius"), 5).toInt(), 16);
+    m_selectionBadgeRadius = qBound(0, settings.value(QStringLiteral("Desktop/SelectionBadgeRadius"), 11).toInt(), 11);
+    m_selectionBorderWidth = qBound(0.0, settings.value(QStringLiteral("Desktop/SelectionBorderWidth"), 1.0).toReal(), 3.0);
     QColor fillColor = baseColor.isValid() ? baseColor : QColor(100, 160, 240);
     QColor borderColor = fillColor.darker(110);
     fillColor.setAlpha(qBound(35, opacity * 140 / 100, 180));
@@ -485,6 +489,156 @@ void ListView::openLinWidgetSettings(const QString& instanceId)
         return;
     }
     // settings will be handled via bridge or settings dialog
+}
+
+void ListView::showWidgetContextMenu(const QString& instanceId, const QPoint& globalPos)
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded() || instanceId.trimmed().isEmpty()) {
+        return;
+    }
+
+    const QRect curGeom = bridge.widgetGeometry(instanceId);
+    QMenu menu(this);
+    menu.setAttribute(Qt::WA_DeleteOnClose);
+    menu.setStyleSheet(
+        "QMenu { background: rgba(32, 34, 38, 245); border: 1px solid rgba(255, 255, 255, 38); border-radius: 8px; padding: 5px; color: #f0f0f0; font-size: 13px; }"
+        "QMenu::item { padding: 6px 24px 6px 14px; border-radius: 4px; margin: 1px 2px; }"
+        "QMenu::item:selected { background: rgba(255, 255, 255, 30); color: #ffffff; }"
+        "QMenu::separator { height: 1px; background: rgba(255, 255, 255, 25); margin: 4px 6px; }"
+    );
+
+    QMenu* sizeSubMenu = menu.addMenu(QString::fromUtf8("尺寸规格 (Size)"));
+    sizeSubMenu->setStyleSheet(menu.styleSheet());
+
+    auto addSizeAction = [&](const QString& label, int w, int h) {
+        QAction* act = sizeSubMenu->addAction(label);
+        if (curGeom.width() == w && curGeom.height() == h) {
+            act->setCheckable(true);
+            act->setChecked(true);
+        }
+        connect(act, &QAction::triggered, this, [instanceId, w, h, curGeom]() {
+            LinWidgetRuntimeBridge::instance().setWidgetGeometry(instanceId, QRect(curGeom.topLeft(), QSize(w, h)));
+            if (ListView::instance()) {
+                ListView::instance()->update();
+            }
+        });
+    };
+
+    addSizeAction(QString::fromUtf8("小卡片 (200 × 200)"), 200, 200);
+    addSizeAction(QString::fromUtf8("标准条状 (360 × 200)"), 360, 200);
+    addSizeAction(QString::fromUtf8("大卡片 (400 × 300)"), 400, 300);
+    addSizeAction(QString::fromUtf8("全宽展板 (540 × 320)"), 540, 320);
+
+    menu.addSeparator();
+
+    QAction* actReload = menu.addAction(QString::fromUtf8("重新加载小组件"));
+    connect(actReload, &QAction::triggered, this, [instanceId]() {
+        LinWidgetRuntimeBridge::instance().restartWidget(instanceId);
+    });
+
+    QAction* actSettings = menu.addAction(QString::fromUtf8("小组件设置..."));
+    connect(actSettings, &QAction::triggered, this, [this, instanceId]() {
+        openLinWidgetSettings(instanceId);
+    });
+
+    menu.addSeparator();
+
+    QAction* actClose = menu.addAction(QString::fromUtf8("关闭并移除组件"));
+    connect(actClose, &QAction::triggered, this, [this, instanceId]() {
+        LinWidgetRuntimeBridge::instance().stopWidget(instanceId);
+        update();
+    });
+
+    menu.exec(globalPos);
+}
+
+int ListView::widgetResizeEdgeAt(const QPoint& clientPos, const QRect& widgetGeom, int hitMargin) const
+{
+    if (!widgetGeom.isValid() || widgetGeom.isEmpty()) {
+        return ResizeEdgeNone;
+    }
+
+    const QRect outer = widgetGeom.adjusted(-hitMargin, -hitMargin, hitMargin, hitMargin);
+    if (!outer.contains(clientPos)) {
+        return ResizeEdgeNone;
+    }
+
+    int edge = ResizeEdgeNone;
+    const bool nearLeft = std::abs(clientPos.x() - widgetGeom.left()) <= hitMargin;
+    const bool nearRight = std::abs(clientPos.x() - widgetGeom.right()) <= hitMargin;
+    const bool nearTop = std::abs(clientPos.y() - widgetGeom.top()) <= hitMargin;
+    const bool nearBottom = std::abs(clientPos.y() - widgetGeom.bottom()) <= hitMargin;
+
+    if (nearLeft) {
+        edge |= ResizeEdgeLeft;
+    } else if (nearRight) {
+        edge |= ResizeEdgeRight;
+    }
+
+    if (nearTop) {
+        edge |= ResizeEdgeTop;
+    } else if (nearBottom) {
+        edge |= ResizeEdgeBottom;
+    }
+
+    return edge;
+}
+
+Qt::CursorShape ListView::cursorForResizeEdge(int edge) const
+{
+    switch (edge) {
+    case ResizeEdgeTopLeft:
+    case ResizeEdgeBottomRight:
+        return Qt::SizeFDiagCursor;
+    case ResizeEdgeTopRight:
+    case ResizeEdgeBottomLeft:
+        return Qt::SizeBDiagCursor;
+    case ResizeEdgeLeft:
+    case ResizeEdgeRight:
+        return Qt::SizeHorCursor;
+    case ResizeEdgeTop:
+    case ResizeEdgeBottom:
+        return Qt::SizeVerCursor;
+    case ResizeEdgeNone:
+    default:
+        return Qt::SizeAllCursor;
+    }
+}
+
+int ListView::refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld)
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!ctrlHeld || !bridge.isLoaded() || !bridge.isWidgetLayerEmbedded()) {
+        if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
+            m_resizeHintWidgetId.clear();
+            unsetCursor();
+            update();
+        }
+        return ResizeEdgeNone;
+    }
+
+    const QString wid = bridge.widgetAt(pos);
+    if (wid.isEmpty()) {
+        if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
+            m_resizeHintWidgetId.clear();
+            unsetCursor();
+            update();
+        }
+        return ResizeEdgeNone;
+    }
+
+    const QRect geom = bridge.widgetGeometry(wid);
+    const int edge = widgetResizeEdgeAt(pos, geom, 10);
+    const Qt::CursorShape shape = cursorForResizeEdge(edge);
+    setCursor(shape);
+
+    if (m_resizeHintWidgetId != wid) {
+        m_resizeHintWidgetId = wid;
+        update();
+    }
+
+    return edge;
 }
 
 void ListView::setShowLinWidgetBlockedCells(bool show)
@@ -1345,10 +1499,12 @@ void ListView::paintEvent(QPaintEvent* event)
 
     const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
     const qreal currentOpacity = isFading ? m_desktopElementsOpacity : (m_iconShowRule.showDesktopIcons ? 1.0 : 0.0);
-    if (currentOpacity <= 0.0) {
+    if (currentOpacity <= 0.0 && !isFading) {
         return;
     }
-    painter.setOpacity(currentOpacity);
+    if (!isFading) {
+        painter.setOpacity(currentOpacity);
+    }
 
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
@@ -1360,8 +1516,29 @@ void ListView::paintEvent(QPaintEvent* event)
             return;
         }
 
-        paintDesktopRootItemDynamic(painter, state.model.renderData);
-        paintDesktopRootItemStatic(painter, state.model.renderData);
+        if (isFading) {
+            const QRect totalRect = state.model.renderData.itemRect.united(state.model.renderData.textRect);
+            const ItemHideTransform xform = computeItemHideTransform(totalRect.center());
+            if (xform.opacity <= 0.001) {
+                return;
+            }
+            const int dy = qRound(xform.dy);
+            if (dy != 0) {
+                painter.save();
+                painter.translate(0, dy);
+                painter.setOpacity(xform.opacity);
+                paintDesktopRootItemDynamic(painter, state.model.renderData);
+                paintDesktopRootItemStatic(painter, state.model.renderData);
+                painter.restore();
+            } else {
+                painter.setOpacity(xform.opacity);
+                paintDesktopRootItemDynamic(painter, state.model.renderData);
+                paintDesktopRootItemStatic(painter, state.model.renderData);
+            }
+        } else {
+            paintDesktopRootItemDynamic(painter, state.model.renderData);
+            paintDesktopRootItemStatic(painter, state.model.renderData);
+        }
     };
 
     const QRect dirtyBoundingRect = dirtyRegion.boundingRect();
@@ -1431,122 +1608,165 @@ void ListView::paintEvent(QPaintEvent* event)
 
         if (m_fluentSelectionEnabled) {
             painter.setRenderHint(QPainter::Antialiasing, true);
-            const qreal radius = 6.0;
+            const qreal radius = qBound(0.0, static_cast<qreal>(m_fluentSelectionCornerRadius), 16.0);
+            const qreal bWidth = qBound(0.0, static_cast<qreal>(m_selectionBorderWidth), 3.0);
 
-            // 1. 多重外发光柔光晕 (Multi-tier Outer Bloom Glow)
-            QColor glowColor = m_selectionBorderColor;
-            if (glowColor.alpha() < 100) {
-                glowColor.setAlpha(180);
-            }
-            // 外层柔光散开 (外扩 3.5px)
-            painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 35), 4.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(QRectF(selRect).adjusted(-2.0, -2.0, 2.0, 2.0), radius + 2.0, radius + 2.0);
-
-            // 内层微光光晕 (外扩 1.5px)
-            painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 80), 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter.drawRoundedRect(QRectF(selRect).adjusted(-0.8, -0.8, 0.8, 0.8), radius + 0.8, radius + 0.8);
-
-            // 2. Acrylic / Glass 半透明渐变填充
+            // 1. Apple 级极简高透光光学质感填充 (Optical Glass Fill)
+            // 绝不堆砌浓重发光与机械角标，通透、克制、自然，与壁纸完美融合
             QLinearGradient fillGrad(selRect.topLeft(), selRect.bottomRight());
             QColor topFill = m_selectionFillColor;
-            topFill.setAlpha(qBound(45, topFill.alpha() + 25, 200));
+            topFill.setAlpha(qBound(24, topFill.alpha() * 70 / 100, 110));
             QColor bottomFill = m_selectionFillColor;
-            bottomFill.setAlpha(qBound(20, bottomFill.alpha() - 15, 160));
+            bottomFill.setAlpha(qBound(16, bottomFill.alpha() * 45 / 100, 80));
             fillGrad.setColorAt(0.0, topFill);
             fillGrad.setColorAt(1.0, bottomFill);
             painter.setBrush(fillGrad);
 
-            // 3. 核心发光描边 (Vibrant Neon Accent Border)
-            QLinearGradient borderGrad(selRect.topLeft(), selRect.bottomRight());
-            QColor bTop = glowColor.lighter(135);
-            bTop.setAlpha(240);
-            QColor bBottom = glowColor;
-            bBottom.setAlpha(200);
-            borderGrad.setColorAt(0.0, bTop);
-            borderGrad.setColorAt(1.0, bBottom);
-            painter.setPen(QPen(QBrush(borderGrad), 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter.drawRoundedRect(QRectF(selRect).adjusted(0.5, 0.5, -0.5, -0.5), radius, radius);
-
-            // 4. 顶边玻璃微光高光反射 (Top Specular Highlight)
-            if (selRect.width() > 20 && selRect.height() > 16) {
-                painter.setPen(QPen(QColor(255, 255, 255, 95), 1.0));
-                painter.drawLine(QPointF(selRect.left() + radius + 2, selRect.top() + 1.2),
-                                 QPointF(selRect.right() - radius - 2, selRect.top() + 1.2));
-            }
-
-            // 5. 四角高光精细定位角标 (L-shaped Precision Corner Brackets)
-            if (selRect.width() >= 32 && selRect.height() >= 32) {
-                const qreal cornerLen = qMin(10.0, qMin(selRect.width() / 4.0, selRect.height() / 4.0));
-                painter.setPen(QPen(QColor(255, 255, 255, 200), 1.8, Qt::SolidLine, Qt::SquareCap));
-
-                // Top-Left
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.top() + 2), QPointF(selRect.left() + 2 + cornerLen, selRect.top() + 2));
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.top() + 2), QPointF(selRect.left() + 2, selRect.top() + 2 + cornerLen));
-
-                // Top-Right
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.top() + 2), QPointF(selRect.right() - 2 - cornerLen, selRect.top() + 2));
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.top() + 2), QPointF(selRect.right() - 2, selRect.top() + 2 + cornerLen));
-
-                // Bottom-Left
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.bottom() - 2), QPointF(selRect.left() + 2 + cornerLen, selRect.bottom() - 2));
-                painter.drawLine(QPointF(selRect.left() + 2, selRect.bottom() - 2), QPointF(selRect.left() + 2, selRect.bottom() - 2 - cornerLen));
-
-                // Bottom-Right
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.bottom() - 2), QPointF(selRect.right() - 2 - cornerLen, selRect.bottom() - 2));
-                painter.drawLine(QPointF(selRect.right() - 2, selRect.bottom() - 2), QPointF(selRect.right() - 2, selRect.bottom() - 2 - cornerLen));
-            }
-
-            // 6. 实时框选统计 HUD 微胶囊气泡 (随时动态呈现数量或尺寸)
-            if (selRect.width() >= 64 && selRect.height() >= 38) {
-                const int count = m_selectedDesktopPaths.size();
-                QString badgeText;
-                if (count > 0) {
-                    badgeText = QStringLiteral("🎯 %1 项").arg(count);
+            // 2. 选框边框 (支持 0px 无描边 ~ 3px)
+            if (bWidth > 0.05) {
+                QColor strokeColor = m_selectionBorderColor;
+                strokeColor.setAlpha(qBound(110, strokeColor.alpha() * 95 / 100, 220));
+                painter.setPen(QPen(strokeColor, bWidth));
+                const qreal halfW = bWidth / 2.0;
+                if (radius > 0.1) {
+                    painter.drawRoundedRect(QRectF(selRect).adjusted(halfW, halfW, -halfW, -halfW), radius, radius);
                 } else {
-                    badgeText = QStringLiteral("%1 × %2").arg(selRect.width()).arg(selRect.height());
+                    painter.drawRect(QRectF(selRect).adjusted(halfW, halfW, -halfW, -halfW));
                 }
+            } else {
+                painter.setPen(Qt::NoPen);
+                if (radius > 0.1) {
+                    painter.drawRoundedRect(QRectF(selRect), radius, radius);
+                } else {
+                    painter.drawRect(QRectF(selRect));
+                }
+            }
 
+            // 3. 极细顶沿玻璃微光折射 (仅在有描边且有一定尺寸时渲染)
+            if (bWidth > 0.05 && selRect.width() > 14 && selRect.height() > 10) {
+                painter.setPen(QPen(QColor(255, 255, 255, 45), 1.0));
+                const qreal inset = radius > 0.1 ? (radius + 1.0) : 1.0;
+                painter.drawLine(QPointF(selRect.left() + inset, selRect.top() + bWidth / 2.0),
+                                 QPointF(selRect.right() - inset, selRect.top() + bWidth / 2.0));
+            }
+
+        } else {
+            // 经典 Windows 原生矩形选框 (先填充内部半透明底色，再绘制可选边框)
+            const qreal bWidth = qBound(0.0, m_selectionBorderWidth, 3.0);
+            painter.fillRect(selRect, m_selectionFillColor);
+            if (bWidth > 0.05) {
+                painter.setPen(QPen(m_selectionBorderColor, bWidth));
+                painter.setBrush(Qt::NoBrush);
+                const qreal halfW = bWidth / 2.0;
+                painter.drawRect(QRectF(selRect).adjusted(halfW, halfW, -halfW, -halfW));
+            }
+        }
+
+        // 4. 独立开关控制的极简轻量微胶囊徽章 (纯净数字，现代毛玻璃选框与经典选框均全面支持)
+        if (m_selectionCountBadgeEnabled) {
+            const int count = m_selectedDesktopPaths.size();
+            if (count > 0 && selRect.width() >= 44 && selRect.height() >= 28) {
+                painter.setRenderHint(QPainter::Antialiasing, true);
+                const QString badgeText = QString::number(count);
                 QFont badgeFont = painter.font();
                 badgeFont.setPixelSize(10);
-                badgeFont.setBold(true);
+                badgeFont.setWeight(QFont::Medium);
                 painter.setFont(badgeFont);
 
                 QFontMetrics fm(badgeFont);
-                const int badgeW = fm.horizontalAdvance(badgeText) + 16;
-                const int badgeH = 22;
-                const int badgeX = qMax(selRect.left() + 6, selRect.right() - badgeW - 6);
-                const int badgeY = qMax(selRect.top() + 6, selRect.bottom() - badgeH - 6);
+                const int textW = fm.horizontalAdvance(badgeText);
+                const int badgeH = 18;
+                const int padH = 6;
+                const int badgeW = qMax(18, textW + padH * 2);
+
+                const qreal badgeCorner = qBound(0.0, static_cast<qreal>(m_selectionBadgeRadius), badgeH / 2.0);
+                const qreal badgeX = selRect.right() - badgeW - 5;
+                const qreal badgeY = selRect.bottom() - badgeH - 5;
                 const QRectF badgeRect(badgeX, badgeY, badgeW, badgeH);
 
-                // 胶囊外发光
-                painter.setPen(QPen(QColor(glowColor.red(), glowColor.green(), glowColor.blue(), 60), 2.0));
-                painter.setBrush(QColor(16, 20, 28, 225));
-                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+                // a. 极轻柔环境微阴影
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QColor(0, 0, 0, 40));
+                painter.drawRoundedRect(badgeRect.translated(0, 1.0), badgeCorner, badgeCorner);
 
-                // 胶囊描边
-                if (count > 0) {
-                    painter.setPen(QPen(QColor(0, 220, 255, 180), 1.0));
-                } else {
-                    painter.setPen(QPen(QColor(255, 255, 255, 60), 1.0));
-                }
-                painter.setBrush(Qt::NoBrush);
-                painter.drawRoundedRect(badgeRect, badgeH / 2.0, badgeH / 2.0);
+                // b. 半透明极简微磨砂黑底
+                painter.setBrush(QColor(22, 24, 28, 205));
 
-                // 文字
-                painter.setPen(QColor(0, 0, 0, 160));
-                painter.drawText(badgeRect.translated(0, 1), Qt::AlignCenter, badgeText);
-                painter.setPen(count > 0 ? QColor(0, 235, 255) : QColor(230, 238, 250));
+                // c. 0.75px 极细微透描边
+                painter.setPen(QPen(QColor(255, 255, 255, 40), 0.75));
+                painter.drawRoundedRect(badgeRect, badgeCorner, badgeCorner);
+
+                // d. 纯白清晰数字 (无红点，无任何多余元素，纯净通透)
+                painter.setPen(QColor(250, 252, 255));
                 painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
             }
-        } else {
-            // 经典 Windows 原生矩形选框
-            painter.setPen(QPen(m_selectionBorderColor, 1));
-            painter.setBrush(m_selectionFillColor);
-            painter.drawRect(selRect.adjusted(0, 0, -1, -1));
         }
 
         painter.restore();
+    }
+
+    // 绘制小组件在按住 Ctrl 调整大小时的高亮辅助框和手柄
+    const QString activeResizeId = m_resizingWidget ? m_resizingWidgetId :
+                                  (m_draggingWidget ? m_draggedWidgetId : m_resizeHintWidgetId);
+    if (!activeResizeId.isEmpty() && runtimeLoaded) {
+        const QRect widgetGeom = bridge.widgetGeometry(activeResizeId);
+        if (widgetGeom.isValid()) {
+            painter.save();
+            painter.setRenderHint(QPainter::Antialiasing, true);
+
+            // 1. Fluent 强调色发光高亮边框
+            QColor accentColor(0, 120, 215);
+            painter.setPen(QPen(accentColor, 2.0));
+            painter.setBrush(QColor(accentColor.red(), accentColor.green(), accentColor.blue(), 24));
+            painter.drawRoundedRect(widgetGeom, 6, 6);
+
+            // 2. 8个控制点小手柄 (Corners & Midpoints)
+            const int handleSize = 7;
+            const int half = handleSize / 2;
+            const QPoint handles[8] = {
+                widgetGeom.topLeft(),
+                QPoint(widgetGeom.center().x(), widgetGeom.top()),
+                widgetGeom.topRight(),
+                QPoint(widgetGeom.right(), widgetGeom.center().y()),
+                widgetGeom.bottomRight(),
+                QPoint(widgetGeom.center().x(), widgetGeom.bottom()),
+                widgetGeom.bottomLeft(),
+                QPoint(widgetGeom.left(), widgetGeom.center().y())
+            };
+
+            for (const QPoint& pt : handles) {
+                QRect handleRect(pt.x() - half, pt.y() - half, handleSize, handleSize);
+                painter.setPen(QPen(accentColor, 1.5));
+                painter.setBrush(Qt::white);
+                painter.drawEllipse(handleRect);
+            }
+
+            // 3. 尺寸胶囊徽章 (e.g. 320 × 240)
+            const QString sizeText = QString("%1 × %2").arg(widgetGeom.width()).arg(widgetGeom.height());
+            QFont tipFont = painter.font();
+            tipFont.setPixelSize(11);
+            tipFont.setWeight(QFont::Medium);
+            painter.setFont(tipFont);
+            QFontMetrics fm(tipFont);
+            const int textW = fm.horizontalAdvance(sizeText);
+            const int badgeW = textW + 16;
+            const int badgeH = 22;
+            int badgeX = widgetGeom.center().x() - badgeW / 2;
+            int badgeY = widgetGeom.top() - badgeH - 6;
+            if (badgeY < 10) {
+                badgeY = widgetGeom.top() + 8;
+            }
+            QRect badgeRect(badgeX, badgeY, badgeW, badgeH);
+
+            painter.setPen(QPen(QColor(255, 255, 255, 60), 1.0));
+            painter.setBrush(QColor(20, 20, 20, 210));
+            painter.drawRoundedRect(badgeRect, 11, 11);
+
+            painter.setPen(Qt::white);
+            painter.drawText(badgeRect, Qt::AlignCenter, sizeText);
+
+            painter.restore();
+        }
     }
 }
 
@@ -1580,6 +1800,17 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
             return;
         }
 
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && bridge.isWidgetAt(event->pos())) {
+            const QString wid = bridge.widgetAt(event->pos());
+            if (!wid.isEmpty()) {
+                clearCheckedItem();
+                showWidgetContextMenu(wid, mapToGlobal(event->pos()));
+                event->accept();
+                return;
+            }
+        }
+
         auto rightClickPoint = mapToGlobal(event->pos());
         this->m_lastRightClickPos = event->pos();
 
@@ -1596,10 +1827,40 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 void ListView::mousePressEvent(QMouseEvent* event)
 {
     auto& bridge = LinWidgetRuntimeBridge::instance();
+    const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
     if (bridge.isLoaded()) {
         if (bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+            if (ctrlHeld && event->button() == Qt::LeftButton) {
+                clearSelectionState();
+                const QString wid = bridge.widgetAt(event->pos());
+                const QRect geom = bridge.widgetGeometry(wid);
+                const int edge = widgetResizeEdgeAt(event->pos(), geom, 10);
+                if (edge != ResizeEdgeNone) {
+                    m_resizingWidget = true;
+                    m_resizingWidgetId = wid;
+                    m_widgetResizeEdge = edge;
+                    m_widgetResizeStartPos = event->pos();
+                    m_widgetResizeStartGeometry = geom;
+                    setCursor(cursorForResizeEdge(edge));
+                } else {
+                    m_draggingWidget = true;
+                    m_draggedWidgetId = wid;
+                    m_widgetDragStartPos = event->pos();
+                    m_widgetDragStartGeometry = geom;
+                    setCursor(Qt::SizeAllCursor);
+                }
+                this->activateWindow();
+                this->setFocus(Qt::MouseFocusReason);
+                update();
+                event->accept();
+                return;
+            }
+
+            clearSelectionState();
             if (bridge.forwardMouseEvent(event)) {
                 m_forwardingMouseToWidget = true;
+                this->activateWindow();
+                this->setFocus(Qt::MouseFocusReason);
                 event->accept();
                 return;
             }
@@ -1701,6 +1962,62 @@ void ListView::mousePressEvent(QMouseEvent* event)
 void ListView::mouseMoveEvent(QMouseEvent* event)
 {
     auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (m_resizingWidget && bridge.isLoaded()) {
+        const int dx = event->pos().x() - m_widgetResizeStartPos.x();
+        const int dy = event->pos().y() - m_widgetResizeStartPos.y();
+        QRect newGeom = m_widgetResizeStartGeometry;
+
+        if (m_widgetResizeEdge & ResizeEdgeLeft) {
+            newGeom.setLeft(m_widgetResizeStartGeometry.left() + dx);
+        }
+        if (m_widgetResizeEdge & ResizeEdgeRight) {
+            newGeom.setRight(m_widgetResizeStartGeometry.right() + dx);
+        }
+        if (m_widgetResizeEdge & ResizeEdgeTop) {
+            newGeom.setTop(m_widgetResizeStartGeometry.top() + dy);
+        }
+        if (m_widgetResizeEdge & ResizeEdgeBottom) {
+            newGeom.setBottom(m_widgetResizeStartGeometry.bottom() + dy);
+        }
+
+        if (newGeom.width() < 60) {
+            if (m_widgetResizeEdge & ResizeEdgeLeft) {
+                newGeom.setLeft(newGeom.right() - 60);
+            } else {
+                newGeom.setRight(newGeom.left() + 60);
+            }
+        }
+        if (newGeom.height() < 60) {
+            if (m_widgetResizeEdge & ResizeEdgeTop) {
+                newGeom.setTop(newGeom.bottom() - 60);
+            } else {
+                newGeom.setBottom(newGeom.top() + 60);
+            }
+        }
+
+        bridge.setWidgetGeometry(m_resizingWidgetId, newGeom);
+        setCursor(cursorForResizeEdge(m_widgetResizeEdge));
+        update();
+        event->accept();
+        return;
+    }
+
+    if (m_draggingWidget && bridge.isLoaded()) {
+        const int dx = event->pos().x() - m_widgetDragStartPos.x();
+        const int dy = event->pos().y() - m_widgetDragStartPos.y();
+        QRect newGeom = m_widgetDragStartGeometry.translated(dx, dy);
+
+        QRect screenRect = rect();
+        newGeom.moveLeft(qBound(0, newGeom.left(), qMax(0, screenRect.width() - newGeom.width())));
+        newGeom.moveTop(qBound(0, newGeom.top(), qMax(0, screenRect.height() - newGeom.height())));
+
+        bridge.setWidgetGeometry(m_draggedWidgetId, newGeom);
+        setCursor(Qt::SizeAllCursor);
+        update();
+        event->accept();
+        return;
+    }
+
     if (bridge.isLoaded()) {
         if (m_forwardingMouseToWidget) {
             if (bridge.forwardMouseEvent(event)) {
@@ -1751,9 +2068,21 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     }
 
     // 正常移动状态：
-    // 1. 如果光标位于小组件上方，小组件响应 hover
+    // 1. 如果光标位于小组件上方，判断是否按住 Ctrl
+    const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
     if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-        bridge.forwardMouseEvent(event);
+        if (ctrlHeld) {
+            refreshWidgetResizeHint(event->pos(), true);
+        } else {
+            if (!m_resizeHintWidgetId.isEmpty()) {
+                refreshWidgetResizeHint(event->pos(), false);
+            }
+            bridge.forwardMouseEvent(event);
+        }
+    } else {
+        if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
+            refreshWidgetResizeHint(event->pos(), false);
+        }
     }
 
     // 2. 桌面图标响应 hover
@@ -1770,6 +2099,25 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (m_resizingWidget) {
+        m_resizingWidget = false;
+        m_resizingWidgetId.clear();
+        m_widgetResizeEdge = ResizeEdgeNone;
+        unsetCursor();
+        update();
+        event->accept();
+        return;
+    }
+
+    if (m_draggingWidget) {
+        m_draggingWidget = false;
+        m_draggedWidgetId.clear();
+        unsetCursor();
+        update();
+        event->accept();
+        return;
+    }
+
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (bridge.isLoaded()) {
         if (m_forwardingMouseToWidget) {
@@ -2003,6 +2351,7 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
         }
 
         if (m_iconShowRule.doubleClickHideIcons) {
+            m_hideAnimationOriginPos = event->pos();
             onMenuShowDesktopIcons();
             event->accept();
             return;
@@ -2021,10 +2370,46 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 void ListView::wheelEvent(QWheelEvent* event)
 {
     auto& bridge = LinWidgetRuntimeBridge::instance();
+    const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
+
     if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-        if (bridge.forwardWheelEvent(event)) {
-            event->accept();
-            return;
+        if (ctrlHeld) {
+            const QString wid = bridge.widgetAt(event->pos());
+            if (!wid.isEmpty()) {
+                const QRect curGeom = bridge.widgetGeometry(wid);
+                if (curGeom.isValid() && curGeom.width() > 0 && curGeom.height() > 0) {
+                    const int deltaY = event->angleDelta().y();
+                    if (deltaY != 0) {
+                        const qreal factor = (deltaY > 0) ? 1.08 : 0.92;
+                        const int newW = qRound(curGeom.width() * factor);
+                        const int newH = qRound(curGeom.height() * factor);
+
+                        const QPoint mousePos = event->pos();
+                        qreal rx = (qreal)(mousePos.x() - curGeom.left()) / curGeom.width();
+                        qreal ry = (qreal)(mousePos.y() - curGeom.top()) / curGeom.height();
+                        rx = qBound(0.0, rx, 1.0);
+                        ry = qBound(0.0, ry, 1.0);
+
+                        int newLeft = mousePos.x() - qRound(newW * rx);
+                        int newTop = mousePos.y() - qRound(newH * ry);
+
+                        newLeft = qBound(0, newLeft, qMax(0, width() - newW));
+                        newTop = qBound(0, newTop, qMax(0, height() - newH));
+
+                        QRect newGeom(newLeft, newTop, newW, newH);
+                        bridge.setWidgetGeometry(wid, newGeom);
+                        m_resizeHintWidgetId = wid;
+                        update();
+                        event->accept();
+                        return;
+                    }
+                }
+            }
+        } else {
+            if (bridge.forwardWheelEvent(event)) {
+                event->accept();
+                return;
+            }
         }
     }
 
@@ -2051,6 +2436,9 @@ void ListView::wheelEvent(QWheelEvent* event)
 
 void ListView::keyPressEvent(QKeyEvent* event)
 {
+    if (event->key() == Qt::Key_Control) {
+        refreshWidgetResizeHint(mapFromGlobal(QCursor::pos()), true);
+    }
     const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
                                      !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
@@ -2266,6 +2654,9 @@ void ListView::keyPressEvent(QKeyEvent* event)
 
 void ListView::keyReleaseEvent(QKeyEvent* event)
 {
+    if (event->key() == Qt::Key_Control) {
+        refreshWidgetResizeHint(mapFromGlobal(QCursor::pos()), false);
+    }
     const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
                                      !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
@@ -2301,6 +2692,11 @@ void ListView::enterEvent(QEvent* event)
 
 void ListView::leaveEvent(QEvent* event)
 {
+    if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
+        m_resizeHintWidgetId.clear();
+        unsetCursor();
+        update();
+    }
     clearHoveredDesktopItem();
     QWidget::leaveEvent(event);
 }
