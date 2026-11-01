@@ -1325,6 +1325,9 @@ void LinDesktop::keyPressEvent(QKeyEvent* event)
     // 若嵌入式小组件处于激活状态则直接桥接给小组件，否则直接忽略，禁止派发非自发事件触发 ShortcutOverride 递归。
     const int key = event->key();
     if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+        if (key == Qt::Key_Control && listView) {
+            listView->refreshWidgetResizeHint(listView->mapFromGlobal(QCursor::pos()), true);
+        }
         auto& bridge = LinWidgetRuntimeBridge::instance();
         if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
             event->accept();
@@ -1360,6 +1363,9 @@ void LinDesktop::keyReleaseEvent(QKeyEvent* event)
 
     const int key = event->key();
     if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+        if (key == Qt::Key_Control && listView) {
+            listView->refreshWidgetResizeHint(listView->mapFromGlobal(QCursor::pos()), false);
+        }
         auto& bridge = LinWidgetRuntimeBridge::instance();
         if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
             event->accept();

@@ -228,6 +228,7 @@ private:
     bool m_isAutoPeeking = false;
     bool m_autoPeekEnabled = true;
     bool m_autoPeekInstant = false;
+    bool m_manualCollapseHoverSuppressed = false;
     class QTimer* m_hoverExpandTimer = nullptr;
     class QTimer* m_hoverCollapseTimer = nullptr;
     class QPropertyAnimation* m_collapseAnim = nullptr;

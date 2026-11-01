@@ -1283,6 +1283,9 @@ void LinBox::resizeEvent(QResizeEvent* event) {
     if (m_collapseAnim && m_collapseAnim->state() == QAbstractAnimation::Running) {
         return;
     }
+    if (m_isCollapsed) {
+        return;
+    }
     refreshLayout();
     if (!m_isCapturingBackground && m_glassEffect && event->oldSize() != event->size()) {
         scheduleBlurRefresh();
@@ -1455,6 +1458,8 @@ void LinBox::setAutoPeekInstant(bool instant)
 void LinBox::handleBoxMouseEnter()
 {
     if (m_isMoving || m_isResizing) return;
+    if (m_collapseAnim && m_collapseAnim->state() == QAbstractAnimation::Running) return;
+    if (m_manualCollapseHoverSuppressed) return;
     if (m_hoverCollapseTimer && m_hoverCollapseTimer->isActive()) {
         m_hoverCollapseTimer->stop();
     }
@@ -1481,6 +1486,7 @@ void LinBox::handleBoxMouseEnter()
 void LinBox::handleBoxMouseLeave()
 {
     if (m_isMoving || m_isResizing) return;
+    m_manualCollapseHoverSuppressed = false;
     if (m_hoverExpandTimer && m_hoverExpandTimer->isActive()) {
         m_hoverExpandTimer->stop();
     }
@@ -2495,7 +2501,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
             p.drawLine(titleRect.left(), titleRect.bottom(), titleRect.right(), titleRect.bottom());
 
             const QRect bodyRect(contentRect.x(), contentRect.y() + titleH, contentRect.width(), contentRect.height() - titleH);
-            if (bodyRect.height() > 0) {
+            if (!m_isCollapsed && bodyRect.height() > 0) {
                 QLinearGradient innerShadow(bodyRect.topLeft(), bodyRect.topLeft() + QPoint(0, 16));
                 innerShadow.setColorAt(0.0, QColor(0, 0, 0, 36));
                 innerShadow.setColorAt(1.0, QColor(0, 0, 0, 0));
@@ -2540,7 +2546,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
             p.drawLine(titleRect.left(), titleRect.bottom(), titleRect.right(), titleRect.bottom());
 
             const QRect bodyRect(contentRect.x(), contentRect.y() + titleH, contentRect.width(), contentRect.height() - titleH);
-            if (bodyRect.height() > 0) {
+            if (!m_isCollapsed && bodyRect.height() > 0) {
                 QLinearGradient innerShadow(bodyRect.topLeft(), bodyRect.topLeft() + QPoint(0, 14));
                 innerShadow.setColorAt(0.0, QColor(0, 0, 0, 28));
                 innerShadow.setColorAt(1.0, QColor(0, 0, 0, 0));
@@ -2715,7 +2721,7 @@ void LinBox::paintEvent(QPaintEvent* event) {
         p.restore();
     }
 
-    if (m_contentArea && m_scrollArea && m_scrollArea->isVisible() && m_scrollArea->viewport()) {
+    if (!m_isCollapsed && m_contentArea && m_scrollArea && m_scrollArea->isVisible() && m_scrollArea->viewport()) {
         const QPoint contentOrigin = m_contentArea->mapTo(this, QPoint(0, 0));
         p.save();
         p.setClipRect(m_scrollArea->geometry());
@@ -4358,8 +4364,20 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
 
     if (!isAutoPeek) {
         m_isAutoPeeking = false;
+        if (collapsed) {
+            m_manualCollapseHoverSuppressed = true;
+        } else {
+            m_manualCollapseHoverSuppressed = false;
+        }
     } else {
         m_isAutoPeeking = !collapsed;
+    }
+
+    if (m_hoverCollapseTimer && m_hoverCollapseTimer->isActive()) {
+        m_hoverCollapseTimer->stop();
+    }
+    if (m_hoverExpandTimer && m_hoverExpandTimer->isActive()) {
+        m_hoverExpandTimer->stop();
     }
 
     QFont iconFont("Segoe Fluent Icons");
@@ -4406,10 +4424,11 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
             m_collapseAnim->setEasingCurve(QEasingCurve::OutCubic);
             m_collapseAnim->setDuration(200);
 
-            connect(m_collapseAnim, &QPropertyAnimation::valueChanged, this, [this, collapsedHeight]() {
+            connect(m_collapseAnim, &QPropertyAnimation::valueChanged, this, [this]() {
+                const int curCollapsedH = m_titleHeight + 2 * m_borderWidth;
                 if (m_scrollArea) {
-                    const int heightRange = qMax(1, m_originalHeight - collapsedHeight);
-                    const qreal progress = qBound(0.0, static_cast<qreal>(height() - collapsedHeight) / heightRange, 1.0);
+                    const int heightRange = qMax(1, m_originalHeight - curCollapsedH);
+                    const qreal progress = qBound(0.0, static_cast<qreal>(height() - curCollapsedH) / heightRange, 1.0);
                     QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect());
                     if (!eff) {
                         eff = new QGraphicsOpacityEffect(m_scrollArea);
@@ -4420,7 +4439,8 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
                 update();
             });
 
-            connect(m_collapseAnim, &QPropertyAnimation::finished, this, [this, collapsedHeight]() {
+            connect(m_collapseAnim, &QPropertyAnimation::finished, this, [this]() {
+                const int curCollapsedH = m_titleHeight + 2 * m_borderWidth;
                 if (m_isCollapsed) {
                     if (m_scrollArea) {
                         if (m_scrollArea->verticalScrollBar()) {
@@ -4432,13 +4452,19 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
                     if (m_contentArea) {
                         m_contentArea->setFixedHeight(0);
                     }
-                    setFixedHeight(collapsedHeight);
+                    setFixedHeight(curCollapsedH);
+                    QRect g = geometry();
+                    g.setHeight(curCollapsedH);
+                    setGeometry(g);
+                    resize(width(), curCollapsedH);
+                    update();
                 } else {
                     if (m_contentArea) {
                         m_contentArea->setMinimumHeight(0);
                         m_contentArea->setMaximumHeight(16777215);
                     }
                     if (m_scrollArea) {
+                        m_scrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
                         m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
                         m_scrollArea->show();
                         if (QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect())) {
@@ -4447,11 +4473,15 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
                     }
                     setMinimumSize(m_minBoxWidth, m_minBoxHeight);
                     setMaximumHeight(16777215);
+                    QRect g = geometry();
+                    g.setHeight(m_originalHeight);
+                    setGeometry(g);
                     resize(width(), m_originalHeight);
                     refreshLayout();
                     if (!m_isCapturingBackground && m_glassEffect) {
                         scheduleBlurRefresh();
                     }
+                    update();
                 }
                 emit geometryChanged(this);
             });
@@ -4466,7 +4496,18 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
 
         if (m_scrollArea) {
             m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-            if (!m_isCollapsed) {
+            if (m_isCollapsed) {
+                m_scrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
+                m_scrollArea->setMinimumHeight(0);
+                m_scrollArea->setMinimumSize(0, 0);
+                if (m_contentArea) {
+                    m_contentArea->setMinimumHeight(0);
+                    m_contentArea->setMinimumSize(0, 0);
+                }
+                if (m_mainLayout) {
+                    m_mainLayout->setSizeConstraint(QLayout::SetNoConstraint);
+                }
+            } else {
                 if (m_contentArea) {
                     m_contentArea->setMinimumHeight(0);
                     m_contentArea->setMaximumHeight(16777215);
@@ -4508,12 +4549,18 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
                 m_contentArea->setFixedHeight(0);
             }
             setFixedHeight(collapsedHeight);
+            QRect g = geometry();
+            g.setHeight(collapsedHeight);
+            setGeometry(g);
+            resize(width(), collapsedHeight);
+            update();
         } else {
             if (m_contentArea) {
                 m_contentArea->setMinimumHeight(0);
                 m_contentArea->setMaximumHeight(16777215);
             }
             if (m_scrollArea) {
+                m_scrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
                 m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
                 m_scrollArea->show();
                 if (QGraphicsOpacityEffect* eff = qobject_cast<QGraphicsOpacityEffect*>(m_scrollArea->graphicsEffect())) {
@@ -4522,8 +4569,12 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
             }
             setMinimumSize(m_minBoxWidth, m_minBoxHeight);
             setMaximumHeight(16777215);
+            QRect g = geometry();
+            g.setHeight(m_originalHeight);
+            setGeometry(g);
             resize(width(), m_originalHeight);
             refreshLayout();
+            update();
         }
         emit geometryChanged(this);
     }
