@@ -87,6 +87,7 @@ LINWIDGET_EXPORT bool linwidget_create_hub_browser(quintptr parentHwnd, const ch
 LINWIDGET_EXPORT void linwidget_resize_hub_browser(int w, int h);
 LINWIDGET_EXPORT void linwidget_close_hub_browser();
 LINWIDGET_EXPORT bool linwidget_has_hub_browser();
+LINWIDGET_EXPORT bool linwidget_open_hub_window(const char* hubUrl);
 #endif
 
 // 主程序侧持有的动态桥接单例（负责 LoadLibrary、符号解析与判空转发）
@@ -156,6 +157,7 @@ public:
     void resizeHubBrowser(int w, int h);
     void closeHubBrowser();
     bool hasHubBrowser();
+    bool openHubWindow(const QString& hubUrl = QString());
 
 private:
     LinWidgetRuntimeBridge();
@@ -222,4 +224,5 @@ private:
     void (*m_pfnResizeHubBrowser)(int, int) = nullptr;
     void (*m_pfnCloseHubBrowser)() = nullptr;
     bool (*m_pfnHasHubBrowser)() = nullptr;
+    bool (*m_pfnOpenHubWindow)(const char*) = nullptr;
 };

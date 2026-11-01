@@ -427,10 +427,28 @@ LINWIDGET_EXPORT bool linwidget_validate_package(const char* packagePath, char* 
 static CefRefPtr<CefBrowser> s_hubBrowser = nullptr;
 static HWND s_hubBrowserHwnd = nullptr;
 
+#include "include/cef_request_handler.h"
+#include "include/cef_resource_request_handler.h"
+#include "desktop/widgets/linwidget/WidgetManager.h"
+#include "services/AppPaths.h"
+#include <QDesktopServices>
+#include <QUrl>
+
 class HubClientHandler : public CefClient,
-                         public CefLifeSpanHandler {
+                         public CefLifeSpanHandler,
+                         public CefRequestHandler,
+                         public CefResourceRequestHandler {
 public:
     CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+    CefRefPtr<CefRequestHandler> GetRequestHandler() override { return this; }
+    CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
+        CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefRequest> request,
+        bool is_navigation,
+        bool is_download,
+        const CefString& request_initiator,
+        bool& disable_default_handling) override { return this; }
 
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
         s_hubBrowser = browser;
@@ -442,6 +460,62 @@ public:
     void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
         s_hubBrowser = nullptr;
         s_hubBrowserHwnd = nullptr;
+    }
+
+    ReturnValue OnBeforeResourceLoad(
+        CefRefPtr<CefBrowser> browser,
+        CefRefPtr<CefFrame> frame,
+        CefRefPtr<CefRequest> request,
+        CefRefPtr<CefCallback> callback) override {
+        if (!request) return RV_CONTINUE;
+        std::wstring urlW = request->GetURL().ToWString();
+        if (urlW.find(L"bridge/postMessage") != std::wstring::npos) {
+            CefRefPtr<CefPostData> postData = request->GetPostData();
+            if (postData) {
+                CefPostData::ElementVector elements;
+                postData->GetElements(elements);
+                std::string body;
+                for (const auto& elem : elements) {
+                    if (elem && elem->GetType() == PDE_TYPE_BYTES) {
+                        size_t size = elem->GetBytesCount();
+                        if (size > 0) {
+                            std::vector<char> buffer(size);
+                            elem->GetBytes(size, buffer.data());
+                            body.append(buffer.data(), size);
+                        }
+                    }
+                }
+                if (!body.empty()) {
+                    const QByteArray jsonBytes(body.data(), static_cast<int>(body.size()));
+                    const QJsonDocument doc = QJsonDocument::fromJson(jsonBytes);
+                    if (doc.isObject()) {
+                        const QJsonObject obj = doc.object();
+                        const QString action = obj.value(QStringLiteral("action")).toString();
+                        const QString widgetId = obj.value(QStringLiteral("widgetId")).toString();
+                        const QString path = obj.value(QStringLiteral("packagePath")).toString();
+
+                        QMetaObject::invokeMethod(QCoreApplication::instance(), [action, widgetId, path, obj]() {
+                            if (!s_runtimeWidgetManager) return;
+                            if (action == QStringLiteral("stop_wallpaper")) {
+                                s_runtimeWidgetManager->stopWallpaper(true);
+                            } else if (action == QStringLiteral("set_master_enabled")) {
+                                s_runtimeWidgetManager->setEnabled(obj.value(QStringLiteral("enabled")).toBool(true));
+                            } else if (action == QStringLiteral("set_show_bounds")) {
+                                s_runtimeWidgetManager->setShowWidgetBounds(obj.value(QStringLiteral("showBounds")).toBool(false));
+                            } else if (action == QStringLiteral("open_folder")) {
+                                if (!path.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+                            } else if (action == QStringLiteral("open_widgets_dir")) {
+                                QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLinWidgetsDir()));
+                            } else {
+                                s_runtimeWidgetManager->handleWidgetManagerRequest(obj);
+                            }
+                        }, Qt::QueuedConnection);
+                    }
+                }
+            }
+            return RV_CANCEL;
+        }
+        return RV_CONTINUE;
     }
 
     IMPLEMENT_REFCOUNTING(HubClientHandler);
@@ -489,6 +563,37 @@ LINWIDGET_EXPORT void linwidget_close_hub_browser()
 LINWIDGET_EXPORT bool linwidget_has_hub_browser()
 {
     return s_hubBrowser != nullptr && s_hubBrowserHwnd != nullptr && IsWindow(s_hubBrowserHwnd);
+}
+
+LINWIDGET_EXPORT bool linwidget_open_hub_window(const char* hubUrl)
+{
+    if (!LinCef::CefManager::instance()->initialize()) {
+        return false;
+    }
+
+    if (s_hubBrowser && s_hubBrowserHwnd && IsWindow(s_hubBrowserHwnd)) {
+        ShowWindow(s_hubBrowserHwnd, SW_RESTORE);
+        SetForegroundWindow(s_hubBrowserHwnd);
+        return true;
+    }
+
+    CefWindowInfo windowInfo;
+#ifdef Q_OS_WIN
+    const std::wstring title = L"LinDesk Hub · 桌面组件与动态壁纸管理中心";
+    windowInfo.SetAsPopup(nullptr, title);
+    windowInfo.style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE;
+    windowInfo.bounds.x = CW_USEDEFAULT;
+    windowInfo.bounds.y = CW_USEDEFAULT;
+    windowInfo.bounds.width = 1200;
+    windowInfo.bounds.height = 780;
+#endif
+
+    CefBrowserSettings settings;
+    settings.background_color = 0xff070a12;
+
+    CefRefPtr<HubClientHandler> handler = new HubClientHandler();
+    const std::wstring urlW = hubUrl ? QString::fromUtf8(hubUrl).toStdWString() : L"about:blank";
+    return CefBrowserHost::CreateBrowser(windowInfo, handler, urlW, settings, nullptr, nullptr);
 }
 #else
 LINWIDGET_EXPORT bool linwidget_create_hub_browser(quintptr, const char*, int, int) { return false; }
@@ -573,6 +678,7 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
     m_pfnResizeHubBrowser = nullptr;
     m_pfnCloseHubBrowser = nullptr;
     m_pfnHasHubBrowser = nullptr;
+    m_pfnOpenHubWindow = nullptr;
 }
 
 bool LinWidgetRuntimeBridge::isLoaded() const
@@ -680,6 +786,7 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_resize_hub_browser", m_pfnResizeHubBrowser);
     RESOLVE_FN("linwidget_close_hub_browser", m_pfnCloseHubBrowser);
     RESOLVE_FN("linwidget_has_hub_browser", m_pfnHasHubBrowser);
+    RESOLVE_FN("linwidget_open_hub_window", m_pfnOpenHubWindow);
 
     #undef RESOLVE_FN
 #endif
@@ -1036,4 +1143,17 @@ void LinWidgetRuntimeBridge::closeHubBrowser()
 bool LinWidgetRuntimeBridge::hasHubBrowser()
 {
     return m_pfnHasHubBrowser ? m_pfnHasHubBrowser() : false;
+}
+
+bool LinWidgetRuntimeBridge::openHubWindow(const QString& hubUrl)
+{
+    if (!m_pfnOpenHubWindow) {
+        if (!isLoaded()) {
+            if (!loadRuntime()) return false;
+        }
+    }
+    if (m_pfnOpenHubWindow) {
+        return m_pfnOpenHubWindow(hubUrl.isEmpty() ? nullptr : hubUrl.toUtf8().constData());
+    }
+    return false;
 }

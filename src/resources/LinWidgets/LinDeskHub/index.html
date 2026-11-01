@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LinDesk 动态壁纸管理中心与壁纸工坊交互原型</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="stylesheet" href="style.css">
   <style>
     @keyframes pulse-subtle {
       0%, 100% { opacity: 1; transform: scale(1); }
@@ -1491,14 +1491,36 @@
       }).join('');
     }
 
+
+    // ==================== REAL LINWIDGET CEF IPC BRIDGE ====================
+    function callBackend(action, payload) {
+      const msg = Object.assign({
+        type: "widget_manager_request",
+        action: action,
+        widgetId: (payload && payload.widgetId) ? payload.widgetId : "lindesk.hub",
+        requestId: "req-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6)
+      }, payload || {});
+
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'linwidget://bridge/postMessage', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify(msg));
+      } catch (e) {
+        console.warn("[Hub] Standalone mode, running local state:", e);
+      }
+    }
+
     function toggleWidgetRun(id) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
       w.isRunning = !w.isRunning;
       if (w.isRunning) {
+        callBackend("launch", { widgetId: id, packagePath: w.packagePath });
         w.instances = [`inst-${w.id}-001`];
         showToast(`小组件「${w.name}」已在桌面拉起运行`);
       } else {
+        callBackend("stop", { widgetId: id });
         w.instances = [];
         showToast(`已停止「${w.name}」的运行`);
       }
@@ -1508,16 +1530,18 @@
     function restartWidget(id) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
+      callBackend("restart", { widgetId: id });
       showToast(`正在重新拉起「${w.name}」渲染进程...`);
       setTimeout(() => {
         showToast(`「${w.name}」重启成功`);
         renderWidgets();
-      }, 350);
+      }, 400);
     }
 
     function stopWidgetInstance(id, instId) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
+      callBackend("stop", { widgetId: id, instanceId: instId });
       w.instances = w.instances.filter(i => i !== instId);
       if (w.instances.length === 0) w.isRunning = false;
       showToast(`已单独关闭实例: ${instId}`);
@@ -1528,7 +1552,9 @@
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
       const idx = w.permissions.indexOf(perm);
-      if (idx >= 0) {
+      const granted = (idx >= 0);
+      callBackend("set_permission", { widgetId: id, permission: perm, granted: !granted });
+      if (granted) {
         w.permissions.splice(idx, 1);
         showToast(`已撤销「${w.name}」的 [${perm}] 权限`);
       } else {
@@ -1542,44 +1568,37 @@
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
       if (confirm(`确定要清空「${w.name}」的全部本地持久化数据吗？`)) {
+        callBackend("clear_storage", { widgetId: id });
         w.storageBytes = 0;
         showToast(`已成功清空「${w.name}」的本地缓存与存储！`);
         renderWidgets();
       }
     }
 
-    function uninstallWidget(id) {
-      const w = widgetsData.find(item => item.id === id);
-      if (!w) return;
-      if (confirm(`确定要卸载小组件「${w.name}」吗？`)) {
-        widgetsData = widgetsData.filter(item => item.id !== id);
-        showToast(`已卸载组件: ${w.name}`);
-        renderWidgets();
-      }
-    }
-
     function triggerDevTools(id) {
-      showToast(`已连接 Chromium DevTools (目标: ${id}, 端口: 9222)`);
+      const w = widgetsData.find(item => item.id === id);
+      callBackend("show_devtools", { widgetId: id });
+      showToast(`已连接 Chromium DevTools (目标: ${w ? w.name : id})`);
     }
 
     function openWidgetSource(id) {
+      const w = widgetsData.find(item => item.id === id);
+      callBackend("open_folder", { widgetId: id, path: w ? w.packagePath : '' });
       showToast(`已在系统文件管理器中定位组件源码目录`);
     }
 
     function openWidgetsFolder() {
+      callBackend("open_widgets_dir");
       showToast(`已打开 LinWidgets 本地组件安装目录`);
     }
 
-    function refreshWidgetListUI() {
-      showToast(`已刷新 LinWidgets 组件与运行实例状态`);
-      renderWidgets();
-    }
-
     function toggleWidgetRuntimeMaster(checked) {
+      callBackend("set_master_enabled", { enabled: checked });
       showToast(checked ? "已启用 LinWidgets 桌面小组件全局运行环境" : "已禁用 LinWidgets 组件系统 (所有组件已冻结)");
     }
 
     function toggleWidgetBounds(checked) {
+      callBackend("set_show_bounds", { showBounds: checked });
       showToast(checked ? "已开启小组件视口辅助边框（调试红框）" : "已隐藏辅助边框");
     }
 

@@ -39,6 +39,31 @@ WallpaperStudioWindow* WallpaperStudioWindow::instance() {
 }
 
 void WallpaperStudioWindow::showStudio(int defaultTab) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
+        bridge.loadRuntime();
+    }
+    if (!bridge.isEnabled()) {
+        bridge.setEnabled(true);
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
+    }
+
+    // Try opening standalone CEF Web App Window directly
+    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
+    }
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("LinDeskHub/index.html"));
+    }
+
+    const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
+    if (bridge.openHubWindow(targetUrl)) {
+        return;
+    }
+
+    // Fallback if CEF runtime cannot create browser
     auto* win = instance();
     if (win->isMinimized()) {
         win->showNormal();
