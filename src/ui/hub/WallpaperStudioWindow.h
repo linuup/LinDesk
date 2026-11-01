@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QLabel>
 #include <QPushButton>
+#include <QLineEdit>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -18,6 +19,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QMap>
+#include <QList>
 #include "ui/Fluent/FluentBaseWidget.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 
@@ -33,6 +35,27 @@ struct WallpaperItem {
     QString packagePath;
     QString thumbStyle;
     QJsonObject propertiesSchema;
+};
+
+struct WidgetHubItem {
+    QString id;
+    QString name;
+    QString version;
+    QString author;
+    QString description;
+    QString role;
+    QString packagePath;
+    QString iconPath;
+    QString source; // "official", "installed", "dev"
+    bool isDevelopment = false;
+    bool enabled = true;
+    bool isRunning = false;
+    QString statusText;
+    qint64 storageUsedBytes = 0;
+    QStringList declaredPermissions;
+    QStringList grantedPermissions;
+    bool hasSettings = false;
+    QStringList runningInstanceIds;
 };
 
 class WallpaperStudioWindow : public FluentBaseWidget {
@@ -54,6 +77,13 @@ public slots:
     void exportDiagnosticsPackage();
     void selectWallpaperForStudio(const QString& wallpaperId);
 
+    // Widget Management Slots
+    void refreshWidgetsList();
+    void addDevelopmentWidget();
+    void toggleWidgetPermission(const QString& widgetId, const QString& permission, bool currentGranted);
+    void clearWidgetStorage(const QString& widgetId, const QString& widgetName);
+    void uninstallWidget(const QString& widgetId, const QString& widgetName, const QString& packagePath, const QStringList& runningInstanceIds);
+
 protected:
     void showEvent(QShowEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
@@ -67,6 +97,7 @@ private:
     QWidget* createWidgetsPage();
     QWidget* createDevAdminPage();
 
+    // Wallpaper Logic
     void scanWallpapers();
     void populateGalleryCards();
     void refreshActiveWallpaperStatus();
@@ -79,6 +110,10 @@ private:
     void saveProperties(const QString& wallpaperId, const QJsonObject& props);
     QString resolveWallpaperPath(const QString& wallpaperId) const;
     void appendIpcLog(const QString& direction, const QString& msg);
+
+    // Widget Management Logic
+    void renderWidgetCards();
+    void setWidgetFilter(int filterIndex);
 
 private:
     static QPointer<WallpaperStudioWindow> s_instance;
@@ -116,6 +151,20 @@ private:
 
     // Available wallpapers
     QList<WallpaperItem> m_availableWallpapers;
+
+    // Widget Management elements
+    QList<WidgetHubItem> m_allWidgets;
+    QString m_widgetSearchText;
+    int m_widgetFilterMode = 0; // 0: All, 1: Running, 2: Official, 3: Dev
+    QWidget* m_widgetsContainer = nullptr;
+    QVBoxLayout* m_widgetsListLayout = nullptr;
+    QLineEdit* m_widgetSearchEdit = nullptr;
+    FluentToggleSwitch* m_runtimeMasterSwitch = nullptr;
+    FluentToggleSwitch* m_showBoundsSwitch = nullptr;
+    QPushButton* m_filterAllBtn = nullptr;
+    QPushButton* m_filterRunningBtn = nullptr;
+    QPushButton* m_filterOfficialBtn = nullptr;
+    QPushButton* m_filterDevBtn = nullptr;
 
     // Dev elements
     QLabel* m_ipcLogView = nullptr;

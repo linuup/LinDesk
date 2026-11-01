@@ -15,9 +15,12 @@
 #include <QColorDialog>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QSettings>
 #include <cmath>
 #include "app/AppFonts.h"
 #include "desktop/widgets/runtime_export.h"
+#include "desktop/widgets/linwidget/WidgetRegistryManager.h"
+#include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "ui/settings/SettingsUICommon.h"
 #include "services/AppPaths.h"
 
@@ -49,9 +52,10 @@ WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
 {
     setWindowTitle(tr("LinDesk Hub · Live Wallpaper & Widget Studio"));
     resize(1120, 720);
-    setMinimumSize(900, 620);
+    setMinimumSize(880, 580);
+    setResizable(true); // Enable 8-direction native window resizing
 
-    // Center on current screen
+    // Center on primary screen
     if (auto* screen = QGuiApplication::primaryScreen()) {
         const QRect screenGeom = screen->availableGeometry();
         move(screenGeom.center().x() - width() / 2, screenGeom.center().y() - height() / 2);
@@ -62,7 +66,12 @@ WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
 
     m_statusTimer = new QTimer(this);
     m_statusTimer->setInterval(1000);
-    connect(m_statusTimer, &QTimer::timeout, this, &WallpaperStudioWindow::refreshActiveWallpaperStatus);
+    connect(m_statusTimer, &QTimer::timeout, this, [this]() {
+        refreshActiveWallpaperStatus();
+        if (m_stack && m_stack->currentIndex() == 2) {
+            refreshWidgetsList();
+        }
+    });
     m_statusTimer->start();
 }
 
@@ -71,6 +80,7 @@ void WallpaperStudioWindow::showEvent(QShowEvent* event) {
     scanWallpapers();
     populateGalleryCards();
     refreshActiveWallpaperStatus();
+    refreshWidgetsList();
 }
 
 void WallpaperStudioWindow::closeEvent(QCloseEvent* event) {
@@ -143,7 +153,6 @@ QString WallpaperStudioWindow::resolveWallpaperPath(const QString& wallpaperId) 
             return item.packagePath;
         }
     }
-    // Fallback checks
     const QString appDir = QCoreApplication::applicationDirPath();
     if (wallpaperId.contains(QStringLiteral("living"), Qt::CaseInsensitive) || wallpaperId.contains(QStringLiteral("wallpaper"), Qt::CaseInsensitive)) {
         return QDir(appDir).filePath(QStringLiteral("resources/LinWidgets/Wallpaper"));
@@ -153,6 +162,26 @@ QString WallpaperStudioWindow::resolveWallpaperPath(const QString& wallpaperId) 
 
 void WallpaperStudioWindow::initUI() {
     setWindowBtnMode(All);
+
+    // Style the titlebar buttons for dark acrylic backdrop
+    if (m_minBtn) {
+        m_minBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #cbd5e1; }"
+            "QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }"
+        ));
+    }
+    if (m_maxBtn) {
+        m_maxBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #cbd5e1; }"
+            "QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }"
+        ));
+    }
+    if (m_closeBtn) {
+        m_closeBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #cbd5e1; }"
+            "QPushButton#closeBtn:hover { background: #e11d48; color: #ffffff; }"
+        ));
+    }
 
     if (container()) {
         container()->setStyleSheet(QStringLiteral(
@@ -302,6 +331,8 @@ void WallpaperStudioWindow::switchToTab(int tabIndex) {
 
     if (tabIndex == 1) {
         loadAndGeneratePropertyControls(m_currentEditingWallpaper);
+    } else if (tabIndex == 2) {
+        refreshWidgetsList();
     }
 
     refreshActiveWallpaperStatus();
@@ -441,7 +472,6 @@ QWidget* WallpaperStudioWindow::createGalleryPage() {
 void WallpaperStudioWindow::populateGalleryCards() {
     if (!m_galleryGridLayout || !m_galleryGridContainer) return;
 
-    // Clear old items
     QLayoutItem* child = nullptr;
     while ((child = m_galleryGridLayout->takeAt(0)) != nullptr) {
         if (child->widget()) {
@@ -782,7 +812,6 @@ void WallpaperStudioWindow::dispatchPropertyUpdate(const QString& key, const QJs
 
     appendIpcLog(QStringLiteral("POST"), QStringLiteral("{ \"type\": \"property_update\", \"key\": \"%1\", \"value\": %2 }").arg(key, valStr));
 
-    // Send query to runtime bridge if available
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (bridge.isLoaded()) {
         QJsonObject req;
@@ -793,7 +822,6 @@ void WallpaperStudioWindow::dispatchPropertyUpdate(const QString& key, const QJs
         bridge.queryWidgetManager(req);
     }
 
-    // Update local canvas preview if applicable
     if (m_studioCanvas) {
         if (key == QStringLiteral("particleCount")) {
             m_studioCanvas->setParticleDensity(qMax(10, qMin(100, val.toInt() / 15)));
@@ -806,7 +834,6 @@ void WallpaperStudioWindow::dispatchPropertyUpdate(const QString& key, const QJs
 void WallpaperStudioWindow::loadAndGeneratePropertyControls(const QString& wallpaperId) {
     if (!m_dynamicPropertiesLayout || !m_dynamicPropertiesContainer) return;
 
-    // Clear old controls
     QLayoutItem* item = nullptr;
     while ((item = m_dynamicPropertiesLayout->takeAt(0)) != nullptr) {
         if (item->widget()) item->widget()->deleteLater();
@@ -814,7 +841,6 @@ void WallpaperStudioWindow::loadAndGeneratePropertyControls(const QString& wallp
     }
     m_currentPropertyValues.clear();
 
-    // Find schema
     QJsonObject schema;
     for (const auto& w : m_availableWallpapers) {
         if (w.id.compare(wallpaperId, Qt::CaseInsensitive) == 0 ||
@@ -825,7 +851,6 @@ void WallpaperStudioWindow::loadAndGeneratePropertyControls(const QString& wallp
     }
 
     if (schema.isEmpty()) {
-        // Fallback default properties for known items
         if (wallpaperId.contains(QStringLiteral("gargantua"), Qt::CaseInsensitive)) {
             schema.insert(QStringLiteral("particleCount"), QJsonObject{
                 {QStringLiteral("type"), QStringLiteral("slider")},
@@ -868,7 +893,6 @@ void WallpaperStudioWindow::loadAndGeneratePropertyControls(const QString& wallp
 
     const QJsonObject saved = loadSavedProperties(wallpaperId);
 
-    // Build controls for each property
     for (auto it = schema.begin(); it != schema.end(); ++it) {
         const QString key = it.key();
         const QJsonObject prop = it.value().toObject();
@@ -1015,83 +1039,634 @@ void WallpaperStudioWindow::updateStudioBlur(int val) {
 }
 
 // -------------------------------------------------------------
-// Page 3: 桌面组件管理 (Desktop Widgets)
+// Page 3: 桌面小组件中心 (LinWidgets Management Hub) - 全面移植与现代化
 // -------------------------------------------------------------
 QWidget* WallpaperStudioWindow::createWidgetsPage() {
     auto* page = new QWidget(m_stack);
     auto* pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(20, 8, 20, 20);
-    pageLayout->setSpacing(14);
+    pageLayout->setSpacing(12);
 
-    auto* header = new QHBoxLayout();
-    auto* title = new QLabel(tr("桌面小组件管理 (LinWidgets Hub)"), page);
-    title->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 14px; font-weight: 800;"));
-    header->addWidget(title);
-    header->addStretch();
-    pageLayout->addLayout(header);
+    // 1. Control & Status Bar Card
+    auto* controlCard = new QWidget(page);
+    controlCard->setStyleSheet(QStringLiteral(
+        "QWidget {"
+        "  background: rgba(30, 41, 59, 0.7);"
+        "  border: 1px solid rgba(255, 255, 255, 0.08);"
+        "  border-radius: 14px;"
+        "}"
+    ));
+    auto* cardLayout = new QVBoxLayout(controlCard);
+    cardLayout->setContentsMargins(16, 12, 16, 12);
+    cardLayout->setSpacing(10);
 
+    // Top Row: Title + Switches + Actions
+    auto* topRow = new QHBoxLayout();
+    topRow->setSpacing(14);
+
+    auto* titleLayout = new QVBoxLayout();
+    titleLayout->setSpacing(2);
+    auto* title = new QLabel(tr("🧩 桌面小组件管理中心 (LinWidgets Hub)"), controlCard);
+    title->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 15px; font-weight: 800; background: transparent; border: none;"));
+    auto* subtitle = new QLabel(tr("基于独立 CEF OSR 离屏沙箱与轻量 IPC 桥接 · 零进程泄漏 · 支持热启停与权限管控"), controlCard);
+    subtitle->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; background: transparent; border: none;"));
+    titleLayout->addWidget(title);
+    titleLayout->addWidget(subtitle);
+    topRow->addLayout(titleLayout, 1);
+
+    // Runtime Master Switch
+    auto* rtSwitchRow = new QHBoxLayout();
+    rtSwitchRow->setSpacing(6);
+    auto* rtLabel = new QLabel(tr("系统启用:"), controlCard);
+    rtLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
+    m_runtimeMasterSwitch = new FluentToggleSwitch(controlCard);
+    const QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    m_runtimeMasterSwitch->setChecked(settings.value(QStringLiteral("LinWidgets/Enabled"), true).toBool());
+    connect(m_runtimeMasterSwitch, &FluentToggleSwitch::toggled, this, [this](bool checked) {
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        s.setValue(QStringLiteral("LinWidgets/Enabled"), checked);
+        LinWidgetRuntimeBridge::instance().setEnabled(checked);
+        refreshWidgetsList();
+    });
+    rtSwitchRow->addWidget(rtLabel);
+    rtSwitchRow->addWidget(m_runtimeMasterSwitch);
+    topRow->addLayout(rtSwitchRow);
+
+    // Show Bounds Switch
+    auto* boundsRow = new QHBoxLayout();
+    boundsRow->setSpacing(6);
+    auto* boundsLabel = new QLabel(tr("辅助边界:"), controlCard);
+    boundsLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
+    m_showBoundsSwitch = new FluentToggleSwitch(controlCard);
+    m_showBoundsSwitch->setChecked(settings.value(QStringLiteral("LinWidgets/ShowWidgetBounds"), false).toBool());
+    connect(m_showBoundsSwitch, &FluentToggleSwitch::toggled, this, [](bool checked) {
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        s.setValue(QStringLiteral("LinWidgets/ShowWidgetBounds"), checked);
+        LinWidgetRuntimeBridge::instance().setShowWidgetBounds(checked);
+    });
+    boundsRow->addWidget(boundsLabel);
+    boundsRow->addWidget(m_showBoundsSwitch);
+    topRow->addLayout(boundsRow);
+
+    // Top action buttons
+    auto* addDevBtn = new QPushButton(tr("➕ 添加开发工程"), controlCard);
+    addDevBtn->setCursor(Qt::PointingHandCursor);
+    addDevBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(99, 102, 241, 0.25); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 12px; } QPushButton:hover { background: rgba(99, 102, 241, 0.4); }"));
+    connect(addDevBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::addDevelopmentWidget);
+    topRow->addWidget(addDevBtn);
+
+    auto* openDirBtn = new QPushButton(tr("📂 组件目录"), controlCard);
+    openDirBtn->setCursor(Qt::PointingHandCursor);
+    openDirBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+    connect(openDirBtn, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLinWidgetsDir()));
+    });
+    topRow->addWidget(openDirBtn);
+
+    auto* refreshBtn = new QPushButton(tr("🔄 刷新"), controlCard);
+    refreshBtn->setCursor(Qt::PointingHandCursor);
+    refreshBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+    connect(refreshBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::refreshWidgetsList);
+    topRow->addWidget(refreshBtn);
+
+    cardLayout->addLayout(topRow);
+
+    // Second Row: Search box + Filter pills
+    auto* filterRow = new QHBoxLayout();
+    filterRow->setSpacing(10);
+
+    m_widgetSearchEdit = new QLineEdit(controlCard);
+    m_widgetSearchEdit->setPlaceholderText(tr("🔍 搜索组件名称、ID 或功能描述..."));
+    m_widgetSearchEdit->setFixedHeight(30);
+    m_widgetSearchEdit->setStyleSheet(QStringLiteral(
+        "QLineEdit { background: #0f172a; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 0 10px; font-size: 11px; }"
+        "QLineEdit:focus { border-color: #6366f1; }"
+    ));
+    connect(m_widgetSearchEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
+        m_widgetSearchText = text.trimmed();
+        renderWidgetCards();
+    });
+    filterRow->addWidget(m_widgetSearchEdit, 1);
+
+    auto createFilterPill = [this, controlCard](const QString& text, int mode) {
+        auto* btn = new QPushButton(text, controlCard);
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setFixedHeight(28);
+        btn->setMinimumWidth(75);
+        connect(btn, &QPushButton::clicked, this, [this, mode]() {
+            setWidgetFilter(mode);
+        });
+        return btn;
+    };
+
+    m_filterAllBtn = createFilterPill(tr("全部"), 0);
+    m_filterRunningBtn = createFilterPill(tr("运行中"), 1);
+    m_filterOfficialBtn = createFilterPill(tr("内置官方"), 2);
+    m_filterDevBtn = createFilterPill(tr("开发中"), 3);
+
+    filterRow->addWidget(m_filterAllBtn);
+    filterRow->addWidget(m_filterRunningBtn);
+    filterRow->addWidget(m_filterOfficialBtn);
+    filterRow->addWidget(m_filterDevBtn);
+
+    cardLayout->addLayout(filterRow);
+    pageLayout->addWidget(controlCard, 0);
+
+    // 2. Scrollable Widget Cards Container
     auto* scrollArea = new QScrollArea(page);
     scrollArea->setWidgetResizable(true);
     scrollArea->setStyleSheet(QStringLiteral("QScrollArea { border: none; background: transparent; } QWidget#widgetsContainer { background: transparent; }"));
 
-    auto* container = new QWidget(scrollArea);
-    container->setObjectName("widgetsContainer");
-    auto* listLayout = new QVBoxLayout(container);
-    listLayout->setContentsMargins(0, 0, 0, 0);
-    listLayout->setSpacing(10);
+    m_widgetsContainer = new QWidget(scrollArea);
+    m_widgetsContainer->setObjectName("widgetsContainer");
+    m_widgetsListLayout = new QVBoxLayout(m_widgetsContainer);
+    m_widgetsListLayout->setContentsMargins(0, 4, 0, 0);
+    m_widgetsListLayout->setSpacing(10);
 
-    auto createWidgetRow = [this, container](const QString& name, const QString& ver, const QString& desc, const QString& iconGlyph, bool isRunning) {
-        auto* row = new QWidget(container);
-        row->setStyleSheet(QStringLiteral(
+    scrollArea->setWidget(m_widgetsContainer);
+    pageLayout->addWidget(scrollArea, 1);
+
+    setWidgetFilter(0);
+    refreshWidgetsList();
+
+    return page;
+}
+
+void WallpaperStudioWindow::setWidgetFilter(int filterIndex) {
+    m_widgetFilterMode = filterIndex;
+
+    const QString activePill = QStringLiteral("QPushButton { background: #4f46e5; color: #fff; border: 1px solid #6366f1; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 2px 10px; }");
+    const QString inactivePill = QStringLiteral("QPushButton { background: #1e293b; color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-size: 11px; padding: 2px 10px; } QPushButton:hover { color: #f1f5f9; }");
+
+    if (m_filterAllBtn) m_filterAllBtn->setStyleSheet(filterIndex == 0 ? activePill : inactivePill);
+    if (m_filterRunningBtn) m_filterRunningBtn->setStyleSheet(filterIndex == 1 ? activePill : inactivePill);
+    if (m_filterOfficialBtn) m_filterOfficialBtn->setStyleSheet(filterIndex == 2 ? activePill : inactivePill);
+    if (m_filterDevBtn) m_filterDevBtn->setStyleSheet(filterIndex == 3 ? activePill : inactivePill);
+
+    renderWidgetCards();
+}
+
+void WallpaperStudioWindow::refreshWidgetsList() {
+    m_allWidgets.clear();
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    QSet<QString> seenIds;
+
+    // 1. Try querying runtime manager
+    if (bridge.isLoaded()) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("list"));
+        const QJsonObject resp = bridge.queryWidgetManager(req);
+        const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+
+        for (const auto& wVal : widgets) {
+            const QJsonObject obj = wVal.toObject();
+            const QString role = obj.value(QStringLiteral("role")).toString();
+            if (role == QStringLiteral("wallpaper") || role == QStringLiteral("hub")) continue;
+
+            WidgetHubItem item;
+            item.id = obj.value(QStringLiteral("id")).toString();
+            if (item.id.isEmpty() || seenIds.contains(item.id.toLower())) continue;
+            seenIds.insert(item.id.toLower());
+
+            item.name = obj.value(QStringLiteral("name")).toString(item.id);
+            item.version = obj.value(QStringLiteral("version")).toString(QStringLiteral("1.0.0"));
+            item.author = obj.value(QStringLiteral("author")).toString();
+            item.description = obj.value(QStringLiteral("description")).toString();
+            item.role = role;
+            item.packagePath = obj.value(QStringLiteral("packagePath")).toString();
+            item.source = obj.value(QStringLiteral("source")).toString();
+            item.isDevelopment = obj.value(QStringLiteral("isDevelopment")).toBool();
+            item.enabled = obj.value(QStringLiteral("enabled")).toBool(true);
+            item.isRunning = obj.value(QStringLiteral("running")).toBool();
+            item.statusText = obj.value(QStringLiteral("status")).toString();
+            item.storageUsedBytes = obj.value(QStringLiteral("storageUsedBytes")).toVariant().toLongLong();
+            item.hasSettings = obj.value(QStringLiteral("hasSettings")).toBool();
+
+            const QJsonArray declPerms = obj.value(QStringLiteral("declaredPermissions")).toArray();
+            for (const auto& p : declPerms) item.declaredPermissions.append(p.toString());
+            const QJsonArray grantPerms = obj.value(QStringLiteral("grantedPermissions")).toArray();
+            for (const auto& p : grantPerms) item.grantedPermissions.append(p.toString());
+
+            const QJsonArray instIds = obj.value(QStringLiteral("runningInstanceIds")).toArray();
+            for (const auto& i : instIds) item.runningInstanceIds.append(i.toString());
+
+            m_allWidgets.append(item);
+        }
+    }
+
+    // 2. Query registry as fallback / supplement
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
+    registry.load();
+    for (const auto& entry : registry.entries()) {
+        if (entry.role == QStringLiteral("wallpaper") || entry.role == QStringLiteral("hub")) continue;
+        if (seenIds.contains(entry.id.toLower())) continue;
+        seenIds.insert(entry.id.toLower());
+
+        LinWidget::WidgetManifest manifest;
+        LinWidget::WidgetPackage::loadManifest(entry.packagePath, &manifest, nullptr);
+
+        WidgetHubItem item;
+        item.id = entry.id;
+        item.name = entry.name.isEmpty() ? manifest.name : entry.name;
+        item.version = entry.version.isEmpty() ? manifest.version : entry.version;
+        item.author = entry.author.isEmpty() ? manifest.author : entry.author;
+        item.description = entry.description.isEmpty() ? manifest.description : entry.description;
+        item.role = entry.role;
+        item.packagePath = entry.packagePath;
+        item.isDevelopment = entry.isDevelopment;
+        item.enabled = entry.enabled;
+        item.isRunning = false;
+        item.statusText = QStringLiteral("stopped");
+        item.hasSettings = !manifest.settings.isEmpty() || !manifest.settingsSchema.isEmpty();
+        item.declaredPermissions = manifest.permissions;
+        item.grantedPermissions = entry.permissionsGranted;
+        item.source = entry.isDevelopment ? QStringLiteral("开发目录") : (entry.trusted ? QStringLiteral("内置组件") : QStringLiteral("组件包安装"));
+
+        m_allWidgets.append(item);
+    }
+
+    renderWidgetCards();
+}
+
+void WallpaperStudioWindow::renderWidgetCards() {
+    if (!m_widgetsListLayout || !m_widgetsContainer) return;
+
+    // Clear old cards
+    QLayoutItem* item = nullptr;
+    while ((item = m_widgetsListLayout->takeAt(0)) != nullptr) {
+        if (item->widget()) item->widget()->deleteLater();
+        delete item;
+    }
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+
+    int matchedCount = 0;
+    for (const auto& w : m_allWidgets) {
+        // Text search filter
+        if (!m_widgetSearchText.isEmpty()) {
+            const bool matchName = w.name.contains(m_widgetSearchText, Qt::CaseInsensitive);
+            const bool matchId = w.id.contains(m_widgetSearchText, Qt::CaseInsensitive);
+            const bool matchDesc = w.description.contains(m_widgetSearchText, Qt::CaseInsensitive);
+            if (!matchName && !matchId && !matchDesc) continue;
+        }
+
+        // Tab pill filter
+        if (m_widgetFilterMode == 1 && !w.isRunning) continue;
+        if (m_widgetFilterMode == 2 && (w.isDevelopment || w.packagePath.contains(QStringLiteral("AppData"), Qt::CaseInsensitive))) continue;
+        if (m_widgetFilterMode == 3 && !w.isDevelopment) continue;
+
+        matchedCount++;
+
+        auto* card = new QWidget(m_widgetsContainer);
+        card->setStyleSheet(QStringLiteral(
             "QWidget {"
-            "  background: rgba(30, 41, 59, 0.6);"
-            "  border: 1px solid rgba(255, 255, 255, 0.08);"
-            "  border-radius: 10px;"
+            "  background: rgba(30, 41, 59, 0.75);"
+            "  border: 1px solid %1;"
+            "  border-radius: 12px;"
             "}"
-        ));
-        auto* rLayout = new QHBoxLayout(row);
-        rLayout->setContentsMargins(14, 10, 14, 10);
-        rLayout->setSpacing(14);
+            "QWidget:hover {"
+            "  border-color: rgba(99, 102, 241, 0.7);"
+            "}"
+        ).arg(w.isRunning ? QStringLiteral("rgba(16, 185, 129, 0.6)") : QStringLiteral("rgba(255, 255, 255, 0.08)")));
 
-        auto* iconLbl = new QLabel(iconGlyph, row);
-        iconLbl->setFixedSize(36, 36);
+        auto* cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(16, 12, 16, 12);
+        cardLayout->setSpacing(8);
+
+        // Top Row: Icon + Title + Version + Source + Status Badge
+        auto* headerRow = new QHBoxLayout();
+        headerRow->setSpacing(12);
+
+        // Widget Icon
+        auto* iconLbl = new QLabel(card);
+        iconLbl->setFixedSize(38, 38);
         iconLbl->setAlignment(Qt::AlignCenter);
-        iconLbl->setStyleSheet(QStringLiteral("background: rgba(99, 102, 241, 0.15); color: #818cf8; border-radius: 8px; font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; font-size: 18px;"));
-        rLayout->addWidget(iconLbl);
+        const QString glyphText = settingsWidgetIconGlyph(w.id);
+        const QString accentColor = settingsWidgetAccentColor(w.id);
+        iconLbl->setText(glyphText);
+        iconLbl->setStyleSheet(QStringLiteral(
+            "QLabel {"
+            "  background: %1;"
+            "  color: #ffffff;"
+            "  border-radius: 8px;"
+            "  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+            "  font-size: 18px;"
+            "  border: none;"
+            "}"
+        ).arg(accentColor));
+        headerRow->addWidget(iconLbl);
 
         auto* textLayout = new QVBoxLayout();
         textLayout->setSpacing(2);
-        auto* nameLbl = new QLabel(QStringLiteral("%1 (%2)").arg(name, ver), row);
-        nameLbl->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 13px; font-weight: 700; background: transparent; border: none;"));
-        auto* descLbl = new QLabel(desc, row);
+        auto* titleRow = new QHBoxLayout();
+        titleRow->setSpacing(8);
+
+        auto* nameLbl = new QLabel(w.name, card);
+        nameLbl->setStyleSheet(QStringLiteral("color: #ffffff; font-size: 14px; font-weight: 700; background: transparent; border: none;"));
+        titleRow->addWidget(nameLbl);
+
+        auto* verBadge = new QLabel(QStringLiteral("v%1").arg(w.version), card);
+        verBadge->setStyleSheet(QStringLiteral("color: #94a3b8; background: rgba(255, 255, 255, 0.06); border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 600; border: none;"));
+        titleRow->addWidget(verBadge);
+
+        auto* srcBadge = new QLabel(w.source, card);
+        srcBadge->setStyleSheet(QStringLiteral("color: #818cf8; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600;"));
+        titleRow->addWidget(srcBadge);
+        titleRow->addStretch();
+
+        textLayout->addLayout(titleRow);
+
+        auto* descLbl = new QLabel(w.description.isEmpty() ? tr("暂无详细描述。") : w.description, card);
         descLbl->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; background: transparent; border: none;"));
-        textLayout->addWidget(nameLbl);
+        descLbl->setWordWrap(true);
         textLayout->addWidget(descLbl);
-        rLayout->addLayout(textLayout, 1);
+        headerRow->addLayout(textLayout, 1);
 
-        auto* statusBadge = new QLabel(isRunning ? tr("● 运行中") : tr("○ 待机"), row);
-        statusBadge->setStyleSheet(isRunning ? QStringLiteral("color: #34d399; font-size: 11px; font-weight: 700; background: transparent; border: none;") : QStringLiteral("color: #64748b; font-size: 11px; background: transparent; border: none;"));
-        rLayout->addWidget(statusBadge);
+        // Status Badge
+        auto* statusPill = new QLabel(card);
+        if (w.isRunning) {
+            const int count = w.runningInstanceIds.size();
+            statusPill->setText(count > 1 ? tr("● 运行中 (%1实例)").arg(count) : tr("● 运行中"));
+            statusPill->setStyleSheet(QStringLiteral("color: #34d399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700;"));
+        } else {
+            statusPill->setText(tr("○ 未启动"));
+            statusPill->setStyleSheet(QStringLiteral("color: #64748b; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600;"));
+        }
+        headerRow->addWidget(statusPill);
+        cardLayout->addLayout(headerRow);
 
-        auto* toggleBtn = new QPushButton(isRunning ? tr("停用") : tr("启用"), row);
-        toggleBtn->setCursor(Qt::PointingHandCursor);
-        toggleBtn->setStyleSheet(isRunning
-            ? QStringLiteral("QPushButton { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 4px 12px; }")
-            : QStringLiteral("QPushButton { background: #4f46e5; color: #ffffff; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; padding: 4px 12px; }"));
-        rLayout->addWidget(toggleBtn);
+        // Middle Row: Storage & Permissions
+        auto* metaRow = new QHBoxLayout();
+        metaRow->setSpacing(12);
 
-        return row;
-    };
+        // Storage used
+        const double kb = w.storageUsedBytes / 1024.0;
+        auto* storageLbl = new QLabel(tr("💾 本地存储: %1 KB / 16 MB").arg(kb, 0, 'f', 1), card);
+        storageLbl->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-family: Consolas, monospace; background: transparent; border: none;"));
+        metaRow->addWidget(storageLbl);
 
-    listLayout->addWidget(createWidgetRow(tr("模拟时钟 (Clock)"), QStringLiteral("v1.2.0"), tr("Fluent 磨砂玻璃双模时钟，支持精准毫秒级表盘。"), glyph(0xE823), true));
-    listLayout->addWidget(createWidgetRow(tr("系统性能监视 (SysMonitor)"), QStringLiteral("v1.1.0"), tr("实时监控 CPU 负载、GPU 显存使用率与内存温度。"), glyph(0xE950), true));
-    listLayout->addWidget(createWidgetRow(tr("待办清单 (Todo)"), QStringLiteral("v1.0.0"), tr("极简四象限与优先级待办任务追踪。"), glyph(0xE73E), false));
-    listLayout->addStretch(1);
+        if (w.storageUsedBytes > 0) {
+            auto* clearBtn = new QPushButton(tr("清空"), card);
+            clearBtn->setCursor(Qt::PointingHandCursor);
+            clearBtn->setStyleSheet(QStringLiteral("QPushButton { background: transparent; color: #f87171; border: none; font-size: 10px; text-decoration: underline; } QPushButton:hover { color: #ef4444; }"));
+            connect(clearBtn, &QPushButton::clicked, this, [this, id = w.id, name = w.name]() {
+                clearWidgetStorage(id, name);
+            });
+            metaRow->addWidget(clearBtn);
+        }
 
-    scrollArea->setWidget(container);
-    pageLayout->addWidget(scrollArea, 1);
+        metaRow->addSpacing(16);
 
-    return page;
+        // Permission Pills
+        auto* permTitle = new QLabel(tr("授权:"), card);
+        permTitle->setStyleSheet(QStringLiteral("color: #64748b; font-size: 11px; background: transparent; border: none;"));
+        metaRow->addWidget(permTitle);
+
+        auto addPermPill = [this, card, metaRow, w](const QString& permKey, const QString& label) {
+            const bool declared = w.declaredPermissions.contains(permKey, Qt::CaseInsensitive);
+            const bool granted = w.grantedPermissions.contains(permKey, Qt::CaseInsensitive);
+            if (!declared) return;
+
+            auto* pBtn = new QPushButton(label, card);
+            pBtn->setCursor(Qt::PointingHandCursor);
+            pBtn->setStyleSheet(granted
+                ? QStringLiteral("QPushButton { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; }")
+                : QStringLiteral("QPushButton { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; }"));
+            pBtn->setToolTip(granted ? tr("点击撤销 %1 权限").arg(label) : tr("点击授予 %1 权限").arg(label));
+            connect(pBtn, &QPushButton::clicked, this, [this, id = w.id, permKey, granted]() {
+                toggleWidgetPermission(id, permKey, granted);
+            });
+            metaRow->addWidget(pBtn);
+        };
+
+        addPermPill(QStringLiteral("network"), tr("🌐 网络"));
+        addPermPill(QStringLiteral("storage"), tr("📁 存储"));
+        addPermPill(QStringLiteral("desktop"), tr("🖥 桌面"));
+
+        metaRow->addStretch();
+        cardLayout->addLayout(metaRow);
+
+        // Bottom Action Buttons
+        auto* actionRow = new QHBoxLayout();
+        actionRow->setSpacing(8);
+
+        // Primary: Load / Close
+        auto* primaryBtn = new QPushButton(card);
+        primaryBtn->setCursor(Qt::PointingHandCursor);
+        if (w.isRunning) {
+            primaryBtn->setText(tr("⏹ 停止运行"));
+            primaryBtn->setStyleSheet(QStringLiteral(
+                "QPushButton { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 6px; font-size: 11px; font-weight: 700; padding: 5px 12px; }"
+                "QPushButton:hover { background: rgba(239, 68, 68, 0.3); color: #ffffff; }"
+            ));
+            connect(primaryBtn, &QPushButton::clicked, this, [this, instIds = w.runningInstanceIds]() {
+                auto& b = LinWidgetRuntimeBridge::instance();
+                for (const QString& id : instIds) {
+                    b.stopWidget(id);
+                }
+                refreshWidgetsList();
+            });
+        } else {
+            primaryBtn->setText(tr("▶ 启动小组件"));
+            primaryBtn->setStyleSheet(QStringLiteral(
+                "QPushButton { background: #4f46e5; color: #ffffff; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 5px 14px; }"
+                "QPushButton:hover { background: #4338ca; }"
+            ));
+            connect(primaryBtn, &QPushButton::clicked, this, [this, path = w.packagePath]() {
+                auto& b = LinWidgetRuntimeBridge::instance();
+                if (!b.isLoaded()) b.loadRuntime();
+                b.startWidgetPackage(path);
+                refreshWidgetsList();
+            });
+        }
+        actionRow->addWidget(primaryBtn);
+
+        // Restart button (if running)
+        if (w.isRunning) {
+            auto* restartBtn = new QPushButton(tr("↻ 重启"), card);
+            restartBtn->setCursor(Qt::PointingHandCursor);
+            restartBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+            connect(restartBtn, &QPushButton::clicked, this, [this, instIds = w.runningInstanceIds]() {
+                auto& b = LinWidgetRuntimeBridge::instance();
+                for (const QString& id : instIds) {
+                    b.restartWidget(id);
+                }
+                refreshWidgetsList();
+            });
+            actionRow->addWidget(restartBtn);
+        }
+
+        // Settings Dialog Button
+        if (w.hasSettings) {
+            auto* settingsBtn = new QPushButton(tr("⚙ 设置"), card);
+            settingsBtn->setCursor(Qt::PointingHandCursor);
+            settingsBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+            connect(settingsBtn, &QPushButton::clicked, this, [path = w.packagePath, instIds = w.runningInstanceIds]() {
+                auto& b = LinWidgetRuntimeBridge::instance();
+                b.openWidgetSettings(path, instIds.isEmpty() ? QString() : instIds.first());
+            });
+            actionRow->addWidget(settingsBtn);
+        }
+
+        // DevTools F12
+        auto* devtoolsBtn = new QPushButton(tr("🛠 F12 调试"), card);
+        devtoolsBtn->setCursor(Qt::PointingHandCursor);
+        devtoolsBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(99, 102, 241, 0.35); }"));
+        connect(devtoolsBtn, &QPushButton::clicked, this, [id = w.id, instIds = w.runningInstanceIds]() {
+            auto& b = LinWidgetRuntimeBridge::instance();
+            const QString targetId = instIds.isEmpty() ? id : instIds.first();
+            if (!b.showDevTools(targetId)) {
+                QDesktopServices::openUrl(QUrl(QStringLiteral("http://localhost:9222")));
+            }
+        });
+        actionRow->addWidget(devtoolsBtn);
+
+        // Open Source Folder
+        auto* folderBtn = new QPushButton(tr("📂 源码"), card);
+        folderBtn->setCursor(Qt::PointingHandCursor);
+        folderBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+        connect(folderBtn, &QPushButton::clicked, this, [path = w.packagePath]() {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        });
+        actionRow->addWidget(folderBtn);
+
+        // Open Data Folder
+        auto* dataFolderBtn = new QPushButton(tr("💾 数据"), card);
+        dataFolderBtn->setCursor(Qt::PointingHandCursor);
+        dataFolderBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
+        connect(dataFolderBtn, &QPushButton::clicked, this, [id = w.id]() {
+            const QString safeId = QString(id).replace(QRegularExpression(QStringLiteral("[^a-zA-Z0-9_.-]")), QStringLiteral("_"));
+            const QString dataPath = AppPaths::userLinWidgetsDataDir() + QStringLiteral("/") + safeId;
+            QDir().mkpath(dataPath);
+            QDesktopServices::openUrl(QUrl::fromLocalFile(dataPath));
+        });
+        actionRow->addWidget(dataFolderBtn);
+
+        actionRow->addStretch();
+
+        // Uninstall button
+        auto* uninstallBtn = new QPushButton(tr("🗑 卸载"), card);
+        uninstallBtn->setCursor(Qt::PointingHandCursor);
+        uninstallBtn->setStyleSheet(QStringLiteral("QPushButton { background: transparent; color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 5px 10px; } QPushButton:hover { background: rgba(239, 68, 68, 0.2); }"));
+        connect(uninstallBtn, &QPushButton::clicked, this, [this, id = w.id, name = w.name, path = w.packagePath, instIds = w.runningInstanceIds]() {
+            uninstallWidget(id, name, path, instIds);
+        });
+        actionRow->addWidget(uninstallBtn);
+
+        cardLayout->addLayout(actionRow);
+        m_widgetsListLayout->addWidget(card);
+    }
+
+    if (matchedCount == 0) {
+        auto* emptyCard = new QWidget(m_widgetsContainer);
+        emptyCard->setStyleSheet(QStringLiteral("background: rgba(30, 41, 59, 0.4); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 40px;"));
+        auto* el = new QVBoxLayout(emptyCard);
+        el->setAlignment(Qt::AlignCenter);
+        auto* elTitle = new QLabel(tr("未匹配到任何符合条件的小组件"), emptyCard);
+        elTitle->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 13px; font-weight: 600; background: transparent;"));
+        el->addWidget(elTitle);
+        m_widgetsListLayout->addWidget(emptyCard);
+    }
+
+    m_widgetsListLayout->addStretch(1);
+}
+
+void WallpaperStudioWindow::addDevelopmentWidget() {
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("选择 LinWidget 开发工程目录"));
+    if (dir.isEmpty()) return;
+
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
+    QString errorMessage;
+    registry.load();
+    if (registry.addDevelopmentProject(dir, &errorMessage)) {
+        registry.save();
+        refreshWidgetsList();
+        QMessageBox::information(this, tr("成功"), tr("开发工程已成功添加并自动激活！"));
+    } else {
+        QMessageBox::warning(this, tr("添加失败"), errorMessage);
+    }
+}
+
+void WallpaperStudioWindow::toggleWidgetPermission(const QString& widgetId, const QString& permission, bool currentGranted) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("set_permission"));
+        req.insert(QStringLiteral("id"), widgetId);
+        req.insert(QStringLiteral("permission"), permission);
+        req.insert(QStringLiteral("granted"), !currentGranted);
+        bridge.queryWidgetManager(req);
+    }
+
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
+    registry.load();
+    const auto entry = registry.entryById(widgetId);
+    QStringList perms = entry.permissionsGranted;
+    if (currentGranted) {
+        perms.removeAll(permission);
+    } else {
+        if (!perms.contains(permission)) perms.append(permission);
+    }
+    registry.setPermissionsGranted(widgetId, perms);
+    registry.save();
+
+    refreshWidgetsList();
+}
+
+void WallpaperStudioWindow::clearWidgetStorage(const QString& widgetId, const QString& widgetName) {
+    if (QMessageBox::question(
+        this,
+        tr("清空存储"),
+        tr("确定要清空组件「%1」保存在本地的全部存储数据吗？").arg(widgetName)
+    ) != QMessageBox::Yes) {
+        return;
+    }
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.isLoaded()) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("clear_storage"));
+        req.insert(QStringLiteral("id"), widgetId);
+        bridge.queryWidgetManager(req);
+    }
+
+    const QString safeId = QString(widgetId).replace(QRegularExpression(QStringLiteral("[^a-zA-Z0-9_.-]")), QStringLiteral("_"));
+    const QString dataPath = AppPaths::userLinWidgetsDataDir() + QStringLiteral("/") + safeId;
+    if (QFileInfo::exists(dataPath)) {
+        QDir(dataPath).removeRecursively();
+    }
+
+    refreshWidgetsList();
+    QMessageBox::information(this, tr("已清空"), tr("本地存储已清空完毕。"));
+}
+
+void WallpaperStudioWindow::uninstallWidget(const QString& widgetId, const QString& widgetName, const QString& packagePath, const QStringList& runningInstanceIds) {
+    if (QMessageBox::question(
+        this,
+        tr("确认卸载"),
+        tr("确定要彻底卸载组件「%1」吗？\n如果该组件正在运行，将立即停止其窗口实例。").arg(widgetName)
+    ) != QMessageBox::Yes) {
+        return;
+    }
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    for (const QString& id : runningInstanceIds) {
+        bridge.stopWidget(id);
+    }
+
+    auto& registry = LinWidget::WidgetRegistryManager::instance();
+    registry.load();
+    registry.removeById(widgetId);
+    registry.removeDevelopmentProject(widgetId);
+    registry.save();
+
+    if (!packagePath.contains(QStringLiteral("resources/LinWidgets"), Qt::CaseInsensitive)) {
+        QDir(packagePath).removeRecursively();
+    }
+
+    refreshWidgetsList();
+    QMessageBox::information(this, tr("卸载成功"), tr("组件「%1」已卸载完毕。").arg(widgetName));
 }
 
 // -------------------------------------------------------------
