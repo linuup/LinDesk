@@ -1880,7 +1880,8 @@ bool ListView::startDesktopItemDrag(const QPoint& clickPos)
     QPixmap dragPixmap;
     QPoint hotSpot;
     if (!ghostItems.isEmpty() && ghostBounds.isValid()) {
-        const bool isOversized = ghostBounds.width() > 400 || ghostBounds.height() > 400 || ghostItems.size() > 20;
+        constexpr int kMaxDragGhostItemCount = 20;
+        const bool isOversized = ghostItems.size() > kMaxDragGhostItemCount || ghostBounds.width() > 2560 || ghostBounds.height() > 2560;
         if (isOversized) {
             const DesktopRootItemState* hitState = findDesktopStateAt(clickPos);
             DesktopRootItemRenderData primaryData = (hitState && hitState->model.visible)
