@@ -196,6 +196,37 @@ void ContextMenuSettingsPage::initUI()
     QVBoxLayout* filterToggleLayout = new QVBoxLayout(filterTogglePanel);
     filterToggleLayout->setContentsMargins(22, 10, 22, 10);
     filterToggleLayout->setSpacing(0);
+
+    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
+    const QString windows11UnsupportedTip = tr("This option is available only on Windows 11 in Release builds.");
+
+    FluentToggleSwitch* win11Toggle = new FluentToggleSwitch(filterTogglePanel);
+    win11Toggle->setChecked(RightMenu::isWindows11SystemContextMenuEnabled());
+    win11Toggle->setEnabled(windows11ContextMenuSupported);
+    if (!windows11ContextMenuSupported) {
+        win11Toggle->setToolTip(windows11UnsupportedTip);
+    }
+
+    connect(win11Toggle, &FluentToggleSwitch::toggled, this, [win11Toggle, windows11ContextMenuSupported](bool checked) {
+        if (!windows11ContextMenuSupported) {
+            if (win11Toggle) {
+                const QSignalBlocker blocker(win11Toggle);
+                win11Toggle->setChecked(false);
+            }
+            return;
+        }
+        RightMenu::setWindows11SystemContextMenuEnabled(checked);
+    });
+
+    filterToggleLayout->addWidget(createSwitchRow(
+        glyph(0xECAA),
+        tr("Enable Windows 11 Context Menu"),
+        tr("Use the modern Windows 11 context menu island for desktop items."),
+        win11Toggle,
+        filterTogglePanel));
+
+    filterToggleLayout->addWidget(createDivider(filterTogglePanel));
+
     FluentToggleSwitch* enableFilterToggle = new FluentToggleSwitch(filterTogglePanel);
     enableFilterToggle->setChecked(RightMenu::isShellMenuExclusionEnabled());
     filterToggleLayout->addWidget(createSwitchRow(

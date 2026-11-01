@@ -28,7 +28,7 @@ void FluentNavigationPanel::initDefaultItems()
 {
     m_items.clear();
     addItem(0xE713, tr("General"));
-    addItem(0xE7F8, tr("Window"));
+    addItem(0xE7F8, tr("Desktop"));
     addItem(0xECAA, tr("Context Menu"));
     addItem(0xF133, tr("Box"));
     addItem(0xF4A5, tr("LinWidgets"));
@@ -40,7 +40,7 @@ void FluentNavigationPanel::updateTranslations()
 {
     if (m_items.size() >= 7) {
         m_items[0].text = tr("General");
-        m_items[1].text = tr("Window");
+        m_items[1].text = tr("Desktop");
         m_items[2].text = tr("Context Menu");
         m_items[3].text = tr("Box");
         m_items[4].text = tr("LinWidgets");

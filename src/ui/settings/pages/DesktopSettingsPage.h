@@ -27,7 +27,6 @@ protected:
 
 private:
     void initUI();
-    QWidget* createWindows11MenuPanel(QWidget* parent);
     static void reloadSelectionOverlays();
     void queueSettingsSync();
     QTimer* m_settingsSyncTimer = nullptr;
@@ -44,4 +43,8 @@ private:
     QLabel* m_marqueeBorderValue = nullptr;
     FluentSlider* m_badgeRadiusSlider = nullptr;
     QLabel* m_badgeRadiusValue = nullptr;
+    QWidget* m_marqueeRadiusRow = nullptr;
+    QWidget* m_badgeRadiusRow = nullptr;
+    QWidget* m_advancedContainer = nullptr;
+    QLabel* m_advancedChevron = nullptr;
 };

@@ -21,6 +21,27 @@
 #include <QTimer>
 
 using namespace SettingsUICommon;
+namespace {
+class ClickFilter : public QObject {
+public:
+    ClickFilter(QObject* parent, std::function<void()> onClick)
+        : QObject(parent), m_onClick(std::move(onClick)) {}
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override {
+        if (event->type() == QEvent::MouseButtonRelease) {
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::LeftButton && m_onClick) {
+                m_onClick();
+                return true;
+            }
+        }
+        return QObject::eventFilter(obj, event);
+    }
+private:
+    std::function<void()> m_onClick;
+};
+}
+
 
 static QColor desktopSelectionFillColor(const QColor& baseColor)
 {
@@ -243,8 +264,125 @@ void DesktopSettingsPage::initUI()
 
     QSettings desktopSettings(settingsConfigPath(), QSettings::IniFormat);
 
-    // 1. Fill Opacity Slider (填充不透明度)
-    QWidget* strengthRow = new QWidget(selectionPanel);
+    // 1. Toggle 1: Modern Glass Marquee (Apple / macOS 现代极简玻璃质感选框)
+    QWidget* fluentRow = new QWidget(selectionPanel);
+    fluentRow->setObjectName("settingsInnerRow");
+    fluentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* fluentLayout = new QHBoxLayout(fluentRow);
+    fluentLayout->setContentsMargins(14, 8, 14, 8);
+    fluentLayout->setSpacing(12);
+
+    QVBoxLayout* fluentText = new QVBoxLayout();
+    fluentText->setContentsMargins(0, 0, 0, 0);
+    fluentText->setSpacing(2);
+    QLabel* fluentTitle = new QLabel(tr("Modern Glass Marquee"), fluentRow);
+    fluentTitle->setObjectName("rowTitle");
+    fluentTitle->setWordWrap(true);
+    fluentTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QLabel* fluentSubtitle = new QLabel(tr("Refined translucent optical glass fill with subtle continuous curvature and hairline border."), fluentRow);
+    fluentSubtitle->setObjectName("rowSubtitle");
+    fluentSubtitle->setWordWrap(true);
+    fluentSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    fluentText->addWidget(fluentTitle);
+    fluentText->addWidget(fluentSubtitle);
+    fluentLayout->addLayout(fluentText, 1);
+
+    m_fluentSelectionToggle = new FluentToggleSwitch(fluentRow);
+    const bool isFluentEnabled = desktopSettings.value("Desktop/FluentSelectionMarquee", true).toBool();
+    m_fluentSelectionToggle->setChecked(isFluentEnabled);
+    fluentLayout->addWidget(m_fluentSelectionToggle, 0, Qt::AlignRight | Qt::AlignVCenter);
+
+    selectionLayout->addWidget(createDivider(selectionPanel));
+    selectionLayout->addWidget(fluentRow);
+
+    // 2. Toggle 2: Selection Count Badge (独立数量胶囊开关)
+    QWidget* badgeRow = new QWidget(selectionPanel);
+    badgeRow->setObjectName("settingsInnerRow");
+    badgeRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* badgeLayout = new QHBoxLayout(badgeRow);
+    badgeLayout->setContentsMargins(14, 8, 14, 8);
+    badgeLayout->setSpacing(12);
+
+    QVBoxLayout* badgeText = new QVBoxLayout();
+    badgeText->setContentsMargins(0, 0, 0, 0);
+    badgeText->setSpacing(2);
+    QLabel* badgeTitle = new QLabel(tr("Selection Count Badge"), badgeRow);
+    badgeTitle->setObjectName("rowTitle");
+    badgeTitle->setWordWrap(true);
+    badgeTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QLabel* badgeSubtitle = new QLabel(tr("Display an Apple-style floating count capsule when selecting multiple desktop items."), badgeRow);
+    badgeSubtitle->setObjectName("rowSubtitle");
+    badgeSubtitle->setWordWrap(true);
+    badgeSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    badgeText->addWidget(badgeTitle);
+    badgeText->addWidget(badgeSubtitle);
+    badgeLayout->addLayout(badgeText, 1);
+
+    m_selectionCountBadgeToggle = new FluentToggleSwitch(badgeRow);
+    const bool isBadgeEnabled = desktopSettings.value("Desktop/SelectionCountBadgeEnabled", false).toBool();
+    m_selectionCountBadgeToggle->setChecked(isBadgeEnabled);
+    badgeLayout->addWidget(m_selectionCountBadgeToggle, 0, Qt::AlignRight | Qt::AlignVCenter);
+
+    selectionLayout->addWidget(createDivider(selectionPanel));
+    selectionLayout->addWidget(badgeRow);
+
+    // 3. Expandable Header: Advanced Visual Options (折叠抽屉式高级细节微调)
+    QWidget* advancedHeaderRow = new QWidget(selectionPanel);
+    advancedHeaderRow->setObjectName("settingsInnerRow");
+    advancedHeaderRow->setCursor(Qt::PointingHandCursor);
+    advancedHeaderRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* advancedHeaderLayout = new QHBoxLayout(advancedHeaderRow);
+    advancedHeaderLayout->setContentsMargins(14, 10, 14, 10);
+    advancedHeaderLayout->setSpacing(12);
+
+    advancedHeaderLayout->addWidget(createGlyphLabel(glyph(0xEB48), advancedHeaderRow, 18, QColor("#5b6b86")));
+
+    QVBoxLayout* advancedHeaderText = new QVBoxLayout();
+    advancedHeaderText->setContentsMargins(0, 0, 0, 0);
+    advancedHeaderText->setSpacing(2);
+    QLabel* advancedTitle = new QLabel(tr("Advanced Visual Options"), advancedHeaderRow);
+    advancedTitle->setObjectName("rowTitle");
+    advancedTitle->setWordWrap(true);
+    advancedTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QLabel* advancedSubtitle = new QLabel(tr("Fine-tune opacity, contrast, border width, and corner radii."), advancedHeaderRow);
+    advancedSubtitle->setObjectName("rowSubtitle");
+    advancedSubtitle->setWordWrap(true);
+    advancedSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    advancedHeaderText->addWidget(advancedTitle);
+    advancedHeaderText->addWidget(advancedSubtitle);
+    advancedHeaderLayout->addLayout(advancedHeaderText, 1);
+
+    m_advancedChevron = createGlyphLabel(glyph(0xE70D), advancedHeaderRow, 14, QColor("#5b6b86"));
+    advancedHeaderLayout->addWidget(m_advancedChevron, 0, Qt::AlignRight | Qt::AlignVCenter);
+
+    selectionLayout->addWidget(createDivider(selectionPanel));
+    selectionLayout->addWidget(advancedHeaderRow);
+
+    // 4. Collapsible Container for Fine-Tuning Sliders
+    m_advancedContainer = new QWidget(selectionPanel);
+    m_advancedContainer->setObjectName("advancedOptionsContainer");
+    m_advancedContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* advancedLayout = new QVBoxLayout(m_advancedContainer);
+    advancedLayout->setContentsMargins(0, 0, 0, 0);
+    advancedLayout->setSpacing(0);
+    m_advancedContainer->setVisible(false); // Default collapsed for clean aesthetics!
+
+    // Click handler to toggle expansion
+    auto toggleAdvanced = [this]() {
+        if (!m_advancedContainer) return;
+        const bool willShow = !m_advancedContainer->isVisible();
+        m_advancedContainer->setVisible(willShow);
+        if (m_advancedChevron) {
+            m_advancedChevron->setText(glyph(willShow ? 0xE70E : 0xE70D));
+        }
+    };
+    advancedHeaderRow->installEventFilter(new ClickFilter(advancedHeaderRow, toggleAdvanced));
+    for (QWidget* child : advancedHeaderRow->findChildren<QWidget*>()) {
+        child->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    }
+
+    // Inside Advanced: 4.1 Fill Opacity Slider
+    QWidget* strengthRow = new QWidget(m_advancedContainer);
     strengthRow->setObjectName("settingsInnerRow");
     strengthRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QHBoxLayout* strengthLayout = new QHBoxLayout(strengthRow);
@@ -285,11 +423,11 @@ void DesktopSettingsPage::initUI()
         settings.sync();
         reloadSelectionOverlays();
     });
-    selectionLayout->addWidget(strengthRow);
-    selectionLayout->addWidget(createDivider(selectionPanel));
+    advancedLayout->addWidget(strengthRow);
+    advancedLayout->addWidget(createDivider(m_advancedContainer));
 
-    // 2. Border Opacity / Contrast Slider (边框不透明度 / 对比度)
-    QWidget* contrastRow = new QWidget(selectionPanel);
+    // Inside Advanced: 4.2 Border Opacity / Contrast Slider
+    QWidget* contrastRow = new QWidget(m_advancedContainer);
     contrastRow->setObjectName("settingsInnerRow");
     contrastRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QHBoxLayout* contrastLayout = new QHBoxLayout(contrastRow);
@@ -330,11 +468,11 @@ void DesktopSettingsPage::initUI()
         settings.sync();
         reloadSelectionOverlays();
     });
-    selectionLayout->addWidget(contrastRow);
-    selectionLayout->addWidget(createDivider(selectionPanel));
+    advancedLayout->addWidget(contrastRow);
+    advancedLayout->addWidget(createDivider(m_advancedContainer));
 
-    // 3. Border Width Slider (独立呈现的边框粗细，0.1px 高精度)
-    QWidget* marqueeBorderRow = new QWidget(selectionPanel);
+    // Inside Advanced: 4.3 Border Width Slider
+    QWidget* marqueeBorderRow = new QWidget(m_advancedContainer);
     marqueeBorderRow->setObjectName("settingsInnerRow");
     marqueeBorderRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QHBoxLayout* marqueeBorderLayout = new QHBoxLayout(marqueeBorderRow);
@@ -383,72 +521,35 @@ void DesktopSettingsPage::initUI()
         settings.sync();
         reloadSelectionOverlays();
     });
-    selectionLayout->addWidget(marqueeBorderRow);
+    advancedLayout->addWidget(marqueeBorderRow);
+    advancedLayout->addWidget(createDivider(m_advancedContainer));
 
-    // 4. Toggle 1: Modern Glass Marquee (Apple / macOS 现代极简玻璃质感选框)
-    QWidget* fluentRow = new QWidget(selectionPanel);
-    fluentRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QHBoxLayout* fluentLayout = new QHBoxLayout(fluentRow);
-    fluentLayout->setContentsMargins(14, 8, 14, 8);
-    fluentLayout->setSpacing(12);
-
-    QVBoxLayout* fluentText = new QVBoxLayout();
-    fluentText->setContentsMargins(0, 0, 0, 0);
-    fluentText->setSpacing(2);
-    QLabel* fluentTitle = new QLabel(tr("Modern Glass Marquee"), fluentRow);
-    fluentTitle->setObjectName("rowTitle");
-    fluentTitle->setWordWrap(true);
-    fluentTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QLabel* fluentSubtitle = new QLabel(tr("Refined translucent optical glass fill with subtle continuous curvature and hairline border."), fluentRow);
-    fluentSubtitle->setObjectName("rowSubtitle");
-    fluentSubtitle->setWordWrap(true);
-    fluentSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    fluentText->addWidget(fluentTitle);
-    fluentText->addWidget(fluentSubtitle);
-    fluentLayout->addLayout(fluentText, 1);
-
-    m_fluentSelectionToggle = new FluentToggleSwitch(fluentRow);
-    const bool isFluentEnabled = desktopSettings.value("Desktop/FluentSelectionMarquee", true).toBool();
-    m_fluentSelectionToggle->setChecked(isFluentEnabled);
-    fluentLayout->addWidget(m_fluentSelectionToggle, 0, Qt::AlignRight | Qt::AlignVCenter);
-
-    connect(m_fluentSelectionToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
-        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
-        settings.setValue("Desktop/FluentSelectionMarquee", checked);
-        settings.sync();
-        reloadSelectionOverlays();
-        updatePreview();
-    });
-
-    selectionLayout->addWidget(createDivider(selectionPanel));
-    selectionLayout->addWidget(fluentRow);
-
-    // Slider: Marquee Corner Radius (选框圆角弧度滑块)
-    QWidget* marqueeRadiusRow = new QWidget(selectionPanel);
-    marqueeRadiusRow->setObjectName("settingsInnerRow");
-    marqueeRadiusRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QHBoxLayout* marqueeRadiusLayout = new QHBoxLayout(marqueeRadiusRow);
+    // Inside Advanced: 4.4 Marquee Corner Radius Slider (with dynamic enabled state)
+    m_marqueeRadiusRow = new QWidget(m_advancedContainer);
+    m_marqueeRadiusRow->setObjectName("settingsInnerRow");
+    m_marqueeRadiusRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* marqueeRadiusLayout = new QHBoxLayout(m_marqueeRadiusRow);
     marqueeRadiusLayout->setContentsMargins(14, 8, 14, 8);
     marqueeRadiusLayout->setSpacing(12);
     QVBoxLayout* marqueeRadiusText = new QVBoxLayout();
     marqueeRadiusText->setContentsMargins(0, 0, 0, 0);
     marqueeRadiusText->setSpacing(2);
-    QLabel* marqueeRadiusTitle = new QLabel(tr("Marquee Corner Radius"), marqueeRadiusRow);
+    QLabel* marqueeRadiusTitle = new QLabel(tr("Marquee Corner Radius"), m_marqueeRadiusRow);
     marqueeRadiusTitle->setObjectName("rowTitle");
     marqueeRadiusTitle->setWordWrap(true);
     marqueeRadiusTitle->setMinimumWidth(0);
     marqueeRadiusTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     marqueeRadiusText->addWidget(marqueeRadiusTitle);
     marqueeRadiusLayout->addLayout(marqueeRadiusText, 1);
-    marqueeRadiusLayout->addWidget(createGlyphLabel(glyph(0xE91B), marqueeRadiusRow, 18, QColor("#5b6b86")));
-    m_marqueeRadiusSlider = new FluentSlider(Qt::Horizontal, marqueeRadiusRow);
+    marqueeRadiusLayout->addWidget(createGlyphLabel(glyph(0xE91B), m_marqueeRadiusRow, 18, QColor("#5b6b86")));
+    m_marqueeRadiusSlider = new FluentSlider(Qt::Horizontal, m_marqueeRadiusRow);
     m_marqueeRadiusSlider->setRange(0, 16);
     m_marqueeRadiusSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionCornerRadius", 5).toInt(), 16));
     m_marqueeRadiusSlider->setMinimumWidth(120);
     m_marqueeRadiusSlider->setMaximumWidth(160);
     m_marqueeRadiusSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     marqueeRadiusLayout->addWidget(m_marqueeRadiusSlider, 2);
-    m_marqueeRadiusValue = new QLabel(QStringLiteral("%1 px").arg(m_marqueeRadiusSlider->value()), marqueeRadiusRow);
+    m_marqueeRadiusValue = new QLabel(QStringLiteral("%1 px").arg(m_marqueeRadiusSlider->value()), m_marqueeRadiusRow);
     m_marqueeRadiusValue->setObjectName("valueLabel");
     m_marqueeRadiusValue->setFixedWidth(44);
     m_marqueeRadiusValue->setAlignment(Qt::AlignCenter);
@@ -465,72 +566,53 @@ void DesktopSettingsPage::initUI()
         settings.sync();
         reloadSelectionOverlays();
     });
-    selectionLayout->addWidget(marqueeRadiusRow);
+    advancedLayout->addWidget(m_marqueeRadiusRow);
+    advancedLayout->addWidget(createDivider(m_advancedContainer));
 
-    // Toggle 2: Selection Count Badge (独立数量胶囊开关)
-    QWidget* badgeRow = new QWidget(selectionPanel);
-    badgeRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QHBoxLayout* badgeLayout = new QHBoxLayout(badgeRow);
-    badgeLayout->setContentsMargins(14, 8, 14, 8);
-    badgeLayout->setSpacing(12);
+    // Dynamic state updater for Marquee Radius
+    auto updateMarqueeRadiusState = [this](bool enabled) {
+        if (m_marqueeRadiusRow) {
+            m_marqueeRadiusRow->setEnabled(enabled);
+            if (m_marqueeRadiusSlider) m_marqueeRadiusSlider->setEnabled(enabled);
+        }
+    };
+    updateMarqueeRadiusState(isFluentEnabled);
 
-    QVBoxLayout* badgeText = new QVBoxLayout();
-    badgeText->setContentsMargins(0, 0, 0, 0);
-    badgeText->setSpacing(2);
-    QLabel* badgeTitle = new QLabel(tr("Selection Count Badge"), badgeRow);
-    badgeTitle->setObjectName("rowTitle");
-    badgeTitle->setWordWrap(true);
-    badgeTitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QLabel* badgeSubtitle = new QLabel(tr("Display an Apple-style floating count capsule when selecting multiple desktop items."), badgeRow);
-    badgeSubtitle->setObjectName("rowSubtitle");
-    badgeSubtitle->setWordWrap(true);
-    badgeSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    badgeText->addWidget(badgeTitle);
-    badgeText->addWidget(badgeSubtitle);
-    badgeLayout->addLayout(badgeText, 1);
-
-    m_selectionCountBadgeToggle = new FluentToggleSwitch(badgeRow);
-    const bool isBadgeEnabled = desktopSettings.value("Desktop/SelectionCountBadgeEnabled", false).toBool();
-    m_selectionCountBadgeToggle->setChecked(isBadgeEnabled);
-    badgeLayout->addWidget(m_selectionCountBadgeToggle, 0, Qt::AlignRight | Qt::AlignVCenter);
-
-    connect(m_selectionCountBadgeToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
+    connect(m_fluentSelectionToggle, &FluentToggleSwitch::toggled, this, [this, updateMarqueeRadiusState](bool checked) {
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
-        settings.setValue("Desktop/SelectionCountBadgeEnabled", checked);
+        settings.setValue("Desktop/FluentSelectionMarquee", checked);
         settings.sync();
         reloadSelectionOverlays();
+        updateMarqueeRadiusState(checked);
         updatePreview();
     });
 
-    selectionLayout->addWidget(createDivider(selectionPanel));
-    selectionLayout->addWidget(badgeRow);
-
-    // Slider: Badge Corner Radius (徽章圆角弧度滑块)
-    QWidget* badgeRadiusRow = new QWidget(selectionPanel);
-    badgeRadiusRow->setObjectName("settingsInnerRow");
-    badgeRadiusRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QHBoxLayout* badgeRadiusLayout = new QHBoxLayout(badgeRadiusRow);
+    // Inside Advanced: 4.5 Badge Corner Radius Slider (with dynamic enabled state)
+    m_badgeRadiusRow = new QWidget(m_advancedContainer);
+    m_badgeRadiusRow->setObjectName("settingsInnerRow");
+    m_badgeRadiusRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* badgeRadiusLayout = new QHBoxLayout(m_badgeRadiusRow);
     badgeRadiusLayout->setContentsMargins(14, 8, 14, 8);
     badgeRadiusLayout->setSpacing(12);
     QVBoxLayout* badgeRadiusText = new QVBoxLayout();
     badgeRadiusText->setContentsMargins(0, 0, 0, 0);
     badgeRadiusText->setSpacing(2);
-    QLabel* badgeRadiusTitle = new QLabel(tr("Badge Corner Radius"), badgeRadiusRow);
+    QLabel* badgeRadiusTitle = new QLabel(tr("Badge Corner Radius"), m_badgeRadiusRow);
     badgeRadiusTitle->setObjectName("rowTitle");
     badgeRadiusTitle->setWordWrap(true);
     badgeRadiusTitle->setMinimumWidth(0);
     badgeRadiusTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     badgeRadiusText->addWidget(badgeRadiusTitle);
     badgeRadiusLayout->addLayout(badgeRadiusText, 1);
-    badgeRadiusLayout->addWidget(createGlyphLabel(glyph(0xE7B8), badgeRadiusRow, 18, QColor("#5b6b86")));
-    m_badgeRadiusSlider = new FluentSlider(Qt::Horizontal, badgeRadiusRow);
+    badgeRadiusLayout->addWidget(createGlyphLabel(glyph(0xE7B8), m_badgeRadiusRow, 18, QColor("#5b6b86")));
+    m_badgeRadiusSlider = new FluentSlider(Qt::Horizontal, m_badgeRadiusRow);
     m_badgeRadiusSlider->setRange(0, 11);
     m_badgeRadiusSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionBadgeRadius", 11).toInt(), 11));
     m_badgeRadiusSlider->setMinimumWidth(120);
     m_badgeRadiusSlider->setMaximumWidth(160);
     m_badgeRadiusSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     badgeRadiusLayout->addWidget(m_badgeRadiusSlider, 2);
-    m_badgeRadiusValue = new QLabel(QStringLiteral("%1 px").arg(m_badgeRadiusSlider->value()), badgeRadiusRow);
+    m_badgeRadiusValue = new QLabel(QStringLiteral("%1 px").arg(m_badgeRadiusSlider->value()), m_badgeRadiusRow);
     m_badgeRadiusValue->setObjectName("valueLabel");
     m_badgeRadiusValue->setFixedWidth(44);
     m_badgeRadiusValue->setAlignment(Qt::AlignCenter);
@@ -547,7 +629,27 @@ void DesktopSettingsPage::initUI()
         settings.sync();
         reloadSelectionOverlays();
     });
-    selectionLayout->addWidget(badgeRadiusRow);
+    advancedLayout->addWidget(m_badgeRadiusRow);
+
+    // Dynamic state updater for Badge Radius
+    auto updateBadgeRadiusState = [this](bool enabled) {
+        if (m_badgeRadiusRow) {
+            m_badgeRadiusRow->setEnabled(enabled);
+            if (m_badgeRadiusSlider) m_badgeRadiusSlider->setEnabled(enabled);
+        }
+    };
+    updateBadgeRadiusState(isBadgeEnabled);
+
+    connect(m_selectionCountBadgeToggle, &FluentToggleSwitch::toggled, this, [this, updateBadgeRadiusState](bool checked) {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+        settings.setValue("Desktop/SelectionCountBadgeEnabled", checked);
+        settings.sync();
+        reloadSelectionOverlays();
+        updateBadgeRadiusState(checked);
+        updatePreview();
+    });
+
+    selectionLayout->addWidget(m_advancedContainer);
     layout->addWidget(selectionPanel, 0);
 
     // 3. Desktop Behavior Panel
@@ -592,53 +694,13 @@ void DesktopSettingsPage::initUI()
 
     layout->addWidget(behaviorPanel, 0);
 
-    // 4. Windows 11 Context Menu Panel
-    layout->addWidget(createWindows11MenuPanel(this), 0);
+
 
     layout->addStretch();
     updatePreview();
 }
 
-QWidget* DesktopSettingsPage::createWindows11MenuPanel(QWidget* parent)
-{
-    QWidget* win11MenuPanel = createPanel(parent);
-    win11MenuPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    QVBoxLayout* win11MenuLayout = new QVBoxLayout(win11MenuPanel);
-    win11MenuLayout->setContentsMargins(22, 18, 22, 18);
-    win11MenuLayout->setSpacing(0);
-    win11MenuLayout->addWidget(createCardTitle(tr("Windows11 Menu"), win11MenuPanel));
-    win11MenuLayout->addSpacing(12);
 
-    const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
-    const QString windows11UnsupportedTip = tr("This option is available only on Windows 11 in Release builds.");
-
-    FluentToggleSwitch* win11Toggle = new FluentToggleSwitch(parent);
-    win11Toggle->setChecked(RightMenu::isWindows11SystemContextMenuEnabled());
-    win11Toggle->setEnabled(windows11ContextMenuSupported);
-    if (!windows11ContextMenuSupported) {
-        win11Toggle->setToolTip(windows11UnsupportedTip);
-    }
-
-    connect(win11Toggle, &FluentToggleSwitch::toggled, this, [win11Toggle, windows11ContextMenuSupported](bool checked) {
-        if (!windows11ContextMenuSupported) {
-            if (win11Toggle) {
-                const QSignalBlocker blocker(win11Toggle);
-                win11Toggle->setChecked(false);
-            }
-            return;
-        }
-        RightMenu::setWindows11SystemContextMenuEnabled(checked);
-    });
-
-    win11MenuLayout->addWidget(createSwitchRow(
-        glyph(0xECAA),
-        tr("Enable Windows 11 Context Menu"),
-        tr("Use the modern Windows 11 context menu island for desktop items."),
-        win11Toggle,
-        win11MenuPanel));
-
-    return win11MenuPanel;
-}
 
 void DesktopSettingsPage::resizeEvent(QResizeEvent* event)
 {
