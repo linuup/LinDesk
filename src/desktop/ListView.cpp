@@ -1516,17 +1516,15 @@ void ListView::paintEvent(QPaintEvent* event)
                 }
             }
         } else {
-            // 经典 Windows 原生矩形选框 (独立响应边框粗细)
+            // 经典 Windows 原生矩形选框 (先填充内部半透明底色，再绘制可选边框)
             const qreal bWidth = qBound(0.0, m_selectionBorderWidth, 3.0);
+            painter.fillRect(selRect, m_selectionFillColor);
             if (bWidth > 0.05) {
                 painter.setPen(QPen(m_selectionBorderColor, bWidth));
+                painter.setBrush(Qt::NoBrush);
                 const qreal halfW = bWidth / 2.0;
                 painter.drawRect(QRectF(selRect).adjusted(halfW, halfW, -halfW, -halfW));
-            } else {
-                painter.setPen(Qt::NoPen);
-                painter.drawRect(QRectF(selRect));
             }
-            painter.setBrush(m_selectionFillColor);
         }
 
         painter.restore();

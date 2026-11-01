@@ -2764,16 +2764,15 @@ void LinBox::paintEvent(QPaintEvent* event) {
                         }
                     }
                 } else {
+                    // 经典 Windows 原生矩形选框 (先填充内部半透明底色，再绘制可选边框)
                     const qreal bWidth = qBound(0.0, m_selectionBorderWidth, 3.0);
+                    p.fillRect(boxSelectionRect, m_selectionFillColor);
                     if (bWidth > 0.05) {
                         p.setPen(QPen(m_selectionBorderColor, bWidth));
+                        p.setBrush(Qt::NoBrush);
                         const qreal halfW = bWidth / 2.0;
                         p.drawRect(QRectF(boxSelectionRect).adjusted(halfW, halfW, -halfW, -halfW));
-                    } else {
-                        p.setPen(Qt::NoPen);
-                        p.drawRect(QRectF(boxSelectionRect));
                     }
-                    p.setBrush(m_selectionFillColor);
                 }
             }
         }
