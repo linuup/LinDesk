@@ -35,40 +35,35 @@
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans selection:bg-indigo-500 selection:text-white flex flex-col p-4 md:p-6 overflow-x-hidden">
 
   <!-- Top Navigation & Header -->
-  <header class="max-w-7xl w-full mx-auto mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-5">
-    <div>
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-          </svg>
-        </div>
-        <div>
-          <h1 class="text-xl md:text-2xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-            LinDesk 动态壁纸管理中心 (Live Wallpaper Hub)
-          </h1>
-          <p class="text-xs text-slate-400">基于 CEF OSR 硬件加速 · 桌面三层协同与壁纸工坊可视化设计</p>
-        </div>
+  <header class="max-w-7xl w-full mx-auto mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b border-slate-800/80 pb-3">
+    <!-- Active Section Breadcrumb / Label (Clean, no redundant duplicate LinDesk Hub title) -->
+    <div class="flex items-center gap-2.5">
+      <div id="section-icon-badge" class="w-8 h-8 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center text-sm font-semibold shrink-0">
+        🧩
+      </div>
+      <div>
+        <div id="section-title" class="text-sm font-bold text-white tracking-tight">桌面组件管理 (LinWidgets)</div>
+        <div id="section-desc" class="text-[11px] text-slate-400">Windows 桌面三层协同与轻量化独立小组件管理</div>
       </div>
     </div>
 
     <!-- Navigation Pills -->
-    <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1.5 shadow-inner">
-      <button id="nav-widgets" onclick="switchMainTab('widgets')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-        桌面组件管理 (LinWidgets)
+    <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-inner shrink-0">
+      <button id="nav-widgets" onclick="switchMainTab('widgets')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+        桌面组件
       </button>
-      <button id="nav-gallery" onclick="switchMainTab('gallery')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-        壁纸画廊与控制
+      <button id="nav-gallery" onclick="switchMainTab('gallery')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+        壁纸画廊
       </button>
-      <button id="nav-studio" onclick="switchMainTab('studio')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-        壁纸工坊 (Studio 调参)
+      <button id="nav-studio" onclick="switchMainTab('studio')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+        壁纸工坊
       </button>
-      <button id="nav-desktop" onclick="switchMainTab('desktop')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-        开发者控制台与日志
+      <button id="nav-desktop" onclick="switchMainTab('desktop')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+        控制台与日志
       </button>
     </div>
   </header>
@@ -788,15 +783,30 @@
       tabs.forEach(t => {
         const btn = document.getElementById(`nav-${t}`);
         if (btn) {
-          btn.className = "px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2";
+          btn.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-1.5";
         }
       });
 
       document.getElementById(`tab-${tab}`).classList.remove('hidden');
       const activeBtn = document.getElementById(`nav-${tab}`);
       if (activeBtn) {
-        activeBtn.className = "px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2";
+        activeBtn.className = "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-1.5";
       }
+
+      // Update section breadcrumb header
+      const sectionMeta = {
+        widgets: { icon: '🧩', title: '桌面组件管理 (LinWidgets)', desc: 'Windows 桌面三层协同与轻量化独立小组件管理' },
+        gallery: { icon: '🎨', title: '动态壁纸画廊 (Live Wallpaper)', desc: '60 FPS 硬件加速相对论黑洞、代码雨与流体极光壁纸预设' },
+        studio: { icon: '🛠️', title: '动态壁纸工坊 (Studio 调参)', desc: '实时参数微调、吸积盘光晕、鼠标微尘扰动与滤镜特效' },
+        desktop: { icon: '🖥️', title: '系统协同与运行日志 (Console)', desc: 'Windows 桌面右键上下文菜单、IPC 消息总线透视与实时运行日志' }
+      };
+      const meta = sectionMeta[tab] || sectionMeta.widgets;
+      const elIcon = document.getElementById('section-icon-badge');
+      const elTitle = document.getElementById('section-title');
+      const elDesc = document.getElementById('section-desc');
+      if (elIcon) elIcon.textContent = meta.icon;
+      if (elTitle) elTitle.textContent = meta.title;
+      if (elDesc) elDesc.textContent = meta.desc;
 
       if (tab === 'widgets') {
         renderWidgets();

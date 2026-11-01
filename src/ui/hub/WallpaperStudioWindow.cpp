@@ -205,7 +205,7 @@ void WallpaperStudioWindow::initUI() {
 
     // Explicitly enforce styled background to prevent transparent window bleedthrough
     if (m_btnContainer) {
-        m_btnContainer->setFixedHeight(40);
+        m_btnContainer->setFixedHeight(36);
         m_btnContainer->setAttribute(Qt::WA_StyledBackground, true);
         m_btnContainer->setObjectName(QStringLiteral("hubTitleBar"));
         m_btnContainer->setStyleSheet(QStringLiteral(
@@ -219,18 +219,18 @@ void WallpaperStudioWindow::initUI() {
 
         // Add brand icon, title, and badge on the left side of titlebar
         auto* iconLabel = new QLabel(m_btnContainer);
-        iconLabel->setFixedSize(24, 24);
+        iconLabel->setFixedSize(22, 22);
         iconLabel->setAlignment(Qt::AlignCenter);
         iconLabel->setStyleSheet(QStringLiteral(
             "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f46e5, stop:1 #7c3aed);"
-            "border-radius: 6px;"
+            "border-radius: 5px;"
             "color: #ffffff;"
             "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
-            "font-size: 13px;"
+            "font-size: 12px;"
         ));
         iconLabel->setText(glyph(0xEB9F));
 
-        auto* titleLabel = new QLabel(tr("LinDesk Hub · 桌面组件与壁纸管理中心"), m_btnContainer);
+        auto* titleLabel = new QLabel(tr("LinDesk Hub"), m_btnContainer);
         titleLabel->setStyleSheet(QStringLiteral(
             "color: #f1f5f9; font-size: 13px; font-weight: 600; font-family: %1;"
         ).arg(AppFonts::uiCssFamily()));
@@ -247,32 +247,76 @@ void WallpaperStudioWindow::initUI() {
         ));
 
         if (m_btnLayout) {
-            m_btnLayout->setContentsMargins(14, 0, 0, 0);
-            m_btnLayout->setSpacing(10);
-            m_btnLayout->insertWidget(0, iconLabel);
-            m_btnLayout->insertWidget(1, titleLabel);
-            m_btnLayout->insertWidget(2, badgeLabel);
-        }
-    }
+            // Remove any previously added items to cleanly structure spacing
+            while (m_btnLayout->count() > 0) {
+                m_btnLayout->takeAt(0);
+            }
 
-    // Style the titlebar buttons for dark acrylic backdrop
-    if (m_minBtn) {
-        m_minBtn->setStyleSheet(QStringLiteral(
-            "QPushButton { font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #cbd5e1; }"
-            "QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }"
-        ));
-    }
-    if (m_maxBtn) {
-        m_maxBtn->setStyleSheet(QStringLiteral(
-            "QPushButton { font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #cbd5e1; }"
-            "QPushButton:hover { background: rgba(255, 255, 255, 0.1); color: #ffffff; }"
-        ));
-    }
-    if (m_closeBtn) {
-        m_closeBtn->setStyleSheet(QStringLiteral(
-            "QPushButton { font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #cbd5e1; }"
-            "QPushButton#closeBtn:hover { background: #e11d48; color: #ffffff; }"
-        ));
+            m_btnLayout->setContentsMargins(12, 0, 0, 0);
+            m_btnLayout->setSpacing(0); // Window buttons must have 0 spacing!
+
+            auto* leftTitleWidget = new QWidget(m_btnContainer);
+            auto* leftLayout = new QHBoxLayout(leftTitleWidget);
+            leftLayout->setContentsMargins(0, 0, 0, 0);
+            leftLayout->setSpacing(8);
+            leftLayout->addWidget(iconLabel);
+            leftLayout->addWidget(titleLabel);
+            leftLayout->addWidget(badgeLabel);
+
+            m_btnLayout->addWidget(leftTitleWidget);
+            m_btnLayout->addStretch(1);
+
+            // Re-add window control buttons with exact full-height and corner clipping
+            if (m_minBtn) {
+                m_minBtn->setFixedSize(46, 36);
+                m_minBtn->setStyleSheet(QStringLiteral(
+                    "QPushButton#minBtn {"
+                    "  font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #94a3b8; border-radius: 0px;"
+                    "}"
+                    "QPushButton#minBtn:hover {"
+                    "  background: rgba(255, 255, 255, 0.08); color: #ffffff;"
+                    "}"
+                    "QPushButton#minBtn:pressed {"
+                    "  background: rgba(255, 255, 255, 0.04);"
+                    "}"
+                ));
+                m_btnLayout->addWidget(m_minBtn);
+            }
+            if (m_maxBtn) {
+                m_maxBtn->setFixedSize(46, 36);
+                m_maxBtn->setStyleSheet(QStringLiteral(
+                    "QPushButton#maxBtn {"
+                    "  font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #94a3b8; border-radius: 0px;"
+                    "}"
+                    "QPushButton#maxBtn:hover {"
+                    "  background: rgba(255, 255, 255, 0.08); color: #ffffff;"
+                    "}"
+                    "QPushButton#maxBtn:pressed {"
+                    "  background: rgba(255, 255, 255, 0.04);"
+                    "}"
+                ));
+                m_btnLayout->addWidget(m_maxBtn);
+            }
+            if (m_closeBtn) {
+                m_closeBtn->setFixedSize(46, 36);
+                m_closeBtn->setStyleSheet(QStringLiteral(
+                    "QPushButton#closeBtn {"
+                    "  font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #94a3b8;"
+                    "  border-radius: 0px;"
+                    "  border-top-right-radius: 12px;"
+                    "}"
+                    "QPushButton#closeBtn:hover {"
+                    "  background: #e11d48; color: #ffffff;"
+                    "  border-top-right-radius: 12px;"
+                    "}"
+                    "QPushButton#closeBtn:pressed {"
+                    "  background: #be123c; color: #ffffff;"
+                    "  border-top-right-radius: 12px;"
+                    "}"
+                ));
+                m_btnLayout->addWidget(m_closeBtn);
+            }
+        }
     }
 
     if (container()) {
