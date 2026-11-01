@@ -1499,10 +1499,12 @@ void ListView::paintEvent(QPaintEvent* event)
 
     const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
     const qreal currentOpacity = isFading ? m_desktopElementsOpacity : (m_iconShowRule.showDesktopIcons ? 1.0 : 0.0);
-    if (currentOpacity <= 0.0) {
+    if (currentOpacity <= 0.0 && !isFading) {
         return;
     }
-    painter.setOpacity(currentOpacity);
+    if (!isFading) {
+        painter.setOpacity(currentOpacity);
+    }
 
     auto paintDesktopState = [&](const DesktopRootItemState& state) {
         if (!shouldPaintDesktopModelState(state)) {
@@ -1514,8 +1516,27 @@ void ListView::paintEvent(QPaintEvent* event)
             return;
         }
 
-        paintDesktopRootItemDynamic(painter, state.model.renderData);
-        paintDesktopRootItemStatic(painter, state.model.renderData);
+        if (isFading) {
+            const QRect totalRect = state.model.renderData.itemRect.united(state.model.renderData.textRect);
+            const ItemHideTransform xform = computeItemHideTransform(totalRect.center());
+            if (xform.opacity <= 0.001) {
+                return;
+            }
+            painter.save();
+            if (std::abs(xform.scale - 1.0) > 0.001 || std::abs(xform.dy) > 0.05) {
+                const QPointF c = totalRect.center();
+                painter.translate(c.x(), c.y() + xform.dy);
+                painter.scale(xform.scale, xform.scale);
+                painter.translate(-c.x(), -c.y());
+            }
+            painter.setOpacity(xform.opacity);
+            paintDesktopRootItemDynamic(painter, state.model.renderData);
+            paintDesktopRootItemStatic(painter, state.model.renderData);
+            painter.restore();
+        } else {
+            paintDesktopRootItemDynamic(painter, state.model.renderData);
+            paintDesktopRootItemStatic(painter, state.model.renderData);
+        }
     };
 
     const QRect dirtyBoundingRect = dirtyRegion.boundingRect();
@@ -2328,6 +2349,7 @@ void ListView::mouseDoubleClickEvent(QMouseEvent* event)
         }
 
         if (m_iconShowRule.doubleClickHideIcons) {
+            m_hideAnimationOriginPos = event->pos();
             onMenuShowDesktopIcons();
             event->accept();
             return;
@@ -2710,6 +2732,7 @@ void ListView::initialize()
     QSettings deskSettings(AppPaths::configFilePath(), QSettings::IniFormat);
     m_iconShowRule.doubleClickHideIcons = deskSettings.value(QStringLiteral("Desktop/DoubleClickHideIcons"), true).toBool();
     m_fadeTransitionOnHide = deskSettings.value(QStringLiteral("Desktop/FadeTransitionOnHide"), true).toBool();
+    m_hideAnimationStyle = static_cast<DesktopHideAnimationStyle>(deskSettings.value(QStringLiteral("Desktop/HideAnimationStyle"), static_cast<int>(DesktopHideAnimationStyle::SpringRipple)).toInt());
     // === 读取 Windows 原生桌面配置（自动排列、对齐网格）===
     bool osAutoArrange = false;
     bool osSnapToGrid = false;

@@ -955,6 +955,9 @@ void ListView::onMenuShowDesktopIcons() {
 }
 
 void ListView::toggleDesktopIconsVisibility(bool animated) {
+    if (animated && m_hideAnimationOriginPos.isNull()) {
+        m_hideAnimationOriginPos = mapFromGlobal(QCursor::pos());
+    }
     setDesktopIconsVisibility(!m_iconShowRule.showDesktopIcons, animated);
 }
 
@@ -967,6 +970,12 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
         if (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running) {
             m_desktopHideAnim->stop();
         }
+        for (auto it = m_boxOriginalGeometries.begin(); it != m_boxOriginalGeometries.end(); ++it) {
+            if (LinBox* box = it.key()) {
+                box->setGeometry(it.value());
+            }
+        }
+        m_boxOriginalGeometries.clear();
         m_desktopElementsOpacity = visible ? 1.0 : 0.0;
         m_iconShowRule.showDesktopIcons = visible;
         if (this->rightMenu) {
@@ -985,35 +994,29 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
 
     if (!m_desktopHideAnim) {
         m_desktopHideAnim = new QVariantAnimation(this);
-        m_desktopHideAnim->setDuration(220);
-        m_desktopHideAnim->setEasingCurve(QEasingCurve::OutCubic);
+        m_desktopHideAnim->setEasingCurve(QEasingCurve::Linear);
         connect(m_desktopHideAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
             m_desktopElementsOpacity = value.toReal();
             const auto boxes = BoxManager::instance()->allBoxes();
             for (const auto& boxPtr : boxes) {
                 if (LinBox* box = boxPtr.data()) {
-                    applyBoxFadeOpacity(box, m_desktopElementsOpacity);
+                    applyBoxHideTransform(box);
                 }
             }
             update();
         });
         connect(m_desktopHideAnim, &QVariantAnimation::finished, this, [this]() {
-            if (!m_iconShowRule.showDesktopIcons) {
-                const auto boxes = BoxManager::instance()->allBoxes();
-                for (const auto& boxPtr : boxes) {
-                    if (LinBox* box = boxPtr.data()) {
+            for (auto it = m_boxOriginalGeometries.begin(); it != m_boxOriginalGeometries.end(); ++it) {
+                if (LinBox* box = it.key()) {
+                    box->setGeometry(it.value());
+                    if (!m_iconShowRule.showDesktopIcons) {
                         box->hide();
-                        box->setGraphicsEffect(nullptr);
                     }
-                }
-            } else {
-                const auto boxes = BoxManager::instance()->allBoxes();
-                for (const auto& boxPtr : boxes) {
-                    if (LinBox* box = boxPtr.data()) {
-                        box->setGraphicsEffect(nullptr);
-                    }
+                    box->setGraphicsEffect(nullptr);
                 }
             }
+            m_boxOriginalGeometries.clear();
+            m_hideAnimationOriginPos = QPoint();
             update();
         });
     }
@@ -1022,20 +1025,52 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
         m_desktopHideAnim->stop();
     }
 
+    for (auto it = m_boxOriginalGeometries.begin(); it != m_boxOriginalGeometries.end(); ++it) {
+        if (LinBox* box = it.key()) {
+            box->setGeometry(it.value());
+        }
+    }
+    m_boxOriginalGeometries.clear();
+
+    const auto boxes = BoxManager::instance()->allBoxes();
+    for (const auto& boxPtr : boxes) {
+        if (LinBox* box = boxPtr.data()) {
+            m_boxOriginalGeometries[box] = box->geometry();
+        }
+    }
+
+    int duration = 280;
+    switch (m_hideAnimationStyle) {
+    case DesktopHideAnimationStyle::SpringRipple:
+    case DesktopHideAnimationStyle::RadialRipple:
+        duration = 320;
+        break;
+    case DesktopHideAnimationStyle::FrostedVapor:
+        duration = 300;
+        break;
+    case DesktopHideAnimationStyle::AppleSpring:
+        duration = 280;
+        break;
+    case DesktopHideAnimationStyle::ClassicFade:
+    default:
+        duration = 220;
+        break;
+    }
+    m_desktopHideAnim->setDuration(duration);
+
     m_iconShowRule.showDesktopIcons = visible;
     if (this->rightMenu) {
         this->rightMenu->setShowDesktopIconsChecked(visible);
     }
 
     if (visible) {
-        const auto boxes = BoxManager::instance()->allBoxes();
         for (const auto& boxPtr : boxes) {
             if (LinBox* box = boxPtr.data()) {
                 if (!box->isVisible()) {
                     box->show();
                 }
                 box->raise();
-                applyBoxFadeOpacity(box, m_desktopElementsOpacity);
+                applyBoxHideTransform(box);
             }
         }
         m_desktopHideAnim->setStartValue(m_desktopElementsOpacity);
@@ -1079,6 +1114,99 @@ void ListView::setFadeTransitionOnHideEnabled(bool enabled) {
     QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
     settings.setValue(QStringLiteral("Desktop/FadeTransitionOnHide"), enabled);
     settings.sync();
+}
+
+void ListView::setHideAnimationStyle(DesktopHideAnimationStyle style) {
+    m_hideAnimationStyle = style;
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue(QStringLiteral("Desktop/HideAnimationStyle"), static_cast<int>(style));
+    settings.sync();
+}
+
+ListView::ItemHideTransform ListView::computeItemHideTransform(const QPointF& itemCenter) const {
+    ItemHideTransform xform;
+    const qreal P = m_desktopElementsOpacity;
+    const bool isTargetVisible = m_iconShowRule.showDesktopIcons;
+
+    if (m_hideAnimationStyle == DesktopHideAnimationStyle::ClassicFade) {
+        xform.opacity = qBound(0.0, P, 1.0);
+        xform.scale = 1.0;
+        xform.dy = 0.0;
+        return xform;
+    }
+
+    if (m_hideAnimationStyle == DesktopHideAnimationStyle::AppleSpring) {
+        xform.opacity = qBound(0.0, P, 1.0);
+        if (isTargetVisible) {
+            const qreal overshoot = 0.08 * std::sin(P * 3.1415926535) * (1.0 - P);
+            xform.scale = 0.92 + 0.08 * P + overshoot;
+            xform.dy = (1.0 - P) * 6.0;
+        } else {
+            xform.scale = 0.92 + 0.08 * P;
+            xform.dy = (1.0 - P) * 6.0;
+        }
+        return xform;
+    }
+
+    if (m_hideAnimationStyle == DesktopHideAnimationStyle::FrostedVapor) {
+        xform.opacity = qBound(0.0, P, 1.0);
+        xform.scale = 1.0 + (1.0 - P) * 0.05;
+        xform.dy = -(1.0 - P) * 4.0;
+        return xform;
+    }
+
+    // RadialRipple and SpringRipple (use clickPos distance)
+    const QPointF origin = m_hideAnimationOriginPos.isNull() ? rect().center() : m_hideAnimationOriginPos;
+    const qreal dist = QLineF(origin, itemCenter).length();
+    const qreal maxDist = qMax<qreal>(120.0, std::hypot(width(), height()));
+    const qreal delayFrac = qBound(0.0, (dist / maxDist) * 0.35, 0.35);
+
+    qreal localP = P;
+    if (isTargetVisible) {
+        localP = qBound(0.0, (P - delayFrac) / (1.0 - delayFrac), 1.0);
+    } else {
+        const qreal elapsed = 1.0 - P;
+        const qreal localElapsed = qBound(0.0, (elapsed - delayFrac) / (1.0 - delayFrac), 1.0);
+        localP = 1.0 - localElapsed;
+    }
+
+    xform.opacity = localP;
+
+    if (m_hideAnimationStyle == DesktopHideAnimationStyle::SpringRipple) {
+        if (isTargetVisible) {
+            const qreal overshoot = 0.08 * std::sin(localP * 3.1415926535) * (1.0 - localP);
+            xform.scale = 0.92 + 0.08 * localP + overshoot;
+            xform.dy = (1.0 - localP) * 6.0;
+        } else {
+            xform.scale = 0.92 + 0.08 * localP;
+            xform.dy = (1.0 - localP) * 6.0;
+        }
+    } else { // RadialRipple
+        xform.scale = 0.90 + 0.10 * localP;
+        xform.dy = (1.0 - localP) * 5.0;
+    }
+
+    return xform;
+}
+
+void ListView::applyBoxHideTransform(LinBox* box) {
+    if (!box) return;
+    const QRect orig = m_boxOriginalGeometries.value(box, box->geometry());
+    const auto xform = computeItemHideTransform(orig.center());
+    
+    applyBoxFadeOpacity(box, xform.opacity);
+
+    if (m_hideAnimationStyle != DesktopHideAnimationStyle::ClassicFade) {
+        if (std::abs(xform.scale - 1.0) > 0.001 || std::abs(xform.dy) > 0.05) {
+            const int nw = qMax(10, qRound(orig.width() * xform.scale));
+            const int nh = qMax(10, qRound(orig.height() * xform.scale));
+            const int nx = orig.center().x() - nw / 2;
+            const int ny = orig.center().y() - nh / 2 + qRound(xform.dy);
+            box->setGeometry(nx, ny, nw, nh);
+        } else {
+            box->setGeometry(orig);
+        }
+    }
 }
 
 bool ListView::handleTypeToSelect(const QString& typedText, LinBox* activeBox) {

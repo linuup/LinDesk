@@ -11,6 +11,42 @@
         <source>CefInitialize failed.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Fade Transition on Hide</source>
+        <translation>Transition on Hide</translation>
+    </message>
+    <message>
+        <source>Play a smooth opacity fade-in/out transition when hiding or showing desktop elements.</source>
+        <translation>Play a smooth transition when hiding or showing desktop elements.</translation>
+    </message>
+    <message>
+        <source>Hide Animation Style</source>
+        <translation>Hide Animation Style</translation>
+    </message>
+    <message>
+        <source>Select fluid motion and physics style when desktop icons and boxes disappear or appear.</source>
+        <translation>Select fluid motion and physics style when desktop icons and boxes disappear or appear.</translation>
+    </message>
+    <message>
+        <source>macOS Spring &amp; Ripple (Recommended)</source>
+        <translation>macOS Spring &amp; Ripple (Recommended)</translation>
+    </message>
+    <message>
+        <source>macOS Spring &amp; Depth</source>
+        <translation>macOS Spring &amp; Depth</translation>
+    </message>
+    <message>
+        <source>Radial Ripple Wave</source>
+        <translation>Radial Ripple Wave</translation>
+    </message>
+    <message>
+        <source>Frosted Vapor Dissolve</source>
+        <translation>Frosted Vapor Dissolve</translation>
+    </message>
+    <message>
+        <source>Classic Smooth Fade</source>
+        <translation>Classic Smooth Fade</translation>
+    </message>
 </context>
 <context>
     <name>LinBox</name>

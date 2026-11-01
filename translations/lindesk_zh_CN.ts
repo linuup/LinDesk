@@ -11,6 +11,42 @@
         <source>CefInitialize failed.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Fade Transition on Hide</source>
+        <translation>隐藏时过渡动画</translation>
+    </message>
+    <message>
+        <source>Play a smooth opacity fade-in/out transition when hiding or showing desktop elements.</source>
+        <translation>在隐藏或显示桌面元素时播放平滑物理过渡动画。</translation>
+    </message>
+    <message>
+        <source>Hide Animation Style</source>
+        <translation>隐藏动画效果</translation>
+    </message>
+    <message>
+        <source>Select fluid motion and physics style when desktop icons and boxes disappear or appear.</source>
+        <translation>选择桌面图标与收纳框隐藏/显示时的流体物理动效风格。</translation>
+    </message>
+    <message>
+        <source>macOS Spring &amp; Ripple (Recommended)</source>
+        <translation>macOS 弹性景深 + 水波涟漪 (推荐)</translation>
+    </message>
+    <message>
+        <source>macOS Spring &amp; Depth</source>
+        <translation>macOS 弹性微缩与景深</translation>
+    </message>
+    <message>
+        <source>Radial Ripple Wave</source>
+        <translation>点击点水波交错涟漪</translation>
+    </message>
+    <message>
+        <source>Frosted Vapor Dissolve</source>
+        <translation>亚克力毛雾消散</translation>
+    </message>
+    <message>
+        <source>Classic Smooth Fade</source>
+        <translation>经典平滑淡入淡出</translation>
+    </message>
 </context>
 <context>
     <name>LinBox</name>

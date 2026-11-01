@@ -6,6 +6,7 @@
 #include "desktop/RightMenu.h"
 #include "box/LinBox.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
+#include "ui/Fluent/FluentComboBox.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -691,6 +692,69 @@ void DesktopSettingsPage::initUI()
         if (lv) lv->setFadeTransitionOnHideEnabled(checked);
     });
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Fade Transition on Hide"), tr("Play a smooth opacity fade-in/out transition when hiding or showing desktop elements."), fadeToggle, behaviorPanel));
+    behaviorLayout->addWidget(createDivider(behaviorPanel));
+
+    // Animation Style Selector Row
+    QWidget* animStyleRow = new QWidget(behaviorPanel);
+    animStyleRow->setObjectName("settingsRow");
+    animStyleRow->setMinimumWidth(0);
+    animStyleRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* animStyleLayout = new QHBoxLayout(animStyleRow);
+    animStyleLayout->setContentsMargins(14, 10, 14, 10);
+    animStyleLayout->setSpacing(14);
+
+    animStyleLayout->addWidget(createGlyphLabel(glyph(0xE771), animStyleRow, 20), 0, Qt::AlignVCenter);
+
+    QVBoxLayout* animStyleText = new QVBoxLayout();
+    animStyleText->setContentsMargins(0, 0, 0, 0);
+    animStyleText->setSpacing(2);
+    QLabel* animStyleTitle = new QLabel(tr("Hide Animation Style"), animStyleRow);
+    animStyleTitle->setObjectName("rowTitle");
+    animStyleTitle->setWordWrap(true);
+    animStyleTitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    QLabel* animStyleSub = new QLabel(tr("Select fluid motion and physics style when desktop icons and boxes disappear or appear."), animStyleRow);
+    animStyleSub->setObjectName("rowSubtitle");
+    animStyleSub->setWordWrap(true);
+    animStyleSub->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    animStyleText->addWidget(animStyleTitle);
+    animStyleText->addWidget(animStyleSub);
+    animStyleLayout->addLayout(animStyleText, 1);
+
+    FluentComboBox* animStyleCombo = new FluentComboBox(animStyleRow);
+    animStyleCombo->addItem(tr("macOS Spring & Ripple (Recommended)"), static_cast<int>(ListView::DesktopHideAnimationStyle::SpringRipple));
+    animStyleCombo->addItem(tr("macOS Spring & Depth"), static_cast<int>(ListView::DesktopHideAnimationStyle::AppleSpring));
+    animStyleCombo->addItem(tr("Radial Ripple Wave"), static_cast<int>(ListView::DesktopHideAnimationStyle::RadialRipple));
+    animStyleCombo->addItem(tr("Frosted Vapor Dissolve"), static_cast<int>(ListView::DesktopHideAnimationStyle::FrostedVapor));
+    animStyleCombo->addItem(tr("Classic Smooth Fade"), static_cast<int>(ListView::DesktopHideAnimationStyle::ClassicFade));
+
+    const auto currentStyle = lv ? lv->hideAnimationStyle() : ListView::DesktopHideAnimationStyle::SpringRipple;
+    const int styleIndex = animStyleCombo->findData(static_cast<int>(currentStyle));
+    if (styleIndex >= 0) {
+        animStyleCombo->setCurrentIndex(styleIndex);
+    }
+    animStyleCombo->setMinimumWidth(220);
+
+    connect(animStyleCombo, QOverload<int>::of(&FluentComboBox::currentIndexChanged), this, [animStyleCombo](int index){
+        if (index < 0) return;
+        ListView* lv = ListView::instance();
+        if (lv) {
+            auto style = static_cast<ListView::DesktopHideAnimationStyle>(animStyleCombo->itemData(index).toInt());
+            lv->setHideAnimationStyle(style);
+        }
+    });
+
+    animStyleLayout->addWidget(animStyleCombo, 0, Qt::AlignRight | Qt::AlignVCenter);
+    behaviorLayout->addWidget(animStyleRow);
+
+    auto updateAnimStyleAvailability = [animStyleRow, animStyleCombo](bool enabled) {
+        animStyleRow->setEnabled(enabled);
+        animStyleCombo->setEnabled(enabled);
+    };
+    updateAnimStyleAvailability(fadeToggle->checked());
+
+    connect(fadeToggle, &FluentToggleSwitch::toggled, this, [updateAnimStyleAvailability](bool checked) {
+        updateAnimStyleAvailability(checked);
+    });
 
     layout->addWidget(behaviorPanel, 0);
 
