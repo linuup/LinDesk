@@ -178,7 +178,7 @@ constexpr int kBaseBoxMinWidth = 180;
 constexpr int kBaseBoxMinHeight = 120;
 constexpr int kBaseBoxDefaultWidth = 300;
 constexpr int kBaseBoxDefaultHeight = 400;
-constexpr int kBaseTitleLayoutLeft = 10;
+constexpr int kBaseTitleLayoutLeft = 5;
 constexpr int kBaseTitleLayoutRight = 5;
 constexpr int kBaseTitleEditHeight = 22;
 constexpr int kBaseTitleButtonSize = 24;
@@ -668,7 +668,7 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleBar->setMouseTracking(true);
     
     QHBoxLayout* titleLayout = new QHBoxLayout(m_titleBar);
-    titleLayout->setContentsMargins(scaledPx(this, 10), 0, scaledPx(this, 5), 0);
+    titleLayout->setContentsMargins(scaledPx(this, kBaseTitleLayoutLeft), 0, scaledPx(this, kBaseTitleLayoutRight), 0);
 
     m_titleEdit = new QLineEdit(m_titleBar);
     m_titleEdit->setMouseTracking(true);
@@ -813,6 +813,9 @@ void LinBox::updateDpiMetrics()
     }
     if (m_titleBar) {
         m_titleBar->setFixedHeight(m_titleHeight);
+        if (m_titleBar->layout()) {
+            m_titleBar->layout()->setContentsMargins(scaledPx(this, kBaseTitleLayoutLeft), 0, scaledPx(this, kBaseTitleLayoutRight), 0);
+        }
     }
     if (m_titleEdit) {
         m_titleEdit->setFixedHeight(scaledPx(this, kBaseTitleEditHeight));
@@ -1573,8 +1576,9 @@ QRect LinBox::mappedTitleIconRect() const
     const QString title = displayTitleText();
     const int textWidth = fm.horizontalAdvance(title);
     const int totalWidth = iconSize + scaledPx(this, 6) + textWidth;
+    const int minTitleLeft = scaledPx(this, kBaseTitleLayoutLeft + kBaseTitleButtonSize + 1);
     int startX = (m_titleBar->width() - totalWidth) / 2;
-    startX = qMax(scaledPx(this, 35), startX);
+    startX = qMax(minTitleLeft, startX);
     return QRect(startX, iconY, iconSize, iconSize);
 }
 
@@ -1584,14 +1588,15 @@ QRect LinBox::mappedTitleTextRect() const
         return QRect();
     }
 
-    QRect textRect = m_titleBar->rect().adjusted(scaledPx(this, 35), 0, -scaledPx(this, 35), 0);
+    const int titleSideInset = scaledPx(this, kBaseTitleLayoutLeft + kBaseTitleButtonSize + 1);
+    QRect textRect = m_titleBar->rect().adjusted(titleSideInset, 0, -titleSideInset, 0);
     if (!isFolderMapped()) {
         return textRect;
     }
 
     const QRect iconRect = mappedTitleIconRect();
     if (!iconRect.isNull()) {
-        textRect = m_titleBar->rect().adjusted(iconRect.right() + scaledPx(this, 7), 0, -scaledPx(this, 35), 0);
+        textRect = m_titleBar->rect().adjusted(iconRect.right() + scaledPx(this, 7), 0, -titleSideInset, 0);
     }
     return textRect;
 }
