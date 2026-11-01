@@ -54,21 +54,21 @@
 
     <!-- Navigation Pills -->
     <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1.5 shadow-inner">
-      <button id="nav-gallery" onclick="switchMainTab('gallery')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2">
+      <button id="nav-widgets" onclick="switchMainTab('widgets')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+        桌面组件管理 (LinWidgets)
+      </button>
+      <button id="nav-gallery" onclick="switchMainTab('gallery')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-        壁纸画廊与管理
+        壁纸画廊与控制
       </button>
       <button id="nav-studio" onclick="switchMainTab('studio')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-        壁纸工坊 (Studio 调节)
+        壁纸工坊 (Studio 调参)
       </button>
       <button id="nav-desktop" onclick="switchMainTab('desktop')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-        桌面右键协同体验
-      </button>
-      <button id="nav-widgets" onclick="switchMainTab('widgets')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-        桌面组件管理 (LinWidgets)
+        开发者控制台与日志
       </button>
     </div>
   </header>
@@ -77,7 +77,7 @@
   <main class="max-w-7xl w-full mx-auto flex-1 flex flex-col">
 
     <!-- ==================== TAB 1: WALLPAPER GALLERY HUB ==================== -->
-    <div id="tab-gallery" class="space-y-6">
+    <div id="tab-gallery" class="hidden space-y-6">
 
       <!-- 1. Hero Showcase of Active Wallpaper -->
       <section class="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/90 via-slate-900/60 to-slate-950 p-5 md:p-6 shadow-2xl backdrop-blur-md">
@@ -566,7 +566,7 @@
 
 
     <!-- ==================== TAB 4: LINDESK COMPONENT HUB (DESKTOP WIDGETS MANAGEMENT) ==================== -->
-    <div id="tab-widgets" class="hidden space-y-6">
+    <div id="tab-widgets" class="space-y-6">
       
       <!-- 1. Stats & Architecture Overview -->
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -1514,38 +1514,25 @@
     function toggleWidgetRun(id) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
-      w.isRunning = !w.isRunning;
-      if (w.isRunning) {
+      if (!w.isRunning) {
         callBackend("launch", { widgetId: id, packagePath: w.packagePath });
-        w.instances = [`inst-${w.id}-001`];
-        showToast(`小组件「${w.name}」已在桌面拉起运行`);
+        showToast(`已向桌面发送启动指令「${w.name}」...`);
       } else {
         callBackend("stop", { widgetId: id });
-        w.instances = [];
-        showToast(`已停止「${w.name}」的运行`);
+        showToast(`已向桌面发送停止指令「${w.name}」...`);
       }
-      renderWidgets();
     }
 
     function restartWidget(id) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
       callBackend("restart", { widgetId: id });
-      showToast(`正在重新拉起「${w.name}」渲染进程...`);
-      setTimeout(() => {
-        showToast(`「${w.name}」重启成功`);
-        renderWidgets();
-      }, 400);
+      showToast(`正在重启小组件「${w.name}」...`);
     }
 
     function stopWidgetInstance(id, instId) {
-      const w = widgetsData.find(item => item.id === id);
-      if (!w) return;
       callBackend("stop", { widgetId: id, instanceId: instId });
-      w.instances = w.instances.filter(i => i !== instId);
-      if (w.instances.length === 0) w.isRunning = false;
       showToast(`已单独关闭实例: ${instId}`);
-      renderWidgets();
     }
 
     function toggleWidgetPermission(id, perm) {
@@ -1554,31 +1541,22 @@
       const idx = w.permissions.indexOf(perm);
       const granted = (idx >= 0);
       callBackend("set_permission", { widgetId: id, permission: perm, granted: !granted });
-      if (granted) {
-        w.permissions.splice(idx, 1);
-        showToast(`已撤销「${w.name}」的 [${perm}] 权限`);
-      } else {
-        w.permissions.push(perm);
-        showToast(`已授予「${w.name}」 [${perm}] 权限`);
-      }
-      renderWidgets();
+      showToast(granted ? `已撤销「${w.name}」的 [${perm}] 权限` : `已授予「${w.name}」 [${perm}] 权限`);
     }
 
     function clearWidgetStorage(id) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
-      if (confirm(`确定要清空「${w.name}」的全部本地持久化数据吗？`)) {
+      if (confirm(`确定要清空「${w.name}」的本地持久化数据吗？`)) {
         callBackend("clear_storage", { widgetId: id });
-        w.storageBytes = 0;
-        showToast(`已成功清空「${w.name}」的本地缓存与存储！`);
-        renderWidgets();
+        showToast(`已发送清空「${w.name}」本地缓存指令！`);
       }
     }
 
     function triggerDevTools(id) {
       const w = widgetsData.find(item => item.id === id);
       callBackend("show_devtools", { widgetId: id });
-      showToast(`已连接 Chromium DevTools (目标: ${w ? w.name : id})`);
+      showToast(`已连接 Chromium DevTools: ${w ? w.name : id}`);
     }
 
     function openWidgetSource(id) {
@@ -1592,14 +1570,19 @@
       showToast(`已打开 LinWidgets 本地组件安装目录`);
     }
 
+    function refreshWidgetListUI() {
+      callBackend("list");
+      showToast(`正在刷新小组件与壁纸实时状态...`);
+    }
+
     function toggleWidgetRuntimeMaster(checked) {
       callBackend("set_master_enabled", { enabled: checked });
-      showToast(checked ? "已启用 LinWidgets 桌面小组件全局运行环境" : "已禁用 LinWidgets 组件系统 (所有组件已冻结)");
+      showToast(checked ? "已启用 LinWidgets 全局运行环境" : "已禁用 LinWidgets (所有组件已冻结)");
     }
 
     function toggleWidgetBounds(checked) {
       callBackend("set_show_bounds", { showBounds: checked });
-      showToast(checked ? "已开启小组件视口辅助边框（调试红框）" : "已隐藏辅助边框");
+      showToast(checked ? "已开启小组件调试辅助红框" : "已隐藏辅助边框");
     }
 
     function filterWidgets(mode) {
@@ -1619,14 +1602,23 @@
       renderWidgets();
     }
 
+    function uninstallWidget(id) {
+      const w = widgetsData.find(item => item.id === id);
+      if (!w) return;
+      if (confirm(`确定要从系统中卸载移除「${w.name}」吗？`)) {
+        callBackend("uninstall", { widgetId: id });
+        showToast(`已卸载组件「${w.name}」`);
+      }
+    }
+
     // Modal Helpers
     let editingWidgetId = null;
     function openWidgetSettingsModal(id) {
       const w = widgetsData.find(item => item.id === id);
       if (!w) return;
       editingWidgetId = id;
-      document.getElementById('settings-modal-name').textContent = w.name;
-      document.getElementById('widget-settings-modal').classList.remove('hidden');
+      callBackend("open_settings", { widgetId: id });
+      showToast(`已打开「${w.name}」设置面板`);
     }
 
     function closeWidgetSettingsModal() {
@@ -1634,7 +1626,7 @@
     }
 
     function confirmWidgetSettings() {
-      showToast(`「${document.getElementById('settings-modal-name').textContent}」参数已更新并保存！`);
+      showToast(`参数已更新！`);
       closeWidgetSettingsModal();
     }
 
@@ -1648,62 +1640,127 @@
 
     function confirmCreateWidget() {
       const name = document.getElementById('new-w-name').value.trim() || '新桌面组件';
-      const id = document.getElementById('new-w-id').value.trim() || `widget-${Date.now() % 10000}`;
-      const desc = document.getElementById('new-w-desc').value.trim() || '自定义 LinWidget 桌面组件';
-
-      widgetsData.unshift({
-        id: id,
-        name: name,
-        version: '1.0.0',
-        author: 'Developer',
-        role: 'widget',
-        description: desc,
-        source: '开发目录',
-        icon: '💡',
-        isDevelopment: true,
-        isRunning: true,
-        instances: [`inst-${id}-001`],
-        storageBytes: 12000,
-        hasSettings: true,
-        permissions: ['storage']
-      });
-
+      callBackend("create_project", { name: name });
       closeCreateWidgetModal();
-      showToast(`全新组件「${name}」已成功创建并拉起运行！`);
-      filterWidgets('all');
+      showToast(`正在自动创建「${name}」模板工程并拉起...`);
     }
 
     function simulateImportDevProject() {
-      const dir = prompt("【导入本地 LinWidget 工程】请输入本地文件夹绝对路径:", "C:\\LinWidgets\\MyNewWidget");
+      const dir = prompt("【导入本地 LinWidget 工程】请输入本地文件夹绝对路径:", "D:\Desktop\MyWidget");
       if (dir) {
-        const id = 'dev-imported-' + (Date.now() % 1000);
-        widgetsData.unshift({
-          id: id,
-          name: '导入项目 (' + dir.split('\\').pop() + ')',
-          version: '1.0.0',
-          author: 'Dev',
-          role: 'widget',
-          description: `来自本地开发工程路径: ${dir}`,
-          source: '开发目录',
-          icon: '📦',
-          isDevelopment: true,
-          isRunning: false,
-          instances: [],
-          storageBytes: 45000,
-          hasSettings: true,
-          permissions: ['storage', 'network']
-        });
-        showToast(`已成功添加开发工程并载入列表！`);
-        filterWidgets('dev');
+        callBackend("add_development", { path: dir });
+        showToast(`正在导入本地开发工程: ${dir}`);
       }
     }
 
-    // Initial widget render
-    renderWidgets();
+    // Update real backend data mapping
+    function updateWidgetsFromBackend(data) {
+      if (!data || !Array.isArray(data.widgets)) return;
+      const backendList = data.widgets.map(w => {
+        let icon = '🧩';
+        const low = (w.id + ' ' + (w.name || '')).toLowerCase();
+        if (low.includes('clock') || low.includes('时钟')) icon = '⏰';
+        else if (low.includes('system') || low.includes('系统') || low.includes('监控')) icon = '📊';
+        else if (low.includes('gargantua') || low.includes('黑洞')) icon = '🕳️';
+        else if (low.includes('matrix') || low.includes('代码雨')) icon = '💻';
+        else if (low.includes('weather') || low.includes('天气')) icon = '🌤️';
+        else if (low.includes('living') || low.includes('壁纸')) icon = '🌌';
 
-    // Start render loop
+        return {
+          id: w.id,
+          name: w.name || w.id,
+          version: w.version || '1.0.0',
+          author: w.author || 'LinDesk',
+          role: w.role || 'widget',
+          description: w.description || 'LinDesk 桌面小组件',
+          packagePath: w.packagePath || '',
+          source: w.source || (w.isDevelopment ? '开发目录' : '内置组件'),
+          icon: icon,
+          isDevelopment: !!w.isDevelopment,
+          isRunning: !!w.running,
+          status: w.status,
+          crashCount: w.crashCount || 0,
+          instances: Array.isArray(w.runningInstanceIds) ? w.runningInstanceIds : [],
+          storageBytes: w.storageUsedBytes || 0,
+          hasSettings: !!w.hasSettings,
+          permissions: Array.isArray(w.grantedPermissions) ? w.grantedPermissions : []
+        };
+      });
+
+      widgetsData = backendList;
+
+      // Update statistics
+      const total = widgetsData.length;
+      const running = widgetsData.filter(w => w.isRunning).length;
+      const storageTotal = widgetsData.reduce((acc, w) => acc + w.storageBytes, 0);
+
+      const elTotal = document.getElementById('stat-total-widgets');
+      if (elTotal) elTotal.textContent = total;
+      const elRunning = document.getElementById('stat-running-widgets');
+      if (elRunning) elRunning.textContent = running;
+      const elStorage = document.getElementById('stat-storage-used');
+      if (elStorage) elStorage.textContent = storageTotal > 1048576 ? (storageTotal / 1048576).toFixed(1) + ' MB' : (storageTotal / 1024).toFixed(1) + ' KB';
+
+      // Update filter count labels
+      const fAll = document.getElementById('wfilter-all');
+      if (fAll) fAll.textContent = `全部 (${total})`;
+      const fRun = document.getElementById('wfilter-running');
+      if (fRun) fRun.textContent = `运行中 (${running})`;
+      const fOff = document.getElementById('wfilter-official');
+      if (fOff) fOff.textContent = `内置官方 (${widgetsData.filter(w => !w.isDevelopment).length})`;
+      const fDev = document.getElementById('wfilter-dev');
+      if (fDev) fDev.textContent = `开发中 (${widgetsData.filter(w => w.isDevelopment).length})`;
+
+      // Master switch
+      if (data.runtimeEnabled !== undefined) {
+        const elMaster = document.getElementById('widget-master-toggle');
+        if (elMaster) elMaster.checked = data.runtimeEnabled;
+      }
+      // Bounds switch
+      if (data.showBounds !== undefined) {
+        const elBounds = document.getElementById('widget-bounds-toggle');
+        if (elBounds) elBounds.checked = data.showBounds;
+      }
+      // Active wallpaper status
+      if (data.activeWallpaperId !== undefined) {
+        const hasWall = !!data.activeWallpaperId;
+        isWallpaperRunning = hasWall;
+        const heroStatus = document.getElementById('hero-active-status');
+        if (heroStatus) {
+          heroStatus.textContent = hasWall ? `正在桌面背景层运行 (${data.activeWallpaperId})` : "已停止 (使用 Windows 静态壁纸)";
+          heroStatus.className = hasWall ? "font-medium text-emerald-300" : "font-medium text-slate-400";
+        }
+      }
+
+      renderWidgets();
+    }
+
+    // Hook IPC message dispatcher
+    window.addEventListener('message', function(e) {
+      let data = e.data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch(err) { return; }
+      }
+      if (!data || typeof data !== 'object') return;
+
+      if (data.action === 'list') {
+        updateWidgetsFromBackend(data);
+      } else if (data.ok) {
+        // Backend action succeeded, refresh list immediately
+        callBackend('list');
+      }
+    });
+
+    // Start with widgets tab
+    switchMainTab('widgets');
+    callBackend('list');
+    setInterval(() => {
+      callBackend('list');
+    }, 2500);
+
+    // Initial render
+    renderWidgets();
     requestAnimationFrame(animate);
   </script>
-
 </body>
 </html>

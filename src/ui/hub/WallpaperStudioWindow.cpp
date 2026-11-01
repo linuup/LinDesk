@@ -191,8 +191,69 @@ QString WallpaperStudioWindow::resolveWallpaperPath(const QString& wallpaperId) 
     return QDir(appDir).filePath(QStringLiteral("resources/LinWidgets/Gargantua"));
 }
 
+void WallpaperStudioWindow::paintEvent(QPaintEvent* event) {
+    Q_UNUSED(event);
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor(255, 255, 255, 28), 1));
+    painter.setBrush(QColor(7, 10, 18, 255));
+    painter.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 12, 12);
+}
+
 void WallpaperStudioWindow::initUI() {
     setWindowBtnMode(All);
+
+    // Explicitly enforce styled background to prevent transparent window bleedthrough
+    if (m_btnContainer) {
+        m_btnContainer->setFixedHeight(40);
+        m_btnContainer->setAttribute(Qt::WA_StyledBackground, true);
+        m_btnContainer->setObjectName(QStringLiteral("hubTitleBar"));
+        m_btnContainer->setStyleSheet(QStringLiteral(
+            "QWidget#hubTitleBar {"
+            "  background-color: #0b0f19;"
+            "  border-bottom: 1px solid rgba(255, 255, 255, 0.08);"
+            "  border-top-left-radius: 12px;"
+            "  border-top-right-radius: 12px;"
+            "}"
+        ));
+
+        // Add brand icon, title, and badge on the left side of titlebar
+        auto* iconLabel = new QLabel(m_btnContainer);
+        iconLabel->setFixedSize(24, 24);
+        iconLabel->setAlignment(Qt::AlignCenter);
+        iconLabel->setStyleSheet(QStringLiteral(
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f46e5, stop:1 #7c3aed);"
+            "border-radius: 6px;"
+            "color: #ffffff;"
+            "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+            "font-size: 13px;"
+        ));
+        iconLabel->setText(glyph(0xEB9F));
+
+        auto* titleLabel = new QLabel(tr("LinDesk Hub · 桌面组件与壁纸管理中心"), m_btnContainer);
+        titleLabel->setStyleSheet(QStringLiteral(
+            "color: #f1f5f9; font-size: 13px; font-weight: 600; font-family: %1;"
+        ).arg(AppFonts::uiCssFamily()));
+
+        auto* badgeLabel = new QLabel(tr("桌面客户端"), m_btnContainer);
+        badgeLabel->setStyleSheet(QStringLiteral(
+            "color: #818cf8;"
+            "background: rgba(99, 102, 241, 0.15);"
+            "border: 1px solid rgba(99, 102, 241, 0.3);"
+            "border-radius: 4px;"
+            "padding: 1px 7px;"
+            "font-size: 11px;"
+            "font-weight: 500;"
+        ));
+
+        if (m_btnLayout) {
+            m_btnLayout->setContentsMargins(14, 0, 0, 0);
+            m_btnLayout->setSpacing(10);
+            m_btnLayout->insertWidget(0, iconLabel);
+            m_btnLayout->insertWidget(1, titleLabel);
+            m_btnLayout->insertWidget(2, badgeLabel);
+        }
+    }
 
     // Style the titlebar buttons for dark acrylic backdrop
     if (m_minBtn) {
@@ -215,12 +276,13 @@ void WallpaperStudioWindow::initUI() {
     }
 
     if (container()) {
+        container()->setAttribute(Qt::WA_StyledBackground, true);
         container()->setObjectName(QStringLiteral("hubMainContainer"));
         container()->setStyleSheet(QStringLiteral(
             "QWidget#hubMainContainer {"
-            "  background: #0a0e17;"
-            "  border: 1px solid rgba(255, 255, 255, 0.08);"
-            "  border-radius: 14px;"
+            "  background-color: #070a12;"
+            "  border: 1px solid rgba(255, 255, 255, 0.12);"
+            "  border-radius: 12px;"
             "}"
         ));
     }

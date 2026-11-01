@@ -30,6 +30,9 @@
 #include <QFileDialog>
 #include <QDirIterator>
 #include <QSaveFile>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QRegularExpression>
 #include <algorithm>
 
 #ifdef Q_OS_WIN
@@ -2470,6 +2473,128 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         }
         response.insert(QStringLiteral("ok"), true);
         response.insert(QStringLiteral("widgets"), widgetsArray);
+        response.insert(QStringLiteral("runtimeEnabled"), m_enabled);
+        response.insert(QStringLiteral("showBounds"), showWidgetBounds());
+        response.insert(QStringLiteral("activeWallpaperId"), m_activeWallpaperId);
+        response.insert(QStringLiteral("activeWallpaperPackagePath"), m_activeWallpaperPackagePath);
+        response.insert(QStringLiteral("activeWallpaperInteractive"), m_activeWallpaperInteractive);
+        response.insert(QStringLiteral("userWidgetsDir"), AppPaths::userLinWidgetsDir());
+        response.insert(QStringLiteral("logDir"), AppPaths::userLogsDir());
+        return response;
+    }
+
+    // --- Global Actions (do not require widgetId) ---
+    if (action == QStringLiteral("open_widgets_dir")) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLinWidgetsDir()));
+        response.insert(QStringLiteral("ok"), true);
+        return response;
+    }
+
+    if (action == QStringLiteral("open_log_folder")) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::userLogsDir()));
+        response.insert(QStringLiteral("ok"), true);
+        return response;
+    }
+
+    if (action == QStringLiteral("set_master_enabled")) {
+        const bool enabled = request.value(QStringLiteral("enabled")).toBool(true);
+        setEnabled(enabled);
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        s.setValue(QStringLiteral("LinWidgets/Enabled"), enabled);
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("enabled"), enabled);
+        return response;
+    }
+
+    if (action == QStringLiteral("set_show_bounds")) {
+        const bool showBounds = request.value(QStringLiteral("showBounds")).toBool(false);
+        setShowWidgetBounds(showBounds);
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("showBounds"), showBounds);
+        return response;
+    }
+
+    if (action == QStringLiteral("stop_wallpaper")) {
+        stopWallpaper(true);
+        response.insert(QStringLiteral("ok"), true);
+        return response;
+    }
+
+    if (action == QStringLiteral("create_project")) {
+        const QString rawName = request.value(QStringLiteral("name")).toString(QStringLiteral("MyWidget")).trimmed();
+        QString safeName = rawName;
+        safeName.replace(QRegularExpression(QStringLiteral("[^a-zA-Z0-9_-]")), QStringLiteral("_"));
+        if (safeName.isEmpty()) safeName = QStringLiteral("MyWidget");
+        const QString targetDir = QDir(AppPaths::userLinWidgetsDir()).filePath(safeName);
+        QDir().mkpath(targetDir);
+
+        QJsonObject manifestObj;
+        manifestObj.insert(QStringLiteral("id"), safeName.toLower());
+        manifestObj.insert(QStringLiteral("name"), rawName);
+        manifestObj.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
+        manifestObj.insert(QStringLiteral("description"), QStringLiteral("用户自定义 LinWidget 桌面组件"));
+        manifestObj.insert(QStringLiteral("entry"), QStringLiteral("index.html"));
+        manifestObj.insert(QStringLiteral("width"), 320);
+        manifestObj.insert(QStringLiteral("height"), 220);
+        manifestObj.insert(QStringLiteral("role"), QStringLiteral("widget"));
+        QJsonArray perms; perms.append(QStringLiteral("storage")); perms.append(QStringLiteral("systemInfo"));
+        manifestObj.insert(QStringLiteral("permissions"), perms);
+
+        QFile mFile(QDir(targetDir).filePath(QStringLiteral("manifest.json")));
+        if (mFile.open(QIODevice::WriteOnly)) {
+            mFile.write(QJsonDocument(manifestObj).toJson(QJsonDocument::Indented));
+            mFile.close();
+        }
+
+        QFile hFile(QDir(targetDir).filePath(QStringLiteral("index.html")));
+        if (hFile.open(QIODevice::WriteOnly)) {
+            const QString htmlContent = QStringLiteral(
+                "<!DOCTYPE html>\n<html>\n<head>\n"
+                "  <meta charset=\"utf-8\">\n"
+                "  <style>\n"
+                "    body { margin: 0; padding: 16px; font-family: system-ui; background: rgba(15,23,42,0.88); color: #fff; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(16px); box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }\n"
+                "    h2 { margin: 0 0 6px 0; font-size: 16px; font-weight: 600; }\n"
+                "    p { margin: 0; font-size: 11px; color: #94a3b8; }\n"
+                "    .time { font-size: 26px; font-weight: 700; margin: 10px 0; color: #38bdf8; font-variant-numeric: tabular-nums; }\n"
+                "  </style>\n</head>\n<body>\n"
+                "  <h2>%1</h2>\n"
+                "  <div class=\"time\" id=\"clock\">00:00:00</div>\n"
+                "  <p>LinWidget 桌面小组件已就绪</p>\n"
+                "  <script>\n"
+                "    function update() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }\n"
+                "    setInterval(update, 1000); update();\n"
+                "  </script>\n</body>\n</html>\n"
+            ).arg(rawName);
+            hFile.write(htmlContent.toUtf8());
+            hFile.close();
+        }
+
+        registry.addDevelopmentProject(targetDir);
+        registry.save();
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("packagePath"), targetDir);
+        response.insert(QStringLiteral("id"), safeName.toLower());
+        return response;
+    }
+
+    if (action == QStringLiteral("add_development")) {
+        const QString path = request.value(QStringLiteral("path")).toString().trimmed();
+        if (path.isEmpty() || !QDir(path).exists()) {
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("Directory does not exist."));
+            return response;
+        }
+        WidgetManifest devManifest;
+        QString manifestErr;
+        if (!WidgetPackage::loadManifest(path, &devManifest, &manifestErr)) {
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), manifestErr);
+            return response;
+        }
+        registry.addDevelopmentProject(path);
+        registry.save();
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("id"), devManifest.id);
         return response;
     }
 
@@ -2725,6 +2850,176 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         qInfo() << "[LinWidget][WidgetManager] Set widget enabled state:" << resolvedId << "enabled:" << targetEnabled;
         response.insert(QStringLiteral("ok"), true);
         response.insert(QStringLiteral("enabled"), targetEnabled);
+        return response;
+    }
+
+    if (action == QStringLiteral("launch") || action == QStringLiteral("load") || action == QStringLiteral("start")) {
+        if (!m_enabled) {
+            setEnabled(true);
+            QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+            s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
+        }
+        m_crashTimestamps.remove(resolvedId);
+        m_crashTrippedWidgets.remove(resolvedId);
+
+        WidgetRegistryEntry entry = registry.entryById(resolvedId);
+        if (entry.id.isEmpty()) {
+            for (const WidgetRegistryEntry& e : registry.entries()) {
+                if (e.id.compare(resolvedId, Qt::CaseInsensitive) == 0) {
+                    entry = e;
+                    break;
+                }
+            }
+        }
+
+        QString pkgPath = entry.packagePath;
+        if (pkgPath.isEmpty()) {
+            pkgPath = request.value(QStringLiteral("packagePath")).toString();
+        }
+        if (pkgPath.isEmpty() || !QDir(pkgPath).exists()) {
+            pkgPath = QDir(AppPaths::userLinWidgetsDir()).filePath(resolvedId);
+            if (!QDir(pkgPath).exists()) {
+                pkgPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/") + resolvedId;
+            }
+        }
+
+        QString newInstId;
+        QString launchErr;
+        const QSize defSize = (entry.defaultSize.isValid() && entry.defaultSize.width() > 0) ? entry.defaultSize : QSize(340, 240);
+        const QPoint launchPos(240 + (m_runningWidgets.size() * 32) % 320, 180 + (m_runningWidgets.size() * 32) % 240);
+        const bool ok = launchWidgetPackage(pkgPath, QRect(launchPos, defSize), entry.isDevelopment, entry.autoReload, &newInstId, &launchErr);
+        if (ok) {
+            registry.setLastRunState(entry.id.isEmpty() ? resolvedId : entry.id, entry.isDevelopment, QStringLiteral("running"));
+            registry.save();
+        }
+        response.insert(QStringLiteral("ok"), ok);
+        response.insert(QStringLiteral("instanceId"), newInstId);
+        if (!ok) response.insert(QStringLiteral("error"), launchErr.isEmpty() ? QStringLiteral("Failed to launch widget.") : launchErr);
+        return response;
+    }
+
+    if (action == QStringLiteral("stop") || action == QStringLiteral("unload")) {
+        int stoppedCount = 0;
+        const QString targetInstId = request.value(QStringLiteral("instanceId")).toString().trimmed();
+        if (!targetInstId.isEmpty()) {
+            stopWidget(targetInstId);
+            ++stoppedCount;
+        } else {
+            for (const WidgetLayoutState& state : m_layout.states()) {
+                if (stateRegistryId(state) == resolvedId && m_runningWidgets.contains(state.instanceId)) {
+                    stopWidget(state.instanceId);
+                    ++stoppedCount;
+                }
+            }
+            if (!m_activeWallpaperId.isEmpty() && m_activeWallpaperId.contains(resolvedId, Qt::CaseInsensitive)) {
+                stopWallpaper(true);
+                ++stoppedCount;
+            }
+        }
+        WidgetRegistryEntry entry = registry.entryById(resolvedId);
+        registry.setLastRunState(resolvedId, entry.isDevelopment, QStringLiteral("stopped"));
+        registry.save();
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("stoppedCount"), stoppedCount);
+        return response;
+    }
+
+    if (action == QStringLiteral("show_devtools") || action == QStringLiteral("devtools")) {
+        QString targetInst = request.value(QStringLiteral("instanceId")).toString().trimmed();
+        if (targetInst.isEmpty()) {
+            for (const WidgetLayoutState& state : m_layout.states()) {
+                if (stateRegistryId(state) == resolvedId && m_runningWidgets.contains(state.instanceId)) {
+                    targetInst = state.instanceId;
+                    break;
+                }
+            }
+            if (targetInst.isEmpty() && !m_activeWallpaperId.isEmpty() && m_activeWallpaperId.contains(resolvedId, Qt::CaseInsensitive)) {
+                targetInst = m_activeWallpaperId;
+            }
+        }
+        bool devOk = false;
+        if (!targetInst.isEmpty()) {
+            devOk = showDevTools(targetInst);
+        }
+        response.insert(QStringLiteral("ok"), devOk);
+        if (!devOk) response.insert(QStringLiteral("error"), QStringLiteral("Widget instance is not running or DevTools unavailable."));
+        return response;
+    }
+
+    if (action == QStringLiteral("open_settings") || action == QStringLiteral("settings")) {
+        QString targetInst = request.value(QStringLiteral("instanceId")).toString().trimmed();
+        if (targetInst.isEmpty()) {
+            for (const WidgetLayoutState& state : m_layout.states()) {
+                if (stateRegistryId(state) == resolvedId) {
+                    targetInst = state.instanceId;
+                    break;
+                }
+            }
+        }
+        emit widgetSettingsRequested(targetInst.isEmpty() ? resolvedId : targetInst);
+        response.insert(QStringLiteral("ok"), true);
+        return response;
+    }
+
+    if (action == QStringLiteral("open_folder")) {
+        QString folderPath = request.value(QStringLiteral("path")).toString().trimmed();
+        if (folderPath.isEmpty()) {
+            WidgetRegistryEntry entry = registry.entryById(resolvedId);
+            folderPath = entry.packagePath;
+        }
+        if (folderPath.isEmpty() || !QDir(folderPath).exists()) {
+            folderPath = AppPaths::userLinWidgetsDir();
+        }
+        QDesktopServices::openUrl(QUrl::fromLocalFile(folderPath));
+        response.insert(QStringLiteral("ok"), true);
+        return response;
+    }
+
+    if (action == QStringLiteral("apply_wallpaper")) {
+        QString wallPath = request.value(QStringLiteral("packagePath")).toString().trimmed();
+        if (wallPath.isEmpty()) {
+            WidgetRegistryEntry entry = registry.entryById(resolvedId);
+            wallPath = entry.packagePath;
+        }
+        if (wallPath.isEmpty()) {
+            wallPath = QDir(AppPaths::userLinWidgetsDir()).filePath(resolvedId);
+        }
+        QString wallErr;
+        const bool wOk = startWallpaper(wallPath, false, false, &wallErr);
+        response.insert(QStringLiteral("ok"), wOk);
+        if (!wOk) response.insert(QStringLiteral("error"), wallErr);
+        return response;
+    }
+
+    if (action == QStringLiteral("set_wallpaper_prop")) {
+        if (!m_activeWallpaperId.isEmpty()) {
+            QJsonObject propMsg;
+            propMsg.insert(QStringLiteral("type"), QStringLiteral("wallpaper_property"));
+            propMsg.insert(QStringLiteral("property"), request.value(QStringLiteral("property")).toString());
+            propMsg.insert(QStringLiteral("value"), request.value(QStringLiteral("value")));
+            sendMessageToWidget(m_activeWallpaperId, propMsg);
+            response.insert(QStringLiteral("ok"), true);
+        } else {
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("No active wallpaper running."));
+        }
+        return response;
+    }
+
+    if (action == QStringLiteral("uninstall") || action == QStringLiteral("delete")) {
+        for (const WidgetLayoutState& state : m_layout.states()) {
+            if (stateRegistryId(state) == resolvedId) {
+                stopWidget(state.instanceId);
+            }
+        }
+        WidgetRegistryEntry entry = registry.entryById(resolvedId);
+        if (entry.isDevelopment) {
+            registry.removeDevelopmentProject(resolvedId);
+        } else {
+            registry.removeById(resolvedId);
+        }
+        registry.save();
+        response.insert(QStringLiteral("ok"), true);
         return response;
     }
 
