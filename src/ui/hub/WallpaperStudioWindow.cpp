@@ -38,7 +38,7 @@ WallpaperStudioWindow* WallpaperStudioWindow::instance() {
     return s_instance.data();
 }
 
-void WallpaperStudioWindow::showStudio() {
+void WallpaperStudioWindow::showStudio(int defaultTab) {
     auto* win = instance();
     if (win->isMinimized()) {
         win->showNormal();
@@ -46,6 +46,7 @@ void WallpaperStudioWindow::showStudio() {
     win->show();
     win->raise();
     win->activateWindow();
+    win->switchToTab(defaultTab);
 }
 
 WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
@@ -91,38 +92,10 @@ void WallpaperStudioWindow::showEvent(QShowEvent* event) {
     populateGalleryCards();
     refreshActiveWallpaperStatus();
     refreshWidgetsList();
-
-    // Resolve Hub HTML path
-    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
-    }
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("LinDeskHub/index.html"));
-    }
-
-    const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
-
-    // Try creating CEF child browser
-    bool cefOk = false;
-    if (m_cefContainerWidget) {
-        cefOk = b.createHubBrowser((quintptr)m_cefContainerWidget->winId(), targetUrl, m_cefContainerWidget->width(), m_cefContainerWidget->height());
-    }
-
-    if (cefOk && m_viewStack) {
-        m_viewStack->setCurrentIndex(0);
-        if (m_viewModeBtn) m_viewModeBtn->setText(tr("🖥️ 原生调试视图"));
-    } else {
-        if (m_viewStack) m_viewStack->setCurrentIndex(1);
-        if (m_viewModeBtn) m_viewModeBtn->setText(tr("🌐 CEF Web 视图"));
-    }
 }
 
 void WallpaperStudioWindow::resizeEvent(QResizeEvent* event) {
     FluentBaseWidget::resizeEvent(event);
-    if (m_cefContainerWidget) {
-        LinWidgetRuntimeBridge::instance().resizeHubBrowser(m_cefContainerWidget->width(), m_cefContainerWidget->height());
-    }
     if (m_toastWidget && m_toastWidget->isVisible()) {
         const int margin = 24;
         m_toastWidget->move(width() - m_toastWidget->width() - margin, height() - m_toastWidget->height() - margin);
@@ -130,7 +103,6 @@ void WallpaperStudioWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void WallpaperStudioWindow::closeEvent(QCloseEvent* event) {
-    LinWidgetRuntimeBridge::instance().closeHubBrowser();
     event->ignore();
     hide();
 }
@@ -231,44 +203,35 @@ void WallpaperStudioWindow::initUI() {
     }
 
     if (container()) {
+        container()->setObjectName(QStringLiteral("hubMainContainer"));
         container()->setStyleSheet(QStringLiteral(
-            "QWidget#fluentBaseContainer {"
-            "  background: #090d16;"
-            "  border: 1px solid rgba(255, 255, 255, 0.12);"
+            "QWidget#hubMainContainer {"
+            "  background: #0a0e17;"
+            "  border: 1px solid rgba(255, 255, 255, 0.08);"
             "  border-radius: 14px;"
             "}"
         ));
     }
 
     setupHeader();
-
-    m_viewStack = new QStackedWidget(container());
-
-    // Page 0: CEF Web SPA Host View
-    m_cefContainerWidget = new QWidget(m_viewStack);
-    m_cefContainerWidget->setObjectName(QStringLiteral("cefContainerWidget"));
-    m_cefContainerWidget->setStyleSheet(QStringLiteral("background: #090d16; border-radius: 0px;"));
-    m_viewStack->addWidget(m_cefContainerWidget);
-
-    // Page 1: Native Tabs View
-    m_nativeContainer = new QWidget(m_viewStack);
-    auto* nativeLayout = new QVBoxLayout(m_nativeContainer);
-    nativeLayout->setContentsMargins(0, 0, 0, 0);
-    nativeLayout->setSpacing(0);
-
     setupNavPills();
 
-    m_stack = new QStackedWidget(m_nativeContainer);
-    m_stack->addWidget(createGalleryPage());
-    m_stack->addWidget(createStudioPage());
+    m_stack = new QStackedWidget(container());
+    m_stack->setObjectName(QStringLiteral("hubContentStack"));
+    m_stack->setStyleSheet(QStringLiteral(
+        "QStackedWidget#hubContentStack { background: transparent; border: none; }"
+    ));
+    // Index 0: 桌面小组件中心 (Primary)
     m_stack->addWidget(createWidgetsPage());
+    // Index 1: 壁纸画廊
+    m_stack->addWidget(createGalleryPage());
+    // Index 2: 壁纸工坊 (Studio 调参)
+    m_stack->addWidget(createStudioPage());
+    // Index 3: 开发者控制台
     m_stack->addWidget(createDevAdminPage());
-    nativeLayout->addWidget(m_stack, 1);
+    
+    centralLayout()->addWidget(m_stack, 1);
 
-    m_viewStack->addWidget(m_nativeContainer);
-    centralLayout()->addWidget(m_viewStack, 1);
-
-    m_viewStack->setCurrentIndex(0);
     switchToTab(0);
 }
 
@@ -308,36 +271,18 @@ void WallpaperStudioWindow::setupHeader() {
     titleLayout->addWidget(subLabel);
     headerLayout->addLayout(titleLayout, 1);
 
-    // Version Tag
-    auto* verTag = new QLabel(tr("v1.0.0 · CEF 60FPS"), header);
+    // Runtime Status Tag
+    auto* verTag = new QLabel(tr("● 运行时就绪 · 60 FPS 硬件加速"), header);
     verTag->setStyleSheet(QStringLiteral(
-        "color: #a5b4fc;"
-        "background: rgba(99, 102, 241, 0.15);"
-        "border: 1px solid rgba(99, 102, 241, 0.35);"
+        "color: #34d399;"
+        "background: rgba(16, 185, 129, 0.15);"
+        "border: 1px solid rgba(16, 185, 129, 0.35);"
         "border-radius: 8px;"
-        "padding: 4px 8px;"
+        "padding: 5px 12px;"
         "font-size: 11px;"
-        "font-weight: 600;"
+        "font-weight: 700;"
     ));
     headerLayout->addWidget(verTag, 0, Qt::AlignVCenter);
-
-    m_viewModeBtn = new QPushButton(tr("🖥️ 原生调试视图"), header);
-    m_viewModeBtn->setCursor(Qt::PointingHandCursor);
-    m_viewModeBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; }"
-        "QPushButton:hover { background: rgba(99, 102, 241, 0.4); color: #ffffff; }"
-    ));
-    connect(m_viewModeBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::toggleViewMode);
-    headerLayout->addWidget(m_viewModeBtn, 0, Qt::AlignVCenter);
-
-    m_openBrowserBtn = new QPushButton(tr("外部浏览器 ↗"), header);
-    m_openBrowserBtn->setCursor(Qt::PointingHandCursor);
-    m_openBrowserBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 600; }"
-        "QPushButton:hover { background: rgba(255, 255, 255, 0.12); color: #f1f5f9; }"
-    ));
-    connect(m_openBrowserBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::openInExternalBrowser);
-    headerLayout->addWidget(m_openBrowserBtn, 0, Qt::AlignVCenter);
 
     centralLayout()->addWidget(header);
 }
@@ -360,14 +305,14 @@ void WallpaperStudioWindow::setupNavPills() {
         return btn;
     };
 
-    m_tabGalleryBtn = createPill(tr("🖼️ 壁纸画廊"), 0);
-    m_tabStudioBtn = createPill(tr("🎨 壁纸工坊 (Studio 调参)"), 1);
-    m_tabWidgetsBtn = createPill(tr("🧩 桌面组件管理"), 2);
+    m_tabWidgetsBtn = createPill(tr("🧩 桌面组件管理"), 0);
+    m_tabGalleryBtn = createPill(tr("🖼️ 壁纸画廊"), 1);
+    m_tabStudioBtn = createPill(tr("🎨 壁纸工坊 (Studio 调参)"), 2);
     m_tabDevBtn = createPill(tr("🛠️ 开发者后台 (Dev Inspector)"), 3);
 
+    navLayout->addWidget(m_tabWidgetsBtn);
     navLayout->addWidget(m_tabGalleryBtn);
     navLayout->addWidget(m_tabStudioBtn);
-    navLayout->addWidget(m_tabWidgetsBtn);
     navLayout->addWidget(m_tabDevBtn);
     navLayout->addStretch(1);
 
@@ -407,15 +352,18 @@ void WallpaperStudioWindow::switchToTab(int tabIndex) {
         "}"
     );
 
-    if (m_tabGalleryBtn) m_tabGalleryBtn->setStyleSheet(tabIndex == 0 ? activeStyle : inactiveStyle);
-    if (m_tabStudioBtn) m_tabStudioBtn->setStyleSheet(tabIndex == 1 ? activeStyle : inactiveStyle);
-    if (m_tabWidgetsBtn) m_tabWidgetsBtn->setStyleSheet(tabIndex == 2 ? activeStyle : inactiveStyle);
+    if (m_tabWidgetsBtn) m_tabWidgetsBtn->setStyleSheet(tabIndex == 0 ? activeStyle : inactiveStyle);
+    if (m_tabGalleryBtn) m_tabGalleryBtn->setStyleSheet(tabIndex == 1 ? activeStyle : inactiveStyle);
+    if (m_tabStudioBtn) m_tabStudioBtn->setStyleSheet(tabIndex == 2 ? activeStyle : inactiveStyle);
     if (m_tabDevBtn) m_tabDevBtn->setStyleSheet(tabIndex == 3 ? activeStyle : inactiveStyle);
 
-    if (tabIndex == 1) {
-        loadAndGeneratePropertyControls(m_currentEditingWallpaper);
-    } else if (tabIndex == 2) {
+    if (tabIndex == 0) {
         refreshWidgetsList();
+    } else if (tabIndex == 1) {
+        populateGalleryCards();
+        refreshActiveWallpaperStatus();
+    } else if (tabIndex == 2) {
+        loadAndGeneratePropertyControls(m_currentEditingWallpaper);
     }
 
     refreshActiveWallpaperStatus();
@@ -501,7 +449,7 @@ QWidget* WallpaperStudioWindow::createGalleryPage() {
         "QPushButton { background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 12px; }"
         "QPushButton:hover { background: rgba(99, 102, 241, 0.35); color: #ffffff; }"
     ));
-    connect(openStudioQuickBtn, &QPushButton::clicked, this, [this]() { switchToTab(1); });
+    connect(openStudioQuickBtn, &QPushButton::clicked, this, [this]() { switchToTab(2); });
     rightCtrlLayout->addWidget(openStudioQuickBtn);
 
     m_heroStopBtn = new QPushButton(tr("⏹ 停止动态壁纸"), heroCard);
@@ -697,7 +645,7 @@ void WallpaperStudioWindow::selectWallpaperForStudio(const QString& wallpaperId)
         }
     }
     loadAndGeneratePropertyControls(wallpaperId);
-    switchToTab(1);
+    switchToTab(2);
 }
 
 // -------------------------------------------------------------
@@ -1418,16 +1366,32 @@ void WallpaperStudioWindow::renderWidgetCards() {
         matchedCount++;
 
         auto* card = new QWidget(m_widgetsContainer);
-        card->setStyleSheet(QStringLiteral(
-            "QWidget {"
-            "  background: rgba(30, 41, 59, 0.75);"
-            "  border: 1px solid %1;"
-            "  border-radius: 12px;"
-            "}"
-            "QWidget:hover {"
-            "  border-color: rgba(99, 102, 241, 0.7);"
-            "}"
-        ).arg(w.isRunning ? QStringLiteral("rgba(16, 185, 129, 0.6)") : QStringLiteral("rgba(255, 255, 255, 0.08)")));
+        card->setObjectName(QStringLiteral("widgetCard"));
+        if (w.isRunning) {
+            card->setStyleSheet(QStringLiteral(
+                "QWidget#widgetCard {"
+                "  background: rgba(13, 27, 42, 0.92);"
+                "  border: 1px solid rgba(16, 185, 129, 0.45);"
+                "  border-radius: 12px;"
+                "}"
+                "QWidget#widgetCard:hover {"
+                "  border-color: rgba(16, 185, 129, 0.75);"
+                "  background: rgba(16, 32, 50, 0.98);"
+                "}"
+            ));
+        } else {
+            card->setStyleSheet(QStringLiteral(
+                "QWidget#widgetCard {"
+                "  background: rgba(17, 24, 39, 0.88);"
+                "  border: 1px solid rgba(255, 255, 255, 0.07);"
+                "  border-radius: 12px;"
+                "}"
+                "QWidget#widgetCard:hover {"
+                "  border-color: rgba(99, 102, 241, 0.45);"
+                "  background: rgba(22, 31, 51, 0.96);"
+                "}"
+            ));
+        }
 
         auto* cardLayout = new QVBoxLayout(card);
         cardLayout->setContentsMargins(16, 12, 16, 12);
@@ -2447,31 +2411,7 @@ void WallpaperStudioWindow::showToast(const QString& message, bool success) {
     m_toastTimer->start(2800);
 }
 
-void WallpaperStudioWindow::toggleViewMode() {
-    if (!m_viewStack) return;
-    const int nextIdx = (m_viewStack->currentIndex() == 0) ? 1 : 0;
-    m_viewStack->setCurrentIndex(nextIdx);
-    if (m_viewModeBtn) {
-        m_viewModeBtn->setText(nextIdx == 0 ? tr("🖥️ 原生调试视图") : tr("🌐 CEF Web 视图"));
-    }
-    if (nextIdx == 0 && m_cefContainerWidget) {
-        auto& b = LinWidgetRuntimeBridge::instance();
-        QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
-        if (!QFileInfo::exists(targetPath)) {
-            targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
-        }
-        b.createHubBrowser((quintptr)m_cefContainerWidget->winId(), QUrl::fromLocalFile(targetPath).toString(), m_cefContainerWidget->width(), m_cefContainerWidget->height());
-    }
-}
 
-void WallpaperStudioWindow::openInExternalBrowser() {
-    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
-    }
-    QDesktopServices::openUrl(QUrl::fromLocalFile(targetPath));
-    showToast(tr("已在外部默认浏览器中开启全功能 Web SPA 管理面板"));
-}
 
 void WallpaperStudioWindow::showQuickWidgetSettingsDialog(const QString& widgetId, const QString& widgetName, const QString& packagePath) {
     QDialog dlg(this);

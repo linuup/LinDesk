@@ -64,7 +64,7 @@ class WallpaperStudioWindow : public FluentBaseWidget {
 
 public:
     static WallpaperStudioWindow* instance();
-    static void showStudio();
+    static void showStudio(int defaultTab = 0);
 
     explicit WallpaperStudioWindow(QWidget* parent = nullptr);
     ~WallpaperStudioWindow() override = default;
@@ -87,8 +87,6 @@ public slots:
     void uninstallWidget(const QString& widgetId, const QString& widgetName, const QString& packagePath, const QStringList& runningInstanceIds);
     void showQuickWidgetSettingsDialog(const QString& widgetId, const QString& widgetName, const QString& packagePath);
     void showToast(const QString& message, bool success = true);
-    void toggleViewMode();
-    void openInExternalBrowser();
 
 protected:
     void showEvent(QShowEvent* event) override;
@@ -177,12 +175,7 @@ private:
     QLabel* m_ipcLogView = nullptr;
     QTimer* m_statusTimer = nullptr;
 
-    // Web / CEF hosting
-    QWidget* m_cefContainerWidget = nullptr;
-    QStackedWidget* m_viewStack = nullptr; // Page 0: CEF Web SPA, Page 1: Native Tabs
-    QPushButton* m_viewModeBtn = nullptr;
-    QPushButton* m_openBrowserBtn = nullptr;
-    QWidget* m_nativeContainer = nullptr;
+
 
     // In-window toast notification
     QWidget* m_toastWidget = nullptr;
