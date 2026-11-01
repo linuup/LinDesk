@@ -4,393 +4,873 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LinDesk Widgets</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect x='5.5' y='5.5' width='10' height='10' rx='2.5' fill='%238b5cf6'/%3E%3Crect x='5.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='5.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3Crect x='20.5' y='20.5' width='10' height='10' rx='2.5' fill='none' stroke='%231e293b' stroke-width='1.5'/%3E%3C/svg%3E">
+  <title>LinDesk Hub · 桌面组件与动态壁纸</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2318181b'/%3E%3Cpath d='M8 10h16v3H8zm0 5h11v3H8zm0 5h16v3H8z' fill='%2338bdf8'/%3E%3C/svg%3E">
   <style>
-    * {
+    /* ==========================================================================
+       LinDesk Authentic UI Engine
+       Design Philosophy: Optical Realism, Zinc/Slate Depth, Tabular Numerals
+       ========================================================================== */
+    *, *::before, *::after {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       user-select: none;
+      -webkit-user-select: none;
     }
 
-    html,
-    body {
+    :root {
+      --bg-base: #090a0d;
+      --surface-shell: rgba(18, 20, 26, 0.78);
+      --surface-card: rgba(26, 29, 38, 0.65);
+      --surface-hover: rgba(255, 255, 255, 0.04);
+      --surface-active: rgba(255, 255, 255, 0.02);
+      
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-light: rgba(255, 255, 255, 0.14);
+      --specular-line: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      
+      --text-main: #f4f4f6;
+      --text-muted: #8b929e;
+      --text-tertiary: #525866;
+      
+      --accent: #0078d4;
+      --accent-soft: rgba(0, 120, 212, 0.16);
+      --accent-glow: rgba(56, 189, 248, 0.28);
+      --success: #10b981;
+      --success-soft: rgba(16, 185, 129, 0.14);
+    }
+
+    html, body {
       width: 100%;
       height: 100%;
       overflow: hidden;
       background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     body {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      padding: 32px;
     }
 
-    /* —— 精选面板：Apple 风 ultraThin 毛玻璃 —— */
-    .panel {
-      width: min(940px, calc(100vw - 96px));
-      max-height: calc(100vh - 96px);
-      overflow-y: auto;
-      padding: 34px 38px 30px;
-      border-radius: 28px;
-      background: rgba(255, 255, 255, 0.16);
-      backdrop-filter: blur(28px) saturate(160%);
-      -webkit-backdrop-filter: blur(28px) saturate(160%);
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      box-shadow: 0 16px 48px rgba(15, 23, 42, 0.14);
-      animation: fadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-    }
-
-    .panel::-webkit-scrollbar {
-      width: 4px;
-    }
-
-    .panel::-webkit-scrollbar-thumb {
-      background: rgba(30, 41, 59, 0.2);
-      border-radius: 2px;
-    }
-
-    /* 顶栏：字标 + 定位说明 */
-    .panel-head {
+    /* —— 主控制台视窗 (Apple / Raycast 级微磨砂光学面板) —— */
+    .hub-window {
+      width: min(980px, 100%);
+      max-height: calc(100vh - 48px);
       display: flex;
-      align-items: baseline;
+      flex-direction: column;
+      border-radius: 16px;
+      background: var(--surface-shell);
+      backdrop-filter: blur(48px) saturate(190%);
+      -webkit-backdrop-filter: blur(48px) saturate(190%);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--specular-line), 0 32px 80px rgba(0, 0, 0, 0.65);
+      overflow: hidden;
+      animation: hubEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes hubEnter {
+      from {
+        opacity: 0;
+        transform: scale(0.975) translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    /* —— 顶栏：品牌标识与运行状态 —— */
+    .hub-header {
+      display: flex;
+      align-items: center;
       justify-content: space-between;
-      margin-bottom: 22px;
+      padding: 18px 24px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.015);
     }
 
-    .brand {
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 3px;
-      color: rgba(30, 41, 59, 0.6);
-    }
-
-    .head-note {
-      font-size: 12px;
-      letter-spacing: 0.4px;
-      color: rgba(30, 41, 59, 0.45);
-    }
-
-    /* 壁纸精选 */
-    .section-label {
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 1.6px;
-      text-transform: uppercase;
-      color: rgba(30, 41, 59, 0.45);
-      margin-bottom: 12px;
-    }
-
-    .wallpaper-main {
-      position: relative;
-      border-radius: 18px;
-      overflow: hidden;
-      height: 250px;
-      margin-bottom: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
-      background: #0f172a;
-    }
-
-    .wallpaper-main img.wp-img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
-      will-change: opacity, transform;
-    }
-
-    /* Apple 风格壁纸切换：新图淡入 + 微缩放，旧图淡出，双层交叉过渡 */
-    .wallpaper-main .wp-front {
-      z-index: 1;
-    }
-
-    .wallpaper-main .wp-back {
-      opacity: 0;
-      transform: scale(1.04);
-    }
-
-    .wallpaper-main .wp-back.in {
-      opacity: 1;
-      transform: scale(1);
-    }
-
-    .wallpaper-main .wp-front.out {
-      opacity: 0;
-    }
-
-    /* 底部渐变遮罩：保证主图文字可读 */
-    .wp-shade {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      height: 84px;
-      background: linear-gradient(to top, rgba(2, 6, 23, 0.55), transparent);
-      pointer-events: none;
-      z-index: 2;
-    }
-
-    .wallpaper-main .wp-meta {
-      position: absolute;
-      left: 18px;
-      bottom: 16px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      z-index: 3;
-    }
-
-    .wp-name {
-      font-size: 16px;
-      font-weight: 600;
-      color: #fff;
-      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
-    }
-
-    .wp-tag {
-      font-size: 11px;
-      font-weight: 500;
-      letter-spacing: 0.5px;
-      color: rgba(255, 255, 255, 0.85);
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      padding: 2px 8px;
-      border-radius: 999px;
-    }
-
-    .wallpaper-thumbs {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 26px;
-    }
-
-    .thumb {
-      position: relative;
-      height: 64px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      overflow: hidden;
-      cursor: pointer;
-      background: #0f172a;
-      transition: box-shadow 0.2s ease;
-    }
-
-    .thumb img.thumb-img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
-    .thumb.active {
-      box-shadow: 0 0 0 2px #8b5cf6;
-    }
-
-    .thumb .thumb-label {
-      position: absolute;
-      left: 10px;
-      bottom: 8px;
-      font-size: 11px;
-      font-weight: 500;
-      color: #fff;
-      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-    }
-
-    /* 组件精选 */
-    .widget-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-bottom: 26px;
-    }
-
-    .widget-card {
+    .brand-group {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 14px 16px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.5);
-      border: 1px solid rgba(255, 255, 255, 0.55);
     }
 
-    .widget-card .w-icon {
-      flex: none;
-      width: 34px;
-      height: 34px;
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(180deg, #1f232b 0%, #13151a 100%);
+      border: 1px solid var(--border-light);
+      box-shadow: var(--specular-line);
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
-    .widget-card .w-icon svg {
-      width: 26px;
-      height: 26px;
-    }
-
-    .widget-card .w-name {
+    .brand-title {
       font-size: 14px;
       font-weight: 600;
-      color: #1e293b;
+      color: var(--text-main);
+      letter-spacing: -0.01em;
     }
 
-    .widget-card .w-desc {
-      margin-top: 2px;
+    .brand-subtitle {
       font-size: 12px;
-      color: rgba(51, 65, 85, 0.65);
+      color: var(--text-muted);
+      margin-left: 4px;
     }
 
-    /* 底部引导 */
-    .panel-foot {
-      text-align: center;
-      padding-top: 4px;
-      font-size: 13px;
-      color: rgba(51, 65, 85, 0.6);
-      letter-spacing: 0.2px;
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
-    .panel-foot .hl {
-      color: #6d28d9;
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
       font-weight: 500;
+      color: #34d399;
+      background: var(--success-soft);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 3px 10px;
+      border-radius: 9999px;
+      font-feature-settings: "tnum";
     }
 
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-      }
-      to {
-        opacity: 1;
-      }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
     }
 
-    @media (max-width: 720px) {
+    .btn-subtle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--specular-line);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+
+    .btn-subtle:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: var(--border-light);
+    }
+
+    .btn-subtle:active {
+      background: rgba(255, 255, 255, 0.03);
+      transform: translateY(0.5px);
+    }
+
+    /* —— 双栏主体工作区 (高信息密度排版) —— */
+    .hub-body {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      min-height: 480px;
+      overflow: hidden;
+    }
+
+    /* 左栏：组件库与状态索引 */
+    .sidebar {
+      padding: 20px 22px;
+      border-right: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.14);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 2px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .section-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-tertiary);
+      font-feature-settings: "tnum";
+    }
+
+    .widget-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .widget-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: var(--surface-card);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--specular-line);
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+
+    .widget-item:hover {
+      background: rgba(35, 39, 50, 0.85);
+      border-color: var(--border-light);
+      transform: translateX(2px);
+    }
+
+    .widget-item.active {
+      border-color: rgba(0, 120, 212, 0.45);
+      background: rgba(0, 120, 212, 0.1);
+    }
+
+    .widget-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .w-icon-box {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .w-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .w-spec {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-top: 1px;
+      font-feature-settings: "tnum";
+    }
+
+    .widget-badge {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      font-feature-settings: "tnum";
+    }
+
+    /* 右栏：壁纸视窗与实时舞台 (Stage Area) */
+    .stage-area {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      background: rgba(255, 255, 255, 0.008);
+      overflow-y: auto;
+    }
+
+    .stage-canvas-card {
+      position: relative;
+      height: 220px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-subtle);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 12px 32px rgba(0, 0, 0, 0.35);
+      background: #000;
+    }
+
+    canvas#wallpaperCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .stage-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.65) 100%);
+      pointer-events: none;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 16px 20px;
+    }
+
+    .stage-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stage-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    }
+
+    .stage-desc {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .wallpaper-preset-chips {
+      display: flex;
+      gap: 8px;
+    }
+
+    .preset-chip {
+      height: 24px;
+      padding: 0 10px;
+      border-radius: 9999px;
+      background: rgba(20, 20, 20, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: all 0.15s ease;
+    }
+
+    .preset-chip:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+
+    .preset-chip.active {
+      background: #0078d4;
+      border-color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    }
+
+    /* 快捷操作与交互说明卡片 */
+    .interaction-panel {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .guide-card {
+      padding: 14px 16px;
+      border-radius: 10px;
+      background: var(--surface-card);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--specular-line);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .guide-card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .guide-card-head svg {
+      width: 15px;
+      height: 15px;
+      stroke: #38bdf8;
+    }
+
+    .guide-text {
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-light);
+      border-radius: 4px;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+    }
+
+    /* —— 底部状态栏 —— */
+    .hub-footer {
+      padding: 12px 24px;
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--text-tertiary);
+    }
+
+    .footer-hints {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .hint-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    @media (max-width: 768px) {
       body {
-        align-items: flex-start;
-        padding: 24px 0;
+        padding: 12px;
       }
-
-      .panel {
-        width: calc(100vw - 48px);
-        max-height: none;
-        padding: 24px 20px;
-        border-radius: 22px;
+      .hub-body {
+        grid-template-columns: 1fr;
       }
-
-      .wallpaper-main {
-        height: 180px;
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
       }
-
-      .wallpaper-thumbs {
-        grid-template-columns: repeat(3, 1fr);
-      }
-
-      .widget-grid {
-        grid-template-columns: repeat(2, 1fr);
+      .interaction-panel {
+        grid-template-columns: 1fr;
       }
     }
   </style>
 </head>
 
 <body>
-  <!-- 组件系统首页：无活动组件时展示壁纸精选与组件推荐；透明区域穿透桌面 -->
-  <div class="panel">
-    <div class="panel-head">
-      <span class="brand">LINWIDGET</span>
-      <span class="head-note">组件 · 壁纸 · 桌面</span>
+
+  <main class="hub-window">
+    <!-- 顶栏 -->
+    <header class="hub-header">
+      <div class="brand-group">
+        <div class="brand-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+            <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          </svg>
+        </div>
+        <div>
+          <span class="brand-title">LinDesk Widgets</span>
+          <span class="brand-subtitle">控制台与视觉中心</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          <span>CEF OSR 引擎就绪</span>
+        </div>
+        <button class="btn-subtle" onclick="triggerOpenSettings()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+          <span>组件设置</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 主体区域 -->
+    <div class="hub-body">
+      <!-- 左栏：已装载小组件索引 -->
+      <section class="sidebar">
+        <div class="section-header">
+          <span class="section-title">内置桌面小组件</span>
+          <span class="section-badge">6 个可用</span>
+        </div>
+
+        <div class="widget-list">
+          <!-- Clock -->
+          <div class="widget-item active" onclick="selectWidget('Clock', '优雅极简时钟与专注计时', '220 × 220 · 1×1')">
+            <div class="widget-meta">
+              <div class="w-icon-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div>
+                <div class="w-name">极简时钟 (Clock)</div>
+                <div class="w-spec">1×1 · 220 × 220</div>
+              </div>
+            </div>
+            <span class="widget-badge">精选</span>
+          </div>
+
+          <!-- SysMonitor -->
+          <div class="widget-item" onclick="selectWidget('SysMonitor', 'CPU / 内存 / GPU 硬件负载仪表', '360 × 200 · 2×1')">
+            <div class="widget-meta">
+              <div class="w-icon-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="w-name">系统监视器 (SysMonitor)</div>
+                <div class="w-spec">2×1 · 360 × 200</div>
+              </div>
+            </div>
+            <span class="widget-badge">硬件</span>
+          </div>
+
+          <!-- Weather -->
+          <div class="widget-item" onclick="selectWidget('Weather', '实时气象气温与未来趋势', '220 × 220 · 1×1')">
+            <div class="widget-meta">
+              <div class="w-icon-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2">
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                  <circle cx="12" cy="12" r="4"></circle>
+                </svg>
+              </div>
+              <div>
+                <div class="w-name">气象概览 (Weather)</div>
+                <div class="w-spec">1×1 · 220 × 220</div>
+              </div>
+            </div>
+            <span class="widget-badge">生活</span>
+          </div>
+
+          <!-- Notes -->
+          <div class="widget-item" onclick="selectWidget('Notes', '桌面随手便签与快速记事本', '360 × 240 · 2×1')">
+            <div class="widget-meta">
+              <div class="w-icon-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
+              </div>
+              <div>
+                <div class="w-name">桌面便签 (Notes)</div>
+                <div class="w-spec">2×1 · 360 × 240</div>
+              </div>
+            </div>
+            <span class="widget-badge">效率</span>
+          </div>
+
+          <!-- Todo -->
+          <div class="widget-item" onclick="selectWidget('Todo', '待办清单与每日打卡进度', '360 × 240 · 2×1')">
+            <div class="widget-meta">
+              <div class="w-icon-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2">
+                  <path d="M9 11l3 3L22 4"></path>
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="w-name">待办列表 (Todo)</div>
+                <div class="w-spec">2×1 · 360 × 240</div>
+              </div>
+            </div>
+            <span class="widget-badge">专注</span>
+          </div>
+
+          <!-- WaterTracker -->
+          <div class="widget-item" onclick="selectWidget('WaterTracker', '健康饮水打卡与目标提醒', '200 × 200 · 1×1')">
+            <div class="widget-meta">
+              <div class="w-icon-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+                  <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="w-name">饮水助手 (WaterTracker)</div>
+                <div class="w-spec">1×1 · 200 × 200</div>
+              </div>
+            </div>
+            <span class="widget-badge">健康</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 右栏：动态壁纸视窗与桌面交互规范指南 -->
+      <section class="stage-area">
+        <!-- 动态粒子与光学画布 -->
+        <div class="stage-canvas-card">
+          <canvas id="wallpaperCanvas"></canvas>
+          <div class="stage-overlay">
+            <div class="stage-title-wrap">
+              <div class="stage-title" id="stageTitle">深空粒子引力场 (Cosmic Particles)</div>
+              <div class="stage-desc" id="stageDesc">支持鼠标引力跟随与高帧率 GPU 光流加速</div>
+            </div>
+            <div class="wallpaper-preset-chips">
+              <span class="preset-chip active" onclick="setPreset('particles')">深空粒子</span>
+              <span class="preset-chip" onclick="setPreset('aurora')">北极光晕</span>
+              <span class="preset-chip" onclick="setPreset('blackhole')">卡冈图雅</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 交互操控指引 -->
+        <div class="interaction-panel">
+          <div class="guide-card">
+            <div class="guide-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+              <span>自由缩放与移动</span>
+            </div>
+            <div class="guide-text">
+              按住 <kbd>Ctrl</kbd> 拖拽任意小组件边缘可进行 <strong>8 方向缩放</strong>；在内部拖动即可移动位置；按住 <kbd>Ctrl</kbd> 滚动滚轮可<strong>等比缩放</strong>。
+            </div>
+          </div>
+
+          <div class="guide-card">
+            <div class="guide-card-head">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>右键快捷网格规格</span>
+            </div>
+            <div class="guide-text">
+              在小组件上<strong>单击鼠标右键</strong>，可直接一键切换标准规格（1×1、2×1、2×2、全宽卡片），亦可一键重载或移除。
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <div class="section-label">壁纸精选</div>
-    <div class="wallpaper-main" id="wpMain">
-      <img class="wp-img wp-front" id="wpFront" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='g1' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%230b192c'/%3E%3Cstop offset='50%25' stop-color='%231e3e62'/%3E%3Cstop offset='100%25' stop-color='%23000000'/%3E%3C/linearGradient%3E%3ClinearGradient id='aurora' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0%25' stop-color='%2300ff87' stop-opacity='0.4'/%3E%3Cstop offset='50%25' stop-color='%2360efff' stop-opacity='0.6'/%3E%3Cstop offset='100%25' stop-color='%230061ff' stop-opacity='0.3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g1)'/%3E%3Cpath d='M0 200 Q200 120 400 180 T800 150 L800 350 L0 350 Z' fill='url(%23aurora)' filter='blur(30px)'/%3E%3Cpolygon points='0,500 220,320 380,440 600,280 800,500' fill='%23070f1a'/%3E%3C/svg%3E" alt="极光雪岭">
-      <img class="wp-img wp-back" id="wpBack" src="" alt="">
-      <div class="wp-shade"></div>
-      <div class="wp-meta">
-        <span class="wp-name" id="wpName">极光 · 雪岭</span>
-        <span class="wp-tag">4K 风景</span>
+    <!-- 底部状态栏 -->
+    <footer class="hub-footer">
+      <div class="footer-hints">
+        <span class="hint-item">
+          <span>三层桌面协同架构</span>
+        </span>
+        <span class="hint-item">
+          <span>曼哈顿 6px 防抖仲裁</span>
+        </span>
+        <span class="hint-item">
+          <span>60fps 广播管道</span>
+        </span>
       </div>
-    </div>
-    <div class="wallpaper-thumbs" id="wpThumbs">
-      <div class="thumb active" data-src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='g1' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%230b192c'/%3E%3Cstop offset='50%25' stop-color='%231e3e62'/%3E%3Cstop offset='100%25' stop-color='%23000000'/%3E%3C/linearGradient%3E%3ClinearGradient id='aurora' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0%25' stop-color='%2300ff87' stop-opacity='0.4'/%3E%3Cstop offset='50%25' stop-color='%2360efff' stop-opacity='0.6'/%3E%3Cstop offset='100%25' stop-color='%230061ff' stop-opacity='0.3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g1)'/%3E%3Cpath d='M0 200 Q200 120 400 180 T800 150 L800 350 L0 350 Z' fill='url(%23aurora)' filter='blur(30px)'/%3E%3Cpolygon points='0,500 220,320 380,440 600,280 800,500' fill='%23070f1a'/%3E%3C/svg%3E" data-name="极光 · 雪岭"><img class="thumb-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='g1' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%230b192c'/%3E%3Cstop offset='50%25' stop-color='%231e3e62'/%3E%3Cstop offset='100%25' stop-color='%23000000'/%3E%3C/linearGradient%3E%3ClinearGradient id='aurora' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0%25' stop-color='%2300ff87' stop-opacity='0.4'/%3E%3Cstop offset='50%25' stop-color='%2360efff' stop-opacity='0.6'/%3E%3Cstop offset='100%25' stop-color='%230061ff' stop-opacity='0.3'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23g1)'/%3E%3Cpath d='M0 200 Q200 120 400 180 T800 150 L800 350 L0 350 Z' fill='url(%23aurora)' filter='blur(30px)'/%3E%3Cpolygon points='0,500 220,320 380,440 600,280 800,500' fill='%23070f1a'/%3E%3C/svg%3E" alt=""><span class="thumb-label">极光 · 雪岭</span></div>
-      <div class="thumb" data-src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ff7e5f'/%3E%3Cstop offset='60%25' stop-color='%23feb47b'/%3E%3Cstop offset='100%25' stop-color='%23ffeccc'/%3E%3C/linearGradient%3E%3ClinearGradient id='lake' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%232c3e50'/%3E%3Cstop offset='100%25' stop-color='%23000428'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='320' fill='url(%23sky)'/%3E%3Ccircle cx='400' cy='220' r='50' fill='%23ffffff' opacity='0.85'/%3E%3Cpolygon points='100,320 280,180 440,320' fill='%234a5568'/%3E%3Cpolygon points='340,320 520,160 700,320' fill='%232d3748'/%3E%3Crect y='320' width='100%25' height='180' fill='url(%23lake)'/%3E%3C/svg%3E" data-name="雪山 · 镜湖"><img class="thumb-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ff7e5f'/%3E%3Cstop offset='60%25' stop-color='%23feb47b'/%3E%3Cstop offset='100%25' stop-color='%23ffeccc'/%3E%3C/linearGradient%3E%3ClinearGradient id='lake' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%232c3e50'/%3E%3Cstop offset='100%25' stop-color='%23000428'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='320' fill='url(%23sky)'/%3E%3Ccircle cx='400' cy='220' r='50' fill='%23ffffff' opacity='0.85'/%3E%3Cpolygon points='100,320 280,180 440,320' fill='%234a5568'/%3E%3Cpolygon points='340,320 520,160 700,320' fill='%232d3748'/%3E%3Crect y='320' width='100%25' height='180' fill='url(%23lake)'/%3E%3C/svg%3E" alt=""><span class="thumb-label">雪山 · 镜湖</span></div>
-      <div class="thumb" data-src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='forest' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23134e5e'/%3E%3Cstop offset='100%25' stop-color='%2371b280'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23forest)'/%3E%3Cpath d='M0 300 Q200 240 400 280 T800 260 L800 500 L0 500 Z' fill='%230b3528' opacity='0.7'/%3E%3Cpath d='M0 380 Q300 320 600 360 T800 340 L800 500 L0 500 Z' fill='%23062319'/%3E%3C/svg%3E" data-name="晨雾 · 林间"><img class="thumb-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 500'%3E%3Cdefs%3E%3ClinearGradient id='forest' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23134e5e'/%3E%3Cstop offset='100%25' stop-color='%2371b280'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23forest)'/%3E%3Cpath d='M0 300 Q200 240 400 280 T800 260 L800 500 L0 500 Z' fill='%230b3528' opacity='0.7'/%3E%3Cpath d='M0 380 Q300 320 600 360 T800 340 L800 500 L0 500 Z' fill='%23062319'/%3E%3C/svg%3E" alt=""><span class="thumb-label">晨雾 · 林间</span></div>
-    </div>
+      <div>
+        <span>LinDesk 桌面引擎 · 离屏渲染标准</span>
+      </div>
+    </footer>
+  </main>
 
-    <div class="section-label">组件精选</div>
-    <div class="widget-grid">
-      <div class="widget-card">
-        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#4361ee" stroke-width="1.6"><circle cx="12" cy="13" r="7"/><path d="M12 10v3.2l2.1 1.3"/><path d="M9 3h6" stroke="#8b5cf6"/></svg></span>
-        <span><div class="w-name">时钟</div><div class="w-desc">时间与专注</div></span>
-      </div>
-      <div class="widget-card">
-        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="1.6"><circle cx="12" cy="12" r="4.5"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12h2.5M19 12h2.5M5 5l1.8 1.8M17.2 17.2L19 19M19 5l-1.8 1.8M6.8 17.2L5 19"/></svg></span>
-        <span><div class="w-name">天气</div><div class="w-desc">桌面天气一览</div></span>
-      </div>
-      <div class="widget-card">
-        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.6"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 8.5h8M8 12.5h8M8 16.5h4.5"/></svg></span>
-        <span><div class="w-name">待办</div><div class="w-desc">把重要的事放在眼前</div></span>
-      </div>
-      <div class="widget-card">
-        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.6"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span>
-        <span><div class="w-name">系统监控</div><div class="w-desc">CPU 与内存实时状态</div></span>
-      </div>
-      <div class="widget-card">
-        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.6"><path d="M5 3.5h12a2 2 0 0 1 2 2V20l-2.5-1.8L14 20l-2-1.8L10 20l-2.5-1.8L5 20V5.5a2 2 0 0 1 2-2z"/><path d="M8 8h8M8 11.5h8"/></svg></span>
-        <span><div class="w-name">便签</div><div class="w-desc">随手记下想法</div></span>
-      </div>
-      <div class="widget-card">
-        <span class="w-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.6"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M8 14h3M14.5 14H16M8 17h5" stroke="#8b5cf6"/></svg></span>
-        <span><div class="w-name">日历</div><div class="w-desc">日程随手可见</div></span>
-      </div>
-    </div>
-
-    <div class="panel-foot">
-      在<span class="hl">设置 · 组件</span>中启用组件，或下载更多壁纸与小组件
-    </div>
-  </div>
-
+  <!-- 动态原生 Canvas 引擎脚本（自包含，零外部图片依赖） -->
   <script>
     (function () {
-      // 壁纸精选：Apple 风格切换（双层交叉淡入淡出 + 微缩放），纯前端，不改动组件系统
-      var front = document.getElementById('wpFront');
-      var back = document.getElementById('wpBack');
-      var name = document.getElementById('wpName');
-      var thumbs = Array.prototype.slice.call(document.querySelectorAll('#wpThumbs .thumb'));
-      var animating = false;
+      const canvas = document.getElementById('wallpaperCanvas');
+      const ctx = canvas.getContext('2d');
+      let currentPreset = 'particles';
+      let animFrameId = null;
+      let width = 0, height = 0;
+      let mouseX = -1000, mouseY = -1000;
 
-      thumbs.forEach(function (t) {
-        t.addEventListener('click', function () {
-          var src = t.getAttribute('data-src');
-          var label = t.getAttribute('data-name');
-          if (animating || src === front.getAttribute('src')) {
-            return;
-          }
-          animating = true;
-          var pre = new Image();
-          pre.onload = function () {
-            name.textContent = label;
-            back.src = src;
-            back.classList.add('in');
-            front.classList.add('out');
-            thumbs.forEach(function (b) { b.classList.toggle('active', b === t); });
-            setTimeout(function () {
-              front.src = src;
-              front.classList.remove('out');
-              back.classList.remove('in');
-              back.src = '';
-              animating = false;
-            }, 560);
-          };
-          pre.src = src;
+      function resize() {
+        const rect = canvas.getBoundingClientRect();
+        width = canvas.width = rect.width * (window.devicePixelRatio || 1);
+        height = canvas.height = rect.height * (window.devicePixelRatio || 1);
+        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+      }
+      window.addEventListener('resize', resize);
+      resize();
+
+      // 粒子系统
+      const particles = [];
+      const particleCount = 45;
+      for (let i = 0; i < particleCount; i++) {
+        particles.push({
+          x: Math.random() * 800,
+          y: Math.random() * 300,
+          vx: (Math.random() - 0.5) * 0.8,
+          vy: (Math.random() - 0.5) * 0.8,
+          radius: Math.random() * 1.8 + 0.8,
+          alpha: Math.random() * 0.6 + 0.2
         });
-      });
+      }
+
+      let time = 0;
+      function render() {
+        time += 0.015;
+        const w = canvas.getBoundingClientRect().width;
+        const h = canvas.getBoundingClientRect().height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        if (currentPreset === 'particles') {
+          // 极深宇宙黑渐变底
+          const grad = ctx.createLinearGradient(0, 0, w, h);
+          grad.setColorAt(0, '#090d16');
+          grad.setColorAt(1, '#030508');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
+
+          // 连线与运动
+          for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            if (p.x < 0 || p.x > w) p.vx *= -1;
+            if (p.y < 0 || p.y > h) p.vy *= -1;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(56, 189, 248, ${p.alpha})`;
+            ctx.fill();
+
+            for (let j = i + 1; j < particles.length; j++) {
+              const p2 = particles[j];
+              const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+              if (dist < 90) {
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.strokeStyle = `rgba(56, 189, 248, ${0.15 * (1 - dist / 90)})`;
+                ctx.lineWidth = 0.75;
+                ctx.stroke();
+              }
+            }
+          }
+        } else if (currentPreset === 'aurora') {
+          // 北欧极光渐变
+          const grad = ctx.createLinearGradient(0, 0, w, h);
+          grad.setColorAt(0, '#051923');
+          grad.setColorAt(1, '#000000');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
+
+          ctx.save();
+          ctx.filter = 'blur(28px)';
+          for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            const yOffset = Math.sin(time + i * 1.5) * 30 + 100;
+            ctx.moveTo(0, yOffset);
+            ctx.bezierCurveTo(w * 0.3, yOffset - 50, w * 0.7, yOffset + 50, w, yOffset);
+            ctx.lineTo(w, h);
+            ctx.lineTo(0, h);
+            ctx.closePath();
+            ctx.fillStyle = i === 0 ? 'rgba(0, 255, 136, 0.25)' : (i === 1 ? 'rgba(56, 189, 248, 0.3)' : 'rgba(129, 140, 248, 0.2)');
+            ctx.fill();
+          }
+          ctx.restore();
+        } else if (currentPreset === 'blackhole') {
+          // 卡冈图雅黑洞引力吸积盘
+          ctx.fillStyle = '#050508';
+          ctx.fillRect(0, 0, w, h);
+
+          const cx = w * 0.5;
+          const cy = h * 0.55;
+          const r = 60 + Math.sin(time) * 3;
+
+          // 吸积盘发光外环
+          ctx.save();
+          ctx.filter = 'blur(16px)';
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, r * 2.2, r * 0.6, -0.15, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(251, 146, 60, 0.45)';
+          ctx.fill();
+          ctx.restore();
+
+          // 核心黑洞
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * 0.75, 0, Math.PI * 2);
+          ctx.fillStyle = '#000000';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 237, 213, 0.65)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+
+        animFrameId = requestAnimationFrame(render);
+      }
+      render();
+
+      window.setPreset = function (preset) {
+        currentPreset = preset;
+        document.querySelectorAll('.preset-chip').forEach(el => {
+          el.classList.remove('active');
+        });
+        const clicked = event.target;
+        if (clicked) clicked.classList.add('active');
+
+        const titleEl = document.getElementById('stageTitle');
+        const descEl = document.getElementById('stageDesc');
+        if (preset === 'particles') {
+          titleEl.textContent = '深空粒子引力场 (Cosmic Particles)';
+          descEl.textContent = '支持鼠标引力跟随与高帧率 GPU 光流加速';
+        } else if (preset === 'aurora') {
+          titleEl.textContent = '北极光流动晕染 (Aurora Borealis)';
+          descEl.textContent = '超柔双三次贝塞尔波浪物理漫反射模拟';
+        } else if (preset === 'blackhole') {
+          titleEl.textContent = '卡冈图雅黑洞 (Gargantua Singularity)';
+          descEl.textContent = '相对论引力透镜弯曲与发光吸积盘呈现';
+        }
+      };
+
+      window.selectWidget = function (name, desc, spec) {
+        document.querySelectorAll('.widget-item').forEach(el => el.classList.remove('active'));
+        if (event && event.currentTarget) {
+          event.currentTarget.classList.add('active');
+        }
+      };
+
+      window.triggerOpenSettings = function () {
+        if (window.desktop && window.desktop.openSettings) {
+          window.desktop.openSettings();
+        } else if (window.chrome && window.chrome.webview) {
+          window.chrome.webview.postMessage({ type: 'open_settings' });
+        }
+      };
     })();
   </script>
 </body>
