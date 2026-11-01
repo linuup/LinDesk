@@ -1,6 +1,7 @@
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
 #include "desktop/RenameManager.h"
+#include "desktop/widgets/runtime_export.h"
 #include "box/BoxManager.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInfoTip.h"
@@ -1307,22 +1308,73 @@ void LinDesktop::mousePressEvent(QMouseEvent* event)
 
 void LinDesktop::keyPressEvent(QKeyEvent* event)
 {
-    if (listView) {
-        QApplication::sendEvent(listView, event);
-        if (event->isAccepted()) {
+    // 1. 防重入保护：避免 Qt 内部 sendEvent 引起的递归与栈溢出
+    static bool s_inKeyPressDispatch = false;
+    if (s_inKeyPressDispatch) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    // 2. 焦点检查：若 listView 已经是焦点部件，说明该按键本就是 listView 冒泡上来的，绝不可反向 sendEvent 造成死循环
+    if (!listView || QApplication::focusWidget() == listView) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    // 3. 独立修饰键保护：单按 Ctrl/Shift/Alt/Meta 等修饰键在桌面层不产生独立动作，
+    // 若嵌入式小组件处于激活状态则直接桥接给小组件，否则直接忽略，禁止派发非自发事件触发 ShortcutOverride 递归。
+    const int key = event->key();
+    if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+            event->accept();
             return;
         }
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    // 4. 安全受控的非修饰键转发
+    s_inKeyPressDispatch = true;
+    QApplication::sendEvent(listView, event);
+    s_inKeyPressDispatch = false;
+
+    if (event->isAccepted()) {
+        return;
     }
     QWidget::keyPressEvent(event);
 }
 
 void LinDesktop::keyReleaseEvent(QKeyEvent* event)
 {
-    if (listView) {
-        QApplication::sendEvent(listView, event);
-        if (event->isAccepted()) {
+    static bool s_inKeyReleaseDispatch = false;
+    if (s_inKeyReleaseDispatch) {
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+
+    if (!listView || QApplication::focusWidget() == listView) {
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+
+    const int key = event->key();
+    if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta) {
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.isLoaded() && bridge.forwardKeyEvent(event)) {
+            event->accept();
             return;
         }
+        QWidget::keyReleaseEvent(event);
+        return;
+    }
+
+    s_inKeyReleaseDispatch = true;
+    QApplication::sendEvent(listView, event);
+    s_inKeyReleaseDispatch = false;
+
+    if (event->isAccepted()) {
+        return;
     }
     QWidget::keyReleaseEvent(event);
 }

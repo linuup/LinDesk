@@ -1579,8 +1579,11 @@ void ListView::mousePressEvent(QMouseEvent* event)
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (bridge.isLoaded()) {
         if (bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+            clearSelectionState();
             if (bridge.forwardMouseEvent(event)) {
                 m_forwardingMouseToWidget = true;
+                this->activateWindow();
+                this->setFocus(Qt::MouseFocusReason);
                 event->accept();
                 return;
             }
