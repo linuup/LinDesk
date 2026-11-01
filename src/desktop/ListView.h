@@ -740,7 +740,6 @@ private:
 	bool m_fadeTransitionOnHide = true;
 	DesktopHideAnimationStyle m_hideAnimationStyle = DesktopHideAnimationStyle::SpringRipple;
 	QPoint m_hideAnimationOriginPos;
-	QMap<LinBox*, QRect> m_boxOriginalGeometries;
 	qreal m_desktopElementsOpacity = 1.0;
 	class QVariantAnimation* m_desktopHideAnim = nullptr;
 	QString m_typeSearchBuffer;

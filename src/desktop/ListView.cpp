@@ -1522,17 +1522,19 @@ void ListView::paintEvent(QPaintEvent* event)
             if (xform.opacity <= 0.001) {
                 return;
             }
-            painter.save();
-            if (std::abs(xform.scale - 1.0) > 0.001 || std::abs(xform.dy) > 0.05) {
-                const QPointF c = totalRect.center();
-                painter.translate(c.x(), c.y() + xform.dy);
-                painter.scale(xform.scale, xform.scale);
-                painter.translate(-c.x(), -c.y());
+            const int dy = qRound(xform.dy);
+            if (dy != 0) {
+                painter.save();
+                painter.translate(0, dy);
+                painter.setOpacity(xform.opacity);
+                paintDesktopRootItemDynamic(painter, state.model.renderData);
+                paintDesktopRootItemStatic(painter, state.model.renderData);
+                painter.restore();
+            } else {
+                painter.setOpacity(xform.opacity);
+                paintDesktopRootItemDynamic(painter, state.model.renderData);
+                paintDesktopRootItemStatic(painter, state.model.renderData);
             }
-            painter.setOpacity(xform.opacity);
-            paintDesktopRootItemDynamic(painter, state.model.renderData);
-            paintDesktopRootItemStatic(painter, state.model.renderData);
-            painter.restore();
         } else {
             paintDesktopRootItemDynamic(painter, state.model.renderData);
             paintDesktopRootItemStatic(painter, state.model.renderData);
