@@ -123,6 +123,7 @@ private:
 private:
     static QPointer<WallpaperStudioWindow> s_instance;
 
+    QWidget* m_hubWebWidget = nullptr;
     QStackedWidget* m_stack = nullptr;
     QPushButton* m_tabGalleryBtn = nullptr;
     QPushButton* m_tabStudioBtn = nullptr;

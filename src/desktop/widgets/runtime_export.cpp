@@ -1,3 +1,4 @@
+#include "desktop/widgets/cef/LinHubWebWidget.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "desktop/widgets/runtime_export.h"
@@ -595,11 +596,18 @@ LINWIDGET_EXPORT bool linwidget_open_hub_window(const char* hubUrl)
     const std::wstring urlW = hubUrl ? QString::fromUtf8(hubUrl).toStdWString() : L"about:blank";
     return CefBrowserHost::CreateBrowser(windowInfo, handler, urlW, settings, nullptr, nullptr);
 }
+
+LINWIDGET_EXPORT QWidget* linwidget_create_hub_web_widget(const char* url, QWidget* parent)
+{
+    const QString urlStr = url ? QString::fromUtf8(url) : QString();
+    return new LinHubWebWidget(urlStr, parent);
+}
 #else
 LINWIDGET_EXPORT bool linwidget_create_hub_browser(quintptr, const char*, int, int) { return false; }
 LINWIDGET_EXPORT void linwidget_resize_hub_browser(int, int) {}
 LINWIDGET_EXPORT void linwidget_close_hub_browser() {}
 LINWIDGET_EXPORT bool linwidget_has_hub_browser() { return false; }
+LINWIDGET_EXPORT QWidget* linwidget_create_hub_web_widget(const char*, QWidget*) { return nullptr; }
 #endif
 
 #endif // LINWIDGET_RUNTIME_EXPORTS
@@ -679,6 +687,7 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
     m_pfnCloseHubBrowser = nullptr;
     m_pfnHasHubBrowser = nullptr;
     m_pfnOpenHubWindow = nullptr;
+    m_pfnCreateHubWebWidget = nullptr;
 }
 
 bool LinWidgetRuntimeBridge::isLoaded() const
@@ -787,6 +796,7 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_close_hub_browser", m_pfnCloseHubBrowser);
     RESOLVE_FN("linwidget_has_hub_browser", m_pfnHasHubBrowser);
     RESOLVE_FN("linwidget_open_hub_window", m_pfnOpenHubWindow);
+    RESOLVE_FN("linwidget_create_hub_web_widget", m_pfnCreateHubWebWidget);
 
     #undef RESOLVE_FN
 #endif
@@ -1156,4 +1166,19 @@ bool LinWidgetRuntimeBridge::openHubWindow(const QString& hubUrl)
         return m_pfnOpenHubWindow(hubUrl.isEmpty() ? nullptr : hubUrl.toUtf8().constData());
     }
     return false;
+}
+
+
+QWidget* LinWidgetRuntimeBridge::createHubWebWidget(const QString& url, QWidget* parent)
+{
+    if (!m_pfnCreateHubWebWidget) {
+        if (!isLoaded()) {
+            if (!loadRuntime()) return nullptr;
+        }
+    }
+    if (m_pfnCreateHubWebWidget) {
+        const QByteArray utf8 = url.toUtf8();
+        return m_pfnCreateHubWebWidget(utf8.constData(), parent);
+    }
+    return nullptr;
 }

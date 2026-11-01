@@ -15,7 +15,7 @@
 #endif
 
 #ifndef BuildDir
-#define BuildDir "D:/Desktop/LinDesk/build/build_64/Release"
+#define BuildDir "D:/Desktop/LinDesk/build/Release"
 #endif
 
 #ifndef PackageOutputDir

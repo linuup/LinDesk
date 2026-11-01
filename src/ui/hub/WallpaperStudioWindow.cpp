@@ -49,21 +49,6 @@ void WallpaperStudioWindow::showStudio(int defaultTab) {
         s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
     }
 
-    // Try opening standalone CEF Web App Window directly
-    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
-    }
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("LinDeskHub/index.html"));
-    }
-
-    const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
-    if (bridge.openHubWindow(targetUrl)) {
-        return;
-    }
-
-    // Fallback if CEF runtime cannot create browser
     auto* win = instance();
     if (win->isMinimized()) {
         win->showNormal();
@@ -71,7 +56,9 @@ void WallpaperStudioWindow::showStudio(int defaultTab) {
     win->show();
     win->raise();
     win->activateWindow();
-    win->switchToTab(defaultTab);
+    if (!win->m_hubWebWidget) {
+        win->switchToTab(defaultTab);
+    }
 }
 
 WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
@@ -238,26 +225,41 @@ void WallpaperStudioWindow::initUI() {
         ));
     }
 
-    setupHeader();
-    setupNavPills();
+    // Resolve LinDeskHub index.html
+    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
+    }
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("LinDeskHub/index.html"));
+    }
 
-    m_stack = new QStackedWidget(container());
-    m_stack->setObjectName(QStringLiteral("hubContentStack"));
-    m_stack->setStyleSheet(QStringLiteral(
-        "QStackedWidget#hubContentStack { background: transparent; border: none; }"
-    ));
-    // Index 0: 桌面小组件中心 (Primary)
-    m_stack->addWidget(createWidgetsPage());
-    // Index 1: 壁纸画廊
-    m_stack->addWidget(createGalleryPage());
-    // Index 2: 壁纸工坊 (Studio 调参)
-    m_stack->addWidget(createStudioPage());
-    // Index 3: 开发者控制台
-    m_stack->addWidget(createDevAdminPage());
-    
-    centralLayout()->addWidget(m_stack, 1);
+    const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
+        bridge.loadRuntime();
+    }
 
-    switchToTab(0);
+    m_hubWebWidget = bridge.createHubWebWidget(targetUrl, container());
+    if (m_hubWebWidget) {
+        centralLayout()->addWidget(m_hubWebWidget, 1);
+    } else {
+        setupHeader();
+        setupNavPills();
+
+        m_stack = new QStackedWidget(container());
+        m_stack->setObjectName(QStringLiteral("hubContentStack"));
+        m_stack->setStyleSheet(QStringLiteral(
+            "QStackedWidget#hubContentStack { background: transparent; border: none; }"
+        ));
+        m_stack->addWidget(createWidgetsPage());
+        m_stack->addWidget(createGalleryPage());
+        m_stack->addWidget(createStudioPage());
+        m_stack->addWidget(createDevAdminPage());
+        
+        centralLayout()->addWidget(m_stack, 1);
+        switchToTab(0);
+    }
 }
 
 void WallpaperStudioWindow::setupHeader() {
