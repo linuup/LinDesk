@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinDesk 动态壁纸管理中心与壁纸工坊交互原型</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.65; transform: scale(1.15); }
+    }
+    .status-pulse {
+      animation: pulse-subtle 2s infinite ease-in-out;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
+    .glass-acrylic {
+      background: rgba(30, 41, 59, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glass-light {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans selection:bg-indigo-500 selection:text-white flex flex-col p-4 md:p-6 overflow-x-hidden">
+
+  <!-- Top Navigation & Header -->
+  <header class="max-w-7xl w-full mx-auto mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800 pb-5">
+    <div>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl md:text-2xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+            LinDesk 动态壁纸管理中心 (Live Wallpaper Hub)
+          </h1>
+          <p class="text-xs text-slate-400">基于 CEF OSR 硬件加速 · 桌面三层协同与壁纸工坊可视化设计</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Pills -->
+    <div class="flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1.5 shadow-inner">
+      <button id="nav-gallery" onclick="switchMainTab('gallery')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+        壁纸画廊与管理
+      </button>
+      <button id="nav-studio" onclick="switchMainTab('studio')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+        壁纸工坊 (Studio 调节)
+      </button>
+      <button id="nav-desktop" onclick="switchMainTab('desktop')" class="px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+        桌面右键协同体验
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl w-full mx-auto flex-1 flex flex-col">
+
+    <!-- ==================== TAB 1: WALLPAPER GALLERY HUB ==================== -->
+    <div id="tab-gallery" class="space-y-6">
+
+      <!-- 1. Hero Showcase of Active Wallpaper -->
+      <section class="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/90 via-slate-900/60 to-slate-950 p-5 md:p-6 shadow-2xl backdrop-blur-md">
+        <div class="absolute -top-24 -right-24 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -bottom-24 -left-24 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 flex flex-col lg:flex-row items-center gap-6">
+          <!-- Active Thumbnail Canvas Window -->
+          <div class="relative w-full lg:w-96 aspect-video rounded-xl overflow-hidden border border-slate-700/80 shadow-xl group bg-black shrink-0">
+            <canvas id="hero-preview-canvas" class="w-full h-full object-cover"></canvas>
+            <div class="absolute top-2.5 left-2.5 flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-xs">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 status-pulse"></span>
+              <span class="font-medium text-emerald-300" id="hero-active-status">正在桌面背景层运行</span>
+            </div>
+            <div class="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded bg-black/60 backdrop-blur-md text-[11px] text-slate-300 font-mono">
+              60 FPS · 4K OSR
+            </div>
+          </div>
+
+          <!-- Active Info & Fast Controls -->
+          <div class="flex-1 space-y-4 w-full">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <h2 class="text-xl md:text-2xl font-bold text-white" id="hero-title">Gargantua Relativistic Black Hole</h2>
+                  <span class="px-2 py-0.5 text-xs rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">4K WebGL</span>
+                  <span class="px-2 py-0.5 text-xs rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">官方精选</span>
+                </div>
+                <p class="text-xs md:text-sm text-slate-400 line-clamp-2" id="hero-desc">
+                  顶级天体物理相对论克尔黑洞仿真，具备引力透镜弯折吸积盘、多普勒波长频移以及交互式引力波微尘物理跟随。
+                </p>
+              </div>
+            </div>
+
+            <!-- Fast Action Toggles -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <!-- Toggle 1: Mouse Physics -->
+              <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"></path></svg>
+                  </div>
+                  <div>
+                    <div class="text-xs font-semibold text-slate-200">鼠标互动跟随</div>
+                    <div class="text-[11px] text-slate-400">引力波粒子跟随光标</div>
+                  </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="hero-interactive-toggle" checked onchange="toggleMousePhysics(this.checked)" class="sr-only peer">
+                  <div class="w-10 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              <!-- Action 2: Open Studio -->
+              <button onclick="openStudioWithCurrent()" class="flex items-center justify-between p-3 rounded-xl bg-indigo-600/15 border border-indigo-500/40 hover:bg-indigo-600/25 transition-all text-left group">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                  </div>
+                  <div>
+                    <div class="text-xs font-semibold text-indigo-200">进入壁纸工坊</div>
+                    <div class="text-[11px] text-indigo-400/80">调色、暗化遮罩、图标防挡</div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 text-indigo-400 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+              </button>
+
+              <!-- Action 3: Stop / Pause Wallpaper -->
+              <button id="hero-stop-btn" onclick="toggleActiveWallpaperRunning()" class="flex items-center justify-between p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all text-left group">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path></svg>
+                  </div>
+                  <div>
+                    <div class="text-xs font-semibold text-rose-300" id="hero-stop-text">停止动态壁纸</div>
+                    <div class="text-[11px] text-rose-400/70" id="hero-stop-sub">切回 Windows 系统静态壁纸</div>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Action Bar & Filters -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mr-1">分类：</span>
+          <button onclick="filterGallery('all')" class="gallery-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-white border border-slate-700 active-filter">全部壁纸 (4)</button>
+          <button onclick="filterGallery('official')" class="gallery-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800">官方精选 (2)</button>
+          <button onclick="filterGallery('video')" class="gallery-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800">4K 视频/动效 (2)</button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Import Button -->
+          <button onclick="simulateImportMedia()" class="px-4 py-2 rounded-xl text-xs md:text-sm font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all active:scale-95">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            导入本地视频/图片...
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. Visual Card Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="wallpaper-cards-grid">
+
+        <!-- Card 1: Gargantua -->
+        <div class="wallpaper-card relative rounded-2xl border border-indigo-500/60 bg-slate-900/80 overflow-hidden shadow-xl shadow-indigo-950/30 flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-indigo-400 group" data-category="official">
+          <div class="relative w-full aspect-video bg-black overflow-hidden">
+            <canvas id="card-canvas-gargantua" class="w-full h-full object-cover"></canvas>
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30 pointer-events-none"></div>
+            <!-- Badges -->
+            <div class="absolute top-3 left-3 flex gap-1.5">
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-purple-600/80 text-white backdrop-blur-md font-medium">官方精选</span>
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-indigo-600/80 text-white backdrop-blur-md font-medium">4K WebGL</span>
+            </div>
+            <!-- Active Indicator -->
+            <div id="card-active-indicator-1" class="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/90 text-white text-xs font-semibold shadow-lg">
+              <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+              使用中
+            </div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+            <div>
+              <h3 class="text-base font-bold text-white group-hover:text-indigo-300 transition-colors">Gargantua Relativistic Black Hole</h3>
+              <p class="text-xs text-slate-400 mt-1 line-clamp-2">天体相对论引力吸积盘与流星光晕，支持全向引力跟随。</p>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+              <span class="text-xs text-slate-500">LinDesk Studio · v1.0.0</span>
+              <div class="flex items-center gap-2">
+                <button onclick="openStudioForWallpaper('gargantua')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition-colors">调节</button>
+                <button id="apply-btn-1" onclick="applyWallpaper('gargantua')" class="px-3.5 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold cursor-default">已激活</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Living Wallpaper -->
+        <div class="wallpaper-card relative rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-lg flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/50 group" data-category="official">
+          <div class="relative w-full aspect-video bg-black overflow-hidden">
+            <canvas id="card-canvas-living" class="w-full h-full object-cover"></canvas>
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30 pointer-events-none"></div>
+            <!-- Badges -->
+            <div class="absolute top-3 left-3 flex gap-1.5">
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-purple-600/80 text-white backdrop-blur-md font-medium">官方精选</span>
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-cyan-600/80 text-white backdrop-blur-md font-medium">极光流体</span>
+            </div>
+            <!-- Active Indicator -->
+            <div id="card-active-indicator-2" class="hidden absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/90 text-white text-xs font-semibold shadow-lg">
+              <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+              使用中
+            </div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+            <div>
+              <h3 class="text-base font-bold text-white group-hover:text-indigo-300 transition-colors">LinDesk Living Wallpaper</h3>
+              <p class="text-xs text-slate-400 mt-1 line-clamp-2">宇宙引力奇异点、流体极光与量子网格，支持鼠标物理扰动与波纹扩散。</p>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+              <span class="text-xs text-slate-500">LinDesk Team · v1.1.0</span>
+              <div class="flex items-center gap-2">
+                <button onclick="openStudioForWallpaper('living')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition-colors">调节</button>
+                <button id="apply-btn-2" onclick="applyWallpaper('living')" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all">设为桌面壁纸</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Cyber Matrix (Video Wallpaper) -->
+        <div class="wallpaper-card relative rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden shadow-lg flex flex-col transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/50 group" data-category="video">
+          <div class="relative w-full aspect-video bg-black overflow-hidden">
+            <canvas id="card-canvas-matrix" class="w-full h-full object-cover"></canvas>
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30 pointer-events-none"></div>
+            <!-- Badges -->
+            <div class="absolute top-3 left-3 flex gap-1.5">
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-emerald-600/80 text-white backdrop-blur-md font-medium">4K 视频</span>
+              <span class="px-2 py-0.5 text-[11px] rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-md font-medium">静音循环</span>
+            </div>
+            <!-- Active Indicator -->
+            <div id="card-active-indicator-3" class="hidden absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/90 text-white text-xs font-semibold shadow-lg">
+              <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+              使用中
+            </div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between space-y-3">
+            <div>
+              <h3 class="text-base font-bold text-white group-hover:text-indigo-300 transition-colors">Cyber Matrix Stream (赛博矩阵流光)</h3>
+              <p class="text-xs text-slate-400 mt-1 line-clamp-2">经典赛博黑客代码雨，配合动态字符发光，极高辨识度与极低能耗。</p>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+              <span class="text-xs text-slate-500">社区导入 · MP4 循环</span>
+              <div class="flex items-center gap-2">
+                <button onclick="openStudioForWallpaper('matrix')" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-medium transition-colors">调节</button>
+                <button id="apply-btn-3" onclick="applyWallpaper('matrix')" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all">设为桌面壁纸</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: Drag & Drop Import Card -->
+        <div onclick="simulateImportMedia()" class="relative rounded-2xl border-2 border-dashed border-slate-700 hover:border-indigo-500/80 bg-slate-900/30 hover:bg-slate-900/60 p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 group min-h-[260px]">
+          <div class="w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-indigo-500/20 transition-all">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+          </div>
+          <h4 class="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">拖拽本地视频或图片到此处</h4>
+          <p class="text-xs text-slate-400 mt-1 max-w-[240px]">支持 MP4、WebM、JPG、PNG、GIF，自动转换为硬件加速动态壁纸</p>
+          <span class="mt-4 px-3 py-1 rounded-full bg-slate-800 text-[11px] text-slate-300 border border-slate-700 group-hover:border-indigo-500/50">点击从电脑选择文件</span>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ==================== TAB 2: WALLPAPER STUDIO (VISUAL CONFIGURATOR) ==================== -->
+    <div id="tab-studio" class="hidden space-y-6">
+
+      <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <span>🎨 壁纸工坊 (Wallpaper Studio)</span>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">所见即所得编辑器</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">在应用到桌面之前，实时调整画面裁切、文字保护暗度遮罩与高斯模糊滤镜</p>
+        </div>
+        <button onclick="switchMainTab('gallery')" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-colors">
+          ← 返回壁纸画廊
+        </button>
+      </div>
+
+      <!-- Studio Two-Column Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- Left Column: 16:9 Live Preview Canvas with Icon Overlay -->
+        <div class="lg:col-span-7 space-y-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-xl">
+            <div class="flex items-center justify-between mb-3 text-xs">
+              <span class="font-bold text-slate-300 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+                16:9 画板实时预览视口
+              </span>
+              <span class="text-slate-400 font-mono text-[11px]" id="studio-viewport-info">模拟分辨率: 1920 × 1080</span>
+            </div>
+
+            <!-- The Big Canvas Container -->
+            <div class="relative w-full aspect-video rounded-xl overflow-hidden border border-slate-700 bg-black shadow-inner" id="studio-preview-box">
+              <canvas id="studio-canvas" class="w-full h-full object-cover transition-all"></canvas>
+
+              <!-- Dimming Overlay (Controlled by slider) -->
+              <div id="studio-dim-overlay" class="absolute inset-0 bg-black pointer-events-none transition-opacity" style="opacity: 0.2;"></div>
+
+              <!-- Desktop Icons Mock Overlay (Toggled by user) -->
+              <div id="studio-mock-icons" class="absolute inset-0 pointer-events-none p-4 grid grid-cols-6 grid-rows-4 gap-3 select-none">
+                <!-- Mock Icon 1 -->
+                <div class="flex flex-col items-center justify-center p-1 rounded hover:bg-white/10 transition-colors">
+                  <div class="w-8 h-8 rounded-lg bg-blue-500/80 shadow-md flex items-center justify-center text-white text-xs">💻</div>
+                  <span class="text-[10px] text-white font-medium mt-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">此电脑</span>
+                </div>
+                <!-- Mock Icon 2 -->
+                <div class="flex flex-col items-center justify-center p-1 rounded hover:bg-white/10 transition-colors">
+                  <div class="w-8 h-8 rounded-lg bg-emerald-500/80 shadow-md flex items-center justify-center text-white text-xs">🗑️</div>
+                  <span class="text-[10px] text-white font-medium mt-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">回收站</span>
+                </div>
+                <!-- Mock Icon 3 -->
+                <div class="flex flex-col items-center justify-center p-1 rounded hover:bg-white/10 transition-colors">
+                  <div class="w-8 h-8 rounded-lg bg-amber-500/80 shadow-md flex items-center justify-center text-white text-xs">📁</div>
+                  <span class="text-[10px] text-white font-medium mt-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">工作文档</span>
+                </div>
+                <!-- Mock Icon 4 -->
+                <div class="flex flex-col items-center justify-center p-1 rounded hover:bg-white/10 transition-colors">
+                  <div class="w-8 h-8 rounded-lg bg-purple-500/80 shadow-md flex items-center justify-center text-white text-xs">⚡</div>
+                  <span class="text-[10px] text-white font-medium mt-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">LinDesk.exe</span>
+                </div>
+              </div>
+
+              <!-- Canvas watermark / badge -->
+              <div class="absolute bottom-2.5 left-2.5 px-2.5 py-1 rounded-md bg-black/70 backdrop-blur-md text-[11px] text-slate-300 border border-white/10 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>当前正在编辑: <strong id="studio-current-editing-name" class="text-white">Gargantua Black Hole</strong></span>
+              </div>
+            </div>
+
+            <!-- Canvas Bottom Controls -->
+            <div class="flex flex-wrap items-center justify-between gap-3 mt-3 pt-3 border-t border-slate-800 text-xs">
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" id="studio-overlay-toggle" checked onchange="toggleMockIcons(this.checked)" class="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500">
+                <span class="font-medium text-slate-200">模拟显示桌面图标与网格（易读性验证）</span>
+              </label>
+              <div class="flex items-center gap-2 text-slate-400">
+                <span>提示：在画板上滑动可感受粒子与暗度对比</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Settings & Legibility Filters -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl space-y-5">
+            <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+              画面参数与滤镜调节
+            </h3>
+
+            <!-- 1. Fit Mode -->
+            <div class="space-y-2">
+              <label class="text-xs font-semibold text-slate-300 flex justify-between">
+                <span>画面裁切适配模式 (Fit Mode)</span>
+                <span class="text-indigo-400 font-mono text-[11px]" id="studio-fit-val">填充裁剪 (Cover)</span>
+              </label>
+              <div class="grid grid-cols-4 gap-2">
+                <button onclick="setFitMode('cover')" class="fit-mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white border border-indigo-500">Cover 裁剪</button>
+                <button onclick="setFitMode('contain')" class="fit-mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">Contain 适应</button>
+                <button onclick="setFitMode('stretch')" class="fit-mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">Stretch 拉伸</button>
+                <button onclick="setFitMode('tile')" class="fit-mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">Tile 平铺</button>
+              </div>
+            </div>
+
+            <!-- 2. Dimming Mask (Text Protection) -->
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs">
+                <span class="font-semibold text-slate-300">遮罩暗化 (易读性文字保护)</span>
+                <span class="text-indigo-400 font-mono" id="studio-dim-val">20%</span>
+              </div>
+              <input type="range" id="studio-dim-slider" min="0" max="80" value="20" oninput="updateDimming(this.value)" class="w-full accent-indigo-500 cursor-pointer">
+              <p class="text-[11px] text-slate-400">压暗高亮区域，彻底解决白色壁纸导致白色图标文字看不清的通病。</p>
+            </div>
+
+            <!-- 3. Blur Mask -->
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs">
+                <span class="font-semibold text-slate-300">毛玻璃高斯模糊 (Blur Depth)</span>
+                <span class="text-indigo-400 font-mono" id="studio-blur-val">0 px</span>
+              </div>
+              <input type="range" id="studio-blur-slider" min="0" max="20" value="0" oninput="updateBlur(this.value)" class="w-full accent-indigo-500 cursor-pointer">
+              <p class="text-[11px] text-slate-400">为壁纸增加磨砂景深，让桌面图标更加凸显浮起。</p>
+            </div>
+
+            <!-- 4. Video Audio & Rate Controls -->
+            <div class="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-semibold text-slate-200">视频静音模式</div>
+                  <div class="text-[11px] text-slate-400">背景播放时彻底静音</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="studio-mute-toggle" checked class="sr-only peer">
+                  <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+              <div class="flex items-center justify-between text-xs pt-2 border-t border-slate-700/50">
+                <span class="text-slate-300">播放速率:</span>
+                <div class="flex gap-1.5">
+                  <button class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px]">0.75x</button>
+                  <button class="px-2 py-0.5 rounded bg-indigo-600 text-white text-[11px] font-semibold">1.0x</button>
+                  <button class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px]">1.5x</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Apply & Save Actions -->
+            <div class="pt-4 border-t border-slate-800 flex gap-3">
+              <button onclick="applyStudioPreset()" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/25 transition-all">
+                应用此参数并设为壁纸
+              </button>
+              <button onclick="resetStudioPreset()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors">
+                重置
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ==================== TAB 3: DESKTOP CONTEXT MENU COOPERATIVE INTERACTION ==================== -->
+    <div id="tab-desktop" class="hidden space-y-6">
+
+      <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <span>🖥️ 桌面右键菜单协同与无冲突框选演示</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">在桌面空白处点击右键体验轻量动态壁纸控制，或左键拖拽框选体验防抖协同仲裁</p>
+        </div>
+      </div>
+
+      <!-- Mock Desktop Interactive Simulator -->
+      <div class="relative w-full aspect-[16/9] max-h-[580px] rounded-2xl border-2 border-slate-700 overflow-hidden shadow-2xl bg-black select-none" id="mock-desktop-screen" oncontextmenu="openMockContextMenu(event); return false;">
+        <!-- Canvas Background -->
+        <canvas id="desktop-bg-canvas" class="w-full h-full object-cover"></canvas>
+        <div class="absolute inset-0 bg-black/20 pointer-events-none"></div>
+
+        <!-- Instructions Badge -->
+        <div class="absolute top-4 left-4 px-3.5 py-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 text-xs text-slate-200 space-y-0.5 pointer-events-none">
+          <div class="font-bold text-indigo-300">💡 模拟桌面交互体验区</div>
+          <div class="text-[11px] text-slate-400">1. 在空白处<strong>右键单击</strong>弹出 Win11 亚克力菜单</div>
+          <div class="text-[11px] text-slate-400">2. 在空白处<strong>按住左键拖动</strong>（>6px）体验蓝色半透明框选框</div>
+        </div>
+
+        <!-- Simulated Icons on Desktop -->
+        <div class="absolute top-20 left-6 space-y-6">
+          <div class="flex flex-col items-center p-2 rounded-lg hover:bg-white/10 transition-colors w-20 cursor-pointer text-center">
+            <div class="w-10 h-10 rounded-xl bg-blue-600 shadow-md flex items-center justify-center text-xl">💻</div>
+            <span class="text-xs text-white font-medium mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">此电脑</span>
+          </div>
+          <div class="flex flex-col items-center p-2 rounded-lg hover:bg-white/10 transition-colors w-20 cursor-pointer text-center">
+            <div class="w-10 h-10 rounded-xl bg-emerald-600 shadow-md flex items-center justify-center text-xl">🗑️</div>
+            <span class="text-xs text-white font-medium mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">回收站</span>
+          </div>
+          <div class="flex flex-col items-center p-2 rounded-lg hover:bg-white/10 transition-colors w-20 cursor-pointer text-center">
+            <div class="w-10 h-10 rounded-xl bg-amber-600 shadow-md flex items-center justify-center text-xl">📁</div>
+            <span class="text-xs text-white font-medium mt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">项目代码</span>
+          </div>
+        </div>
+
+        <!-- Selection Rubberband Box (Appears when dragging) -->
+        <div id="mock-selection-box" class="hidden absolute border border-blue-400 bg-blue-500/25 rounded pointer-events-none transition-all"></div>
+
+        <!-- Mock Win11 Acrylic Context Menu -->
+        <div id="mock-context-menu" class="hidden absolute z-50 w-64 glass-acrylic rounded-xl p-1.5 text-xs text-slate-200 shadow-2xl border border-white/15" style="top: 120px; left: 320px;">
+          <div class="px-3 py-1.5 text-[11px] text-slate-400 font-semibold border-b border-white/10 flex items-center justify-between">
+            <span>Windows 11 桌面菜单</span>
+            <span class="text-[10px] text-indigo-400">LinDesk 增强</span>
+          </div>
+          <div class="py-1">
+            <div class="px-3 py-1.5 rounded-lg hover:bg-white/10 flex items-center justify-between cursor-pointer">
+              <span>查看 (V)</span>
+              <span class="text-slate-400">▶</span>
+            </div>
+            <div class="px-3 py-1.5 rounded-lg hover:bg-white/10 flex items-center justify-between cursor-pointer">
+              <span>排序方式 (O)</span>
+              <span class="text-slate-400">▶</span>
+            </div>
+            <div class="px-3 py-1.5 rounded-lg hover:bg-white/10 cursor-pointer">
+              刷新 (E)
+            </div>
+          </div>
+          
+          <div class="border-t border-white/10 my-1"></div>
+
+          <!-- The New Wallpaper Submenu Highlight -->
+          <div class="p-1 rounded-lg bg-indigo-600/25 border border-indigo-500/40 relative group cursor-pointer">
+            <div class="flex items-center justify-between px-2 py-1.5 text-indigo-200 font-semibold">
+              <span class="flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                🎨 动态壁纸 (Live Wallpaper)
+              </span>
+              <span class="text-indigo-400">▶</span>
+            </div>
+
+            <!-- Submenu Cascade -->
+            <div class="hidden group-hover:block absolute left-full top-0 ml-1.5 w-60 glass-acrylic rounded-xl p-1.5 text-xs text-slate-200 shadow-2xl border border-white/15">
+              <div class="px-2.5 py-1 text-[11px] text-slate-400 font-medium">当前运行:</div>
+              <div class="px-2.5 py-1 text-xs font-bold text-white flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                Gargantua Black Hole
+              </div>
+              <div class="border-t border-white/10 my-1.5"></div>
+              
+              <div onclick="toggleDesktopMousePhysics()" class="px-2.5 py-1.5 rounded hover:bg-white/10 flex items-center justify-between cursor-pointer">
+                <span>鼠标交互粒子跟随</span>
+                <span id="menu-interactive-check" class="text-indigo-400 font-bold">✓</span>
+              </div>
+              <div onclick="alert('已切换为静音模式')" class="px-2.5 py-1.5 rounded hover:bg-white/10 flex items-center justify-between cursor-pointer">
+                <span>视频静音模式</span>
+                <span class="text-slate-400 font-bold">✓</span>
+              </div>
+              <div onclick="switchMainTab('studio')" class="px-2.5 py-1.5 rounded hover:bg-white/10 flex items-center justify-between cursor-pointer text-indigo-300 font-medium">
+                <span>壁纸工坊调节...</span>
+                <span>⚙️</span>
+              </div>
+              <div class="border-t border-white/10 my-1.5"></div>
+              <div onclick="toggleActiveWallpaperRunning()" class="px-2.5 py-1.5 rounded hover:bg-rose-500/20 text-rose-300 cursor-pointer font-medium">
+                ⏹ 停止并恢复系统壁纸
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-white/10 my-1"></div>
+          <div class="px-3 py-1.5 rounded-lg hover:bg-white/10 cursor-pointer text-slate-400">
+            桌面整理与设置 (S)
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 px-4 py-2.5 rounded-xl bg-slate-900/95 border border-indigo-500/50 text-white text-xs font-semibold shadow-2xl transition-all duration-300 opacity-0 translate-y-4 pointer-events-none z-50 flex items-center gap-2">
+    <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+    <span id="toast-msg">已生效</span>
+  </div>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    // State
+    let activeWallpaper = 'gargantua';
+    let isWallpaperRunning = true;
+    let isMousePhysicsOn = true;
+    let currentFitMode = 'cover';
+    let currentDim = 20;
+    let currentBlur = 0;
+    let mousePos = { x: 0, y: 0 };
+
+    // Toast helper
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').textContent = msg;
+      toast.classList.remove('opacity-0', 'translate-y-4');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-4');
+      }, 2400);
+    }
+
+    // Tab Switcher
+    function switchMainTab(tab) {
+      document.getElementById('tab-gallery').classList.add('hidden');
+      document.getElementById('tab-studio').classList.add('hidden');
+      document.getElementById('tab-desktop').classList.add('hidden');
+
+      const tabs = ['gallery', 'studio', 'desktop'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`nav-${t}`);
+        btn.className = "px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 text-slate-400 hover:text-slate-200 flex items-center gap-2";
+      });
+
+      document.getElementById(`tab-${tab}`).classList.remove('hidden');
+      document.getElementById(`nav-${tab}`).className = "px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all duration-200 bg-indigo-600 text-white shadow-md shadow-indigo-600/30 flex items-center gap-2";
+
+      // Close context menu if moving away
+      document.getElementById('mock-context-menu').classList.add('hidden');
+    }
+
+    // Toggle mouse physics
+    function toggleMousePhysics(enabled) {
+      isMousePhysicsOn = enabled;
+      document.getElementById('hero-interactive-toggle').checked = enabled;
+      const check = document.getElementById('menu-interactive-check');
+      if (check) check.textContent = enabled ? '✓' : '';
+      showToast(enabled ? "已开启鼠标引力波与粒子跟随" : "已暂停鼠标互动跟随 (静止模式)");
+    }
+
+    function toggleDesktopMousePhysics() {
+      toggleMousePhysics(!isMousePhysicsOn);
+    }
+
+    // Toggle Wallpaper running
+    function toggleActiveWallpaperRunning() {
+      isWallpaperRunning = !isWallpaperRunning;
+      const status = document.getElementById('hero-active-status');
+      const stopText = document.getElementById('hero-stop-text');
+      const stopSub = document.getElementById('hero-stop-sub');
+
+      if (isWallpaperRunning) {
+        status.textContent = "正在桌面背景层运行";
+        status.className = "font-medium text-emerald-300";
+        stopText.textContent = "停止动态壁纸";
+        stopSub.textContent = "切回 Windows 系统静态壁纸";
+        showToast("已启动动态壁纸渲染");
+      } else {
+        status.textContent = "已停止 (使用 Windows 壁纸)";
+        status.className = "font-medium text-slate-400";
+        stopText.textContent = "恢复启动壁纸";
+        stopSub.textContent = "重新拉起 OSR 渲染管道";
+        showToast("动态壁纸已停止，已还原桌面默认背景");
+      }
+    }
+
+    // Apply wallpaper from card
+    function applyWallpaper(id) {
+      activeWallpaper = id;
+      isWallpaperRunning = true;
+      document.getElementById('hero-active-status').textContent = "正在桌面背景层运行";
+
+      // Update Hero Text
+      if (id === 'gargantua') {
+        document.getElementById('hero-title').textContent = "Gargantua Relativistic Black Hole";
+        document.getElementById('hero-desc').textContent = "顶级天体物理相对论克尔黑洞仿真，具备引力透镜弯折吸积盘、多普勒波长频移以及交互式引力波微尘物理跟随。";
+      } else if (id === 'living') {
+        document.getElementById('hero-title').textContent = "LinDesk Living Wallpaper";
+        document.getElementById('hero-desc').textContent = "宇宙引力奇异点、流体极光与量子网格，支持鼠标物理扰动与波纹扩散。";
+      } else if (id === 'matrix') {
+        document.getElementById('hero-title').textContent = "Cyber Matrix Stream (赛博矩阵流光)";
+        document.getElementById('hero-desc').textContent = "经典赛博黑客代码雨，配合动态字符发光，极高辨识度与极低能耗。";
+      }
+
+      // Update card indicators
+      [1, 2, 3].forEach(idx => {
+        const ind = document.getElementById(`card-active-indicator-${idx}`);
+        const btn = document.getElementById(`apply-btn-${idx}`);
+        if (ind) ind.classList.add('hidden');
+        if (btn) {
+          btn.className = "px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all";
+          btn.textContent = "设为桌面壁纸";
+          btn.onclick = () => applyWallpaper(idx === 1 ? 'gargantua' : (idx === 2 ? 'living' : 'matrix'));
+        }
+      });
+
+      const activeIdx = id === 'gargantua' ? 1 : (id === 'living' ? 2 : 3);
+      const ind = document.getElementById(`card-active-indicator-${activeIdx}`);
+      const btn = document.getElementById(`apply-btn-${activeIdx}`);
+      if (ind) ind.classList.remove('hidden');
+      if (btn) {
+        btn.className = "px-3.5 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-xs font-semibold cursor-default";
+        btn.textContent = "已激活";
+        btn.onclick = null;
+      }
+
+      showToast(`已成功将「${document.getElementById('hero-title').textContent}」应用到桌面！`);
+    }
+
+    // Studio Interactions
+    function openStudioWithCurrent() {
+      openStudioForWallpaper(activeWallpaper);
+    }
+
+    function openStudioForWallpaper(id) {
+      activeWallpaper = id;
+      const name = id === 'gargantua' ? 'Gargantua Black Hole' : (id === 'living' ? 'Living Wallpaper' : 'Cyber Matrix');
+      document.getElementById('studio-current-editing-name').textContent = name;
+      switchMainTab('studio');
+    }
+
+    function toggleMockIcons(checked) {
+      const overlay = document.getElementById('studio-mock-icons');
+      if (checked) {
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
+    }
+
+    function setFitMode(mode) {
+      currentFitMode = mode;
+      document.querySelectorAll('.fit-mode-btn').forEach(btn => {
+        btn.className = "fit-mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700";
+      });
+      event.target.className = "fit-mode-btn px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white border border-indigo-500";
+      const names = { cover: '填充裁剪 (Cover)', contain: '等比适应 (Contain)', stretch: '拉伸变形 (Stretch)', tile: '平铺 (Tile)' };
+      document.getElementById('studio-fit-val').textContent = names[mode];
+      showToast(`适配模式已设为: ${names[mode]}`);
+    }
+
+    function updateDimming(val) {
+      currentDim = val;
+      document.getElementById('studio-dim-val').textContent = val + '%';
+      document.getElementById('studio-dim-overlay').style.opacity = val / 100;
+    }
+
+    function updateBlur(val) {
+      currentBlur = val;
+      document.getElementById('studio-blur-val').textContent = val + ' px';
+      document.getElementById('studio-canvas').style.filter = `blur(${val}px)`;
+    }
+
+    function applyStudioPreset() {
+      applyWallpaper(activeWallpaper);
+      showToast(`已保存工坊滤镜参数 (暗化 ${currentDim}%, 模糊 ${currentBlur}px) 并生效！`);
+    }
+
+    function resetStudioPreset() {
+      updateDimming(20);
+      document.getElementById('studio-dim-slider').value = 20;
+      updateBlur(0);
+      document.getElementById('studio-blur-slider').value = 0;
+      showToast("已重置为默认滤镜参数");
+    }
+
+    function simulateImportMedia() {
+      const fileName = prompt("【模拟导入本地媒体】请输入视频或图片名称 (如 'Cyberpunk_City_4K.mp4' 或 'Nebula.jpg'):", "Cyberpunk_City_4K.mp4");
+      if (fileName) {
+        showToast(`已成功将「${fileName}」解构为标准动态壁纸包并加入画廊！`);
+      }
+    }
+
+    function filterGallery(cat) {
+      document.querySelectorAll('.gallery-filter-btn').forEach(b => {
+        b.className = "gallery-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800";
+      });
+      event.target.className = "gallery-filter-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-white border border-slate-700 active-filter";
+      
+      const cards = document.querySelectorAll('.wallpaper-card');
+      cards.forEach(card => {
+        if (cat === 'all' || card.getAttribute('data-category') === cat) {
+          card.classList.remove('hidden');
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+    }
+
+    // Context Menu Simulation
+    function openMockContextMenu(e) {
+      e.preventDefault();
+      const rect = document.getElementById('mock-desktop-screen').getBoundingClientRect();
+      const menu = document.getElementById('mock-context-menu');
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      menu.style.left = Math.min(clickX, rect.width - 270) + 'px';
+      menu.style.top = Math.min(clickY, rect.height - 240) + 'px';
+      menu.classList.remove('hidden');
+    }
+
+    // Desktop Rubberband Drag Simulation
+    const mockScreen = document.getElementById('mock-desktop-screen');
+    const rubberband = document.getElementById('mock-selection-box');
+    let isDraggingSelection = false;
+    let dragStartX = 0, dragStartY = 0;
+
+    mockScreen.addEventListener('mousedown', (e) => {
+      // Left click
+      if (e.button === 0) {
+        document.getElementById('mock-context-menu').classList.add('hidden');
+        const rect = mockScreen.getBoundingClientRect();
+        dragStartX = e.clientX - rect.left;
+        dragStartY = e.clientY - rect.top;
+        isDraggingSelection = true;
+      }
+    });
+
+    mockScreen.addEventListener('mousemove', (e) => {
+      const rect = mockScreen.getBoundingClientRect();
+      const curX = e.clientX - rect.left;
+      const curY = e.clientY - rect.top;
+      mousePos = { x: curX / rect.width, y: curY / rect.height };
+
+      if (isDraggingSelection) {
+        const dist = Math.hypot(curX - dragStartX, curY - dragStartY);
+        if (dist > 6) { // 6px drag threshold from doc!
+          rubberband.classList.remove('hidden');
+          const left = Math.min(curX, dragStartX);
+          const top = Math.min(curY, dragStartY);
+          const width = Math.abs(curX - dragStartX);
+          const height = Math.abs(curY - dragStartY);
+          rubberband.style.left = left + 'px';
+          rubberband.style.top = top + 'px';
+          rubberband.style.width = width + 'px';
+          rubberband.style.height = height + 'px';
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDraggingSelection) {
+        isDraggingSelection = false;
+        rubberband.classList.add('hidden');
+      }
+    });
+
+
+    // ==================== REALTIME ANIMATIONS ON CANVASES ====================
+    let animTime = 0;
+
+    // 1. Gargantua Black Hole Renderer
+    function renderGargantua(ctx, w, h, time, interactive) {
+      ctx.fillStyle = '#020208';
+      ctx.fillRect(0, 0, w, h);
+
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      const r = Math.min(w, h) * 0.16;
+
+      // Stars in background
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      for (let i = 0; i < 40; i++) {
+        const sx = ((i * 123.45 + time * 2) % w);
+        const sy = ((i * 321.67) % h);
+        ctx.fillRect(sx, sy, 1.2, 1.2);
+      }
+
+      // Relativistic Accretion Disk (Lensing effect)
+      const grad = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r * 2.8);
+      grad.addColorStop(0, '#000000');
+      grad.addColorStop(0.3, 'rgba(255, 140, 20, 0.95)');
+      grad.addColorStop(0.5, 'rgba(255, 60, 10, 0.7)');
+      grad.addColorStop(0.8, 'rgba(120, 20, 180, 0.3)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      // Doppler tilt
+      ctx.scale(1, 0.32);
+      ctx.rotate(time * 0.25);
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Top gravitational arc (lensed upper disk)
+      ctx.restore();
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.beginPath();
+      ctx.ellipse(0, -r * 0.35, r * 1.5, r * 0.9, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 180, 50, 0.75)';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      // Event Horizon (Pitch black center)
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255, 220, 150, 0.85)';
+      ctx.stroke();
+      ctx.restore();
+
+      // Reactive mouse physics particles
+      if (interactive && isMousePhysicsOn) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(99, 102, 241, 0.4)';
+        ctx.lineWidth = 1.5;
+        const mx = mousePos.x * w;
+        const my = mousePos.y * h;
+        ctx.beginPath();
+        ctx.arc(mx, my, (Math.sin(time * 3) + 1) * 15 + 10, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 2. Living Fluid Aurora Renderer
+    function renderLiving(ctx, w, h, time) {
+      ctx.fillStyle = '#050515';
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 3; i++) {
+        const offset = i * 1.5;
+        const grad = ctx.createLinearGradient(0, 0, w, h);
+        grad.addColorStop(0, 'rgba(6, 182, 212, 0.25)');
+        grad.addColorStop(0.5, 'rgba(168, 85, 247, 0.35)');
+        grad.addColorStop(1, 'rgba(236, 72, 153, 0.15)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, h * 0.5);
+        for (let x = 0; x <= w; x += 30) {
+          const y = Math.sin(x * 0.005 + time + offset) * 50 + Math.cos(x * 0.003 - time * 0.5) * 30 + h * (0.35 + i * 0.15);
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // 3. Matrix Rain Renderer
+    const matrixChars = "0123456789ABCDEF林桌LIN";
+    function renderMatrix(ctx, w, h, time) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.fillStyle = '#10b981';
+      ctx.font = '12px monospace';
+      for (let i = 0; i < w; i += 22) {
+        const char = matrixChars[Math.floor(Math.random() * matrixChars.length)];
+        const y = ((time * 80 + i * 17) % h);
+        ctx.fillText(char, i, y);
+      }
+    }
+
+    // Animation loop for all canvases
+    function animate() {
+      animTime += 0.02;
+
+      // 1. Hero Canvas
+      const heroCv = document.getElementById('hero-preview-canvas');
+      if (heroCv) {
+        if (heroCv.width !== heroCv.clientWidth) {
+          heroCv.width = heroCv.clientWidth;
+          heroCv.height = heroCv.clientHeight;
+        }
+        const ctx = heroCv.getContext('2d');
+        if (isWallpaperRunning) {
+          if (activeWallpaper === 'gargantua') renderGargantua(ctx, heroCv.width, heroCv.height, animTime, true);
+          else if (activeWallpaper === 'living') renderLiving(ctx, heroCv.width, heroCv.height, animTime);
+          else renderMatrix(ctx, heroCv.width, heroCv.height, animTime);
+        } else {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, heroCv.width, heroCv.height);
+          ctx.fillStyle = '#64748b';
+          ctx.font = '13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('壁纸已停止 (Windows 默认静态桌面)', heroCv.width / 2, heroCv.height / 2);
+        }
+      }
+
+      // 2. Studio Canvas
+      const studioCv = document.getElementById('studio-canvas');
+      if (studioCv && !document.getElementById('tab-studio').classList.contains('hidden')) {
+        if (studioCv.width !== studioCv.clientWidth) {
+          studioCv.width = studioCv.clientWidth;
+          studioCv.height = studioCv.clientHeight;
+        }
+        const ctx = studioCv.getContext('2d');
+        if (activeWallpaper === 'gargantua') renderGargantua(ctx, studioCv.width, studioCv.height, animTime, false);
+        else if (activeWallpaper === 'living') renderLiving(ctx, studioCv.width, studioCv.height, animTime);
+        else renderMatrix(ctx, studioCv.width, studioCv.height, animTime);
+      }
+
+      // 3. Desktop Background Canvas
+      const deskCv = document.getElementById('desktop-bg-canvas');
+      if (deskCv && !document.getElementById('tab-desktop').classList.contains('hidden')) {
+        if (deskCv.width !== deskCv.clientWidth) {
+          deskCv.width = deskCv.clientWidth;
+          deskCv.height = deskCv.clientHeight;
+        }
+        const ctx = deskCv.getContext('2d');
+        if (isWallpaperRunning) {
+          if (activeWallpaper === 'gargantua') renderGargantua(ctx, deskCv.width, deskCv.height, animTime, isMousePhysicsOn);
+          else if (activeWallpaper === 'living') renderLiving(ctx, deskCv.width, deskCv.height, animTime);
+          else renderMatrix(ctx, deskCv.width, deskCv.height, animTime);
+        } else {
+          ctx.fillStyle = '#1e293b';
+          ctx.fillRect(0, 0, deskCv.width, deskCv.height);
+        }
+      }
+
+      // 4. Cards Static/Dynamic Previews
+      const cvG = document.getElementById('card-canvas-gargantua');
+      if (cvG) {
+        if (cvG.width !== cvG.clientWidth) { cvG.width = cvG.clientWidth; cvG.height = cvG.clientHeight; }
+        renderGargantua(cvG.getContext('2d'), cvG.width, cvG.height, animTime * 0.7, false);
+      }
+      const cvL = document.getElementById('card-canvas-living');
+      if (cvL) {
+        if (cvL.width !== cvL.clientWidth) { cvL.width = cvL.clientWidth; cvL.height = cvL.clientHeight; }
+        renderLiving(cvL.getContext('2d'), cvL.width, cvL.height, animTime * 0.7);
+      }
+      const cvM = document.getElementById('card-canvas-matrix');
+      if (cvM) {
+        if (cvM.width !== cvM.clientWidth) { cvM.width = cvM.clientWidth; cvM.height = cvM.clientHeight; }
+        renderMatrix(cvM.getContext('2d'), cvM.width, cvM.height, animTime * 0.7);
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // Start render loop
+    requestAnimationFrame(animate);
+  </script>
+
+</body>
+</html>

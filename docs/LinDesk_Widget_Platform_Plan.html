@@ -259,32 +259,43 @@
 </section>
 
 <section>
-  <h2>7. 壁纸组件（role: wallpaper）与壁纸工坊 (Wallpaper Studio)</h2>
-  <h3>7.1 架构层级与生命周期 <span class="tag keep">已落地</span></h3>
-  <p>动态壁纸 = 组件系统内的特殊组件类型（<code>manifest.role: "wallpaper"</code>），与普通组件共用包规范、OSR 实例、消息桥、权限模型与 Canvas 合成；<strong>不做独立运行时</strong>。壁纸 = 全屏 OSR 实例，帧合成层级最低（普通组件之下、系统壁纸之上）；单例（同时仅一个活动壁纸）、不可拖拽、点击穿透。</p>
-  <p class="note keep">P0 已落地：role 分流 + <code>startWallpaper</code> 全屏渲染、桌面视口绑定、层级与穿透、单例持久化（启动恢复/切换停旧）、内置壁纸包（图片/视频/轮播/本地文件选择骨架）。</p>
-
-  <h3>7.2 壁纸工坊 (Wallpaper Studio)：可视化配置编辑器 <span class="tag p1">P1</span></h3>
-  <p>虽然组件系统底层面向 AI 生成（复杂动态算法、Canvas 粒子、天气联动），但对于终端用户，<strong>90% 的高频日常需求是自由设置本地收藏的静态壁纸或 MP4/WebM 视频</strong>。为避免简陋的“文件浏览”按钮引发比例变形、大黑边、音量爆音与桌面图标看不清等问题，规划专用的<strong>可视化配置编辑器——“壁纸工坊 (Wallpaper Studio)”</strong>：</p>
+  <h2>7. 动态壁纸工坊 (Wallpaper Studio) 与独立 CEF 管理中心 (LinDesk Hub)</h2>
+  <h3>7.1 架构演进：从嵌套 QWidget 到独立 CEF SPA 窗口 <span class="tag current">重构确立</span></h3>
+  <p>动态壁纸（<code>role: "wallpaper"</code>）具有全屏视觉冲击力与沉浸感，与局部摆放的便签、时钟等桌面小组件具有截然不同的心智模型。原有将壁纸管理深层嵌套于常规设置窗口二级 Tab 的方案已被淘汰，全面演进为<strong>独立 CEF 承载的现代化 Web 单页应用——LinDesk Hub（壁纸工坊与组件管理中心）</strong>：</p>
   <ul>
-    <li><strong>双轮驱动分工</strong>：AI 产出高级动效骨架与着色器模板；工坊编辑器负责普通用户媒体资产拖拽、所见即所得裁切、滤镜与参数装配；</li>
-    <li><strong>16:9 实时画板预览</strong>：等比还原屏幕，配备【桌面图标模拟剪影】浮层，所见即所得肉眼验证壁纸与图标的对比度；</li>
-    <li><strong>排版适配四模式</strong>：填充裁剪 (Cover)、等比完整 (Contain)、拉伸 (Stretch)、平铺 (Tile)；</li>
-    <li><strong>易读性滤镜</strong>：提供遮罩暗化 (0%~80%) 与背景高斯模糊 (0~20px) 滑块，保护桌面文件文字清晰辨识；</li>
-    <li><strong>视频音频控制</strong>：静音切换、音量无级调节 (0~100%)、播放速率 (0.5x~2.0x)；</li>
-    <li><strong>导出与生效</strong>：一键应用至当前桌面；一键导出标准 <code>.lw</code> 壁纸包。</li>
+    <li><strong>解耦独立大窗口</strong>：由无边框 Fluent 窗口承载，提供适合 16:9 画幅展示的全尺寸视野（默认 1100×680），具备 Win11 亚克力磨砂、窗口圆角、Snap 布局与单例保活秒开特性；</li>
+    <li><strong>双模界面划分（前台用户视图 + 开发者后台控制台）</strong>：
+      <ul>
+        <li><strong>前台用户端</strong>：动态壁纸画廊中心（Hero 运行看板、16:9 卡片网格、一键应用、拖拽导入）与壁纸工坊可视化编辑器；</li>
+        <li><strong>开发者后台控制台 (Dev Admin Inspector)</strong>：实例监视器（PID/FPS/内存）、IPC 消息总线审查器、权限沙箱矩阵（网络/存储/桌面权限强制开关）、实时 Console 日志流与一键唤起 Chromium DevTools。</li>
+      </ul>
+    </li>
+    <li><strong>轻量 IPC 桥</strong>：C++ 宿主端仅保留极简的 JSON-RPC 消息代理，复杂的网格动画、所见即所得画板、滤镜调节全部由 Web 驱动，主程序 C++ 代码大幅瘦身。</li>
   </ul>
 
-  <h3>7.3 视频性能治理 <span class="tag p1">P1</span></h3>
-  <p>视频壁纸按 30fps/60fps 帧率节流，与 5.4 生命周期策略一致：窗口最小化、全屏 3D 游戏或休眠时挂起暂停渲染，确保 CPU/GPU 0.0% 零抢占。</p>
-  <table>
-    <colgroup><col style="width:10%"><col style="width:50%"><col style="width:40%"></colgroup>
-    <tr><th>级别</th><th>任务</th><th>说明</th></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>壁纸工坊 (Wallpaper Studio) 可视化编辑器 + 本地文件拖拽装载 + 易读性滤镜</td><td>16:9 画板、图标浮层、Cover/Contain 适配、暗度/模糊保护图标、音量控制、导出 .lw</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>视频性能治理（内容帧率、最小化/全屏游戏暂停）</td><td>与 5.4 生命周期策略一致</td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>在线 URL 壁纸（network 权限验证）</td><td>权限模型实战用例</td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>多屏 / 多壁纸（可选）</td><td>暂不承诺</td></tr>
-  </table>
+  <h3>7.2 壁纸工坊 (Wallpaper Studio)：所见即所得编辑器 <span class="tag p1">P1</span></h3>
+  <p>终端用户拥有强烈的零代码个性化诉求（更换 4K 大图或 MP4/WebM 视频）。壁纸工坊提供全流程可视化调节：</p>
+  <ul>
+    <li><strong>16:9 实时画板预览</strong>：等比还原屏幕视口，支持实时物理动画与视频播放；</li>
+    <li><strong>桌面图标模拟浮层 (Desktop Icons Mock Overlay)</strong>：首创在画板上叠加半透明典型桌面图标剪影，用户肉眼直观验证壁纸是否主体过亮、是否影响桌面文件文字辨识；</li>
+    <li><strong>排版适配四模式</strong>：填充裁剪 (Cover)、等比完整 (Contain)、拉伸 (Stretch)、平铺 (Tile)；</li>
+    <li><strong>文字保护与易读性滤镜</strong>：提供遮罩暗化 (0%~80%) 与背景高斯模糊 (0~20px) 滑块，确保桌面图标文字清晰锐利；</li>
+    <li><strong>视频音频控制</strong>：背景静音开关、无级音量滑块 (0~100%)、播放速率 (0.5x~2.0x)。</li>
+  </ul>
+
+  <h3>7.3 开发者声明式参数规范（对标 Wallpaper Engine 标准）</h3>
+  <p>为避免硬编码具体壁纸参数，基座与开发者确立清晰职责分界：</p>
+  <ul>
+    <li><strong>开发者在 <code>manifest.json</code> 中声明 <code>properties</code></strong>（支持 slider, color, boolean, select）；</li>
+    <li><strong>基座工坊自动动态解析并生成 Fluent UI 控件面板</strong>，免除开发者编写 UI 的负担；</li>
+    <li><strong>基座通过 IPC Bridge 实时向网页派发 <code>property_update</code> 事件</strong>，并在本地自动持久化存储用户的自定义参数。</li>
+  </ul>
+
+  <h3>7.4 双级唤起入口规范</h3>
+  <ul>
+    <li><strong>入口 1（桌面快捷右键）</strong>：桌面空白处右键菜单集成 <code>🎨 动态壁纸与工坊...</code>，随手即开；</li>
+    <li><strong>入口 2（主设置中心直达）</strong>：桌面设置页提供推荐卡片 <code>[ 🎨 打开动态壁纸与组件工坊 ]</code>。</li>
+  </ul>
 </section>
 
 <section>

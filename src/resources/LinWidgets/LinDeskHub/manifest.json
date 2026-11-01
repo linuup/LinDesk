@@ -1,0 +1,18 @@
+{
+  "id": "lindesk.hub",
+  "name": "LinDesk Hub & Wallpaper Studio",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "Standalone CEF SPA for LinDesk: Modern Wallpaper Gallery, WYSIWYG Wallpaper Studio, Widgets Management, and Developer Administrative Console.",
+  "role": "hub",
+  "type": "html",
+  "entry": "index.html",
+  "width": 1120,
+  "height": 720,
+  "interactive": true,
+  "permissions": [
+    "desktop",
+    "storage",
+    "system"
+  ]
+}

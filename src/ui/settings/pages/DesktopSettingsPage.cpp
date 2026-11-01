@@ -1,4 +1,5 @@
 #include "ui/settings/pages/DesktopSettingsPage.h"
+#include "ui/hub/WallpaperStudioWindow.h"
 #include "ui/settings/SettingsUICommon.h"
 #include "desktop/ListView.h"
 #include "desktop/LinDesktop.h"
@@ -694,6 +695,45 @@ void DesktopSettingsPage::initUI()
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Fade Transition on Hide"), tr("Play a smooth opacity fade-in/out transition when hiding or showing desktop elements."), fadeToggle, behaviorPanel));
 
     layout->addWidget(behaviorPanel, 0);
+
+    // Dynamic Wallpaper Studio & LinDesk Hub Panel
+    QWidget* hubPanel = createPanel(this);
+    hubPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QVBoxLayout* hubLayout = new QVBoxLayout(hubPanel);
+    hubLayout->setContentsMargins(22, 18, 22, 18);
+    hubLayout->setSpacing(0);
+    hubLayout->addWidget(createCardTitle(tr("Live Wallpaper & Studio (LinDesk Hub)"), hubPanel));
+    hubLayout->addSpacing(12);
+
+    QWidget* hubRow = new QWidget(hubPanel);
+    hubRow->setObjectName("settingsInnerRow");
+    hubRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QHBoxLayout* hubRowLayout = new QHBoxLayout(hubRow);
+    hubRowLayout->setContentsMargins(14, 10, 14, 10);
+    hubRowLayout->setSpacing(16);
+
+    hubRowLayout->addWidget(createGlyphLabel(glyph(0xEB9F), hubRow, 22, QColor("#0078d4")));
+
+    QVBoxLayout* hubText = new QVBoxLayout();
+    hubText->setContentsMargins(0, 0, 0, 0);
+    hubText->setSpacing(3);
+    QLabel* hubTitle = new QLabel(tr("Wallpaper Studio & Hub Center"), hubRow);
+    hubTitle->setObjectName("rowTitle");
+    QLabel* hubSubtitle = new QLabel(tr("Open the standalone visual wallpaper gallery, real-time configurator studio, desktop widgets manager, and dev inspector."), hubRow);
+    hubSubtitle->setObjectName("rowSubtitle");
+    hubSubtitle->setWordWrap(true);
+    hubText->addWidget(hubTitle);
+    hubText->addWidget(hubSubtitle);
+    hubRowLayout->addLayout(hubText, 1);
+
+    QPushButton* openStudioBtn = createSettingsActionButton(tr("Open Studio"), hubRow, true);
+    connect(openStudioBtn, &QPushButton::clicked, this, []() {
+        LinHub::WallpaperStudioWindow::showStudio();
+    });
+    hubRowLayout->addWidget(openStudioBtn, 0, Qt::AlignRight | Qt::AlignVCenter);
+
+    hubLayout->addWidget(hubRow);
+    layout->addWidget(hubPanel, 0);
 
     // 4. Windows 11 Context Menu Panel
     layout->addWidget(createWindows11MenuPanel(this), 0);

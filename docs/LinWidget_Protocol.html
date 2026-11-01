@@ -168,6 +168,7 @@
     <tr><td><code>transparent</code></td><td>boolean</td><td>否</td><td>true</td><td>是否支持 Alpha 透明通道渲染</td></tr>
     <tr><td><code>resizable</code></td><td>boolean</td><td>否</td><td>true</td><td>是否允许用户拖拽边角手柄缩放尺寸</td></tr>
     <tr><td><code>permissions</code></td><td>array</td><td>否</td><td>[]</td><td>申请特权数组：<code>"storage"</code>, <code>"desktop"</code>, <code>"network"</code></td></tr>
+    <tr><td><code>properties</code></td><td>object</td><td>否</td><td>{}</td><td><strong>声明式用户可调参数</strong>（对标 Wallpaper Engine 标准，基座据此自动生成 Fluent UI 滑块/调色盘/开关）</td></tr>
     <tr><td><code>intent</code></td><td>object</td><td>否</td><td>{}</td><td>记录 AI 辅助生成的原始需求与引擎信息，供增量修复参考</td></tr>
   </table>
   </div>
@@ -260,7 +261,14 @@
 { "type": "wallpaper_source_changed", "requestId": "req_301", "ok": true, "sourcePath": "D:/Wallpapers/cyberpunk.mp4" }
 
 // 切换内置主题预设 (aurora / twilight / deepblue)
-{ "type": "wallpaper_set_preset", "requestId": "req_303", "preset": "twilight" }</code></pre>
+{ "type": "wallpaper_set_preset", "requestId": "req_303", "preset": "twilight" }
+
+// 宿主实时推送工坊调节参数（用户拖动滑块或选色时触发）
+{
+  "type": "property_update",
+  "key": "particleCount",
+  "value": 500
+}</code></pre>
   <p class="note"><strong>媒体加载规范</strong>：选定本地媒体文件后，通过 <code>linwidget://wallpaper:&lt;id&gt;/_media?path=</code> 自定义协议直接赋予 <code>&lt;video src="..."&gt;</code>，突破 Chromium 本地文件访问拦截。</p>
 
   <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">

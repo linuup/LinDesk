@@ -136,6 +136,7 @@ public slots:
     void onMapFolder(const QPoint& pos);
     void onQuitApp();
     void onLinDesk();
+    void onWallpaperStudio();
 
 private:
     struct CachedCustomMenuData {
@@ -211,6 +212,7 @@ private:
     QAction* m_createBoxAction = nullptr;
     QAction* m_mapFolderAction = nullptr;
     QAction* m_linDeskAction = nullptr;
+    QAction* m_wallpaperStudioAction = nullptr;
     QAction* pasteShortcutAction = nullptr;
     QAction* m_embedToDesktopAction = nullptr;
     QActionGroup* m_sortByActionGroup = nullptr;

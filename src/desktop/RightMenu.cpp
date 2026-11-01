@@ -7,6 +7,7 @@
 #include "services/DpiCoordinateHelper.h"
 #include "services/ShellMenuExclusionStore.h"
 #include "ui/Fluent/FluentDialog.h"
+#include "ui/hub/WallpaperStudioWindow.h"
 #include <QCoreApplication>
 #include <QMenu>
 #include <QDebug>
@@ -530,6 +531,11 @@ void RightMenu::initializeCustomMenu()
     connect(m_createBoxAction, &QAction::triggered, this, QOverload<>::of(&RightMenu::onCreateBox));
     m_customMenu->addAction(m_createBoxAction);
 
+    m_wallpaperStudioAction = new QAction(tr("Live Wallpaper & Studio..."), linDeskMenu);
+    m_wallpaperStudioAction->setIcon(QIcon(":/Assets/brush.svg"));
+    connect(m_wallpaperStudioAction, &QAction::triggered, this, &RightMenu::onWallpaperStudio);
+    linDeskMenu->addAction(m_wallpaperStudioAction);
+
     m_mapFolderAction = new QAction(tr("Map Folder"), linDeskMenu);
     m_mapFolderAction->setIcon(QIcon(":/Assets/folder-share.svg"));
     connect(m_mapFolderAction, &QAction::triggered, this, QOverload<>::of(&RightMenu::onMapFolder));
@@ -597,6 +603,10 @@ void RightMenu::onMapFolder(const QPoint& pos) {
 void RightMenu::onOrganizeDesktop() { emit organizeDesktopTriggered(); }
 void RightMenu::onQuitApp() { emit quitAppTriggered(); }
 void RightMenu::onLinDesk() { emit linDeskTriggered(); }
+void RightMenu::onWallpaperStudio()
+{
+    LinHub::WallpaperStudioWindow::showStudio();
+}
 
 bool RightMenu::clipboardHasFileItems() const
 {
@@ -1083,6 +1093,10 @@ QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSessi
     sortItems.append(actionItem(shellMenuText("Date modified", "修改日期"), QStringLiteral("sort_date"), true, true, m_sortByDateAction && m_sortByDateAction->isChecked()));
 
     QJsonArray linDeskItems;
+    const QJsonObject studioItem = desktopActionItem(tr("Live Wallpaper & Studio..."), QStringLiteral("wallpaper_studio"), QStringLiteral("WallpaperStudio.png"));
+    if (!studioItem.isEmpty()) {
+        linDeskItems.append(studioItem);
+    }
     const QJsonObject mapFolderItem = desktopActionItem(tr("Map Folder"), QStringLiteral("map_folder"), QStringLiteral("MapFolder.png"));
     if (!mapFolderItem.isEmpty()) {
         linDeskItems.append(mapFolderItem);
@@ -1196,6 +1210,8 @@ void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoin
         openUriWithShell(L"ms-settings:personalization");
     } else if (commandId == QStringLiteral("create_box")) {
         onCreateBox(pos);
+    } else if (commandId == QStringLiteral("wallpaper_studio")) {
+        onWallpaperStudio();
     } else if (commandId == QStringLiteral("map_folder")) {
         onMapFolder(pos);
     } else if (commandId == QStringLiteral("organize_desktop")) {
