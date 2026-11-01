@@ -7,6 +7,8 @@ class QLabel;
 class QLineEdit;
 class QSlider;
 class FluentToggleSwitch;
+class FluentSlider;
+class QTimer;
 
 class DesktopSettingsPage : public QWidget {
     Q_OBJECT
@@ -27,6 +29,8 @@ private:
     void initUI();
     QWidget* createWindows11MenuPanel(QWidget* parent);
     static void reloadSelectionOverlays();
+    void queueSettingsSync();
+    QTimer* m_settingsSyncTimer = nullptr;
 
     QColor m_selectionPreviewColor;
     QLabel* m_desktopSelectionPreview = nullptr;
@@ -34,10 +38,10 @@ private:
     QWidget* m_desktopPreviewContainer = nullptr;
     FluentToggleSwitch* m_fluentSelectionToggle = nullptr;
     FluentToggleSwitch* m_selectionCountBadgeToggle = nullptr;
-    QSlider* m_marqueeRadiusSlider = nullptr;
+    FluentSlider* m_marqueeRadiusSlider = nullptr;
     QLabel* m_marqueeRadiusValue = nullptr;
-    QSlider* m_marqueeBorderSlider = nullptr;
+    FluentSlider* m_marqueeBorderSlider = nullptr;
     QLabel* m_marqueeBorderValue = nullptr;
-    QSlider* m_badgeRadiusSlider = nullptr;
+    FluentSlider* m_badgeRadiusSlider = nullptr;
     QLabel* m_badgeRadiusValue = nullptr;
 };

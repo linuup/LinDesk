@@ -12,6 +12,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QSlider>
+#include <QTimer>
+#include "FluentSlider.h"
 #include <QColorDialog>
 #include <QPainter>
 #include <QPainterPath>
@@ -46,6 +48,21 @@ DesktopSettingsPage::DesktopSettingsPage(QWidget* parent)
     m_selectionPreviewColor = color.isValid() ? color : QColor(100, 160, 240);
 
     initUI();
+}
+
+void DesktopSettingsPage::queueSettingsSync()
+{
+    if (!m_settingsSyncTimer) {
+        m_settingsSyncTimer = new QTimer(this);
+        m_settingsSyncTimer->setSingleShot(true);
+        m_settingsSyncTimer->setInterval(70);
+        connect(m_settingsSyncTimer, &QTimer::timeout, this, [this]() {
+            QSettings settings(settingsConfigPath(), QSettings::IniFormat);
+            settings.sync();
+            reloadSelectionOverlays();
+        });
+    }
+    m_settingsSyncTimer->start();
 }
 
 void DesktopSettingsPage::reloadSelectionOverlays()
@@ -244,7 +261,7 @@ void DesktopSettingsPage::initUI()
     strengthText->addWidget(strengthTitle);
     strengthLayout->addLayout(strengthText, 1);
     strengthLayout->addWidget(createGlyphLabel(glyph(0xEB48), strengthRow, 18, QColor("#5b6b86")));
-    QSlider* strengthSlider = new QSlider(Qt::Horizontal, strengthRow);
+    FluentSlider* strengthSlider = new FluentSlider(Qt::Horizontal, strengthRow);
     strengthSlider->setRange(20, 100);
     strengthSlider->setValue(qBound(20, desktopSettings.value("Desktop/SelectionRectangleOpacity", 75).toInt(), 100));
     strengthSlider->setMinimumWidth(120);
@@ -260,9 +277,13 @@ void DesktopSettingsPage::initUI()
         strengthValue->setText(QStringLiteral("%1%").arg(value));
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionRectangleOpacity", value);
+        queueSettingsSync();
+        updatePreview();
+    });
+    connect(strengthSlider, &QSlider::sliderReleased, this, [this]() {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.sync();
         reloadSelectionOverlays();
-        updatePreview();
     });
     selectionLayout->addWidget(strengthRow);
     selectionLayout->addWidget(createDivider(selectionPanel));
@@ -285,7 +306,7 @@ void DesktopSettingsPage::initUI()
     contrastText->addWidget(contrastTitle);
     contrastLayout->addLayout(contrastText, 1);
     contrastLayout->addWidget(createGlyphLabel(glyph(0xE706), contrastRow, 18, QColor("#5b6b86")));
-    QSlider* contrastSlider = new QSlider(Qt::Horizontal, contrastRow);
+    FluentSlider* contrastSlider = new FluentSlider(Qt::Horizontal, contrastRow);
     contrastSlider->setRange(0, 100);
     contrastSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionRectangleContrast", 60).toInt(), 100));
     contrastSlider->setMinimumWidth(120);
@@ -301,9 +322,13 @@ void DesktopSettingsPage::initUI()
         contrastValue->setText(QStringLiteral("%1%").arg(value));
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionRectangleContrast", value);
+        queueSettingsSync();
+        updatePreview();
+    });
+    connect(contrastSlider, &QSlider::sliderReleased, this, [this]() {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.sync();
         reloadSelectionOverlays();
-        updatePreview();
     });
     selectionLayout->addWidget(contrastRow);
     selectionLayout->addWidget(createDivider(selectionPanel));
@@ -326,7 +351,7 @@ void DesktopSettingsPage::initUI()
     marqueeBorderText->addWidget(marqueeBorderTitle);
     marqueeBorderLayout->addLayout(marqueeBorderText, 1);
     marqueeBorderLayout->addWidget(createGlyphLabel(glyph(0xE74B), marqueeBorderRow, 18, QColor("#5b6b86")));
-    m_marqueeBorderSlider = new QSlider(Qt::Horizontal, marqueeBorderRow);
+    m_marqueeBorderSlider = new FluentSlider(Qt::Horizontal, marqueeBorderRow);
     m_marqueeBorderSlider->setRange(0, 30);
     const qreal savedBorderW = qBound(0.0, desktopSettings.value("Desktop/SelectionBorderWidth", 1.0).toReal(), 3.0);
     m_marqueeBorderSlider->setValue(qRound(savedBorderW * 10.0));
@@ -350,9 +375,13 @@ void DesktopSettingsPage::initUI()
         const qreal floatVal = value / 10.0;
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionBorderWidth", floatVal);
+        queueSettingsSync();
+        updatePreview();
+    });
+    connect(m_marqueeBorderSlider, &QSlider::sliderReleased, this, [this]() {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.sync();
         reloadSelectionOverlays();
-        updatePreview();
     });
     selectionLayout->addWidget(marqueeBorderRow);
 
@@ -412,7 +441,7 @@ void DesktopSettingsPage::initUI()
     marqueeRadiusText->addWidget(marqueeRadiusTitle);
     marqueeRadiusLayout->addLayout(marqueeRadiusText, 1);
     marqueeRadiusLayout->addWidget(createGlyphLabel(glyph(0xE91B), marqueeRadiusRow, 18, QColor("#5b6b86")));
-    m_marqueeRadiusSlider = new QSlider(Qt::Horizontal, marqueeRadiusRow);
+    m_marqueeRadiusSlider = new FluentSlider(Qt::Horizontal, marqueeRadiusRow);
     m_marqueeRadiusSlider->setRange(0, 16);
     m_marqueeRadiusSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionCornerRadius", 5).toInt(), 16));
     m_marqueeRadiusSlider->setMinimumWidth(120);
@@ -428,9 +457,13 @@ void DesktopSettingsPage::initUI()
         if (m_marqueeRadiusValue) m_marqueeRadiusValue->setText(QStringLiteral("%1 px").arg(value));
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionCornerRadius", value);
+        queueSettingsSync();
+        updatePreview();
+    });
+    connect(m_marqueeRadiusSlider, &QSlider::sliderReleased, this, [this]() {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.sync();
         reloadSelectionOverlays();
-        updatePreview();
     });
     selectionLayout->addWidget(marqueeRadiusRow);
 
@@ -490,7 +523,7 @@ void DesktopSettingsPage::initUI()
     badgeRadiusText->addWidget(badgeRadiusTitle);
     badgeRadiusLayout->addLayout(badgeRadiusText, 1);
     badgeRadiusLayout->addWidget(createGlyphLabel(glyph(0xE7B8), badgeRadiusRow, 18, QColor("#5b6b86")));
-    m_badgeRadiusSlider = new QSlider(Qt::Horizontal, badgeRadiusRow);
+    m_badgeRadiusSlider = new FluentSlider(Qt::Horizontal, badgeRadiusRow);
     m_badgeRadiusSlider->setRange(0, 11);
     m_badgeRadiusSlider->setValue(qBound(0, desktopSettings.value("Desktop/SelectionBadgeRadius", 11).toInt(), 11));
     m_badgeRadiusSlider->setMinimumWidth(120);
@@ -506,9 +539,13 @@ void DesktopSettingsPage::initUI()
         if (m_badgeRadiusValue) m_badgeRadiusValue->setText(QStringLiteral("%1 px").arg(value));
         QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.setValue("Desktop/SelectionBadgeRadius", value);
+        queueSettingsSync();
+        updatePreview();
+    });
+    connect(m_badgeRadiusSlider, &QSlider::sliderReleased, this, [this]() {
+        QSettings settings(settingsConfigPath(), QSettings::IniFormat);
         settings.sync();
         reloadSelectionOverlays();
-        updatePreview();
     });
     selectionLayout->addWidget(badgeRadiusRow);
     layout->addWidget(selectionPanel, 0);

@@ -8,6 +8,7 @@
 class LinBox;
 class QLabel;
 class QSlider;
+class FluentSlider;
 class QLineEdit;
 class FluentToggleSwitch;
 
@@ -45,7 +46,7 @@ private:
     QLabel* m_previewBackground = nullptr;
     QLineEdit* m_boxColorValueEdit = nullptr;
     QWidget* m_boxColorPresetsRow = nullptr;
-    QSlider* m_opacitySlider = nullptr;
+    FluentSlider* m_opacitySlider = nullptr;
     QLabel* m_opacityLabelValue = nullptr;
     FluentToggleSwitch* m_glassToggle = nullptr;
     FluentToggleSwitch* m_layeredDepthToggle = nullptr;

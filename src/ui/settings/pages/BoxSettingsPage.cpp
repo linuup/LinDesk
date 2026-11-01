@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QSlider>
+#include "FluentSlider.h"
 #include <QColorDialog>
 #include <QPainter>
 #include <QPainterPath>
@@ -322,7 +323,7 @@ void BoxSettingsPage::initUI()
     styleLayout->addWidget(createDivider(stylePanel));
 
     // Opacity Slider
-    m_opacitySlider = new QSlider(Qt::Horizontal, this);
+    m_opacitySlider = new FluentSlider(Qt::Horizontal, this);
     m_opacitySlider->setRange(5, 100);
     m_opacitySlider->setMinimumWidth(120);
     m_opacitySlider->setMaximumWidth(160);

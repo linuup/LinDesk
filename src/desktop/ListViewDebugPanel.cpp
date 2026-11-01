@@ -36,6 +36,7 @@
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
+#include "FluentSlider.h"
 #include <QDesktopServices>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -889,7 +890,7 @@ QWidget* ListViewDebugPanel::createSliderSettingRow(const QString& labelText,
     topRow->addWidget(valueLabel);
     layout->addLayout(topRow);
 
-    slider = new QSlider(Qt::Horizontal, container);
+    slider = new FluentSlider(Qt::Horizontal, container);
     slider->setRange(minValue, maxValue);
     layout->addWidget(slider);
 
