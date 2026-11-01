@@ -85,7 +85,6 @@
     <a href="LinDesk_Architecture_Guide.html" class="active">架构指南</a>
     <a href="LinDesk_Todo.html">任务清单</a>
     <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
-    <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html">组件通信协议</a>
 </nav>
 
@@ -171,7 +170,27 @@
     </li>
   </ul>
 
-  <h3>2.5 高分屏 High-DPI 缩放适配与防模糊</h3>
+  <h3>2.5 三层桌面交互架构与冲突仲裁体系 (Three-Tier Interaction Architecture)</h3>
+  <p>在 LinDesk 桌面环境下，存在三种不同层级、不同特性的可视与交互主体：<strong>原生桌面图标/收纳盒</strong>、<strong>局部小组件 (LinWidgets)</strong> 与 <strong>全屏动态交互壁纸 (Live Wallpaper)</strong>。系统建立严格的五层 Z-Order 模型与冲突仲裁状态机：</p>
+  <ul>
+    <li><strong>严格的分层 Z-Order 模型</strong>：
+      Layer 0（浮层右键菜单/模态弹窗，绝对优先）→ Layer 1（LinBox 桌面收纳盒）→ Layer 2（桌面图标与快捷方式）→ Layer 3（LinWidgets 桌面小组件，局部矩形/透明感知）→ Layer 4（动态交互壁纸，全屏覆盖底层）。
+    </li>
+    <li><strong>命中判定解耦 (Decoupled Hit-Testing)</strong>：
+      <code>WidgetManager::widgetAt</code> 与 <code>LinWidgetRuntimeBridge::widgetAt</code> 严格排除壁纸，只返回真正的局部小组件；全屏动态壁纸由专属的壁纸管道独立承载，杜绝桌面空白区域被误判为组件而截断事件。
+    </li>
+    <li><strong>MouseMove 非互斥 60fps 广播管道</strong>：
+      鼠标在桌面上移动时，采用非互斥广播（Parallel Routing）模式：一方面正常维护桌面图标 Hover 态与小组件悬停，另一方面以 60fps（16ms 节流）向动态壁纸派发鼠标坐标，让黑洞引力场、星空粒子与水波跟随丝滑流动，两者完全兼得。
+    </li>
+    <li><strong>6px 曼哈顿位移阈值仲裁状态机 (Drag-Threshold Arbitration)</strong>：
+      鼠标在空白区域按下时，记录起始点 <code>m_pendingWallpaperClick = true</code> 暂缓决策；当鼠标拖拽位移超过 <code>QApplication::startDragDistance()</code>（通常 6px）时，立即识别为用户意图是<strong>桌面多选框选</strong>，唤起 <code>SelectArea</code> 蓝色选框并向壁纸补发释放；若原地释放（位移未超阈值），则识别为<strong>壁纸点击</strong>并清理桌面选中态。
+    </li>
+    <li><strong>键盘焦点与全局快捷键安全隔离</strong>：
+      当小组件获得输入焦点时，全局文件破坏性操作（如 Delete 键删除文件、F2 重命名）被严格限制在小组件文本域内，绝不误删桌面选中的文件图标；点击桌面空白处立即调用 <code>clearWidgetFocus()</code> 取回桌面焦点。
+    </li>
+  </ul>
+
+  <h3>2.6 高分屏 High-DPI 缩放适配与防模糊</h3>
   <ul>
     <li><strong>全链路缩放计算体系</strong>：全局网格尺寸、图标间距、选中外边框、内边距全量收口于 <code>scaledPx()</code> 缩放计算，严格杜绝硬编码像素；无论 100%、125%、150%、175% 还是 200% 缩放比率，桌面布局与元素均精准按比例呈现。</li>
     <li><strong>文字渲染高精光栅化 (TextRenderCache)</strong>：桌面图标文本标签在 <code>TextRenderCache</code> 缓存绘制时，不仅记录文本与配色哈希，更将 <code>devicePixelRatio</code> 纳入缓存 Key，并在高分屏下按物理像素尺寸生成 QPixmap，彻底消除 125%/150% 缩放下字体发虚、边缘毛刺问题。</li>
@@ -233,7 +252,17 @@
   </table>
   </div>
 
-  <h3>3.5 内置组件包（9 个）</h3>
+  <h3>3.5 小组件尺寸调整与交互控制体系 (基于 Ctrl 快捷键的全能交互)</h3>
+  <p>LinWidget 小组件是富 Web 容器（可能包含靠边的表单、滑块、滚动条与按钮）。为避免无条件拦截边缘破坏 Web 自身功能，系统确立<strong>以 <code>Ctrl</code> 键作为桌面宿主编排修饰符</strong>的设计规范：</p>
+  <ul>
+    <li><strong>按住 Ctrl + 边缘 10px 智能缩放</strong>：光标悬停小组件四周边缘并按住 <code>Ctrl</code> 时，自动切换为双向缩放光标（<code>SizeHorCursor</code>、<code>SizeVerCursor</code>、<code>SizeFDiagCursor</code>、<code>SizeBDiagCursor</code>），按住左键拖拽实时自适应拉伸并受 Manifest 最小/最大尺寸保护。</li>
+    <li><strong>按住 Ctrl + 内部拖拽自由移动</strong>：鼠标在小组件内部按住 <code>Ctrl</code> 时光标切换为 <code>SizeAllCursor</code>，左键拖拽可任意平移组件至屏幕其他位置，松开即刻落盘持久化。</li>
+    <li><strong>按住 Ctrl + 鼠标滚轮等比平滑缩放</strong>：鼠标悬停在组件上方并按住 <code>Ctrl</code> 滚动滚轮，以鼠标悬停点为锚点进行 <code>±8%</code> 步进的等比例无级平滑缩放，拦截事件避免穿透导致网页内部滚动。</li>
+    <li><strong>Fluent 强调色视觉辅助反馈</strong>：按住 <code>Ctrl</code> 悬停或调整时，宿主外层实时绘制 2px Fluent Accent 高亮描边、8 个控制点调节手柄与顶部实时尺寸胶囊徽章（如 <code>360 × 200</code>），松开即自然淡出。</li>
+    <li><strong>右键快捷尺寸规格菜单</strong>：在小组件上右键单击弹出专属上下文菜单，提供标准网格尺寸一键切换（小卡片 <code>200×200</code>、标准条状 <code>360×200</code>、大卡片 <code>400×300</code>、全宽展板 <code>540×320</code>），并可直接执行重新加载、打开小组件设置与移除小组件。</li>
+  </ul>
+
+  <h3>3.6 内置组件包（9 个）</h3>
   <p>位于 <code>src/resources/LinWidgets/</code>，遵循标准组件包规范（<code>manifest.json</code> + entry 页面）：<strong>Clock、SysMonitor、Weather、Notes、Timer、Todo、WaterTracker、Wallpaper</strong>。</p>
   <ul>
     <li><strong>壁纸组件（Wallpaper）</strong>：特殊组件类型，可在组件内设置<strong>视频或图片</strong>，默认尺寸占满整个 ListView 背景；活动时经 <code>hasActiveWallpaper / isWallpaperInteractive</code> 控制互动层级，替代旧 WebView2 动态壁纸方案。</li>

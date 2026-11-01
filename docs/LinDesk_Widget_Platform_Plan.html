@@ -86,7 +86,6 @@
     <a href="LinDesk_Architecture_Guide.html">架构指南</a>
     <a href="LinDesk_Todo.html">任务清单</a>
     <a href="LinDesk_Widget_Platform_Plan.html" class="active">组件平台</a>
-    <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html">组件通信协议</a>
 </nav>
 
@@ -224,17 +223,19 @@
 
 <section>
   <h2>6. 体验层：设置、状态、交互 <span class="tag keep">已落地</span></h2>
-  <h3>6.1 组件 Ctrl+拖拽移动 <span class="tag keep">已落地</span></h3>
-  <p>按住 <kbd>Ctrl</kbd> + 拖动组件即可实时移动组件位置，抬起鼠标持久化保存到 <code>registry.json</code> 与配置。ListView 鼠标事件通过修饰键精准区分交互模式：<strong>Ctrl = 组件移动修饰键</strong>。</p>
+  <h3>6.1 组件尺寸调整与 Ctrl 组合交互体系 <span class="tag keep">已落地</span></h3>
+  <p>LinWidget 小组件是富 Web 容器。为避免无修饰键下拦截边缘导致网页内部表单输入、按钮及靠边滚动条失效，系统确立<strong>以 <kbd>Ctrl</kbd> 键作为桌面宿主编排修饰符</strong>，构建全能交互体系：</p>
   <table>
-    <colgroup><col style="width:24%"><col style="width:48%"><col style="width:28%"></colgroup>
-    <tr><th>场景</th><th>行为</th><th>实现要点</th></tr>
-    <tr><td>命中组件 + Ctrl + 拖动</td><td><strong>进入组件移动模式</strong>：主程序接管鼠标、设置 <code>Qt::SizeAllCursor</code>、不转发 OSR，按偏移实时更新组件 geometry</td><td>ListView press/move/release 三分支；<code>bridge.widgetGeometry</code> + <code>setWidgetGeometry</code>；Canvas 帧重定位无闪烁重绘</td></tr>
-    <tr><td>命中组件 + 无 Ctrl</td><td>事件转发 OSR（组件内交互，保持不变）</td><td>现有 <code>forwardMouseEvent</code> 链路</td></tr>
-    <tr><td>Ctrl + 点击（位移未超阈值）</td><td>不进入移动，补发按压与释放到 OSR（保留组件内 Ctrl 快捷键）</td><td>以 <code>QApplication::startDragDistance()</code> 阈值判定</td></tr>
-    <tr><td>未命中组件</td><td>桌面图标选择/框选/拖拽（保持不变）</td><td>现有 ListView 逻辑</td></tr>
+    <colgroup><col style="width:26%"><col style="width:46%"><col style="width:28%"></colgroup>
+    <tr><th>交互场景</th><th>视觉与行为反馈</th><th>实现要点</th></tr>
+    <tr><td><strong>命中边缘 (10px) + Ctrl + 拖动</strong></td><td><strong>8 方向智能自由缩放</strong>：光标切换为双向缩放光标（<code>SizeHor/SizeVer/SizeFDiag/SizeBDiag</code>），实时拉伸尺寸并受 Manifest 最小/最大尺寸保护</td><td><code>widgetResizeEdgeAt</code> + <code>cursorForResizeEdge</code> + <code>bridge.setWidgetGeometry</code>；抬起时自动持久化</td></tr>
+    <tr><td><strong>命中内部 + Ctrl + 拖动</strong></td><td><strong>自由平移位置</strong>：光标切换为 <code>Qt::SizeAllCursor</code>，接管鼠标并按偏移实时更新位置，边界自动贴合视口</td><td><code>bridge.widgetGeometry</code> + <code>setWidgetGeometry</code>；壁纸与默认页受保护不可拖动</td></tr>
+    <tr><td><strong>悬停小组件 + Ctrl + 滚轮</strong></td><td><strong>等比平滑缩放</strong>：以当前鼠标光标为中心锚点进行 <code>±8%</code> 步进平滑缩放，拦截事件避免穿透导致网页滚动</td><td><code>ListView::wheelEvent</code> 中计算几何缩放并重新 setWidgetGeometry</td></tr>
+    <tr><td><strong>Ctrl 悬停或调整中</strong></td><td><strong>Fluent 强调色视觉辅助反馈</strong>：外层实时绘制 2px Fluent Accent 高亮描边、8 个控制点手柄与顶部实时尺寸胶囊（如 <code>360 × 200</code>）</td><td><code>ListView::paintEvent</code> 宿主层自绘高精矢量提示，松开 Ctrl 自动淡出</td></tr>
+    <tr><td><strong>右键单击小组件</strong></td><td><strong>免按键标准规格预设</strong>：小卡片 (1×1 200×200)、标准条状 (2×1 360×200)、大卡片 (2×2 400×300)、全宽展板 (540×320)，支持一键重启与设置</td><td><code>showWidgetContextMenu</code> 弹出专属 Fluent 右键上下文菜单</td></tr>
+    <tr><td><strong>命中组件 + 无 Ctrl</strong></td><td>事件正常交付 OSR（组件内部按钮、输入框、Canvas 点击与交互，100% 原生保留）</td><td>现有 <code>forwardMouseEvent</code> 管道</td></tr>
   </table>
-  <p><strong>边界保障</strong>：跨出桌面视口自动夹紧；<strong>壁纸组件（role: wallpaper）与默认页（__default_page__）受拦截保护不可拖动</strong>；拖拽抬起时立即触发 <code>saveToConfig</code> 持久化落盘。</p>
+  <p><strong>三层桌面协同保障</strong>：结合 <code>m_pendingWallpaperClick</code> 6px 曼哈顿距离仲裁机制，全屏动态壁纸与桌面图标多选框选（SelectArea）共存无冲突，移动鼠标壁纸粒子流畅流动。</p>
 
   <h3>6.2 组件管理窗口（用户侧统一入口） <span class="tag keep">已落地</span></h3>
   <p>设置页组件区 <code>[打开组件管理]</code> 打开独立的双栏管理对话框（<code>LinWidgetManagerDialog</code>）：<strong>主程序薄 UI + 运行时查询接口</strong>。基于单一收敛消息协议 <code>widget_manager</code>（响应 <code>widget_manager_response</code>）实现全部管理交互。</p>
