@@ -1133,7 +1133,7 @@ QJsonArray RightMenu::buildWindows11DesktopMenuItems(const ShellMenuCommandSessi
         items.append(submenuItem(QStringLiteral("LinDesk"), linDeskItems, QStringLiteral("LinDesk.png")));
     }
     items.append(separatorItem());
-    items.append(actionItem(shellMenuText("Next desktop background", "下一个背景"), QStringLiteral("next_desktop_background"), true, false, false, QStringLiteral("NextBackground.png")));
+    items.append(actionItem(shellMenuText("Next desktop background", "下一个桌面背景"), QStringLiteral("next_desktop_background")));
     items.append(actionItem(shellMenuText("Display settings", "显示设置"), QStringLiteral("display_settings"), true, false, false, QStringLiteral("DisplaySettings.png")));
     items.append(actionItem(shellMenuText("Personalize", "个性化"), QStringLiteral("personalize"), true, false, false, QStringLiteral("Personalize.png")));
     if (!thirdPartyItems.isEmpty()) {
