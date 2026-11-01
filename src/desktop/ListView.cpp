@@ -2734,7 +2734,6 @@ void ListView::initialize()
     QSettings deskSettings(AppPaths::configFilePath(), QSettings::IniFormat);
     m_iconShowRule.doubleClickHideIcons = deskSettings.value(QStringLiteral("Desktop/DoubleClickHideIcons"), true).toBool();
     m_fadeTransitionOnHide = deskSettings.value(QStringLiteral("Desktop/FadeTransitionOnHide"), true).toBool();
-    m_hideAnimationStyle = static_cast<DesktopHideAnimationStyle>(deskSettings.value(QStringLiteral("Desktop/HideAnimationStyle"), static_cast<int>(DesktopHideAnimationStyle::SpringRipple)).toInt());
     // === 读取 Windows 原生桌面配置（自动排列、对齐网格）===
     bool osAutoArrange = false;
     bool osSnapToGrid = false;

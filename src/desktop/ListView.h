@@ -394,13 +394,6 @@ public:
 	bool shortcutArrowVisible() const { return m_iconShowRule.showShortCutArrow; }
 	void setDoubleClickHideIconsEnabled(bool enabled);
 	bool isDoubleClickHideIconsEnabled() const;
-	enum class DesktopHideAnimationStyle {
-		SpringRipple = 0,   // macOS 弹性景深 + 水波涟漪 (推荐)
-		AppleSpring = 1,    // macOS 弹性微缩与景深
-		RadialRipple = 2,   // 径向水波交错涟漪
-		FrostedVapor = 3,   // 亚克力毛雾消散
-		ClassicFade = 4     // 经典平滑淡化
-	};
 
 	struct ItemHideTransform {
 		qreal opacity = 1.0;
@@ -410,8 +403,6 @@ public:
 
 	void setFadeTransitionOnHideEnabled(bool enabled);
 	bool isFadeTransitionOnHideEnabled() const { return m_fadeTransitionOnHide; }
-	DesktopHideAnimationStyle hideAnimationStyle() const { return m_hideAnimationStyle; }
-	void setHideAnimationStyle(DesktopHideAnimationStyle style);
 	ItemHideTransform computeItemHideTransform(const QPointF& itemCenter) const;
 	void applyBoxHideTransform(LinBox* box);
 	bool isAutoArrangeEnabled() const { return m_iconShowRule.autoArrange; }
@@ -738,7 +729,6 @@ private:
 
 	// 状态标志
 	bool m_fadeTransitionOnHide = true;
-	DesktopHideAnimationStyle m_hideAnimationStyle = DesktopHideAnimationStyle::SpringRipple;
 	QPoint m_hideAnimationOriginPos;
 	qreal m_desktopElementsOpacity = 1.0;
 	class QVariantAnimation* m_desktopHideAnim = nullptr;

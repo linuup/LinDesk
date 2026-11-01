@@ -1020,8 +1020,7 @@ void ListView::setDesktopIconsVisibility(bool visible, bool animated) {
         m_desktopHideAnim->stop();
     }
 
-    const int duration = (m_hideAnimationStyle == DesktopHideAnimationStyle::ClassicFade) ? 180 : 220;
-    m_desktopHideAnim->setDuration(duration);
+    m_desktopHideAnim->setDuration(220);
 
     m_iconShowRule.showDesktopIcons = visible;
     if (this->rightMenu) {
@@ -1082,45 +1081,11 @@ void ListView::setFadeTransitionOnHideEnabled(bool enabled) {
     settings.sync();
 }
 
-void ListView::setHideAnimationStyle(DesktopHideAnimationStyle style) {
-    m_hideAnimationStyle = style;
-    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
-    settings.setValue(QStringLiteral("Desktop/HideAnimationStyle"), static_cast<int>(style));
-    settings.sync();
-}
-
 ListView::ItemHideTransform ListView::computeItemHideTransform(const QPointF& itemCenter) const {
     ItemHideTransform xform;
     const qreal P = m_desktopElementsOpacity;
     const bool isTargetVisible = m_iconShowRule.showDesktopIcons;
 
-    if (m_hideAnimationStyle == DesktopHideAnimationStyle::ClassicFade) {
-        xform.opacity = qBound(0.0, P, 1.0);
-        xform.scale = 1.0;
-        xform.dy = 0.0;
-        return xform;
-    }
-
-    if (m_hideAnimationStyle == DesktopHideAnimationStyle::AppleSpring) {
-        xform.opacity = qBound(0.0, P, 1.0);
-        xform.scale = 1.0;
-        if (isTargetVisible) {
-            const qreal springOvershoot = 2.0 * std::sin(P * 3.1415926535) * (1.0 - P);
-            xform.dy = (1.0 - P) * 8.0 - springOvershoot;
-        } else {
-            xform.dy = (1.0 - P) * 8.0;
-        }
-        return xform;
-    }
-
-    if (m_hideAnimationStyle == DesktopHideAnimationStyle::FrostedVapor) {
-        xform.opacity = qBound(0.0, P, 1.0);
-        xform.scale = 1.0;
-        xform.dy = -(1.0 - P) * 6.0;
-        return xform;
-    }
-
-    // RadialRipple and SpringRipple (use clickPos distance)
     const QPointF origin = m_hideAnimationOriginPos.isNull() ? rect().center() : m_hideAnimationOriginPos;
     const qreal dist = QLineF(origin, itemCenter).length();
     const qreal maxDist = qMax<qreal>(120.0, std::hypot(width(), height()));
@@ -1138,15 +1103,11 @@ ListView::ItemHideTransform ListView::computeItemHideTransform(const QPointF& it
     xform.opacity = localP;
     xform.scale = 1.0;
 
-    if (m_hideAnimationStyle == DesktopHideAnimationStyle::SpringRipple) {
-        if (isTargetVisible) {
-            const qreal springOvershoot = 2.0 * std::sin(localP * 3.1415926535) * (1.0 - localP);
-            xform.dy = (1.0 - localP) * 8.0 - springOvershoot;
-        } else {
-            xform.dy = (1.0 - localP) * 8.0;
-        }
-    } else { // RadialRipple
-        xform.dy = (1.0 - localP) * 6.0;
+    if (isTargetVisible) {
+        const qreal springOvershoot = 2.0 * std::sin(localP * 3.1415926535) * (1.0 - localP);
+        xform.dy = (1.0 - localP) * 8.0 - springOvershoot;
+    } else {
+        xform.dy = (1.0 - localP) * 8.0;
     }
 
     return xform;
