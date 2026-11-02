@@ -1,17 +1,18 @@
-# LinDesk 小组件与动态壁纸极简开发指南
+# LinDesk 小组件极简开发指南 (Widgets Guide)
 
-> **核心原则**：小组件与动态壁纸本质上就是**普通的本地 HTML 静态网页**。  
+> **核心原则**：小组件本质上就是**普通的本地 HTML 静态网页卡片**。  
 > **不要开启 Visual Studio，不需要编译任何 C++ 代码**。直接用 Chrome 或 VS Code Live Server 打开即可开发与调试！
+> *(注：动态壁纸请移步根目录的 `wallpapers/` 专属目录)*
 
 ---
 
 ## 1. 目录结构与极简约定
 
-每个小组件或壁纸都是一个独立的文件夹，必须包含两个核心文件：
+每个小组件都是一个独立的文件夹，必须包含两个核心文件：
 ```text
 my-widget/
 ├── manifest.json      # 组件配置文件（声明名称、默认尺寸、权限）
-├── index.html         # 核心网页入口（HTML5 / CSS / JS / WebGL / Canvas）
+├── index.html         # 核心网页入口（HTML5 / CSS / JS / Canvas）
 ├── style.css          # 样式文件（可选）
 └── icon.png           # 桌面与设置面板展示的图标（建议 128×128 PNG）
 ```
@@ -30,7 +31,7 @@ my-widget/
   "description": "优雅简约的桌面小组件",
   "entry": "index.html",
   "icon": "icon.png",
-  "role": "widget",            
+  "role": "widget",
   "width": 360,
   "height": 200,
   "minWidth": 200,
@@ -41,9 +42,8 @@ my-widget/
 ```
 
 > **字段说明**：
-> - `role`: 设为 `"widget"` 表示普通小组件；设为 `"wallpaper"` 表示全屏动态壁纸。
-> - `transparent`: 是否开启背景透明（毛玻璃与自适应桌面必备）。
-> - `resizable`: 是否允许用户按住 `Ctrl` 拖拽边缘或滚轮缩放。
+> - `transparent`: 设为 `true` 开启背景透明（毛玻璃与自适应桌面必备）。
+> - `resizable`: 设为 `true` 允许用户在桌面上按住 `Ctrl` 拖拽边缘或滚轮缩放。
 
 ---
 
@@ -63,19 +63,17 @@ const data = await window.desktop.storage.get("myKey");
 // 删除数据
 await window.desktop.storage.remove("myKey");
 ```
-*(注：在普通浏览器预览时，如果没有 `window.desktop`，可直接使用原生 `localStorage`。)*
+*(注：在普通浏览器直接打开时，若没有 `window.desktop`，可直接使用原生 `localStorage`。)*
 
 ### ② 系统硬件监控 (`systemInfo`)
-仅系统监视器、仪表盘等需要读取 CPU/内存状态的组件使用：
+仅系统监视器、硬件仪表盘等组件使用：
 ```javascript
-// 获取当前硬件快照
 const info = await window.desktop.systemInfo.getSnapshot();
 console.log("CPU 占用:", info.cpu.usagePercent);
 console.log("内存占用:", info.memory.usedPercent);
 ```
 
 ### ③ 打开组件设置 (`openSettings`)
-点击组件内部的齿轮按钮时唤起主程序配置窗口：
 ```javascript
 window.desktop.openSettings();
 ```
