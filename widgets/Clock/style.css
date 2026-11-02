@@ -1,0 +1,616 @@
+html {
+  font-size: clamp(4px, min(3.5vw, 6vh), 16px);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #ffffff;
+}
+
+.widget {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.glass-panel {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 2rem;
+  padding: 1.5rem 1.8rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  position: relative;
+  overflow: hidden;
+  transition:
+    background 0.35s ease,
+    backdrop-filter 0.35s ease,
+    -webkit-backdrop-filter 0.35s ease,
+    border-color 0.35s ease,
+    box-shadow 0.35s ease;
+}
+.glass-panel:hover {
+  background: linear-gradient(135deg, rgba(20, 28, 42, 0.75), rgba(20, 28, 42, 0.55));
+  backdrop-filter: blur(2rem);
+  -webkit-backdrop-filter: blur(2rem);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+body.light-theme .glass-panel:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(240, 244, 255, 0.65));
+  backdrop-filter: blur(2rem);
+  -webkit-backdrop-filter: blur(2rem);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+/* Ambient glow effects — hidden by default, fade in on hover */
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  top: -4rem;
+  right: -4rem;
+  width: 14rem;
+  height: 14rem;
+  background: radial-gradient(circle, rgba(94, 129, 230, 0.4) 0%, rgba(94, 129, 230, 0) 70%);
+  border-radius: 50%;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.glass-panel:hover::before { opacity: 1; }
+
+.glass-panel::after {
+  content: '';
+  position: absolute;
+  bottom: -4rem;
+  left: -2rem;
+  width: 16rem;
+  height: 16rem;
+  background: radial-gradient(circle, rgba(230, 94, 154, 0.3) 0%, rgba(230, 94, 154, 0) 70%);
+  border-radius: 50%;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.glass-panel:hover::after { opacity: 1; }
+
+.header {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.8rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  z-index: 20;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.glass-panel:hover .header {
+  opacity: 1;
+}
+
+
+
+/* Theme Toggle Button */
+.theme-toggle {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: white;
+  font-size: 1rem;
+  transition: all 0.25s ease;
+  padding: 0;
+}
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.08);
+}
+
+
+
+
+.time-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  /* White glow lifts text on any background without adding visible dark halo */
+  filter:
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.25))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
+}
+
+.time-container {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: center;
+}
+
+.time-main {
+  font-size: min(7rem, 14.5vw, 38vh);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.1rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-sub {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  margin-left: 0;
+}
+
+.time-sec {
+  font-size: min(7rem, 14.5vw, 38vh);
+  font-weight: 700;
+  letter-spacing: -0.1rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, #E2E8F0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-ampm {
+  font-size: min(2.5rem, 8.5vw, 17vh);
+  margin-left: 0.6rem;
+}
+
+.date {
+  font-size: min(2.2rem, 7.5vw);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 0.8rem;
+  letter-spacing: 0.03rem;
+}
+
+.date-short {
+  display: none;
+}
+
+/* Light Theme Overrides */
+body.light-theme {
+  color: #2D3748;
+}
+
+
+
+
+body.light-theme .time-main,
+body.light-theme .time-sec {
+  background: linear-gradient(180deg, #1A202C 0%, #4A5568 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: none; /* reset individual filter; container handles it */
+}
+
+body.light-theme .time-block {
+  filter:
+    drop-shadow(0 0 16px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 2px 6px rgba(255, 255, 255, 0.7));
+}
+
+body.light-theme .time-sub {
+  color: #4A5568;
+}
+
+body.light-theme .time-ampm {
+  /* inherit from .time-block filter */
+}
+
+body.light-theme .date {
+  color: #4A5568;
+}
+
+
+
+body.light-theme .theme-toggle {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  color: #2D3748;
+}
+
+body.light-theme .theme-toggle:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive Layout for Portrait/Square aspect ratios */
+@media (max-aspect-ratio: 1.2) {
+  html {
+    font-size: clamp(4px, 3.8vw, 16px);
+  }
+  .glass-panel {
+    padding: 1.2rem;
+  }
+  .header {
+    top: 1.2rem;
+    right: 1.2rem;
+  }
+  .time-container {
+    flex-direction: column;
+    align-items: center;
+  }
+  .time-main {
+    font-size: min(8rem, 30vw);
+  }
+  .time-sub {
+    margin-left: 0;
+    margin-top: 0.2rem;
+  }
+  .time-sec {
+    /* Hide seconds on small squares to remove clutter and allow massive time text */
+    display: none;
+  }
+  .time-ampm {
+    display: none; /* Hide AM/PM in small layouts */
+  }
+  .date {
+    order: -1;
+    margin-top: 0;
+    margin-bottom: 0.8rem;
+    font-size: min(3.8rem, 14vw);
+    opacity: 0.85;
+  }
+  .date-full {
+    display: none;
+  }
+  .date-short {
+    display: inline;
+  }
+}
+
+/* Responsive Layout for Ultra Wide aspect ratios */
+@media (min-aspect-ratio: 2.2) {
+  html {
+    font-size: clamp(6px, 6.5vh, 16px);
+  }
+  .time-block {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+  .date {
+    margin-top: 0;
+  }
+}
+
+/* Micro Mode: Hide secondary details when widget is extremely small */
+@media (max-width: 240px), (max-height: 180px) {
+  .header {
+    display: none !important;
+  }
+  .glass-panel {
+    justify-content: center;
+    padding: 1rem;
+  }
+  .time-container {
+    flex-direction: column;
+    align-items: center;
+  }
+  .time-main {
+    font-size: min(8.5rem, 32vw, 42vh);
+  }
+  .time-sub {
+    margin-left: 0;
+    margin-top: 0.2rem;
+  }
+  .time-sec {
+    display: none;
+  }
+  .time-ampm {
+    display: none; /* Hide AM/PM in small layouts */
+  }
+  .date {
+    order: -1;
+    margin-top: 0;
+    margin-bottom: 0.6rem;
+    font-size: min(3.5rem, 14vw, 20vh);
+  }
+  .date-full {
+    display: none;
+  }
+  .date-short {
+    display: inline;
+  }
+}
+
+/* =========================================================
+   Analog Clock & Switcher (Style 2)
+========================================================= */
+
+/* Switcher Dots */
+.style-switcher {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  z-index: 100;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  mix-blend-mode: difference;
+  /* Hide by default, reveal on hover */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.glass-panel:hover .style-switcher {
+  opacity: 1;
+}
+.style-dot {
+  box-sizing: content-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 12px;
+  background-color: rgba(255, 255, 255, 0.4);
+  border: 8px solid transparent;
+  background-clip: padding-box;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.style-dot:hover { background-color: rgba(255, 255, 255, 0.75); transform: scale(1.1); }
+.style-dot.active { background-color: rgba(255, 255, 255, 1); height: 24px; }
+
+/* Analog Mode: transparent panel, solid clock-face circle only */
+body.style-analog .glass-panel {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+body.style-analog .glass-panel::before,
+body.style-analog .glass-panel::after {
+  display: none !important;
+}
+
+/* Panel fade-switch: all panels stack via absolute fill, opacity controls visibility */
+.main-clock,
+.analog-clock,
+.focus-clock {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.45s ease;
+}
+.main-clock {
+  z-index: 2;
+  opacity: 1;
+  pointer-events: auto;
+  flex: unset;
+}
+.analog-clock,
+.focus-clock {
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  flex: unset;
+}
+body.style-analog .main-clock,
+body.style-analog .focus-clock {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+body.style-analog .analog-clock {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 2;
+}
+body.style-focus .main-clock,
+body.style-focus .analog-clock {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+body.style-focus .focus-clock {
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 2;
+}
+
+/* Analog / Focus mode: all chrome except active panel stays hidden */
+body.style-analog .glass-panel > *:not(.analog-clock):not(.style-switcher),
+body.style-focus  .glass-panel > *:not(.focus-clock):not(.style-switcher) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s;
+}
+
+/* Focus mode: transparent glass same as analog */
+body.style-focus .glass-panel {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+body.style-focus .glass-panel::before,
+body.style-focus .glass-panel::after {
+  display: none !important;
+}
+
+/* Focus Time — huge minimal display */
+.focus-time {
+  font-size: min(11rem, 27vw, 52vh);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.15rem;
+  background: linear-gradient(180deg, #FFFFFF 0%, rgba(226, 232, 240, 0.85) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-variant-numeric: tabular-nums;
+  filter:
+    drop-shadow(0 0 20px rgba(0, 0, 0, 0.8))
+    drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
+}
+body.light-theme .focus-time {
+  background: linear-gradient(180deg, #1A202C 0%, #4A5568 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter:
+    drop-shadow(0 0 20px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 2px 8px rgba(255, 255, 255, 0.7));
+}
+
+/* Analog mode: mix-blend-mode:difference handles contrast automatically */
+body.style-analog .theme-toggle,
+body.light-theme.style-analog .theme-toggle {
+  background: transparent;
+  border-color: transparent;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+  font-size: 1.2rem;
+}
+
+/* Analog Clock Face */
+.clock-face {
+  position: relative;
+  width: min(85vw, 85vh, 400px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgb(14, 20, 34); /* solid opaque dark */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+body.light-theme .clock-face {
+  background: rgb(248, 250, 255); /* solid opaque light */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Hands */
+.hand {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  transform-origin: bottom center;
+  border-radius: 10px;
+  z-index: 10;
+  transition: transform 0.1s cubic-bezier(0.4, 2.08, 0.55, 0.44); /* bouncy ticking */
+}
+.hour-hand { width: 6px; height: 25%; margin-left: -3px; background: #ffffff; }
+.minute-hand { width: 4px; height: 35%; margin-left: -2px; background: #cbd5e1; }
+.second-hand { width: 2px; height: 42%; margin-left: -1px; background: #ef4444; z-index: 11; }
+.second-hand::after {
+  content: '';
+  position: absolute;
+  top: 100%; left: 0;
+  width: 2px; height: 15px;
+  background: #ef4444;
+  border-radius: 10px;
+}
+body.light-theme .hour-hand { background: #1e293b; }
+body.light-theme .minute-hand { background: #475569; }
+
+.clock-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 12px; height: 12px;
+  background: #ef4444;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 12;
+  box-shadow: 0 0 5px rgba(0,0,0,0.3);
+}
+
+/* Markers */
+.clock-markers {
+  position: absolute;
+  width: 100%; height: 100%;
+}
+.marker {
+  position: absolute;
+  top: 0; left: 50%;
+  width: 2px; height: 100%;
+  margin-left: -1px;
+}
+.marker::before, .marker::after {
+  content: '';
+  position: absolute; left: 0;
+  width: 100%; height: 2.5%;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+}
+.marker::before { top: 2%; }
+.marker::after { bottom: 2%; }
+
+.marker.main {
+  width: 4px;
+  margin-left: -2px;
+}
+.marker.main::before, .marker.main::after {
+  height: 5%;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.marker.cardinal {
+  width: 6px;
+  margin-left: -3px;
+}
+.marker.cardinal::before, .marker.cardinal::after {
+  height: 7%;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+body.light-theme .marker::before, body.light-theme .marker::after { background: rgba(0, 0, 0, 0.15); }
+body.light-theme .marker.main::before, body.light-theme .marker.main::after { background: rgba(0, 0, 0, 0.4); }
+body.light-theme .marker.cardinal::before, body.light-theme .marker.cardinal::after { background: rgba(0, 0, 0, 0.8); }
+
+/* Clock Numbers */
+.number-wrap {
+  position: absolute;
+  top: 14%; bottom: 14%; left: 14%; right: 14%;
+  width: auto; height: auto;
+  pointer-events: none;
+}
+.number {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 44px; height: 44px;
+  margin-left: -22px;
+  margin-top: -22px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: min(2.2rem, 6vw, 32px);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  transform-origin: center center;
+}
+body.light-theme .number { color: rgba(0, 0, 0, 0.75); }

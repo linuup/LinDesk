@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="widget">
+    <div class="glass-panel" id="drinkWidget">
+      <!-- Fixed Speech Bubble Notification at the top -->
+      <div class="speech-bubble" id="speechBubble">Thirsty... 🥺</div>
+
+      <!-- Background Wave Container -->
+      <div class="water-bg" id="waterBg">
+        <div class="wave wave1"></div>
+        <div class="wave wave2"></div>
+        <!-- Floating cute droplet -->
+        <div class="droplet-avatar" id="avatar">
+          <div class="droplet-face">
+            <div class="droplet-eye left"></div>
+            <div class="droplet-mouth"></div>
+            <div class="droplet-eye right"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Content Overlay -->
+      <div class="ui-overlay">
+        <div class="header-cute">HYDRO PET</div>
+        <div class="bubble-stats">
+          <div class="percent-bubble" id="percentAmount">0%</div>
+          <div class="amount-bubble"><span id="currentAmount">0</span> / 2000 ml</div>
+        </div>
+        <div class="tips" id="drinkTip">Keep hydrated! 💧</div>
+        
+        <div class="actions-cute">
+          <button id="addBtn" class="btn-drink" title="Drink 250ml">
+            <span>💧 Drink!</span>
+          </button>
+          <button id="resetBtn" class="btn-reset" title="Reset Today">↺</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -680,7 +680,7 @@ add_dependencies(LinDesk translations)
 
 add_custom_target(sync_widgets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/resources/LinWidgets"
+        "${CMAKE_CURRENT_SOURCE_DIR}/widgets"
         "$ENV{APPDATA}/LinDesk/LinWidgets"
     COMMENT "Syncing source LinWidgets directly to %APPDATA%/LinDesk/LinWidgets..."
 )

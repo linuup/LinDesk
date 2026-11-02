@@ -1,0 +1,54 @@
+{
+  "id": "lindesk.clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "A bundled transparent clock widget for the LinDesk desktop.",
+  "icon": "icon.png",
+  "width": 320,
+  "height": 140,
+  "minWidth": 160,
+  "minHeight": 120,
+  "maxWidth": 360,
+  "maxHeight": 360,
+  "autoLoad": true,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": [
+    "storage"
+  ],
+  "settingsSchema": [
+    {
+      "key": "clockTheme",
+      "type": "select",
+      "title": "时钟主题",
+      "description": "选择深色或浅色外观",
+      "default": "dark",
+      "options": [
+        { "label": "深色 (Dark)", "value": "dark" },
+        { "label": "浅色 (Light)", "value": "light" }
+      ]
+    },
+    {
+      "key": "clockStyle",
+      "type": "select",
+      "title": "表盘样式",
+      "description": "切换数字时钟、表盘时钟或极简模式",
+      "default": "digital",
+      "options": [
+        { "label": "数字时钟", "value": "digital" },
+        { "label": "模拟表盘", "value": "analog" },
+        { "label": "专注极简", "value": "focus" }
+      ]
+    },
+    {
+      "key": "showSeconds",
+      "type": "boolean",
+      "title": "显示秒数",
+      "description": "是否显示秒针与数字秒数",
+      "default": true
+    }
+  ]
+}

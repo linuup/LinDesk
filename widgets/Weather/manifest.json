@@ -1,0 +1,23 @@
+{
+  "id": "lindesk.weather",
+  "name": "Weather",
+  "version": "1.0.0",
+  "author": "LinDesk",
+  "description": "A bundled weather widget template for testing network and storage permissions.",
+  "icon": "icon.png",
+  "width": 320,
+  "height": 160,
+  "minWidth": 160,
+  "minHeight": 160,
+  "maxWidth": 360,
+  "maxHeight": 360,
+  "autoLoad": true,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": [
+    "network",
+    "storage"
+  ]
+}

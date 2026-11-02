@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinDesk 组件本地预览沙箱 · Dev Sandbox</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f172a'/%3E%3Cpolygon points='12,8 24,16 12,24' fill='%2338bdf8'/%3E%3C/svg%3E">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #090a0f;
+      --panel: rgba(18, 20, 29, 0.85);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(56, 189, 248, 0.45);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #0284c7;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 顶栏控制台 */
+    header.toolbar {
+      flex: none;
+      height: 52px;
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--panel);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #fff;
+    }
+
+    .brand-tag {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .controls-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    select, button {
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      outline: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    select {
+      background: #141721;
+      padding-right: 24px;
+    }
+
+    select:focus, button:hover {
+      border-color: var(--border-focus);
+      background: rgba(255, 255, 255, 0.09);
+    }
+
+    .size-btn-group {
+      display: flex;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 3px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .size-btn {
+      height: 24px;
+      padding: 0 8px;
+      font-size: 11px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      border-radius: 4px;
+    }
+
+    .size-btn.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    /* 桌面工作区背景 */
+    main.viewport {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at 50% 30%, #151824 0%, #06070a 100%);
+      overflow: hidden;
+      padding: 30px;
+    }
+
+    /* 模拟桌面背景网格点 */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+      background-size: 24px 24px;
+      pointer-events: none;
+    }
+
+    /* 小组件舞台容器 */
+    .stage-wrapper {
+      position: relative;
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border);
+      transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+      background: rgba(15, 17, 23, 0.5);
+      backdrop-filter: blur(20px);
+    }
+
+    iframe#widgetFrame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+      background: transparent;
+    }
+
+    /* 尺寸标签指示器 */
+    .size-indicator {
+      position: absolute;
+      left: 50%;
+      bottom: -26px;
+      transform: translateX(-50%);
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--muted);
+      font-feature-settings: "tnum";
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header class="toolbar">
+    <div class="brand-section">
+      <span class="brand-title">LinDesk Widget Dev Sandbox</span>
+      <span class="brand-tag">零 C++ 极速预览</span>
+    </div>
+
+    <div class="controls-section">
+      <!-- 组件切换 -->
+      <select id="widgetSelector" onchange="switchWidget(this.value)">
+        <option value="Clock">极简时钟 (Clock)</option>
+        <option value="SysMonitor">系统监视器 (SysMonitor)</option>
+        <option value="Weather">天气概览 (Weather)</option>
+        <option value="Notes">桌面便签 (Notes)</option>
+        <option value="Todo">待办列表 (Todo)</option>
+        <option value="WaterTracker">饮水打卡 (WaterTracker)</option>
+        <option value="Timer">专注计时 (Timer)</option>
+        <option value="wallpapers/living_wallpaper">动态壁纸 (Gargantua)</option>
+        <option value="wallpapers/neon_universe">动态壁纸 (Neon Universe)</option>
+      </select>
+
+      <!-- 尺寸预设快捷切换 -->
+      <div class="size-btn-group">
+        <button class="size-btn" onclick="setSize(220, 220, this)">1×1 (220×220)</button>
+        <button class="size-btn active" onclick="setSize(360, 200, this)">2×1 (360×200)</button>
+        <button class="size-btn" onclick="setSize(420, 300, this)">2×2 (420×300)</button>
+        <button class="size-btn" onclick="setSize(600, 340, this)">全宽 (600×340)</button>
+      </div>
+
+      <button onclick="reloadWidget()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -1px; margin-right: 4px;">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+        刷新 (F5)
+      </button>
+    </div>
+  </header>
+
+  <main class="viewport">
+    <div class="bg-grid"></div>
+
+    <div class="stage-wrapper" id="stageWrapper" style="width: 360px; height: 200px;">
+      <iframe id="widgetFrame" src="Clock/index.html"></iframe>
+      <div class="size-indicator" id="sizeLabel">360 × 200 px</div>
+    </div>
+  </main>
+
+  <!-- 模拟 Mock 注入脚本：自动向 iframe 注入 window.desktop API -->
+  <script>
+    const frame = document.getElementById('widgetFrame');
+    const stage = document.getElementById('stageWrapper');
+    const sizeLabel = document.getElementById('sizeLabel');
+
+    // 虚拟 Mock 宿主 API
+    function injectMockApi(contentWindow) {
+      if (!contentWindow) return;
+
+      contentWindow.desktop = {
+        context: 'widget_preview_sandbox',
+        widgetId: 'preview_mock',
+        ready: Promise.resolve(),
+
+        // 1. 本地存储 Mock：直接代理到浏览器的 localStorage
+        storage: {
+          get: async function(key) {
+            try {
+              const val = localStorage.getItem('lindesk_mock_' + key);
+              return val ? JSON.parse(val) : null;
+            } catch (e) { return null; }
+          },
+          set: async function(key, val) {
+            try {
+              localStorage.setItem('lindesk_mock_' + key, JSON.stringify(val));
+              return true;
+            } catch (e) { return false; }
+          },
+          remove: async function(key) {
+            try {
+              localStorage.removeItem('lindesk_mock_' + key);
+              return true;
+            } catch (e) { return false; }
+          }
+        },
+
+        // 2. 硬件监控 Mock：生成真实的物理波动数据流
+        systemInfo: {
+          getSnapshot: async function() {
+            return {
+              cpu: {
+                usagePercent: Math.round(18 + Math.random() * 25),
+                temperatureC: 45
+              },
+              memory: {
+                usedPercent: Math.round(52 + Math.random() * 4),
+                totalMB: 32768,
+                usedMB: 17100
+              },
+              gpu: {
+                usagePercent: Math.round(12 + Math.random() * 15)
+              }
+            };
+          }
+        },
+
+        // 3. 打开设置 Mock
+        openSettings: function() {
+          alert('[Mock 提示] 组件已触发 window.desktop.openSettings()，在 LinDesk 桌面环境下将直接弹出原生设置中心。');
+        },
+
+        // 4. 调整尺寸 Mock
+        resizeWidget: function(size) {
+          if (size && size.width && size.height) {
+            setSize(size.width, size.height);
+          }
+        }
+      };
+
+      // 兼容旧版 chrome.webview
+      contentWindow.chrome = contentWindow.chrome || {};
+      contentWindow.chrome.webview = {
+        postMessage: function(msg) {
+          console.log('[Mock Bridge PostMessage]', msg);
+        }
+      };
+    }
+
+    frame.addEventListener('load', () => {
+      try {
+        injectMockApi(frame.contentWindow);
+      } catch (e) {
+        console.warn('Sandbox cross-origin or local restriction', e);
+      }
+    });
+
+    function switchWidget(folder) {
+      frame.src = folder + '/index.html';
+    }
+
+    function setSize(w, h, btn) {
+      stage.style.width = w + 'px';
+      stage.style.height = h + 'px';
+      sizeLabel.textContent = `${w} × ${h} px`;
+      if (btn) {
+        document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+    }
+
+    function reloadWidget() {
+      frame.contentWindow.location.reload();
+    }
+  </script>
+</body>
+
+</html>
