@@ -111,20 +111,22 @@ void DesktopSettingsPage::reloadSelectionOverlays()
 void DesktopSettingsPage::initUI()
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setContentsMargins(36, 12, 36, 32);
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignTop);
 
-    QLabel* titleLabel = createPageTitle(tr("Desktop Customization"), this);
+    QLabel* titleLabel = createPageTitle(tr("Desktop"), this);
     titleLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(titleLabel, 0, Qt::AlignLeft);
-    layout->addSpacing(8);
+    layout->addSpacing(4);
+    layout->addWidget(createPageSubtitle(tr("Customize desktop selection style, icon behavior, live wallpaper studio, and Windows 11 context menu."), this));
+    layout->addSpacing(20);
 
     // Selection Rectangle Color & Style Panel (Compact Inline Preview)
     QWidget* selectionPanel = createPanel(this);
     selectionPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* selectionLayout = new QVBoxLayout(selectionPanel);
-    selectionLayout->setContentsMargins(22, 18, 22, 18);
+    selectionLayout->setContentsMargins(20, 16, 20, 16);
     selectionLayout->setSpacing(0);
 
     selectionLayout->addWidget(createCardTitle(tr("Selection Rectangle Style"), selectionPanel));
@@ -653,15 +655,16 @@ void DesktopSettingsPage::initUI()
 
     selectionLayout->addWidget(m_advancedContainer);
     layout->addWidget(selectionPanel, 0);
+    layout->addSpacing(12);
 
     // 3. Desktop Behavior Panel
     QWidget* behaviorPanel = createPanel(this);
     behaviorPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* behaviorLayout = new QVBoxLayout(behaviorPanel);
-    behaviorLayout->setContentsMargins(22, 18, 22, 18);
+    behaviorLayout->setContentsMargins(20, 16, 20, 16);
     behaviorLayout->setSpacing(0);
     behaviorLayout->addWidget(createCardTitle(tr("Desktop Behavior"), behaviorPanel));
-    behaviorLayout->addSpacing(12);
+    behaviorLayout->addSpacing(10);
 
     ListView* lv = ListView::instance();
 
@@ -695,28 +698,29 @@ void DesktopSettingsPage::initUI()
     behaviorLayout->addWidget(createSwitchRow(glyph(0xE790), tr("Fade Transition on Hide"), tr("Play a smooth opacity fade-in/out transition when hiding or showing desktop elements."), fadeToggle, behaviorPanel));
 
     layout->addWidget(behaviorPanel, 0);
+    layout->addSpacing(12);
 
     // Dynamic Wallpaper Studio & LinDesk Hub Panel
     QWidget* hubPanel = createPanel(this);
     hubPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* hubLayout = new QVBoxLayout(hubPanel);
-    hubLayout->setContentsMargins(22, 18, 22, 18);
+    hubLayout->setContentsMargins(20, 16, 20, 16);
     hubLayout->setSpacing(0);
     hubLayout->addWidget(createCardTitle(tr("Live Wallpaper & Studio (LinDesk Hub)"), hubPanel));
-    hubLayout->addSpacing(12);
+    hubLayout->addSpacing(10);
 
     QWidget* hubRow = new QWidget(hubPanel);
     hubRow->setObjectName("settingsInnerRow");
     hubRow->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QHBoxLayout* hubRowLayout = new QHBoxLayout(hubRow);
     hubRowLayout->setContentsMargins(14, 10, 14, 10);
-    hubRowLayout->setSpacing(16);
+    hubRowLayout->setSpacing(14);
 
-    hubRowLayout->addWidget(createGlyphLabel(glyph(0xEB9F), hubRow, 22, QColor("#0078d4")));
+    hubRowLayout->addWidget(createGlyphLabel(glyph(0xEB9F), hubRow, 18, QColor("#0067c0")));
 
     QVBoxLayout* hubText = new QVBoxLayout();
     hubText->setContentsMargins(0, 0, 0, 0);
-    hubText->setSpacing(3);
+    hubText->setSpacing(2);
     QLabel* hubTitle = new QLabel(tr("Wallpaper Studio & Hub Center"), hubRow);
     hubTitle->setObjectName("rowTitle");
     QLabel* hubSubtitle = new QLabel(tr("Open the standalone visual wallpaper gallery, real-time configurator studio, desktop widgets manager, and dev inspector."), hubRow);
@@ -734,6 +738,7 @@ void DesktopSettingsPage::initUI()
 
     hubLayout->addWidget(hubRow);
     layout->addWidget(hubPanel, 0);
+    layout->addSpacing(12);
 
     // 4. Windows 11 Context Menu Panel
     layout->addWidget(createWindows11MenuPanel(this), 0);
@@ -749,10 +754,10 @@ QWidget* DesktopSettingsPage::createWindows11MenuPanel(QWidget* parent)
     QWidget* win11MenuPanel = createPanel(parent);
     win11MenuPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* win11MenuLayout = new QVBoxLayout(win11MenuPanel);
-    win11MenuLayout->setContentsMargins(22, 18, 22, 18);
+    win11MenuLayout->setContentsMargins(20, 16, 20, 16);
     win11MenuLayout->setSpacing(0);
     win11MenuLayout->addWidget(createCardTitle(tr("Windows11 Menu"), win11MenuPanel));
-    win11MenuLayout->addSpacing(12);
+    win11MenuLayout->addSpacing(10);
 
     const bool windows11ContextMenuSupported = RightMenu::isWindows11SystemContextMenuSupported();
     const QString windows11UnsupportedTip = tr("This option is available only on Windows 11 in Release builds.");

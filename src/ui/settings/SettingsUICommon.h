@@ -40,7 +40,7 @@ QLabel* createPageSubtitle(const QString& text, QWidget* parent);
 QLabel* createCardTitle(const QString& text, QWidget* parent);
 QLabel* createCardSubtitle(const QString& text, QWidget* parent);
 QWidget* createPanel(QWidget* parent, const QString& objectName = QStringLiteral("settingsPanel"));
-QLabel* createGlyphLabel(const QString& glyphText, QWidget* parent, int pixelSize = 20, const QColor& color = QColor(0, 120, 212));
+QLabel* createGlyphLabel(const QString& glyphText, QWidget* parent, int pixelSize = 18, const QColor& color = QColor(0x1b, 0x1b, 0x1b));
 QFrame* createDivider(QWidget* parent);
 QPushButton* createSettingsActionButton(const QString& text, QWidget* parent, bool accent = false, bool destructive = false);
 QWidget* createSwitchRow(const QString& icon, const QString& title, const QString& subtitle, FluentToggleSwitch* toggle, QWidget* parent);

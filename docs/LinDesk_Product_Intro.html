@@ -78,7 +78,7 @@
   <h1>LinDesk 产品介绍</h1>
   <div class="meta">
     <span>定位：Windows 桌面增强工具</span>
-    <span>更新：2026-10-14</span>
+    <span>更新：2026-11-02</span>
     <span>依据：当前代码（src 只读盘点）</span>
   </div>
 </header>
@@ -115,16 +115,16 @@
     <li>布局持久化：盒子位置、大小、成员列表保存并恢复（<code>data.dat</code>，Debug 用 <code>data.json</code>）。</li>
   </ul>
 
-  <h3>2.3 HTML 组件系统（LinWidget）</h3>
+  <h3>2.3 HTML 组件与动态壁纸系统（LinWidget 2.0 纯 Web 原生架构）</h3>
   <ul>
-    <li>独立运行时：组件系统为 <code>LinWidgetRuntime.dll</code>，经 LinDesk 设置界面<strong>安装 / 卸载 / 启用</strong>；卸载时保留用户组件与数据；主程序无组件系统也能独立运行。</li>
-    <li>组件包模型：每个组件是一个独立包（<code>manifest.json</code> + <code>index.html</code> + JS/CSS），可安装、卸载、启用/禁用。</li>
-    <li>渲染：CEF OSR 离屏渲染，像素帧经统一绘制管线合成到桌面（组件层可置于图标下方或上方）；鼠标/滚轮/键盘输入按组件路由。</li>
-    <li>内置组件（11 个）：时钟、计时器、便签、待办、系统监控、天气、新闻订阅、水杯提醒、API 测试器等，含<strong>壁纸组件</strong>（可设置视频或图片，默认占满 ListView 背景）。</li>
-    <li>旧组件兼容：桥内保留 <code>window.chrome.webview</code> 兼容对象，WebView2 时代组件代码无需改写。</li>
-    <li>权限：网络 / 存储 / 桌面 API 三级权限声明与校验。</li>
-    <li>开发模式：监听组件目录变化热重载；开发项目可一键安装。</li>
-    <li>持久化：组件布局（位置/大小/层级）保存到 <code>registry.json</code>，重启恢复。</li>
+    <li>独立运行时与按需装载：组件系统为独立动态库 <code>LinWidgetRuntime.dll</code>，经设置中心或安装器<strong>安装 / 卸载 / 启用</strong>，主程序脱离组件系统可完全独立运行。</li>
+    <li>统一包规范与彻底物理分流：统一 <code>.lw</code> 压缩包规范，安装器（<code>WidgetPackage::installPackage</code>）自动依据 <code>manifest.json</code> 中的 <code>type: "widget" | "wallpaper"</code> 分流归档至专属目录 <code>LinWidgets/&lt;id&gt;</code> 与 <code>LinWallpapers/&lt;id&gt;</code>，实现两类资产彻底物理隔离。</li>
+    <li>标准现代 <code>window.LinDesk</code> 原生扩展：摈弃繁冗私有 RPC，数据直用 <code>localStorage</code>，网络直用 <code>fetch</code>；宿主仅注入 <code>system</code>（硬件快照与 1000ms 周期推送）、<code>shell</code>（目录安全定位与外部 URL 打开）、<code>widget</code>（容器关闭/尺寸设置）与 <code>wallpaper</code>（工坊参数监听）。</li>
+    <li>壁纸工坊 (LinDesk Hub) 与 16:9 画板：提供独立 1120×720 Fluent 悬浮工坊窗口，桌面右键一键呼出，具备 16:9 实时物理画板、桌面图标透视浮层与声明式 properties 动态调参控件。</li>
+    <li>极客独立开发工作流：任何普通前端开发者双击 <code>index.html</code> 即可在独立浏览器调试排版；源码文件夹直接放入目录即热识别生效；桌面小组件右键菜单一键呼出 Chromium F12 DevTools 调试窗口；按键支持 <kbd>Ctrl</kbd>+<kbd>R</kbd> 与 <kbd>F5</kbd> 热重载刷新。</li>
+    <li>物理级安全沙箱与硬拦截：<code>LinDesk.shell.openPath</code> 建立底层物理拦截黑名单，严禁唤起 <code>.exe/.bat/.cmd/.ps1/.vbs/.msi</code> 等任何可执行文件与脚本；<code>openUrl</code> 严格限制 <code>http://</code> 与 <code>https://</code>；本地资源加载严格阻断 <code>../../</code> 目录穿越。</li>
+    <li>正交元数据模型与多媒体流式协议：壁纸解耦为 <code>wallpaperType: "web" | "video" | "picture"</code> 与 <code>interactive: true | false</code>；外部大体积视频通过 <code>linwidget://media?path=</code> 流式高速播放。</li>
+    <li>持久化与向后兼容：布局位置/大小/层级保存到 <code>registry.json</code>，重启无缝恢复；兼容保留 <code>window.chrome.webview</code> 桥接对象，旧组件无缝向下兼容。</li>
   </ul>
 
   <h3>2.4 系统集成与更新维护</h3>

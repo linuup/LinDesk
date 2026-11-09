@@ -161,20 +161,22 @@ void BoxSettingsPage::updateControlsFromTarget()
 void BoxSettingsPage::initUI()
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setContentsMargins(36, 12, 36, 32);
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignTop);
 
     QLabel* titleLabel = createPageTitle(tr("Box"), this);
     titleLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(titleLabel, 0, Qt::AlignLeft);
-    layout->addSpacing(8);
+    layout->addSpacing(4);
+    layout->addWidget(createPageSubtitle(tr("Customize the theme color, acrylic glass appearance, and hover interaction of desktop boxes."), this));
+    layout->addSpacing(20);
 
     // 1. Box Appearance & Theme Panel
     QWidget* stylePanel = createPanel(this);
     stylePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* styleLayout = new QVBoxLayout(stylePanel);
-    styleLayout->setContentsMargins(22, 18, 22, 18);
+    styleLayout->setContentsMargins(20, 16, 20, 16);
     styleLayout->setSpacing(0);
 
     styleLayout->addWidget(createCardTitle(tr("Appearance & Theme"), stylePanel));
@@ -446,13 +448,13 @@ void BoxSettingsPage::initUI()
     styleLayout->addWidget(createSwitchRow(glyph(0xE91B), tr("Layered Glass Depth"), tr("Render high-specular titlebar and deep frosted body with 3D glass depth."), m_layeredDepthToggle, stylePanel));
 
     layout->addWidget(stylePanel, 0);
-    layout->addSpacing(14);
+    layout->addSpacing(12);
 
     // 2. Box Behavior Panel
     QWidget* behaviorPanel = createPanel(this);
     behaviorPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* behaviorLayout = new QVBoxLayout(behaviorPanel);
-    behaviorLayout->setContentsMargins(22, 18, 22, 18);
+    behaviorLayout->setContentsMargins(20, 16, 20, 16);
     behaviorLayout->setSpacing(0);
 
     behaviorLayout->addWidget(createCardTitle(tr("Box Behavior"), behaviorPanel));

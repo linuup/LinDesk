@@ -93,7 +93,7 @@
   <div class="meta">
     <span>性质：全局单一真实来源 (Single Source of Truth)</span>
     <span>覆盖范围：桌面底座、右键菜单、LinBox 容器、LinWidget 组件系统、人机工学体验</span>
-    <span>更新时间：2026-10-30</span>
+    <span>更新时间：2026-11-02</span>
   </div>
 </header>
 
@@ -129,16 +129,19 @@
   </table>
   </div>
 
-  <h3>1.3 小组件平台、生态与安全沙箱</h3>
-  <p>详见专篇方案：<a href="LinDesk_Widget_Platform_Plan.html">LinDesk 组件系统方案（单进程 · 运行时动态加载）</a> 与 <a href="LinWidget_Protocol.html">组件通信协议</a></p>
+  <h3>1.3 小组件与动态壁纸系统规范（去 AI 化 · 零冗余 API 纯 Web 架构）</h3>
+  <p>规范说明：组件与壁纸彻底解耦，摒弃复杂的私有存储/网络 IPC 包装，回归纯标准 Web 生态（localStorage/fetch）。LinDesk 仅提供基础容器与三合一极简原生系统能力扩展。详见：<a href="LinDesk_Widget_Platform_Plan.html">LinDesk 组件系统方案</a> 与 <a href="LinWidget_Protocol.html">组件通信协议</a></p>
   <div class="tbl-scroll">
   <table>
     <colgroup><col style="width:10%"><col style="width:34%"><col style="width:42%"><col style="width:14%"></colgroup>
     <tr><th>优先级</th><th>任务事项</th><th>设计说明与落地点</th><th>状态</th></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>CEF / LinWidget 运行时端到端安装、下载进度与卸载 UI 闭环</td><td>对接 RuntimeInstaller 状态机（未安装/下载进度条/已安装/安全卸载），移除非显式启动 CEF，补全 SettingUI 安装卡片（详见组件方案 2.4）</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>组件包解压与本地离线安装/卸载</td><td>支持拖入 <code>.zip</code> 格式组件包自动校验并解压安装到 <code>LinWidgets/</code> 目录</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>AI 组件开发闭环（脱敏诊断包导出）</td><td>调试面板一键导出脱敏环境诊断包，提交 AI 即可对组件进行增量修复与迭代</td><td><span class="state todo">待办</span></td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>严格外网沙箱与目录穿越防护</td><td>对未声明 <code>network</code> 权限的组件强制拦截一切外联连接，严格阻断 <code>../../</code> 穿越路径</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>目录与包规范彻底分流解耦（Widgets vs Wallpapers）</td><td>统一采用 <code>.lw</code> 包格式；安装器按 <code>manifest.json</code> 中的 <code>type: "widget" | "wallpaper"</code>（兼容旧 <code>role</code>）自动分流解压至专属目录 <code>LinWidgets/&lt;id&gt;/</code> 与 <code>LinWallpapers/&lt;id&gt;/</code>；存储与持久化严格物理隔离（<code>WidgetPackage.cpp:installPackage</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>极简三合一 <code>window.LinDesk</code> 原生扩展注入</td><td>摒弃冗余的 API 包装与版本号心智负担；数据存储原生直用 <code>localStorage</code>，网络原生直用 <code>fetch</code>；宿主仅注入必须底层原生能力：① <code>system</code>（获取/订阅 CPU/内存/电池/网络硬件指标）；② <code>shell</code>（安全定位与外链）；③ <code>widget</code>（关闭自身、呼出设置、调整大小）；④ <code>wallpaper</code>（工坊参数监听）（<code>CefOsrBrowserInstance.cpp</code> / <code>WidgetManager.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>创作者独立开发流与本地热重载</td><td>解耦 C++ 编译，创作者在任意浏览器中即可双击 <code>index.html</code> 调试页面；源码文件夹直接放入 <code>LinWidgets/</code> 或 <code>LinWallpapers/</code> 即生效；小组件右键菜单提供一键呼出 Chromium F12 DevTools；按键原生支持 <kbd>Ctrl</kbd>+<kbd>R</kbd> 与 <kbd>F5</kbd> 热重载刷新（<code>CefOsrBrowserInstance.cpp</code> / <code>ListView.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>CEF / LinWidget 运行时端到端安装、下载进度与卸载 UI 闭环</td><td>对接 RuntimeInstaller 状态机（未安装/下载进度条/已安装/安全卸载），移除非显式启动 CEF，补全 SettingUI 安装卡片（<code>RuntimeInstaller.cpp</code>、<code>SettingUI.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><code>.lw</code> 包离线安装、校验与打包导出</td><td>支持拖入 <code>.lw</code> 格式包自动校验 manifest 完整性并解压分流安装；组件管理/壁纸工坊提供“打包导出为 .lw”功能，便于创作者一键分享作品</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>智能功耗与休眠状态机（阶段一：成熟壁纸生死线）</td><td>构建 <code>WallpaperPowerState</code> 五重状态模型（高刷活跃 60FPS / 电池节电降频 30FPS / 全屏独占 3D 游戏 0.0% 挂起 / 最大化全遮挡 0.0% 挂起 / 锁屏休眠）；集成全屏与 D3D 独占检测（<code>FullscreenDetector</code>）、电源感知（<code>BatteryStatusMonitor</code>）与跨进程音频智能避让淡入淡出（<code>AudioDuckingMonitor</code>）</td><td><span class="state doing">进行中</span></td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>基础目录穿越防护与执行硬拦截</td><td>严格阻断本地文件加载时的 <code>../../</code> 穿越路径（<code>CefOsrBrowserInstance.cpp</code>）；<code>LinDesk.shell.openPath</code> 物理级硬拦截一切 <code>.exe/.bat/.cmd/.ps1/.vbs/.msi</code> 等可执行程序（<code>WidgetManager.cpp</code>）</td><td><span class="state done">已完成</span></td></tr>
   </table>
   </div>
 

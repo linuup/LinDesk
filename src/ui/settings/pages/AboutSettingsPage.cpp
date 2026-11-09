@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QProcess>
+#include <QIcon>
 
 using namespace SettingsUICommon;
 
@@ -20,49 +21,90 @@ AboutSettingsPage::AboutSettingsPage(QWidget* parent)
 void AboutSettingsPage::initUI()
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(30, 20, 30, 20);
-    layout->setAlignment(Qt::AlignCenter);
+    layout->setContentsMargins(36, 12, 36, 32);
+    layout->setSpacing(0);
+    layout->setAlignment(Qt::AlignTop);
 
-    QLabel* icon = new QLabel(u8"\uE713", this);
-    icon->setStyleSheet(
-        "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; "
-        "font-size: 72px; "
-        "color: #0078d4; "
-        "background: transparent;"
-    );
-    layout->addWidget(icon, 0, Qt::AlignCenter);
+    m_pageTitle = createPageTitle(tr("About"), this);
+    m_pageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(m_pageTitle, 0, Qt::AlignLeft);
+    layout->addSpacing(4);
 
-    m_aboutNameLabel = new QLabel(tr("LinDesk"), this);
-    m_aboutNameLabel->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI'; "
-        "font-size: 28px; "
-        "font-weight: 600; "
-        "color: #1f2937; "
-        "letter-spacing: -0.01em;"
-    );
-    layout->addWidget(m_aboutNameLabel, 0, Qt::AlignCenter);
+    m_pageSubtitle = createPageSubtitle(tr("View application version information and check for online updates."), this);
+    layout->addWidget(m_pageSubtitle);
+    layout->addSpacing(20);
 
-    m_aboutVersionLabel = new QLabel(tr("Version %1").arg(LINDESK_VERSION_STRING_WITH_TAG), this);
-    m_aboutVersionLabel->setStyleSheet(
-        "font-family: 'Microsoft YaHei UI'; "
-        "font-size: 13px; "
-        "color: #6b7280;"
-    );
-    layout->addWidget(m_aboutVersionLabel, 0, Qt::AlignCenter);
-    
+    // 1. App Identity Hero Card (Win11 Settings > System > About style)
+    QWidget* identityPanel = createPanel(this);
+    QHBoxLayout* identityLayout = new QHBoxLayout(identityPanel);
+    identityLayout->setContentsMargins(20, 18, 20, 18);
+    identityLayout->setSpacing(16);
+
+    QLabel* appIconLabel = new QLabel(identityPanel);
+    appIconLabel->setFixedSize(48, 48);
+    appIconLabel->setAlignment(Qt::AlignCenter);
+    const QPixmap appPixmap = QIcon(QStringLiteral(":/Assets/icon.png")).pixmap(44, 44);
+    if (!appPixmap.isNull()) {
+        appIconLabel->setPixmap(appPixmap);
+    } else {
+        appIconLabel->setText(glyph(0xE713));
+        appIconLabel->setStyleSheet(QStringLiteral(
+            "QLabel { background: #eff6fc; color: #0067c0; border-radius: 10px; "
+            "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; font-size: 24px; }"));
+    }
+    identityLayout->addWidget(appIconLabel, 0, Qt::AlignVCenter);
+
+    QVBoxLayout* identityTextLayout = new QVBoxLayout();
+    identityTextLayout->setContentsMargins(0, 0, 0, 0);
+    identityTextLayout->setSpacing(3);
+
+    m_aboutNameLabel = new QLabel(tr("LinDesk"), identityPanel);
+    m_aboutNameLabel->setStyleSheet(QStringLiteral(
+        "QLabel { background: transparent; color: #1b1b1b; font-size: 16px; font-weight: 600; }"));
+    identityTextLayout->addWidget(m_aboutNameLabel);
+
+    m_aboutVersionLabel = new QLabel(tr("Version %1").arg(LINDESK_VERSION_STRING_WITH_TAG), identityPanel);
+    m_aboutVersionLabel->setObjectName("rowSubtitle");
+    identityTextLayout->addWidget(m_aboutVersionLabel);
+
+    identityLayout->addLayout(identityTextLayout, 1);
+
+    m_checkUpdateButton = createSettingsActionButton(tr("Check for Updates"), identityPanel, true);
+    identityLayout->addWidget(m_checkUpdateButton, 0, Qt::AlignVCenter);
+
+    layout->addWidget(identityPanel);
     layout->addSpacing(24);
+
+    // 2. Online Update Status Card
+    m_updateSectionTitle = createCardTitle(tr("Online Update"), this);
+    layout->addWidget(m_updateSectionTitle);
+    layout->addSpacing(8);
 
     QWidget* updatePanel = createPanel(this);
     QVBoxLayout* updateLayout = new QVBoxLayout(updatePanel);
-    updateLayout->setContentsMargins(22, 18, 22, 18);
+    updateLayout->setContentsMargins(20, 16, 20, 16);
     updateLayout->setSpacing(10);
 
-    updateLayout->addWidget(createCardTitle(tr("Online Update"), updatePanel));
+    QHBoxLayout* updateHeaderRow = new QHBoxLayout();
+    updateHeaderRow->setContentsMargins(0, 0, 0, 0);
+    updateHeaderRow->setSpacing(14);
+    updateHeaderRow->addWidget(createGlyphLabel(glyph(0xE895), updatePanel, 18, QColor("#1b1b1b")), 0, Qt::AlignVCenter);
+
+    QVBoxLayout* updateTextCol = new QVBoxLayout();
+    updateTextCol->setContentsMargins(0, 0, 0, 0);
+    updateTextCol->setSpacing(2);
+
+    m_updateRowTitle = new QLabel(tr("Update Status"), updatePanel);
+    m_updateRowTitle->setObjectName("rowTitle");
+    updateTextCol->addWidget(m_updateRowTitle);
 
     m_updateStatusLabel = new QLabel(tr("Current version: %1").arg(LINDESK_VERSION_STRING_WITH_TAG), updatePanel);
     m_updateStatusLabel->setObjectName("rowSubtitle");
     m_updateStatusLabel->setWordWrap(true);
-    updateLayout->addWidget(m_updateStatusLabel);
+    updateTextCol->addWidget(m_updateStatusLabel);
+
+    updateHeaderRow->addLayout(updateTextCol, 1);
+    updateLayout->addLayout(updateHeaderRow);
 
     m_updateNotesLabel = new QLabel(updatePanel);
     m_updateNotesLabel->setObjectName("rowSubtitle");
@@ -74,26 +116,16 @@ void AboutSettingsPage::initUI()
     m_updateProgressBar->setObjectName("updateProgressBar");
     m_updateProgressBar->setRange(0, 100);
     m_updateProgressBar->setValue(0);
+    m_updateProgressBar->setFixedHeight(6);
+    m_updateProgressBar->setTextVisible(false);
     m_updateProgressBar->hide();
     updateLayout->addWidget(m_updateProgressBar);
-
-    QHBoxLayout* updateButtons = new QHBoxLayout();
-    updateButtons->setContentsMargins(0, 4, 0, 0);
-    updateButtons->setSpacing(10);
-
-    m_checkUpdateButton = new QPushButton(tr("Check for Updates"), updatePanel);
-    m_checkUpdateButton->setObjectName("updatePrimaryButton");
-    m_checkUpdateButton->setFixedHeight(34);
-    updateButtons->addWidget(m_checkUpdateButton);
-
-    updateButtons->addStretch(1);
-    updateLayout->addLayout(updateButtons);
 
     layout->addWidget(updatePanel);
 
     connect(m_checkUpdateButton, &QPushButton::clicked, this, &AboutSettingsPage::startUpdateCheck);
-    
-    layout->addStretch();
+
+    layout->addStretch(1);
 }
 
 void AboutSettingsPage::startUpdateCheck()
@@ -308,11 +340,23 @@ void AboutSettingsPage::resetUpdatePanel()
 
 void AboutSettingsPage::updateTranslations()
 {
+    if (m_pageTitle) {
+        m_pageTitle->setText(tr("About"));
+    }
+    if (m_pageSubtitle) {
+        m_pageSubtitle->setText(tr("View application version information and check for online updates."));
+    }
     if (m_aboutNameLabel) {
         m_aboutNameLabel->setText(tr("LinDesk"));
     }
     if (m_aboutVersionLabel) {
         m_aboutVersionLabel->setText(tr("Version %1").arg(LINDESK_VERSION_STRING_WITH_TAG));
+    }
+    if (m_updateSectionTitle) {
+        m_updateSectionTitle->setText(tr("Online Update"));
+    }
+    if (m_updateRowTitle) {
+        m_updateRowTitle->setText(tr("Update Status"));
     }
     if (m_updateStatusLabel) {
         m_updateStatusLabel->setText(tr("Current version: %1").arg(LINDESK_VERSION_STRING_WITH_TAG));

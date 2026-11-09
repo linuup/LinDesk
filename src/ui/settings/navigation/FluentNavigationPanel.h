@@ -11,10 +11,10 @@
 class FluentNavigationItem;
 
 /**
- * @brief Modern Windows 11 Fluent Navigation Panel with an animated indicator pill.
+ * @brief Windows 11 WinUI 3 Fluent NavigationView Panel with animated indicator pill.
  * Features:
- * - Brand header with app icon & title
- * - Unified 7-item vertical menu list
+ * - Brand header aligned with window title bar
+ * - Unified 7-item vertical menu list with authentic neutral selection fill
  * - Animated sliding indicator pill on active selection (OutCubic interpolation)
  * - Subtle hover & press micro-interactions
  */
@@ -51,6 +51,7 @@ private:
         QString text;
         QRect rect;
         bool isHovered = false;
+        bool isPressed = false;
     };
 
     QVector<ItemData> m_items;
@@ -58,14 +59,15 @@ private:
     qreal m_pillY = 0.0;
     QPropertyAnimation* m_pillAnim = nullptr;
 
-    const int kHeaderHeight = 72;
-    const int kItemHeight = 44;
+    const int kHeaderHeight = 56;
+    const int kItemHeight = 40;
     const int kItemSpacing = 4;
-    const int kPillHeight = 18;
+    const int kPillHeight = 16;
     const int kPillWidth = 3;
 
 protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void leaveEvent(QEvent* event) override;
 };

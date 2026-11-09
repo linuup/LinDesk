@@ -48,10 +48,6 @@ private:
     QWidget* getOrCreatePage(int index);
     QWidget* wrapScrollablePage(QWidget* content);
 
-    bool shouldMinimizeToTray() const;
-    void ensureTrayIcon();
-    void restoreFromTray();
-    void exitFromTray();
     void updateWindowControlButtons();
 
 private:
@@ -73,13 +69,6 @@ private:
     QPushButton* m_settingsMinBtn = nullptr;
     QPushButton* m_settingsMaxBtn = nullptr;
     QPushButton* m_settingsCloseBtn = nullptr;
-
-    QSystemTrayIcon* m_trayIcon = nullptr;
-    QMenu* m_trayMenu = nullptr;
-    QAction* m_showTrayAction = nullptr;
-    QAction* m_exitTrayAction = nullptr;
-    bool m_isQuittingFromTray = false;
-    bool m_hasShownTrayHint = false;
 };
 
 #endif // SETTINGUI_H

@@ -39,6 +39,9 @@ public:
     QString activeWallpaperId() const { return m_activeWallpaperId; }
     QString activeWallpaperPackagePath() const { return m_activeWallpaperPackagePath; }
     bool activeWallpaperIsDevelopment() const { return m_activeWallpaperIsDevelopment; }
+    bool isWallpaperSuspended() const { return m_wallpaperSuspended; }
+    void setWallpaperSuspended(bool suspended);
+    void setWallpaperFramerate(int fps);
     bool launchWidgetPackage(const QString& packagePath,
                              const QRect& geometry,
                              QString* instanceId = nullptr,
@@ -118,6 +121,7 @@ public:
     bool isWidgetLayerEmbedded() const;
 
 signals:
+    void runtimeEnabledChanged(bool enabled);
     void widgetLaunched(const QString& instanceId);
     void widgetStopped(const QString& instanceId);
     void widgetError(const QString& instanceId, const QString& errorMessage);
@@ -188,6 +192,8 @@ private:
     QString m_activeWallpaperPackagePath;
     bool m_activeWallpaperIsDevelopment = false;
     bool m_activeWallpaperInteractive = false;
+    bool m_wallpaperSuspended = false;
+    int m_wallpaperFramerate = 60;
     ::LinCef::LinWidgetCanvasWidget* m_canvasWidget = nullptr;
     QHash<QString, ::LinCef::CefOsrBrowserInstance*> m_osrBrowsers;
     ::LinCef::CefOsrBrowserInstance* m_defaultOsrBrowser = nullptr;

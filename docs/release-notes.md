@@ -1,3 +1,40 @@
+### LinDesk v1.4.0 更新日志（2026-11-02）
+
+#### 1. LinWidget 2.0 纯 Web 原生开放架构与物理分流
+- **彻底物理分流解耦**：统一采用 `.lw` 压缩包规范，安装器（`WidgetPackage::installPackage`）按 `manifest.json` 中 `type: "widget" | "wallpaper"`（兼容旧 `role`）分流解压归档到专属目录 `%APPDATA%/LinDesk/LinWidgets/<id>/` 与 `%APPDATA%/LinDesk/LinWallpapers/<id>/`，实现组件与壁纸两类资产彻底物理隔离。
+- **正交元数据模型**：动态壁纸元数据解耦为 `wallpaperType: "web" | "video" | "picture"` 与 `interactive: true | false`，精准指导宿主鼠标转发策略与工坊渲染器选择。
+- **多媒体流式协议支持**：新增 `linwidget://media?path=` 流式协议，支持高速平滑读取并播放外部大体积视频壁纸，无需拷贝即可畅快渲染。
+
+#### 2. 标准现代 window.LinDesk 原生系统能力扩展
+- **极简三合一接口**：摒弃繁重专有 RPC，数据原生直用 `localStorage`，网络直用 `fetch`，宿主仅注入轻量标准 `window.LinDesk`（Promise + 事件监听回调风格）：
+  - `LinDesk.system.getMetrics()`：异步获取 CPU、内存(MB/总计/百分比)、电池、网络上下行速率及 Uptime 快照；
+  - `LinDesk.system.onMetrics(callback)`：开启 1000ms 周期硬件监控推送，返回 `unlisten()` 取消订阅句柄；
+  - `LinDesk.shell.openPath(filePath)`：资源管理器安全定位目录或高亮选中文件；
+  - `LinDesk.shell.openUrl(url)`：调用默认外部浏览器打开网页链接（严格限制 `http://` 与 `https://` 协议）；
+  - `LinDesk.widget.close()` / `openSettings()` / `resize(w, h)`：普通小组件容器控制能力；
+  - `LinDesk.wallpaper.onPropertyChange(callback)`：壁纸工坊参数变动实时监听器。
+
+#### 3. 物理级安全硬拦截与沙箱防护
+- **底层可执行文件硬拦截**：`LinDesk.shell.openPath` 建立底层物理拦截黑名单，物理级严禁唤起 `.exe`、`.bat`、`.cmd`、`.ps1`、`.vbs`、`.msi`、`.com`、`.scr` 等任何可执行文件与脚本，切断恶意程序静默唤起路径。
+- **壁纸容器误关隔离**：壁纸运行沙箱中严格禁用 `LinDesk.widget` 容器操作（注入为 `null` 并在 C++ 宿主侧拦截），杜绝壁纸误调导致桌面背景异常黑屏。
+- **防目录穿越防护**：本地资源加载强制规范化目标路径并进行根目录包含性校验，严格阻断 `../../` 跨包或越权访问磁盘目录。
+
+#### 4. 极客独立开发工作流与热重载
+- **本地零依赖开发**：任何前端开发者在本地直接双击 `index.html` 即可在 Chrome/Edge 中调试排版。
+- **源码文件夹热识别**：支持将组件/壁纸源码文件夹直接放进 `LinWidgets/` 或 `LinWallpapers/` 即刻热识别生效。
+- **一键呼出 Chromium DevTools**：桌面小组件右键菜单挂接「开发者调试工具 (F12)」，直调 Chromium 完整开发者工具。
+- **按键原生热重载刷新**：按键拦截原生支持 <kbd>Ctrl</kbd>+<kbd>R</kbd> 与 <kbd>F5</kbd>，直接触发 CEF `ReloadIgnoreCache` 无缓存热重载。
+
+#### 5. 动态壁纸工坊 (LinDesk Hub) 独立大窗口实装
+- **1120×720 Fluent 架构独立窗口**：右键菜单新增 `🎨 动态壁纸与工坊...` 及设置中心直达大卡片入口。
+- **16:9 实时物理画板与图标浮层**：提供 16:9 画板实时渲染、桌面图标透视浮层以及声明式 properties 动态参数调整（滑块、颜色、布尔开关）。
+
+#### 6. 自动化测试与工程质量
+- 新增 `WidgetManifestTests` 与 `WidgetPackageTests` 单元测试，覆盖 2.0 Manifest 解析、壁纸正交属性序列化与物理安装目录分流验证。
+- CTest 全量 9 项测试用例（`SystemInfo`、`WidgetEnvelope`、`LogManager`、`Persistence`、`RuntimeBridge`、`RuntimeInstaller`、`StoreAppIconCompat`、`DisplayNameOverride`、`ShellMenuWorker`）100% 顺利通过。
+
+---
+
 ### LinDesk v1.3.0 更新日志
 
 #### 1. 盒子视觉特效与外观增强

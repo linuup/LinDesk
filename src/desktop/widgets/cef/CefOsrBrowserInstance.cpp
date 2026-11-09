@@ -107,6 +107,14 @@ public:
             }
             return true;
         }
+        if ((event.windows_key_code == 116 /* VK_F5 */ ||
+             ((event.windows_key_code == 'R' || event.windows_key_code == 'r') && (event.modifiers & EVENTFLAG_CONTROL_DOWN)))
+            && event.type == KEYEVENT_RAWKEYDOWN) {
+            if (browser) {
+                browser->ReloadIgnoreCache();
+            }
+            return true;
+        }
         return false;
     }
 
@@ -484,6 +492,21 @@ void CefOsrBrowserInstance::setVisible(bool visible)
 #ifdef LINDESK_HAS_CEF
     if (m_browser && m_browser->GetHost()) {
         m_browser->GetHost()->WasHidden(!visible);
+        if (!visible) {
+            m_browser->GetHost()->SetWindowlessFrameRate(1);
+        } else {
+            m_browser->GetHost()->SetWindowlessFrameRate(m_framerate);
+        }
+    }
+#endif
+}
+
+void CefOsrBrowserInstance::setFramerate(int fps)
+{
+    m_framerate = qBound(1, fps, 144);
+#ifdef LINDESK_HAS_CEF
+    if (m_browser && m_browser->GetHost()) {
+        m_browser->GetHost()->SetWindowlessFrameRate(m_framerate);
     }
 #endif
 }
@@ -521,7 +544,7 @@ bool CefOsrBrowserInstance::create(const QString& url, const QRect& geometry)
     windowInfo.shared_texture_enabled = 0;
 
     CefBrowserSettings browserSettings;
-    browserSettings.windowless_frame_rate = 60;
+    browserSettings.windowless_frame_rate = m_framerate;
     browserSettings.background_color = 0x00000000; // Transparent background
 
     const std::wstring urlW = url.toStdWString();
@@ -637,10 +660,16 @@ void CefOsrBrowserInstance::sendMouseMove(int x, int y, bool mouseLeave)
         return;
     }
 
+    uint32_t modifiers = 0;
+    const Qt::MouseButtons btns = QApplication::mouseButtons();
+    if (btns & Qt::LeftButton) modifiers |= EVENTFLAG_LEFT_MOUSE_BUTTON;
+    if (btns & Qt::RightButton) modifiers |= EVENTFLAG_RIGHT_MOUSE_BUTTON;
+    if (btns & Qt::MiddleButton) modifiers |= EVENTFLAG_MIDDLE_MOUSE_BUTTON;
+
     CefMouseEvent mouseEvent;
     mouseEvent.x = x;
     mouseEvent.y = y;
-    mouseEvent.modifiers = 0;
+    mouseEvent.modifiers = modifiers;
 
     m_browser->GetHost()->SendMouseMoveEvent(mouseEvent, mouseLeave);
 #else
@@ -830,10 +859,12 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "  if (window.__linwidget_bridge_injected) return;"
         "  window.__linwidget_bridge_injected = true;"
         "  const widgetId = '%1';"
+        "  const isWallpaper = (widgetId === '__wallpaper__' || widgetId.indexOf('wallpaper:') === 0);"
         "  const messageListeners = [];"
         "  let reqSeq = 0;"
         "  const pendingRequests = new Map();"
         "  const systemInfoWatchers = new Map();"
+        "  const wallpaperPropertyWatchers = [];"
         "  const postMessageBridge = function(data) {"
         "    try {"
         "      const body = (typeof data === 'string') ? data : JSON.stringify(data);"
@@ -875,6 +906,41 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "          try { cb(data.data || {}); }"
         "          catch (e) { console.error('[LinDesk Bridge] Error in system_info_update callback:', e); }"
         "        }"
+        "      }"
+        "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_config_update' || data.type === 'wallpaper_property') {"
+        "        const prop = { key: data.key || data.property, value: data.value };"
+        "        if (prop.key === 'blur') {"
+        "          const b = parseFloat(prop.value) || 0;"
+        "          const targetEl = document.querySelector('canvas, video, img') || document.body;"
+        "          if (targetEl && targetEl.style) {"
+        "            targetEl.style.filter = b > 0 ? ('blur(' + b + 'px)') : 'none';"
+        "            targetEl.style.transform = b > 0 ? 'scale(1.04)' : 'scale(1)';"
+        "            targetEl.style.transition = 'filter 0.15s ease, transform 0.15s ease';"
+        "          }"
+        "        } else if (prop.key === 'dimming') {"
+        "          const d = parseFloat(prop.value) || 0;"
+        "          const opacityVal = (d > 1 ? (d / 100.0) : d);"
+        "          let dimEl = document.getElementById('dimLayer') || document.getElementById('__lindesk_dim_layer__');"
+        "          if (!dimEl && document.body) {"
+        "            dimEl = document.createElement('div');"
+        "            dimEl.id = '__lindesk_dim_layer__';"
+        "            dimEl.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:9999;transition:opacity 0.15s ease;';"
+        "            document.body.appendChild(dimEl);"
+        "          }"
+        "          if (dimEl) { dimEl.style.opacity = String(opacityVal); }"
+        "        } else if (prop.key === 'scaling' || prop.key === 'fitMode') {"
+        "          const mediaEl = document.querySelector('video, img');"
+        "          if (mediaEl && mediaEl.style && prop.value) { mediaEl.style.objectFit = String(prop.value); }"
+        "        } else if (prop.key === 'volume') {"
+        "          const vEl = document.querySelector('video, audio');"
+        "          if (vEl) { const vol = Math.max(0, Math.min(1, (parseFloat(prop.value) || 0) / 100.0)); vEl.volume = vol; vEl.muted = (vol <= 0); }"
+        "        } else if (prop.key === 'playbackRate') {"
+        "          const vEl = document.querySelector('video, audio');"
+        "          if (vEl) { vEl.playbackRate = Math.max(0.25, Math.min(3.0, parseFloat(prop.value) || 1.0)); }"
+        "        }"
+        "        wallpaperPropertyWatchers.forEach(function(cb) {"
+        "          try { cb(prop); } catch(e) { console.error('[LinDesk Wallpaper] Error in property watcher:', e); }"
+        "        });"
         "      }"
         "    }"
         "    const event = new MessageEvent('message', { data: data });"
@@ -943,7 +1009,7 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "    }"
         "  };"
         "  const desktopApi = (window.desktop && typeof window.desktop === 'object') ? window.desktop : {};"
-        "  desktopApi.context = 'widget';"
+        "  desktopApi.context = isWallpaper ? 'wallpaper' : 'widget';"
         "  desktopApi.widgetId = widgetId;"
         "  desktopApi.instanceId = widgetId;"
         "  desktopApi.ready = Promise.resolve();"
@@ -999,6 +1065,89 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "    multiInstance: true"
         "  };"
         "  window.desktop = desktopApi;"
+        "  window.LinDesk = {"
+        "    version: '2.0.0',"
+        "    type: isWallpaper ? 'wallpaper' : 'widget',"
+        "    system: {"
+        "      getMetrics: function() {"
+        "        return systemInfoApi.getSnapshot().then(function(res) {"
+        "          return {"
+        "            cpu: (res && typeof res.cpu === 'object') ? (res.cpu.usagePercent || 0) : 0,"
+        "            memory: (res && typeof res.memory === 'object') ? {"
+        "              usedMB: res.memory.usedMB || Math.round((res.memory.totalMB || 0) * (res.memory.percent || 0) / 100),"
+        "              totalMB: res.memory.totalMB || 0,"
+        "              percent: res.memory.percent || 0"
+        "            } : { usedMB: 0, totalMB: 0, percent: 0 },"
+        "            battery: (res && typeof res.battery === 'object') ? (res.battery.percent || 100) : 100,"
+        "            network: (res && typeof res.network === 'object') ? {"
+        "              upSpeed: res.network.upSpeed || 0,"
+        "              downSpeed: res.network.downSpeed || 0"
+        "            } : { upSpeed: 0, downSpeed: 0 },"
+        "            uptime: (res && res.uptime) ? res.uptime.uptimeSeconds : 0,"
+        "            raw: res"
+        "          };"
+        "        });"
+        "      },"
+        "      onMetrics: function(callback) {"
+        "        if (typeof callback !== 'function') return function() {};"
+        "        const watchId = systemInfoApi.watch(function(res) {"
+        "          const metrics = {"
+        "            cpu: (res && typeof res.cpu === 'object') ? (res.cpu.usagePercent || 0) : 0,"
+        "            memory: (res && typeof res.memory === 'object') ? {"
+        "              usedMB: res.memory.usedMB || Math.round((res.memory.totalMB || 0) * (res.memory.percent || 0) / 100),"
+        "              totalMB: res.memory.totalMB || 0,"
+        "              percent: res.memory.percent || 0"
+        "            } : { usedMB: 0, totalMB: 0, percent: 0 },"
+        "            battery: (res && typeof res.battery === 'object') ? (res.battery.percent || 100) : 100,"
+        "            network: (res && typeof res.network === 'object') ? {"
+        "              upSpeed: res.network.upSpeed || 0,"
+        "              downSpeed: res.network.downSpeed || 0"
+        "            } : { upSpeed: 0, downSpeed: 0 },"
+        "            uptime: (res && res.uptime) ? res.uptime.uptimeSeconds : 0,"
+        "            raw: res"
+        "          };"
+        "          callback(metrics);"
+        "        }, 1000);"
+        "        return function() {"
+        "          systemInfoApi.unwatch(watchId);"
+        "        };"
+        "      }"
+        "    },"
+        "    shell: {"
+        "      openPath: function(filePath) {"
+        "        return sendRequest('shell_open_path', { path: String(filePath || '') }).then(function(res) {"
+        "          return !!(res && res.ok);"
+        "        }).catch(function() { return false; });"
+        "      },"
+        "      openUrl: function(url) {"
+        "        return sendRequest('shell_open_url', { url: String(url || '') }).then(function(res) {"
+        "          if (!res || !res.ok) throw new Error(res && res.error ? res.error : 'Failed to open URL');"
+        "          return true;"
+        "        });"
+        "      }"
+        "    },"
+        "    widget: isWallpaper ? null : {"
+        "      close: function() {"
+        "        return sendRequest('close_widget', { targetInstanceId: widgetId });"
+        "      },"
+        "      openSettings: function() {"
+        "        desktopApi.openSettings();"
+        "      },"
+        "      resize: function(width, height) {"
+        "        desktopApi.resizeWidget({ width: width, height: height });"
+        "      }"
+        "    },"
+        "    wallpaper: isWallpaper ? {"
+        "      onPropertyChange: function(callback) {"
+        "        if (typeof callback !== 'function') return function() {};"
+        "        wallpaperPropertyWatchers.push(callback);"
+        "        return function() {"
+        "          const idx = wallpaperPropertyWatchers.indexOf(callback);"
+        "          if (idx !== -1) wallpaperPropertyWatchers.splice(idx, 1);"
+        "        };"
+        "      }"
+        "    } : null"
+        "  };"
         "})();"
     ).arg(escapedWidgetId);
 
@@ -1011,6 +1160,7 @@ void CefOsrBrowserInstance::onBrowserAfterCreated(CefRefPtr<CefBrowser> browser)
     if (m_browser && m_browser->GetHost()) {
         m_browser->GetHost()->SetZoomLevel(0.0);
         m_browser->GetHost()->WasHidden(!m_visible);
+        m_browser->GetHost()->SetWindowlessFrameRate(m_visible ? m_framerate : 1);
         m_browser->GetHost()->Invalidate(PET_VIEW);
     }
     emit browserCreated(m_widgetId);

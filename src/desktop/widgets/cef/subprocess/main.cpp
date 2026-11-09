@@ -7,6 +7,16 @@ class SubprocessApp : public CefApp {
 public:
     SubprocessApp() = default;
 
+    void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
+        (void)process_type;
+        command_line->AppendSwitch("no-sandbox");
+        command_line->AppendSwitch("do-not-de-elevate");
+        command_line->AppendSwitch("disable-gpu");
+        command_line->AppendSwitch("disable-gpu-compositing");
+        command_line->AppendSwitch("disable-site-isolation-trials");
+        command_line->AppendSwitch("disable-features=RendererCodeIntegrity");
+    }
+
     void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {
         registrar->AddCustomScheme("linwidget",
             CEF_SCHEME_OPTION_STANDARD |

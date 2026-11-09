@@ -219,10 +219,10 @@ def build_release(repo_root: str, arch: str, custom_build_dir: str = "") -> str:
     build_cmd = [
         "cmake", "--build", abs_build_dir,
         "--config", "Release",
-        "--target", "LinDesk", "LinDeskUpdate", "LinDeskSubprocess",
+        "--target", "LinDesk", "LinDeskUpdate", "LinDeskSubprocess", "LinWidgetRuntime",
         "-j", "8"
     ]
-    print(f"    Building targets LinDesk, LinDeskUpdate, LinDeskSubprocess for {arch}...")
+    print(f"    Building targets LinDesk, LinDeskUpdate, LinDeskSubprocess, LinWidgetRuntime for {arch}...")
     sys.stdout.flush()
     build_res = subprocess.run(build_cmd, cwd=repo_root)
     if build_res.returncode != 0:
@@ -230,6 +230,8 @@ def build_release(repo_root: str, arch: str, custom_build_dir: str = "") -> str:
 
     release_dir = os.path.join(abs_build_dir, "Release")
     required = ["LinDesk.exe", "LinDeskUpdate.exe", "LinDeskSubprocess.exe", "resources", "translations"]
+    if arch == "x64":
+        required.append("LinWidgetRuntime.dll")
     missing = [item for item in required if not os.path.exists(os.path.join(release_dir, item))]
     if missing:
         raise RuntimeError(f"Missing required build outputs in {release_dir}: {missing}")

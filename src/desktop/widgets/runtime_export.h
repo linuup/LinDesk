@@ -32,6 +32,7 @@ struct LinWidgetDesktopCtx {
     void (*onWidgetSettingsRequested)(const char* instanceId, void* userData) = nullptr;
     void (*onImeCursorRectChanged)(int x, int y, int w, int h, void* userData) = nullptr;
     void (*onCanvasNeedsRepaint)(void* userData) = nullptr;
+    void (*onRuntimeEnabledChanged)(bool enabled, void* userData) = nullptr;
     void* userData = nullptr;
 };
 
@@ -73,6 +74,9 @@ LINWIDGET_EXPORT void linwidget_stop_wallpaper(bool restoreSystemWallpaper);
 LINWIDGET_EXPORT bool linwidget_has_active_wallpaper();
 LINWIDGET_EXPORT bool linwidget_is_wallpaper_interactive();
 LINWIDGET_EXPORT void linwidget_set_wallpaper_interactive(bool interactive);
+LINWIDGET_EXPORT bool linwidget_is_wallpaper_suspended();
+LINWIDGET_EXPORT void linwidget_set_wallpaper_suspended(bool suspended);
+LINWIDGET_EXPORT void linwidget_set_wallpaper_framerate(int fps);
 LINWIDGET_EXPORT bool linwidget_forward_mouse_move_to_wallpaper(int clientX, int clientY);
 LINWIDGET_EXPORT bool linwidget_forward_mouse_click_to_wallpaper(int clientX, int clientY, int button, bool isRelease, int clickCount);
 LINWIDGET_EXPORT bool linwidget_forward_wheel_to_wallpaper(int clientX, int clientY, int deltaX, int deltaY);
@@ -127,6 +131,11 @@ public:
     bool isEnabled() const;
     void setEnabled(bool enabled);
 
+    using EnabledListener = std::function<void(bool)>;
+    void addEnabledListener(void* receiver, EnabledListener listener);
+    void removeEnabledListener(void* receiver);
+    void notifyEnabledChanged(bool enabled);
+
     bool restoreFromConfig(const QString& configPath);
     bool saveToConfig(const QString& configPath);
     bool startWidgetPackage(const QString& packagePath, const QString& instanceId = QString());
@@ -144,6 +153,9 @@ public:
     bool hasActiveWallpaper() const;
     bool isWallpaperInteractive() const;
     void setWallpaperInteractive(bool interactive);
+    bool isWallpaperSuspended() const;
+    void setWallpaperSuspended(bool suspended);
+    void setWallpaperFramerate(int fps);
     bool forwardMouseMoveToWallpaper(const QPoint& clientPos);
     bool forwardMouseClickToWallpaper(const QPoint& clientPos, Qt::MouseButton button, bool isRelease, int clickCount);
     bool forwardWheelToWallpaper(const QPoint& clientPos, const QPoint& angleDelta);
@@ -212,6 +224,9 @@ private:
     bool (*m_pfnHasActiveWallpaper)() = nullptr;
     bool (*m_pfnIsWallpaperInteractive)() = nullptr;
     void (*m_pfnSetWallpaperInteractive)(bool) = nullptr;
+    bool (*m_pfnIsWallpaperSuspended)() = nullptr;
+    void (*m_pfnSetWallpaperSuspended)(bool) = nullptr;
+    void (*m_pfnSetWallpaperFramerate)(int) = nullptr;
     bool (*m_pfnForwardMouseMoveToWallpaper)(int, int) = nullptr;
     bool (*m_pfnForwardMouseClickToWallpaper)(int, int, int, bool, int) = nullptr;
     bool (*m_pfnForwardWheelToWallpaper)(int, int, int, int) = nullptr;
@@ -228,4 +243,5 @@ private:
     bool (*m_pfnHasHubBrowser)() = nullptr;
     bool (*m_pfnOpenHubWindow)(const char*) = nullptr;
     QWidget* (*m_pfnCreateHubWebWidget)(const char*, QWidget*) = nullptr;
+    QMap<void*, EnabledListener> m_enabledListeners;
 };

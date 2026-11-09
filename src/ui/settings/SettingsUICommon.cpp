@@ -27,7 +27,7 @@ QLabel* createCardTitle(const QString& text, QWidget* parent)
     label->setObjectName("cardTitle");
     label->setWordWrap(true);
     label->setMinimumWidth(0);
-    label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     return label;
 }
 
@@ -43,15 +43,9 @@ QWidget* createPanel(QWidget* parent, const QString& objectName)
 {
     QWidget* panel = new QWidget(parent);
     panel->setObjectName(objectName);
+    panel->setAttribute(Qt::WA_StyledBackground, true);
     panel->setMinimumWidth(0);
     panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-
-    auto* shadow = new QGraphicsDropShadowEffect(panel);
-    shadow->setBlurRadius(24);
-    shadow->setXOffset(0);
-    shadow->setYOffset(8);
-    shadow->setColor(QColor(15, 23, 42, 18));
-    panel->setGraphicsEffect(shadow);
     return panel;
 }
 
@@ -60,7 +54,7 @@ QLabel* createGlyphLabel(const QString& glyphText, QWidget* parent, int pixelSiz
     QLabel* label = new QLabel(glyphText, parent);
     label->setObjectName("glyphLabel");
     label->setAlignment(Qt::AlignCenter);
-    label->setFixedSize(pixelSize + 18, pixelSize + 18);
+    label->setFixedSize(pixelSize + 10, pixelSize + 10);
     label->setStyleSheet(QString(
         "QLabel#glyphLabel {"
         " background: transparent;"
@@ -84,24 +78,53 @@ QPushButton* createSettingsActionButton(const QString& text, QWidget* parent, bo
 {
     QPushButton* button = new QPushButton(text, parent);
     button->setCursor(Qt::PointingHandCursor);
-    button->setMinimumHeight(32);
+    button->setFixedHeight(32);
     button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    button->setStyleSheet(QStringLiteral(
-        "QPushButton {"
-        "  background: %1;"
-        "  color: %2;"
-        "  border: 1px solid %3;"
-        "  border-radius: 7px;"
-        "  padding: 0 12px;"
-        "  font-size: 13px;"
-        "  font-weight: 700;"
-        "}"
-        "QPushButton:hover { background: %4; }"
-        "QPushButton:disabled { background: #e5e7eb; border-color: #d1d5db; color: #9ca3af; }")
-        .arg(accent ? QStringLiteral("#0078d4") : (destructive ? QStringLiteral("#fff1f2") : QStringLiteral("#ffffff")),
-             accent ? QStringLiteral("#ffffff") : (destructive ? QStringLiteral("#b91c1c") : QStringLiteral("#111827")),
-             accent ? QStringLiteral("#0078d4") : (destructive ? QStringLiteral("#fecdd3") : QStringLiteral("#cfd8e6")),
-             accent ? QStringLiteral("#0b86e8") : (destructive ? QStringLiteral("#ffe4e6") : QStringLiteral("#f5f9ff"))));
+
+    if (accent) {
+        button->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  background: #0067c0;"
+            "  color: #ffffff;"
+            "  border: 1px solid #005fb8;"
+            "  border-radius: 6px;"
+            "  padding: 0 14px;"
+            "  font-size: 13px;"
+            "  font-weight: 600;"
+            "}"
+            "QPushButton:hover { background: #1975c5; border-color: #146bb8; }"
+            "QPushButton:pressed { background: #005299; }"
+            "QPushButton:disabled { background: #e5e5e5; border-color: #d6d6d6; color: #9e9e9e; }"));
+    } else if (destructive) {
+        button->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  background: #fbfbfb;"
+            "  color: #c42b1c;"
+            "  border: 1px solid #e0e0e0;"
+            "  border-radius: 6px;"
+            "  padding: 0 14px;"
+            "  font-size: 13px;"
+            "  font-weight: 500;"
+            "}"
+            "QPushButton:hover { background: #fdf2f2; border-color: #f1b8b4; }"
+            "QPushButton:pressed { background: #fae5e5; }"
+            "QPushButton:disabled { background: #f3f3f3; border-color: #e5e5e5; color: #a6a6a6; }"));
+    } else {
+        button->setStyleSheet(QStringLiteral(
+            "QPushButton {"
+            "  background: #fbfbfb;"
+            "  color: #1b1b1b;"
+            "  border: 1px solid #d6d6d6;"
+            "  border-bottom: 1px solid #c2c2c2;"
+            "  border-radius: 6px;"
+            "  padding: 0 14px;"
+            "  font-size: 13px;"
+            "  font-weight: 500;"
+            "}"
+            "QPushButton:hover { background: #f3f3f3; border-color: #c8c8c8; }"
+            "QPushButton:pressed { background: #ebebeb; color: #5c5c5c; }"
+            "QPushButton:disabled { background: #f3f3f3; border-color: #e5e5e5; color: #a6a6a6; }"));
+    }
     return button;
 }
 
@@ -113,13 +136,14 @@ QWidget* createSwitchRow(const QString& icon,
 {
     QWidget* row = new QWidget(parent);
     row->setObjectName("settingsRow");
+    row->setAttribute(Qt::WA_StyledBackground, true);
     row->setMinimumWidth(0);
     row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QHBoxLayout* layout = new QHBoxLayout(row);
-    layout->setContentsMargins(14, 10, 14, 10);
+    layout->setContentsMargins(16, 13, 16, 13);
     layout->setSpacing(14);
 
-    layout->addWidget(createGlyphLabel(icon, row, 20), 0, Qt::AlignVCenter);
+    layout->addWidget(createGlyphLabel(icon, row, 18, QColor("#1b1b1b")), 0, Qt::AlignVCenter);
 
     QVBoxLayout* textLayout = new QVBoxLayout();
     textLayout->setContentsMargins(0, 0, 0, 0);
@@ -129,12 +153,12 @@ QWidget* createSwitchRow(const QString& icon,
     titleLabel->setObjectName("rowTitle");
     titleLabel->setWordWrap(true);
     titleLabel->setMinimumWidth(0);
-    titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QLabel* subtitleLabel = new QLabel(subtitle, row);
     subtitleLabel->setObjectName("rowSubtitle");
     subtitleLabel->setWordWrap(true);
     subtitleLabel->setMinimumWidth(0);
-    subtitleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    subtitleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     textLayout->addWidget(titleLabel);
     textLayout->addWidget(subtitleLabel);
 
@@ -157,10 +181,10 @@ QPushButton* createColorPreset(const QColor& color, QWidget* parent)
         "QPushButton#colorPreset {"
         " background: %1;"
         " border: 2px solid rgba(255,255,255,0.96);"
-        " border-radius: 7px;"
+        " border-radius: 6px;"
         "}"
         "QPushButton#colorPreset:hover {"
-        " border: 2px solid #0078d4;"
+        " border: 2px solid #0067c0;"
         "}").arg(color.name()));
     return button;
 }
@@ -194,23 +218,45 @@ QWidget* createHomeTile(const QString& icon, const QString& title, const QString
 {
     QWidget* tile = new QWidget(parent);
     tile->setObjectName("homeTile");
-    tile->setMinimumHeight(142);
-    QVBoxLayout* layout = new QVBoxLayout(tile);
-    layout->setContentsMargins(16, 18, 16, 16);
-    layout->setSpacing(8);
-    layout->addWidget(createGlyphLabel(icon, tile, 34), 0, Qt::AlignHCenter);
+    tile->setAttribute(Qt::WA_StyledBackground, true);
+    tile->setMinimumHeight(74);
+    tile->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    QHBoxLayout* layout = new QHBoxLayout(tile);
+    layout->setContentsMargins(16, 14, 16, 14);
+    layout->setSpacing(14);
+
+    QLabel* iconBadge = new QLabel(icon, tile);
+    iconBadge->setAlignment(Qt::AlignCenter);
+    iconBadge->setFixedSize(36, 36);
+    iconBadge->setStyleSheet(QStringLiteral(
+        "QLabel {"
+        "  background-color: #eff6fc;"
+        "  color: #0067c0;"
+        "  border-radius: 8px;"
+        "  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+        "  font-size: 18px;"
+        "}"));
+    layout->addWidget(iconBadge, 0, Qt::AlignVCenter);
+
+    QVBoxLayout* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(2);
 
     QLabel* titleLabel = new QLabel(title, tile);
     titleLabel->setObjectName("homeTileTitle");
-    titleLabel->setAlignment(Qt::AlignCenter);
-    layout->addWidget(titleLabel);
+    titleLabel->setWordWrap(true);
+    textLayout->addWidget(titleLabel);
 
     QLabel* subtitleLabel = new QLabel(subtitle, tile);
     subtitleLabel->setObjectName("homeTileSubtitle");
     subtitleLabel->setWordWrap(true);
-    subtitleLabel->setAlignment(Qt::AlignCenter);
-    layout->addWidget(subtitleLabel);
-    layout->addStretch();
+    textLayout->addWidget(subtitleLabel);
+
+    layout->addLayout(textLayout, 1);
+
+    QLabel* chevron = createGlyphLabel(glyph(0xE76C), tile, 12, QColor("#5c5c5c"));
+    layout->addWidget(chevron, 0, Qt::AlignVCenter);
     return tile;
 }
 
@@ -218,10 +264,11 @@ QWidget* createQuickAction(const QString& icon, const QString& title, const QStr
 {
     QWidget* action = new QWidget(parent);
     action->setObjectName("quickAction");
+    action->setAttribute(Qt::WA_StyledBackground, true);
     QHBoxLayout* layout = new QHBoxLayout(action);
     layout->setContentsMargins(14, 12, 12, 12);
     layout->setSpacing(12);
-    layout->addWidget(createGlyphLabel(icon, action, 22), 0, Qt::AlignVCenter);
+    layout->addWidget(createGlyphLabel(icon, action, 18, QColor("#1b1b1b")), 0, Qt::AlignVCenter);
 
     QVBoxLayout* textLayout = new QVBoxLayout();
     textLayout->setContentsMargins(0, 0, 0, 0);
@@ -234,7 +281,7 @@ QWidget* createQuickAction(const QString& icon, const QString& title, const QStr
     textLayout->addWidget(titleLabel);
     textLayout->addWidget(subtitleLabel);
     layout->addLayout(textLayout, 1);
-    layout->addWidget(createGlyphLabel(glyph(0xE974), action, 16, QColor("#27344c")), 0, Qt::AlignVCenter);
+    layout->addWidget(createGlyphLabel(glyph(0xE76C), action, 14, QColor("#5c5c5c")), 0, Qt::AlignVCenter);
     return action;
 }
 
@@ -242,17 +289,27 @@ QWidget* createPluginBadge(const QString& icon, const QString& text, QWidget* pa
 {
     QWidget* badge = new QWidget(parent);
     badge->setObjectName("pluginBadge");
+    badge->setAttribute(Qt::WA_StyledBackground, true);
     badge->setStyleSheet(QString(
-        "QWidget#pluginBadge { background: %1; border: 1px solid %2; border-radius: 7px; }")
-        .arg(color.lighter(185).name())
-        .arg(color.lighter(145).name()));
+        "QWidget#pluginBadge { background: %1; border: 1px solid %2; border-radius: 6px; }")
+        .arg(color.lighter(188).name())
+        .arg(color.lighter(155).name()));
     QHBoxLayout* layout = new QHBoxLayout(badge);
-    layout->setContentsMargins(8, 4, 10, 4);
-    layout->setSpacing(6);
-    layout->addWidget(createGlyphLabel(icon, badge, 12, color));
+    layout->setContentsMargins(8, 3, 9, 3);
+    layout->setSpacing(5);
+
+    QLabel* iconLabel = new QLabel(icon, badge);
+    iconLabel->setAlignment(Qt::AlignCenter);
+    iconLabel->setFixedSize(14, 14);
+    iconLabel->setStyleSheet(QString(
+        "QLabel { background: transparent; color: %1; font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; font-size: 11px; }")
+        .arg(color.darker(110).name()));
+    layout->addWidget(iconLabel);
+
     QLabel* label = new QLabel(text, badge);
     label->setObjectName("badgeLabel");
-    label->setStyleSheet(QString("color: %1;").arg(color.darker(115).name()));
+    label->setStyleSheet(QString("QLabel { background: transparent; color: %1; font-size: 12px; font-weight: 600; }")
+                         .arg(color.darker(120).name()));
     layout->addWidget(label);
     return badge;
 }
@@ -360,8 +417,8 @@ QLabel* createWidgetIconLabel(const QString& id, const QString& iconPath, QWidge
         icon->setPixmap(pixmap.scaled(QSize(size, size), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
         icon->setStyleSheet(QStringLiteral(
             "QLabel {"
-            " background: #eef3f8;"
-            " border-radius: 12px;"
+            " background: #f3f3f3;"
+            " border-radius: 8px;"
             "}"));
         return icon;
     }
@@ -370,17 +427,17 @@ QLabel* createWidgetIconLabel(const QString& id, const QString& iconPath, QWidge
         "QLabel {"
         " background: %1;"
         " color: white;"
-        " border-radius: 12px;"
+        " border-radius: 8px;"
         " font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
         " font-size: %2px;"
-        " font-weight: 700;"
+        " font-weight: 600;"
         "}").arg(settingsWidgetAccentColor(id)).arg(qMax(18, size / 2)));
     return icon;
 }
 
 QLabel* createWidgetMetaLabel(const QString& title, const QString& value, QWidget* parent)
 {
-    QLabel* label = new QLabel(QStringLiteral("<span style='color:#7a8498;font-weight:700;'>%1</span><br><span style='color:#1f2a44;font-weight:800;'>%2</span>")
+    QLabel* label = new QLabel(QStringLiteral("<span style='color:#5c5c5c;font-weight:500;'>%1</span><br><span style='color:#1b1b1b;font-weight:600;'>%2</span>")
                                    .arg(title.toHtmlEscaped(), value.toHtmlEscaped()),
                                parent);
     label->setTextFormat(Qt::RichText);

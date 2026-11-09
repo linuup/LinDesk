@@ -1247,8 +1247,52 @@ void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
     scm.ShowMenu(this->hwnd, &p, nullptr);
 }
 
+
+bool RightMenu::isMenuShowing()
+{
+    return s_isMenuShowing.load();
+}
+
+bool RightMenu::isMenuRecentlyClosed(qint64 thresholdMs)
+{
+    const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - s_lastMenuCloseTime.load();
+    return elapsed >= 0 && elapsed < thresholdMs;
+}
+
+void RightMenu::markMenuShowing(bool showing)
+{
+    s_isMenuShowing.store(showing);
+    if (!showing) {
+        s_lastMenuCloseTime.store(QDateTime::currentMSecsSinceEpoch());
+    }
+}
+
+void RightMenu::purgePendingMouseMessages()
+{
+    s_isMenuShowing.store(false);
+    s_lastMenuCloseTime.store(QDateTime::currentMSecsSinceEpoch());
+#ifdef Q_OS_WIN
+    MSG msg;
+    while (PeekMessageW(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {
+        // Discard mouse messages that occurred during menu interaction
+    }
+#endif
+}
+
+namespace {
+struct MenuScopeGuard {
+    MenuScopeGuard() {
+        RightMenu::markMenuShowing(true);
+    }
+    ~MenuScopeGuard() {
+        RightMenu::purgePendingMouseMessages();
+    }
+};
+}
+
 bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 {
+    MenuScopeGuard menuGuard;
     m_lastMenuGlobalPos = pos;
     logRightMenuDpiTrace("windows11DesktopMenu", this->hwnd, pos);
     ShellContextMenu shellMenu;
@@ -1276,6 +1320,7 @@ bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const
 
 void RightMenu::showMenu(QPoint pos, const DesktopRootItemModel& model, bool extendedVerbs) const
 {
+    MenuScopeGuard menuGuard;
     m_lastMenuGlobalPos = pos;
     ShellContextMenu scm;
     logRightMenuDpiTrace("showMenu", this->hwnd, pos);
@@ -1428,6 +1473,7 @@ std::vector<ShellContextMenu::CustomMenuItem> RightMenu::exportCustomMenuItems(
 
 void RightMenu::showMultObjectMenu(QPoint pos, const QVector<DesktopRootItemModel>& models, bool extendedVerbs) const
 {
+    MenuScopeGuard menuGuard;
     vector<LPITEMIDLIST> pidls;
     pidls.reserve(models.size());
     for (const auto& model : models) {

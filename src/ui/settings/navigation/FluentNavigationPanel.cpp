@@ -7,7 +7,7 @@ FluentNavigationPanel::FluentNavigationPanel(QWidget* parent)
     : QWidget(parent)
 {
     setMouseTracking(true);
-    setFixedWidth(190);
+    setFixedWidth(216);
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
 
     // Ensure Segoe Fluent Icons font is registered
@@ -18,7 +18,7 @@ FluentNavigationPanel::FluentNavigationPanel(QWidget* parent)
     }
 
     m_pillAnim = new QPropertyAnimation(this, "pillY", this);
-    m_pillAnim->setDuration(220);
+    m_pillAnim->setDuration(180);
     m_pillAnim->setEasingCurve(QEasingCurve::OutCubic);
 
     initDefaultItems();
@@ -31,7 +31,7 @@ void FluentNavigationPanel::initDefaultItems()
     addItem(0xE7F8, tr("Desktop"));
     addItem(0xECAA, tr("Context Menu"));
     addItem(0xF133, tr("Box"));
-    addItem(0xF4A5, tr("LinWidgets"));
+    addItem(0xEB9F, tr("壁纸与小组件"));
     addItem(0xF22C, tr("Plugins"));
     addItem(0xE946, tr("About"));
 }
@@ -43,7 +43,7 @@ void FluentNavigationPanel::updateTranslations()
         m_items[1].text = tr("Desktop");
         m_items[2].text = tr("Context Menu");
         m_items[3].text = tr("Box");
-        m_items[4].text = tr("LinWidgets");
+        m_items[4].text = tr("壁纸与小组件");
         m_items[5].text = tr("Plugins");
         m_items[6].text = tr("About");
         update();
@@ -115,7 +115,7 @@ void FluentNavigationPanel::resizeEvent(QResizeEvent* event)
 
 void FluentNavigationPanel::updateItemGeometries()
 {
-    const int startY = kHeaderHeight + 8;
+    const int startY = kHeaderHeight + 4;
     const int widthAvailable = width();
 
     for (int i = 0; i < m_items.size(); ++i) {
@@ -129,76 +129,78 @@ void FluentNavigationPanel::paintEvent(QPaintEvent* /*event*/)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-    // 1. Draw Brand Header (App icon + Title)
-    const QPixmap appIcon = QIcon(":/Assets/icon.png").pixmap(30, 30);
-    painter.drawPixmap(20, 22, appIcon);
+    // 1. Draw Brand Header (App icon + Title aligned with Win11 NavigationView header)
+    const QPixmap appIcon = QIcon(QStringLiteral(":/Assets/icon.png")).pixmap(22, 22);
+    painter.drawPixmap(18, 17, appIcon);
 
-    QFont titleFont(AppFonts::uiFamily(), 12, QFont::Bold);
+    QFont titleFont(AppFonts::uiFamily());
+    titleFont.setPixelSize(13);
+    titleFont.setWeight(QFont::DemiBold);
     painter.setFont(titleFont);
-    painter.setPen(QColor(17, 24, 39));
-    painter.drawText(QRect(58, 20, width() - 65, 34), Qt::AlignVCenter | Qt::AlignLeft, tr("LinDesk"));
+    painter.setPen(QColor(0x1b, 0x1b, 0x1b));
+    painter.drawText(QRect(48, 12, width() - 56, 32), Qt::AlignVCenter | Qt::AlignLeft, tr("LinDesk"));
 
-    // 2. Draw Navigation Items
+    // 2. Draw Navigation Items (Authentic WinUI 3 NavigationViewItem)
     QFont iconFont(QStringLiteral("Segoe Fluent Icons"));
-    if (iconFont.exactMatch() == false) {
+    if (!iconFont.exactMatch()) {
         iconFont.setFamily(QStringLiteral("Segoe MDL2 Assets"));
     }
     iconFont.setPixelSize(16);
 
-    QFont textFont(AppFonts::uiFamily(), 9);
+    QFont textFont(AppFonts::uiFamily());
+    textFont.setPixelSize(13);
 
     for (int i = 0; i < m_items.size(); ++i) {
         const ItemData& item = m_items[i];
         const bool isSelected = (i == m_currentIndex);
         const bool isHovered = item.isHovered;
+        const bool isPressed = item.isPressed;
 
-        // Visual background card (margins: 8px left/right, 2px top/bottom)
-        const QRect cardRect = item.rect.adjusted(8, 2, -8, -2);
+        // Visual background card (margins: 10px left/right, 2px top/bottom -> 36px visual height)
+        const QRect cardRect = item.rect.adjusted(10, 2, -10, -2);
 
         if (isSelected) {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(234, 243, 255)); // Fluent light accent fill
+            // Win11 NavigationView selected item neutral fill
+            painter.setBrush(isHovered ? QColor(0, 0, 0, 12) : QColor(0, 0, 0, 16));
+            painter.drawRoundedRect(cardRect, 6, 6);
+        } else if (isPressed) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(0, 0, 0, 14));
             painter.drawRoundedRect(cardRect, 6, 6);
         } else if (isHovered) {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(0, 0, 0, 10)); // Soft hover fill
+            painter.setBrush(QColor(0, 0, 0, 10));
             painter.drawRoundedRect(cardRect, 6, 6);
         }
 
         // Draw item glyph icon
         painter.setFont(iconFont);
         if (isSelected) {
-            painter.setPen(QColor(0, 120, 212));
-        } else if (isHovered) {
-            painter.setPen(QColor(31, 41, 55));
+            painter.setPen(QColor(0x00, 0x67, 0xc0)); // Win11 Accent #0067c0
         } else {
-            painter.setPen(QColor(107, 114, 128));
+            painter.setPen(isPressed ? QColor(0x5c, 0x5c, 0x5c) : QColor(0x1b, 0x1b, 0x1b));
         }
 
-        const QRect iconRect(cardRect.left() + 14, cardRect.top(), 24, cardRect.height());
+        const QRect iconRect(cardRect.left() + 12, cardRect.top(), 20, cardRect.height());
         painter.drawText(iconRect, Qt::AlignCenter, QString(QChar(item.icon)));
 
         // Draw item text
-        textFont.setBold(isSelected);
+        textFont.setWeight(isSelected ? QFont::DemiBold : QFont::Normal);
         painter.setFont(textFont);
-        if (isSelected) {
-            painter.setPen(QColor(0, 120, 212));
-        } else if (isHovered) {
-            painter.setPen(QColor(17, 24, 39));
-        } else {
-            painter.setPen(QColor(75, 85, 99));
-        }
+        painter.setPen(isPressed ? QColor(0x5c, 0x5c, 0x5c) : QColor(0x1b, 0x1b, 0x1b));
 
-        const QRect textRect(cardRect.left() + 44, cardRect.top(), cardRect.width() - 48, cardRect.height());
+        const QRect textRect(cardRect.left() + 42, cardRect.top(), cardRect.width() - 48, cardRect.height());
         painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, item.text);
     }
 
-    // 3. Draw Animated Indicator Pill (Active selection)
+    // 3. Draw Animated Indicator Pill (Active selection: 3px x 16px #0067c0)
     if (!m_items.isEmpty() && m_currentIndex >= 0 && m_currentIndex < m_items.size()) {
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor(0, 120, 212));
-        painter.drawRoundedRect(QRectF(11, m_pillY, kPillWidth, kPillHeight), 1.5, 1.5);
+        painter.setBrush(QColor(0x00, 0x67, 0xc0));
+        painter.drawRoundedRect(QRectF(10.0, m_pillY, kPillWidth, kPillHeight), 1.5, 1.5);
     }
 }
 
@@ -228,6 +230,7 @@ void FluentNavigationPanel::mousePressEvent(QMouseEvent* event)
         const QPoint pos = event->pos();
         for (int i = 0; i < m_items.size(); ++i) {
             if (m_items[i].rect.contains(pos)) {
+                m_items[i].isPressed = true;
                 setCurrentIndex(i, true);
                 event->accept();
                 return;
@@ -237,11 +240,23 @@ void FluentNavigationPanel::mousePressEvent(QMouseEvent* event)
     QWidget::mousePressEvent(event);
 }
 
+void FluentNavigationPanel::mouseReleaseEvent(QMouseEvent* event)
+{
+    for (int i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].isPressed) {
+            m_items[i].isPressed = false;
+            update(m_items[i].rect);
+        }
+    }
+    QWidget::mouseReleaseEvent(event);
+}
+
 void FluentNavigationPanel::leaveEvent(QEvent* event)
 {
     for (int i = 0; i < m_items.size(); ++i) {
-        if (m_items[i].isHovered) {
+        if (m_items[i].isHovered || m_items[i].isPressed) {
             m_items[i].isHovered = false;
+            m_items[i].isPressed = false;
             update(m_items[i].rect);
         }
     }

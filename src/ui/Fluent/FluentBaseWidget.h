@@ -17,10 +17,16 @@
 #include <QStackedLayout>
 #include <QScrollArea>
 #include <QFrame>
+#include <QMimeData>
+#include <QDropEvent>
+#include <QUrl>
+#include <QCoreApplication>
+#include <QVector>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <windowsx.h>
+#include <shellapi.h>
 #endif
 
 class FluentDrawer : public QWidget {
@@ -405,6 +411,32 @@ protected:
     bool nativeEvent(const QByteArray &eventType, void *message, long *result) override {
 #ifdef Q_OS_WIN
         MSG* msg = static_cast<MSG*>(message);
+        if (msg->message == WM_DROPFILES) {
+            HDROP hDrop = reinterpret_cast<HDROP>(msg->wParam);
+            const UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, nullptr, 0);
+            QList<QUrl> urls;
+            for (UINT i = 0; i < count; ++i) {
+                const UINT len = DragQueryFileW(hDrop, i, nullptr, 0);
+                if (len > 0) {
+                    QVector<wchar_t> buf(static_cast<int>(len) + 1, L'\0');
+                    DragQueryFileW(hDrop, i, buf.data(), len + 1);
+                    urls.append(QUrl::fromLocalFile(QString::fromWCharArray(buf.constData())));
+                }
+            }
+            POINT pt{};
+            DragQueryPoint(hDrop, &pt);
+            DragFinish(hDrop);
+            if (!urls.isEmpty()) {
+                QMimeData mime;
+                mime.setUrls(urls);
+                QDropEvent dropEv(QPointF(pt.x, pt.y), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(this, &dropEv);
+            }
+            if (result) {
+                *result = 0;
+            }
+            return true;
+        }
         if (msg->message == WM_NCHITTEST) {
             const HWND hwnd = reinterpret_cast<HWND>(winId());
             const LONG nativeX = GET_X_LPARAM(msg->lParam);
@@ -413,11 +445,12 @@ protected:
             GetWindowRect(hwnd, &nativeRect);
             const UINT dpi = GetDpiForWindow(hwnd);
             const qreal scale = dpi > 0 ? static_cast<qreal>(dpi) / 96.0 : qMax<qreal>(1.0, devicePixelRatioF());
-            const int nativeBorder = qMax(1, qRound(15 * scale));
+            const bool customWebTitle = m_btnContainer && m_btnContainer->isHidden();
+            const int nativeBorder = qMax(1, qRound((customWebTitle ? 6 : 15) * scale));
             const QPoint pos(qRound((nativeX - nativeRect.left) / scale),
                              qRound((nativeY - nativeRect.top) / scale));
 
-            if (m_resizable) {
+            if (m_resizable && !isMaximized()) {
                 const bool left = nativeX >= nativeRect.left && nativeX < nativeRect.left + nativeBorder;
                 const bool right = nativeX <= nativeRect.right && nativeX > nativeRect.right - nativeBorder;
                 const bool top = nativeY >= nativeRect.top && nativeY < nativeRect.top + nativeBorder;
@@ -433,7 +466,31 @@ protected:
                 if (bottom) { *result = HTBOTTOM; return true; }
             }
 
-            // Standard drag area
+            // Custom Web Title Bar (44px height): return HTCLIENT for interactive tab/button rects,
+            // and native HTCAPTION everywhere else for 100% native Windows drag, Aero Snap, and double-click maximize.
+            if (customWebTitle) {
+                if (pos.y() >= 0 && pos.y() < 44) {
+                    const QVariantList customRects = property("webTitleInteractiveRects").toList();
+                    if (!customRects.isEmpty()) {
+                        for (const QVariant& v : customRects) {
+                            if (v.toRect().contains(pos)) {
+                                return false; // HTCLIENT: pass to Web UI
+                            }
+                        }
+                    } else {
+                        const QRect defaultNavRect(136, 0, 340, 44);
+                        const QRect defaultControlsRect(width() - 190, 0, 190, 44);
+                        if (defaultNavRect.contains(pos) || defaultControlsRect.contains(pos)) {
+                            return false; // HTCLIENT: pass to Web UI
+                        }
+                    }
+                    *result = HTCAPTION;
+                    return true;
+                }
+                return QWidget::nativeEvent(eventType, message, result);
+            }
+
+            // Standard drag area (only when native Qt title bar is visible)
             if (pos.y() < 60) {
                 QWidget* child = childAt(pos);
                 // Recursively check parents to see if we hit a button or interactive component

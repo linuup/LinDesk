@@ -16,6 +16,9 @@
 #include <QPointer>
 #include <QTimer>
 #include <QPaintEvent>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonValue>
@@ -35,6 +38,9 @@ struct WallpaperItem {
     QString description;
     QString packagePath;
     QString thumbStyle;
+    QString previewPath;
+    QString wallpaperType = QStringLiteral("html"); // html, video, image
+    bool isDevelopment = false;
     QJsonObject propertiesSchema;
 };
 
@@ -65,6 +71,7 @@ class WallpaperStudioWindow : public FluentBaseWidget {
 public:
     static WallpaperStudioWindow* instance();
     static void showStudio(int defaultTab = 0);
+    static void hideIfOpen();
 
     explicit WallpaperStudioWindow(QWidget* parent = nullptr);
     ~WallpaperStudioWindow() override = default;
@@ -77,6 +84,7 @@ public slots:
     void importLocalMedia();
     void exportDiagnosticsPackage();
     void selectWallpaperForStudio(const QString& wallpaperId);
+    bool createAndInstallQuickWallpaper(const QString& filePath, QString* outId = nullptr);
 
     // Widget Management Slots
     void refreshWidgetsList();
@@ -93,13 +101,15 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
 private:
     void initUI();
     void setupHeader();
     void setupNavPills();
-    QWidget* createGalleryPage();
-    QWidget* createStudioPage();
+    QWidget* createWallpaperHubPage(); // Master-Detail 二合一核心页面 (58% 画廊瀑布流 + 42% 16:9 画板与调参)
     QWidget* createWidgetsPage();
     QWidget* createDevAdminPage();
 
@@ -126,12 +136,11 @@ private:
 
     QWidget* m_hubWebWidget = nullptr;
     QStackedWidget* m_stack = nullptr;
-    QPushButton* m_tabGalleryBtn = nullptr;
-    QPushButton* m_tabStudioBtn = nullptr;
+    QPushButton* m_tabWallpaperHubBtn = nullptr;
     QPushButton* m_tabWidgetsBtn = nullptr;
     QPushButton* m_tabDevBtn = nullptr;
 
-    // Gallery elements
+    // Master-Detail Wallpaper Elements
     QLabel* m_heroStatusDot = nullptr;
     QLabel* m_heroStatusText = nullptr;
     QLabel* m_heroTitle = nullptr;
@@ -141,20 +150,35 @@ private:
     QGridLayout* m_galleryGridLayout = nullptr;
     QWidget* m_galleryGridContainer = nullptr;
 
-    // Studio elements
+    // Detail Panel Elements (Preview Canvas & Dual-Tier Properties)
     StudioPreviewCanvas* m_studioCanvas = nullptr;
+    QLabel* m_detailWallpaperName = nullptr;
+    QLabel* m_detailWallpaperMeta = nullptr;
+    QPushButton* m_detailApplyBtn = nullptr;
+
+    // Custom properties container
+    QWidget* m_dynamicPropertiesContainer = nullptr;
+    QVBoxLayout* m_dynamicPropertiesLayout = nullptr;
+    QMap<QString, QJsonValue> m_currentPropertyValues;
+
+    // Host 4-piece filter and audio controls
+    QSlider* m_volumeSlider = nullptr;
+    QLabel* m_volumeValLabel = nullptr;
+    FluentToggleSwitch* m_muteOnSoundToggle = nullptr;
     QSlider* m_dimSlider = nullptr;
     QLabel* m_dimValLabel = nullptr;
     QSlider* m_blurSlider = nullptr;
     QLabel* m_blurValLabel = nullptr;
+    QComboBox* m_fitModeCombo = nullptr;
     QCheckBox* m_mockIconsCheckbox = nullptr;
-    QString m_currentEditingWallpaper = QStringLiteral("lindesk.wallpaper.gargantua");
 
-    // Dynamic properties panel in Studio
-    QWidget* m_dynamicPropertiesContainer = nullptr;
-    QVBoxLayout* m_dynamicPropertiesLayout = nullptr;
-    QLabel* m_propertiesTitle = nullptr;
-    QMap<QString, QJsonValue> m_currentPropertyValues;
+    // Developer exclusive box
+    QWidget* m_devToolsBox = nullptr;
+    QPushButton* m_devOpenFolderBtn = nullptr;
+    QPushButton* m_devInspectBtn = nullptr;
+    QPushButton* m_devReloadBtn = nullptr;
+
+    QString m_currentEditingWallpaper = QStringLiteral("lindesk.wallpaper");
 
     // Available wallpapers
     QList<WallpaperItem> m_availableWallpapers;
@@ -177,8 +201,6 @@ private:
     QLabel* m_ipcLogView = nullptr;
     QTimer* m_statusTimer = nullptr;
 
-
-
     // In-window toast notification
     QWidget* m_toastWidget = nullptr;
     QLabel* m_toastLabel = nullptr;
@@ -195,6 +217,7 @@ public:
     void setBlurRadius(int blurPx);
     void setShowDesktopIcons(bool show);
     void setWallpaperType(const QString& type);
+    void setPreviewImage(const QPixmap& pixmap);
     void setParticleDensity(int density);
     void setAccentColor(const QColor& color);
 
@@ -205,7 +228,8 @@ private:
     qreal m_dimOpacity = 0.20;
     int m_blurRadius = 0;
     bool m_showDesktopIcons = true;
-    QString m_wallpaperType = QStringLiteral("gargantua");
+    QString m_wallpaperType = QStringLiteral("living");
+    QPixmap m_customPreviewPixmap;
     int m_particleDensity = 30;
     QColor m_accentColor = QColor(255, 140, 20);
     QTimer* m_animTimer = nullptr;

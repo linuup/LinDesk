@@ -90,7 +90,44 @@
 
   // 3. 深空引力粒子群 (Cosmic Starfield)
   const cosmicStars = [];
-  const COSMIC_STAR_COUNT = 90;
+  let COSMIC_STAR_COUNT = 90;
+  let singularityColorHex = '#8b5cf6';
+  let singularityRgb = [139, 92, 246];
+  let fluidSpeedMultiplier = 1.0;
+  let reactivePhysics = true;
+
+  function hexToRgb(hex) {
+    if (typeof hex !== 'string') return [139, 92, 246];
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+    const num = parseInt(c, 16);
+    return isNaN(num) ? [139, 92, 246] : [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
+
+  function handleWallpaperProperty(key, val) {
+    if (key === 'particleCount') {
+      const count = parseInt(val, 10);
+      if (!isNaN(count) && count > 0) {
+        COSMIC_STAR_COUNT = count;
+        while (cosmicStars.length < count) {
+          cosmicStars.push(new CosmicStar());
+        }
+        if (cosmicStars.length > count) {
+          cosmicStars.length = count;
+        }
+      }
+    } else if (key === 'fluidSpeed') {
+      const spd = parseFloat(val);
+      if (!isNaN(spd) && spd > 0) {
+        fluidSpeedMultiplier = spd / 3.0;
+      }
+    } else if (key === 'singularityColor') {
+      singularityColorHex = val;
+      singularityRgb = hexToRgb(val);
+    } else if (key === 'reactiveMouseWave') {
+      reactivePhysics = !!val;
+    }
+  }
 
   class CosmicStar {
     constructor() {
@@ -342,7 +379,7 @@
 
     // 外圈能量辉光（纯径向渐变，无需 Gaussian blur）
     const glowGrad = ctx.createRadialGradient(0, 0, coreR * 0.6, 0, 0, coreR * 3.5);
-    glowGrad.addColorStop(0, 'rgba(139, 92, 246, 0.85)');
+    glowGrad.addColorStop(0, 'rgba(' + singularityRgb.join(',') + ', 0.85)');
     glowGrad.addColorStop(0.5, 'rgba(14, 165, 233, 0.45)');
     glowGrad.addColorStop(1, 'rgba(14, 165, 233, 0)');
     ctx.fillStyle = glowGrad;
@@ -419,8 +456,19 @@
           mouse.isDown = false;
         }
       }
+    } else if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_property') {
+      const key = data.key || data.property;
+      handleWallpaperProperty(key, data.value);
     }
   });
+
+  if (window.LinDesk && window.LinDesk.wallpaper && typeof window.LinDesk.wallpaper.onPropertyChange === 'function') {
+    window.LinDesk.wallpaper.onPropertyChange(function (prop) {
+      if (prop && prop.key) {
+        handleWallpaperProperty(prop.key, prop.value);
+      }
+    });
+  }
 
   // 启动初始化
   sendMessage('wallpaper_get_interactive', {});

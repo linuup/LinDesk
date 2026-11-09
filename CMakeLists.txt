@@ -412,11 +412,17 @@ add_executable(LinDeskWidgetEnvelopeTests
     tests/WidgetMessageEnvelopeTests.cpp
     src/desktop/widgets/linwidget/WidgetMessageTypes.cpp
     src/desktop/widgets/linwidget/WidgetMessageTypes.h
+    src/desktop/widgets/linwidget/LinWidgetTypes.cpp
+    src/desktop/widgets/linwidget/LinWidgetTypes.h
+    src/desktop/widgets/linwidget/WidgetPackage.cpp
+    src/desktop/widgets/linwidget/WidgetPackage.h
+    src/services/AppPaths.h
 )
 
 target_link_libraries(LinDeskWidgetEnvelopeTests
     PRIVATE
         Qt5::Core
+        Qt5::Gui
         GTest::gtest
         GTest::gtest_main
 )
@@ -505,6 +511,7 @@ target_include_directories(LinDeskRuntimeBridgeTests
 )
 
 add_test(NAME LinDeskRuntimeBridgeTests COMMAND LinDeskRuntimeBridgeTests)
+set_tests_properties(LinDeskRuntimeBridgeTests PROPERTIES WORKING_DIRECTORY "$<TARGET_FILE_DIR:LinDeskRuntimeBridgeTests>")
 
 add_executable(LinDeskRuntimeInstallerTests
     tests/RuntimeInstallerTests.cpp
@@ -734,7 +741,10 @@ add_custom_command(TARGET LinDesk POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/src/resources"
         "$<TARGET_FILE_DIR:LinDesk>/resources"
-    COMMENT "Copying app resources to output directory..."
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/widgets"
+        "$<TARGET_FILE_DIR:LinDesk>/resources/LinWidgets"
+    COMMENT "Copying app resources and widgets to output directory..."
 )
 
 

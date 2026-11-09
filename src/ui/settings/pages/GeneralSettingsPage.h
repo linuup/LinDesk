@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+class QLabel;
 class FluentToggleSwitch;
 class FluentComboBox;
 
@@ -12,7 +13,7 @@ public:
     explicit GeneralSettingsPage(QWidget* parent = nullptr);
     ~GeneralSettingsPage() override = default;
 
-    void updateTranslations() {}
+    void updateTranslations();
 
 signals:
     void requestNavigate(int pageIndex);
@@ -24,6 +25,8 @@ private:
     static bool isLaunchAtLoginEnabled();
     static bool setLaunchAtLoginEnabled(bool enabled);
 
+    QLabel* m_pageTitle = nullptr;
+    QLabel* m_pageSubtitle = nullptr;
     FluentToggleSwitch* m_autoStartToggle = nullptr;
     FluentToggleSwitch* m_trayOnlyToggle = nullptr;
     FluentToggleSwitch* m_openGLToggle = nullptr;

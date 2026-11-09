@@ -1,3 +1,4 @@
+#include "services/power/WallpaperPowerStateManager.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -488,7 +489,7 @@ void ListView::openLinWidgetSettings(const QString& instanceId)
     if (!bridge.isLoaded() || instanceId.trimmed().isEmpty()) {
         return;
     }
-    // settings will be handled via bridge or settings dialog
+    bridge.openWidgetSettings(QString(), instanceId);
 }
 
 void ListView::showWidgetContextMenu(const QString& instanceId, const QPoint& globalPos)
@@ -537,6 +538,11 @@ void ListView::showWidgetContextMenu(const QString& instanceId, const QPoint& gl
         LinWidgetRuntimeBridge::instance().restartWidget(instanceId);
     });
 
+    QAction* actDevTools = menu.addAction(QString::fromUtf8("开发者调试工具 (F12)"));
+    connect(actDevTools, &QAction::triggered, this, [instanceId]() {
+        LinWidgetRuntimeBridge::instance().showDevTools(instanceId);
+    });
+
     QAction* actSettings = menu.addAction(QString::fromUtf8("小组件设置..."));
     connect(actSettings, &QAction::triggered, this, [this, instanceId]() {
         openLinWidgetSettings(instanceId);
@@ -550,7 +556,9 @@ void ListView::showWidgetContextMenu(const QString& instanceId, const QPoint& gl
         update();
     });
 
+    RightMenu::markMenuShowing(true);
     menu.exec(globalPos);
+    RightMenu::purgePendingMouseMessages();
 }
 
 int ListView::widgetResizeEdgeAt(const QPoint& clientPos, const QRect& widgetGeom, int hitMargin) const
@@ -609,7 +617,7 @@ Qt::CursorShape ListView::cursorForResizeEdge(int edge) const
 int ListView::refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld)
 {
     auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (!ctrlHeld || !bridge.isLoaded() || !bridge.isWidgetLayerEmbedded()) {
+    if (!bridge.isLoaded() || !bridge.isWidgetLayerEmbedded()) {
         if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
             m_resizeHintWidgetId.clear();
             unsetCursor();
@@ -629,13 +637,29 @@ int ListView::refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld)
     }
 
     const QRect geom = bridge.widgetGeometry(wid);
-    const int edge = widgetResizeEdgeAt(pos, geom, 10);
-    const Qt::CursorShape shape = cursorForResizeEdge(edge);
-    setCursor(shape);
+    const int edge = widgetResizeEdgeAt(pos, geom, 8);
+    const bool inHeader = (pos.y() >= geom.top() && pos.y() <= geom.top() + 24);
 
-    if (m_resizeHintWidgetId != wid) {
-        m_resizeHintWidgetId = wid;
-        update();
+    if (edge != ResizeEdgeNone) {
+        setCursor(cursorForResizeEdge(edge));
+    } else if (ctrlHeld || inHeader) {
+        setCursor(Qt::SizeAllCursor);
+    } else {
+        unsetCursor();
+    }
+
+    const bool showHint = ctrlHeld || edge != ResizeEdgeNone || inHeader || m_resizingWidget || m_draggingWidget;
+    if (showHint) {
+        if (m_resizeHintWidgetId != wid) {
+            m_resizeHintWidgetId = wid;
+            update();
+        }
+    } else {
+        if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
+            m_resizeHintWidgetId.clear();
+            unsetCursor();
+            update();
+        }
     }
 
     return edge;
@@ -717,6 +741,14 @@ void ListView::initializeLinWidgets()
             lv->update();
         }
     };
+    ctx.onRuntimeEnabledChanged = [](bool enabled, void* userData) {
+        LinWidgetRuntimeBridge::instance().notifyEnabledChanged(enabled);
+        auto* lv = static_cast<ListView*>(userData);
+        if (lv) {
+            lv->syncLinWidgetLayer();
+            lv->update();
+        }
+    };
     ctx.userData = this;
 
     if (!bridge.init(ctx)) {
@@ -727,6 +759,7 @@ void ListView::initializeLinWidgets()
     bridge.setEnabled(linWidgetsEnabled);
     bridge.setShowWidgetBounds(showWidgetBounds);
     setAttribute(Qt::WA_InputMethodEnabled, true);
+    LinPower::WallpaperPowerStateManager::instance().start();
 
     if (!linWidgetsEnabled) {
         qDebug() << "[LinWidgetAutoLoad] runtime disabled in config";
@@ -892,6 +925,7 @@ void ListView::handleHotkey(int id) {
     }
 }
 ListView::~ListView() {
+    LinPower::WallpaperPowerStateManager::instance().stop();
     if (m_instance == this) {
         m_instance = nullptr;
     }
@@ -1717,10 +1751,19 @@ void ListView::paintEvent(QPaintEvent* event)
             // 1. Fluent 强调色发光高亮边框
             QColor accentColor(0, 120, 215);
             painter.setPen(QPen(accentColor, 2.0));
-            painter.setBrush(QColor(accentColor.red(), accentColor.green(), accentColor.blue(), 24));
+            painter.setBrush(QColor(accentColor.red(), accentColor.green(), accentColor.blue(), 20));
             painter.drawRoundedRect(widgetGeom, 6, 6);
 
-            // 2. 8个控制点小手柄 (Corners & Midpoints)
+            // 2. 顶部拖拽抓手胶囊 (Top grab pill indicator)
+            const int pillW = 38;
+            const int pillH = 4;
+            const int pillX = widgetGeom.center().x() - pillW / 2;
+            const int pillY = widgetGeom.top() + 7;
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(255, 255, 255, 180));
+            painter.drawRoundedRect(QRect(pillX, pillY, pillW, pillH), 2, 2);
+
+            // 3. 8个控制点小手柄 (Corners & Midpoints)
             const int handleSize = 7;
             const int half = handleSize / 2;
             const QPoint handles[8] = {
@@ -1821,20 +1864,29 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
         clearCheckedItem();
         // 弹出桌面背景系统右键菜单
         requestSystemRightMenu(ObjectType::BackGround, rightClickPoint);
+        m_pendingWallpaperClick = false;
     }
 }
 
 void ListView::mousePressEvent(QMouseEvent* event)
 {
+    if (RightMenu::isMenuShowing() || RightMenu::isMenuRecentlyClosed(400)) {
+        m_pendingWallpaperClick = false;
+        event->accept();
+        return;
+    }
+
     auto& bridge = LinWidgetRuntimeBridge::instance();
     const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
     if (bridge.isLoaded()) {
         if (bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-            if (ctrlHeld && event->button() == Qt::LeftButton) {
+            const QString wid = bridge.widgetAt(event->pos());
+            const QRect geom = bridge.widgetGeometry(wid);
+            const int edge = widgetResizeEdgeAt(event->pos(), geom, 8);
+            const bool inHeader = (event->pos().y() >= geom.top() && event->pos().y() <= geom.top() + 24);
+
+            if (event->button() == Qt::LeftButton && (ctrlHeld || edge != ResizeEdgeNone || inHeader)) {
                 clearSelectionState();
-                const QString wid = bridge.widgetAt(event->pos());
-                const QRect geom = bridge.widgetGeometry(wid);
-                const int edge = widgetResizeEdgeAt(event->pos(), geom, 10);
                 if (edge != ResizeEdgeNone) {
                     m_resizingWidget = true;
                     m_resizingWidgetId = wid;
@@ -2008,8 +2060,38 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
         QRect newGeom = m_widgetDragStartGeometry.translated(dx, dy);
 
         QRect screenRect = rect();
+        const int snapDist = 16;
+        if (std::abs(newGeom.left() - screenRect.left()) < snapDist) {
+            newGeom.moveLeft(screenRect.left());
+        } else if (std::abs(newGeom.right() - screenRect.right()) < snapDist) {
+            newGeom.moveRight(screenRect.right());
+        }
+
+        if (std::abs(newGeom.top() - screenRect.top()) < snapDist) {
+            newGeom.moveTop(screenRect.top());
+        } else if (std::abs(newGeom.bottom() - screenRect.bottom()) < snapDist) {
+            newGeom.moveBottom(screenRect.bottom());
+        }
+
         newGeom.moveLeft(qBound(0, newGeom.left(), qMax(0, screenRect.width() - newGeom.width())));
         newGeom.moveTop(qBound(0, newGeom.top(), qMax(0, screenRect.height() - newGeom.height())));
+
+        const QVector<QRect> otherRects = bridge.occupiedRects();
+        for (const QRect& other : otherRects) {
+            if (other == m_widgetDragStartGeometry || other == newGeom) continue;
+            if (std::abs(newGeom.left() - (other.right() + 8)) < snapDist) {
+                newGeom.moveLeft(other.right() + 8);
+            }
+            if (std::abs(newGeom.right() - (other.left() - 8)) < snapDist) {
+                newGeom.moveRight(other.left() - 8);
+            }
+            if (std::abs(newGeom.top() - other.top()) < snapDist) {
+                newGeom.moveTop(other.top());
+            }
+            if (std::abs(newGeom.top() - (other.bottom() + 8)) < snapDist) {
+                newGeom.moveTop(other.bottom() + 8);
+            }
+        }
 
         bridge.setWidgetGeometry(m_draggedWidgetId, newGeom);
         setCursor(Qt::SizeAllCursor);
@@ -2068,11 +2150,16 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     }
 
     // 正常移动状态：
-    // 1. 如果光标位于小组件上方，判断是否按住 Ctrl
+    // 1. 如果光标位于小组件上方，判断是否在边缘缩放区、顶部抓手区或按住 Ctrl
     const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
     if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-        if (ctrlHeld) {
-            refreshWidgetResizeHint(event->pos(), true);
+        const QString wid = bridge.widgetAt(event->pos());
+        const QRect geom = bridge.widgetGeometry(wid);
+        const int edge = widgetResizeEdgeAt(event->pos(), geom, 8);
+        const bool inHeader = (event->pos().y() >= geom.top() && event->pos().y() <= geom.top() + 24);
+
+        if (ctrlHeld || edge != ResizeEdgeNone || inHeader) {
+            refreshWidgetResizeHint(event->pos(), ctrlHeld);
         } else {
             if (!m_resizeHintWidgetId.isEmpty()) {
                 refreshWidgetResizeHint(event->pos(), false);
@@ -2090,7 +2177,9 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
     // 3. 动态壁纸粒子跟随 (非互斥广播，60fps 节流)
     if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
-        bridge.forwardMouseMoveToWallpaper(event->pos());
+        if (!RightMenu::isMenuShowing()) {
+            bridge.forwardMouseMoveToWallpaper(event->pos());
+        }
     }
 
     event->ignore();
@@ -2099,6 +2188,12 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
 
 void ListView::mouseReleaseEvent(QMouseEvent* event)
 {
+    if (RightMenu::isMenuShowing() || RightMenu::isMenuRecentlyClosed(400)) {
+        m_pendingWallpaperClick = false;
+        event->accept();
+        return;
+    }
+
     if (m_resizingWidget) {
         m_resizingWidget = false;
         m_resizingWidgetId.clear();
@@ -2333,6 +2428,12 @@ QVector<const DesktopRootItemState*> ListView::queryItemsInRect(const QRect& rec
 
 void ListView::mouseDoubleClickEvent(QMouseEvent* event)
 {
+    if (RightMenu::isMenuShowing() || RightMenu::isMenuRecentlyClosed(400)) {
+        m_pendingWallpaperClick = false;
+        event->accept();
+        return;
+    }
+
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
         if (bridge.forwardMouseEvent(event)) {

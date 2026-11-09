@@ -1,0 +1,420 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  MainTabType, WidgetInfo, WallpaperInfo, SystemPaths, CreateWidgetData, 
+  IPCMessageLog, StagedWallpaperMedia 
+} from './types';
+import { ipc } from './services/ipc';
+import { Header } from './components/Header';
+import { WidgetCenter } from './components/WidgetCenter';
+import { WallpaperStudio } from './components/WallpaperStudio';
+import { WallpaperImportModal } from './components/WallpaperImportModal';
+import { DevConsole } from './components/DevConsole';
+import { CreateWidgetModal } from './components/CreateWidgetModal';
+import { Toast, ToastMessage } from './components/Toast';
+
+export const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<MainTabType>(() => {
+    const saved = localStorage.getItem('lindesk_hub_active_tab') as MainTabType;
+    if (saved && ['studio', 'widgets', 'desktop'].includes(saved)) {
+      return saved;
+    }
+    return 'studio';
+  });
+
+  const handleTabChange = (tab: MainTabType) => {
+    setActiveTab(tab);
+    localStorage.setItem('lindesk_hub_active_tab', tab);
+  };
+
+  const [widgets, setWidgets] = useState<WidgetInfo[]>([]);
+  const [wallpapers, setWallpapers] = useState<WallpaperInfo[]>([]);
+  const [runtimeEnabled, setRuntimeEnabled] = useState(true);
+  const [activeWallpaperId, setActiveWallpaperId] = useState('');
+  const [systemPaths, setSystemPaths] = useState<SystemPaths | null>(null);
+  const [logs, setLogs] = useState<IPCMessageLog[]>(() => ipc.getLogs());
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+
+  // Staged wallpaper media for import / custom parameter editing modal
+  const [stagedMedia, setStagedMedia] = useState<StagedWallpaperMedia | null>(null);
+  const [isExternalDragging, setIsExternalDragging] = useState(false);
+
+  const addToast = useCallback((type: 'success' | 'error' | 'info', title: string, message?: string) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setToasts(prev => [...prev, { id, type, title, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3500);
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const refreshState = useCallback(() => {
+    ipc.send('list');
+  }, []);
+
+  useEffect(() => {
+    const unsubLog = ipc.onLog(newLog => {
+      setLogs(prev => [newLog, ...prev.slice(0, 99)]);
+    });
+
+    const unsubMsg = ipc.onMessage((data: any) => {
+      if (!data) return;
+
+      const action = data.action || data.type;
+
+      if (action === 'drag_state_changed') {
+        setIsExternalDragging(Boolean(data.dragging));
+      } else if (action === 'stage_wallpaper_media') {
+        setIsExternalDragging(false);
+        if (data.cancelled) return;
+        if (data.ok && data.fileUrl) {
+          setActiveTab('studio');
+          localStorage.setItem('lindesk_hub_active_tab', 'studio');
+          setStagedMedia({
+            filePath: data.filePath || '',
+            fileUrl: data.fileUrl,
+            name: data.name || '自定义壁纸',
+            ext: data.ext || '',
+            wallpaperType: data.wallpaperType === 'video' ? 'video' : 'image',
+            sizeBytes: data.sizeBytes
+          });
+        } else {
+          addToast('error', '无法导入该文件', data.error || '请拖入 MP4/WebM 视频或 PNG/JPG/WebP/GIF 图片');
+        }
+      } else if (action === 'confirm_wallpaper_import' || action === 'update_wallpaper_config') {
+        if (data.ok) {
+          setStagedMedia(null);
+          if (typeof data.activeWallpaperId === 'string' && data.activeWallpaperId) {
+            setActiveWallpaperId(data.activeWallpaperId);
+          }
+          addToast(
+            'success',
+            data.applied ? '壁纸已保存并设为当前桌面壁纸' : '壁纸已保存到壁纸库',
+            data.name ? `壁纸名称：${data.name}` : undefined
+          );
+          refreshState();
+        } else {
+          addToast('error', '壁纸保存失败', data.error || '未知错误');
+        }
+      } else if (action === 'delete_wallpaper') {
+        if (data.ok) {
+          if (typeof data.activeWallpaperId === 'string') {
+            setActiveWallpaperId(data.activeWallpaperId);
+          }
+          addToast('info', '已从壁纸库中移除该壁纸');
+          refreshState();
+        } else {
+          addToast('error', '删除壁纸失败', data.error || '无法删除该目录');
+        }
+      } else if (action === 'runtime_state_changed') {
+        if (typeof data.runtimeEnabled === 'boolean') {
+          setRuntimeEnabled(data.runtimeEnabled);
+        }
+        refreshState();
+      } else if (action === 'set_master_enabled') {
+        if (typeof data.enabled === 'boolean') {
+          setRuntimeEnabled(data.enabled);
+          addToast('info', data.enabled ? '已开启桌面小组件' : '已关闭桌面小组件');
+        }
+        refreshState();
+      } else if (action === 'list') {
+        if (Array.isArray(data.widgets)) {
+          setWidgets(data.widgets.filter((w: WidgetInfo) => w.role !== 'wallpaper'));
+        }
+        if (Array.isArray(data.wallpapers)) {
+          setWallpapers(data.wallpapers);
+        }
+        if (typeof data.runtimeEnabled === 'boolean') {
+          setRuntimeEnabled(data.runtimeEnabled);
+        }
+        if (typeof data.activeWallpaperId === 'string') {
+          setActiveWallpaperId(data.activeWallpaperId);
+        }
+        if (data.userWidgetsDir || data.logDir) {
+          setSystemPaths({
+            userWidgetsDir: data.userWidgetsDir || '',
+            userLogsDir: data.logDir || ''
+          });
+        }
+      } else if (action === 'launch' || action === 'start') {
+        if (data.ok) {
+          addToast('success', '组件启动成功');
+          refreshState();
+        } else {
+          addToast('error', '启动失败', data.error || '未知错误');
+        }
+      } else if (action === 'stop' || action === 'unload') {
+        if (data.ok) {
+          addToast('info', '组件已停止');
+          refreshState();
+        }
+      } else if (action === 'restart') {
+        if (data.ok) {
+          addToast('success', '组件已重新加载');
+          refreshState();
+        }
+      } else if (action === 'apply_wallpaper') {
+        if (data.ok) {
+          if (typeof data.activeWallpaperId === 'string' && data.activeWallpaperId) {
+            setActiveWallpaperId(data.activeWallpaperId);
+          }
+          addToast('success', '壁纸已应用至桌面');
+          refreshState();
+        } else {
+          addToast('error', '壁纸启用失败', data.error || '未知错误');
+        }
+      } else if (action === 'stop_wallpaper') {
+        if (data.ok) {
+          addToast('info', '动态壁纸已关闭');
+          setActiveWallpaperId('');
+          refreshState();
+        }
+      } else if (action === 'save_widget_settings') {
+        if (data.ok) {
+          addToast('success', '设置已保存');
+          refreshState();
+        }
+      } else if (action === 'create_project') {
+        if (data.ok) {
+          addToast('success', '新组件创建成功');
+          setCreateModalOpen(false);
+          refreshState();
+        } else {
+          addToast('error', '创建失败', data.error || '未知异常');
+        }
+      } else if (action === 'uninstall') {
+        if (data.ok) {
+          addToast('info', '组件已移除');
+          refreshState();
+        }
+      } else if (action === 'import_wallpaper_media') {
+        if (data.cancelled) return;
+        if (data.ok) {
+          if (typeof data.activeWallpaperId === 'string' && data.activeWallpaperId) {
+            setActiveWallpaperId(data.activeWallpaperId);
+          } else if (typeof data.id === 'string' && data.id) {
+            setActiveWallpaperId(data.id);
+          }
+          addToast('success', '壁纸已导入并应用', data.name ? `当前壁纸：${data.name}` : undefined);
+          refreshState();
+        } else {
+          addToast('error', '导入失败', data.error || '不支持的文件格式');
+        }
+      } else if (action === 'import_dev_project') {
+        if (data.cancelled) return;
+        if (data.ok) {
+          addToast('success', '本地组件已导入并启动', data.name ? `已加载：${data.name}` : undefined);
+          refreshState();
+        } else {
+          addToast('error', '组件导入失败', data.error || '请选择包含有效组件文件的文件夹');
+        }
+      }
+    });
+
+    refreshState();
+
+    return () => {
+      unsubLog();
+      unsubMsg();
+    };
+  }, [addToast, refreshState]);
+
+  const handleToggleMaster = (enabled: boolean) => {
+    setRuntimeEnabled(enabled);
+    ipc.send('set_master_enabled', { enabled });
+  };
+
+  const handleLaunch = (id: string, packagePath: string) => {
+    ipc.send('launch', { widgetId: id, packagePath });
+  };
+
+  const handleStop = (id: string) => {
+    ipc.send('stop', { widgetId: id });
+  };
+
+  const handleRestart = (id: string) => {
+    ipc.send('restart', { widgetId: id });
+  };
+
+  const handleTogglePermission = (id: string, perm: string, granted: boolean) => {
+    ipc.send('set_permission', { widgetId: id, permission: perm, granted });
+  };
+
+  const handleClearStorage = (id: string) => {
+    ipc.send('clear_storage', { widgetId: id });
+  };
+
+  const handleOpenFolder = (_id: string, path: string) => {
+    ipc.send('open_folder', { path });
+  };
+
+  const handleOpenWidgetsDir = () => {
+    ipc.send('open_widgets_folder');
+  };
+
+  const handleOpenLogsDir = () => {
+    ipc.send('open_logs_folder');
+  };
+
+  const handleShowDevTools = (id: string) => {
+    ipc.send('show_devtools', { widgetId: id });
+  };
+
+  const handleUninstall = (id: string) => {
+    ipc.send('uninstall', { widgetId: id });
+  };
+
+  const handleCreateWidget = (data: CreateWidgetData) => {
+    ipc.send('create_project', data);
+  };
+
+  const handleImportDevProject = () => {
+    ipc.send('import_dev_project');
+  };
+
+  const handleSaveWidgetSettings = (widgetId: string, settings: Record<string, any>) => {
+    ipc.send('save_widget_settings', { widgetId, settings });
+    addToast('success', '组件配置已保存');
+    refreshState();
+  };
+
+  const handleApplyWallpaper = (id: string, packagePath?: string) => {
+    setActiveWallpaperId(id);
+    ipc.send('apply_wallpaper', { widgetId: id, packagePath });
+  };
+
+  const handleStopWallpaper = () => {
+    setActiveWallpaperId('');
+    ipc.send('stop_wallpaper');
+  };
+
+  const handleSendProperty = (property: string, value: any, widgetId?: string, packagePath?: string) => {
+    ipc.send('set_wallpaper_property', { property, value, widgetId, packagePath });
+    setWallpapers(prev =>
+      prev.map(w => {
+        if (!widgetId || w.id !== widgetId) return w;
+        if (property === 'interactive') {
+          return { ...w, interactive: Boolean(value) };
+        }
+        const nextCustomConfig = { ...(w.customConfig || {}), [property]: value };
+        const nextProperties = w.properties ? { ...w.properties } : undefined;
+        if (nextProperties && nextProperties[property] && typeof nextProperties[property] === 'object') {
+          nextProperties[property] = { ...nextProperties[property], value };
+        }
+        return {
+          ...w,
+          customConfig: nextCustomConfig,
+          properties: nextProperties
+        };
+      })
+    );
+  };
+
+  const handleImportMedia = (_name?: string) => {
+    ipc.send('import_wallpaper_media');
+  };
+
+  const handleConfirmWallpaperImport = (payload: {
+    filePath: string;
+    name: string;
+    description: string;
+    scaling: 'cover' | 'contain' | 'fill';
+    dimming: number;
+    blur: number;
+    volume: number;
+    muted: boolean;
+    playbackRate: number;
+    audioDucking: boolean;
+    applyImmediately: boolean;
+    editWallpaperId?: string;
+    packagePath?: string;
+  }) => {
+    ipc.send('confirm_wallpaper_import', payload);
+  };
+
+  const handleDeleteWallpaper = (id: string, packagePath: string, _name: string) => {
+    ipc.send('delete_wallpaper', { widgetId: id, packagePath });
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none antialiased">
+      {/* 1. Full-width Custom Frameless Title Bar */}
+      <Header
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onRefresh={refreshState}
+        totalWidgets={widgets.length}
+      />
+
+      {/* 2. Workspace View */}
+      <div className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1 flex flex-col">
+        {/* Tab Views */}
+        <main className="flex-1">
+          {activeTab === 'studio' && (
+            <WallpaperStudio
+              wallpapers={wallpapers}
+              activeWallpaperId={activeWallpaperId}
+              isExternalDragging={isExternalDragging}
+              onApplyWallpaper={handleApplyWallpaper}
+              onStopWallpaper={handleStopWallpaper}
+              onSendProperty={handleSendProperty}
+              onImportMedia={handleImportMedia}
+              onEditCustomWallpaper={(media) => setStagedMedia(media)}
+              onDeleteWallpaper={handleDeleteWallpaper}
+              onOpenFolder={handleOpenFolder}
+            />
+          )}
+
+          {activeTab === 'widgets' && (
+            <WidgetCenter
+              widgets={widgets}
+              runtimeEnabled={runtimeEnabled}
+              onToggleMaster={handleToggleMaster}
+              onLaunch={handleLaunch}
+              onStop={handleStop}
+              onRestart={handleRestart}
+              onTogglePermission={handleTogglePermission}
+              onClearStorage={handleClearStorage}
+              onOpenFolder={handleOpenFolder}
+              onOpenWidgetsDir={handleOpenWidgetsDir}
+              onShowDevTools={handleShowDevTools}
+              onUninstall={handleUninstall}
+              onSaveSettings={handleSaveWidgetSettings}
+              onOpenCreateModal={() => setCreateModalOpen(true)}
+              onImportDevProject={handleImportDevProject}
+            />
+          )}
+
+          {activeTab === 'desktop' && (
+            <DevConsole
+              logs={logs}
+              systemPaths={systemPaths}
+              onClearLogs={() => setLogs([])}
+              onOpenLogsFolder={handleOpenLogsDir}
+              onOpenWidgetsFolder={handleOpenWidgetsDir}
+            />
+          )}
+        </main>
+      </div>
+
+      <WallpaperImportModal
+        media={stagedMedia}
+        onClose={() => setStagedMedia(null)}
+        onConfirm={handleConfirmWallpaperImport}
+      />
+
+      <CreateWidgetModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreate={handleCreateWidget}
+      />
+
+      <Toast toasts={toasts} onDismiss={dismissToast} />
+    </div>
+  );
+};
+
+export default App;

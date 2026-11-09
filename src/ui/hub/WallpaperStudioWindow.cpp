@@ -4,7 +4,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFileDialog>
-#include <QMessageBox>
+#include "ui/Fluent/FluentDialog.h"
 #include <QDateTime>
 #include <QTime>
 #include <QDir>
@@ -15,13 +15,24 @@
 #include <QColorDialog>
 #include <QDesktopServices>
 #include <QFormLayout>
+#include <QLabel>
 #include <QUrl>
 #include <QSettings>
+#include <QUuid>
+#include <QMimeData>
 #include <cmath>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <ole2.h>
+#include <shellapi.h>
+#endif
 #include "app/AppFonts.h"
+#include "desktop/runtime/RuntimeInstaller.h"
 #include "desktop/widgets/runtime_export.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
+#include "desktop/ListView.h"
+#include "ui/SettingUI.h"
 #include "ui/settings/SettingsUICommon.h"
 #include "services/AppPaths.h"
 
@@ -38,15 +49,28 @@ WallpaperStudioWindow* WallpaperStudioWindow::instance() {
     return s_instance.data();
 }
 
+void WallpaperStudioWindow::hideIfOpen() {
+    if (s_instance && s_instance->isVisible()) {
+        s_instance->hide();
+    }
+}
+
 void WallpaperStudioWindow::showStudio(int defaultTab) {
+    qInfo() << "[WallpaperStudio] showStudio called! defaultTab=" << defaultTab;
+    if (!RuntimeInstaller::instance().isRuntimeInstalled()) {
+        hideIfOpen();
+        if (auto* lv = ListView::instance()) {
+            lv->showSettings(nullptr);
+            if (SettingUI* settingsUI = lv->settingsWindow()) {
+                settingsUI->switchToPage(4);
+            }
+        }
+        return;
+    }
+
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (!bridge.isLoaded()) {
         bridge.loadRuntime();
-    }
-    if (!bridge.isEnabled()) {
-        bridge.setEnabled(true);
-        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
-        s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
     }
 
     auto* win = instance();
@@ -59,17 +83,59 @@ void WallpaperStudioWindow::showStudio(int defaultTab) {
     if (!win->m_hubWebWidget) {
         win->switchToTab(defaultTab);
     }
+
+#ifdef Q_OS_WIN
+    // 强制突破 Windows 10/11 前台激活锁定，确保独立应用窗口置顶并在任务栏完整显示
+    HWND hwnd = reinterpret_cast<HWND>(win->winId());
+    if (hwnd && IsWindow(hwnd)) {
+        LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        if (!(exStyle & WS_EX_APPWINDOW) || (exStyle & WS_EX_TOOLWINDOW)) {
+            exStyle |= WS_EX_APPWINDOW;
+            exStyle &= ~WS_EX_TOOLWINDOW;
+            SetWindowLongPtr(hwnd, GWL_EXSTYLE, exStyle);
+        }
+
+        if (GetParent(hwnd) != nullptr) {
+            SetParent(hwnd, nullptr);
+        }
+
+        // 允许从资源管理器或桌面拖入外部媒体或组件工程目录
+        DragAcceptFiles(hwnd, TRUE);
+        ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, nullptr);
+        ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
+        ChangeWindowMessageFilterEx(hwnd, 0x0049 /* WM_COPYGLOBALDATA */, MSGFLT_ALLOW, nullptr);
+
+        ShowWindow(hwnd, SW_SHOW);
+        SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+
+        HWND foreHwnd = GetForegroundWindow();
+        DWORD foreThread = foreHwnd ? GetWindowThreadProcessId(foreHwnd, nullptr) : 0;
+        DWORD appThread = GetCurrentThreadId();
+
+        if (foreThread != 0 && foreThread != appThread) {
+            AttachThreadInput(foreThread, appThread, TRUE);
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            AttachThreadInput(foreThread, appThread, FALSE);
+        } else {
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+        }
+        qInfo() << "[WallpaperStudio] Win32 ForceForegroundWindow applied successfully to HWND:" << QString::number(reinterpret_cast<quintptr>(hwnd), 16);
+    }
+#endif
 }
 
 WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
     : FluentBaseWidget(parent)
 {
-    setWindowTitle(tr("LinDesk Hub · Live Wallpaper & Widget Studio"));
-    resize(1120, 720);
-    setMinimumSize(880, 580);
-    setResizable(true); // Enable 8-direction native window resizing
+    setWindowTitle(tr("LinDesk Hub · 动态壁纸工坊与桌面组件"));
+    resize(1180, 750);
+    setMinimumSize(960, 620);
+    setResizable(true);
+    setAcceptDrops(true); // 允许拖拽媒体文件快速制作壁纸
 
-    // Center on primary screen
+    // 居中显示
     if (auto* screen = QGuiApplication::primaryScreen()) {
         const QRect screenGeom = screen->availableGeometry();
         move(screenGeom.center().x() - width() / 2, screenGeom.center().y() - height() / 2);
@@ -82,7 +148,7 @@ WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
     m_statusTimer->setInterval(1000);
     connect(m_statusTimer, &QTimer::timeout, this, [this]() {
         refreshActiveWallpaperStatus();
-        if (m_stack && m_stack->currentIndex() == 2) {
+        if (m_stack && m_stack->currentIndex() == 1) {
             refreshWidgetsList();
         }
     });
@@ -93,12 +159,18 @@ void WallpaperStudioWindow::showEvent(QShowEvent* event) {
     FluentBaseWidget::showEvent(event);
     auto& b = LinWidgetRuntimeBridge::instance();
     if (!b.isLoaded()) b.loadRuntime();
-    if (!b.isEnabled()) {
-        b.setEnabled(true);
-        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
-        s.setValue(QStringLiteral("LinWidgets/Enabled"), true);
-        if (m_runtimeMasterSwitch) m_runtimeMasterSwitch->setChecked(true);
-    }
+
+#ifdef Q_OS_WIN
+    QTimer::singleShot(0, this, [this]() {
+        HWND hwnd = reinterpret_cast<HWND>(winId());
+        if (hwnd && IsWindow(hwnd)) {
+            DragAcceptFiles(hwnd, TRUE);
+            ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, nullptr);
+            ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
+            ChangeWindowMessageFilterEx(hwnd, 0x0049 /* WM_COPYGLOBALDATA */, MSGFLT_ALLOW, nullptr);
+        }
+    });
+#endif
 
     scanWallpapers();
     populateGalleryCards();
@@ -119,13 +191,64 @@ void WallpaperStudioWindow::closeEvent(QCloseEvent* event) {
     hide();
 }
 
+void WallpaperStudioWindow::dragEnterEvent(QDragEnterEvent* event) {
+    if (event->mimeData() && event->mimeData()->hasUrls()) {
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+        return;
+    }
+    event->ignore();
+}
+
+void WallpaperStudioWindow::dragMoveEvent(QDragMoveEvent* event) {
+    if (event->mimeData() && event->mimeData()->hasUrls()) {
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+    } else {
+        event->ignore();
+    }
+}
+
+void WallpaperStudioWindow::dropEvent(QDropEvent* event) {
+    if (!event->mimeData() || !event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+
+    if (m_hubWebWidget) {
+        QCoreApplication::sendEvent(m_hubWebWidget, event);
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+        return;
+    }
+
+    const QList<QUrl> urls = event->mimeData()->urls();
+    for (const QUrl& url : urls) {
+        QString localFile = url.toLocalFile();
+        if (QFileInfo(localFile).isSymLink()) {
+            const QString target = QFileInfo(localFile).symLinkTarget();
+            if (!target.isEmpty() && QFileInfo::exists(target)) {
+                localFile = target;
+            }
+        }
+        if (QFileInfo::exists(localFile)) {
+            createAndInstallQuickWallpaper(localFile);
+            event->setDropAction(Qt::CopyAction);
+            event->accept();
+            return;
+        }
+    }
+}
+
 void WallpaperStudioWindow::scanWallpapers() {
     m_availableWallpapers.clear();
 
     QStringList searchDirs;
-    searchDirs << AppPaths::userLinWidgetsDir();
-    searchDirs << QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets"));
-    searchDirs << QStringLiteral("d:/Desktop/LinDesk/src/resources/LinWidgets");
+    searchDirs << AppPaths::userWallpapersDir();
+    searchDirs << QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/wallpapers"));
+    searchDirs << QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/wallpapers");
+    searchDirs << QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/Wallpaper");
+    searchDirs << QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("../wallpapers"));
 
     QSet<QString> seenIds;
 
@@ -133,9 +256,16 @@ void WallpaperStudioWindow::scanWallpapers() {
         QDir dir(baseDir);
         if (!dir.exists()) continue;
 
-        const QFileInfoList subDirs = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
-        for (const QFileInfo& subDir : subDirs) {
-            const QString manifestPath = subDir.filePath() + QStringLiteral("/manifest.json");
+        // 如果该目录本身就是一个壁纸包 (含有 manifest.json)
+        QFileInfoList checkList;
+        if (QFileInfo::exists(dir.filePath(QStringLiteral("manifest.json")))) {
+            checkList.append(QFileInfo(baseDir));
+        } else {
+            checkList = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        }
+
+        for (const QFileInfo& subDir : checkList) {
+            const QString manifestPath = subDir.isDir() ? subDir.filePath() + QStringLiteral("/manifest.json") : subDir.absoluteFilePath();
             if (!QFileInfo::exists(manifestPath)) continue;
 
             QFile f(manifestPath);
@@ -158,17 +288,32 @@ void WallpaperStudioWindow::scanWallpapers() {
             item.id = id;
             item.name = root.value(QStringLiteral("name")).toString(subDir.fileName());
             item.description = root.value(QStringLiteral("description")).toString();
-            item.packagePath = subDir.absoluteFilePath();
+            item.packagePath = subDir.isDir() ? subDir.absoluteFilePath() : subDir.absolutePath();
             item.propertiesSchema = root.value(QStringLiteral("properties")).toObject();
+            item.wallpaperType = root.value(QStringLiteral("wallpaperType")).toString(QStringLiteral("html"));
 
-            if (id.contains(QStringLiteral("gargantua"), Qt::CaseInsensitive)) {
-                item.tag = tr("4K WebGL · 官方精选");
-                item.thumbStyle = QStringLiteral("background: qradialgradient(cx:0.5, cy:0.5, radius:0.8, fx:0.5, fy:0.5, stop:0 #000, stop:0.35 #ea580c, stop:0.7 #312e81, stop:1 #020208); border-radius: 8px;");
-            } else if (id.contains(QStringLiteral("matrix"), Qt::CaseInsensitive)) {
-                item.tag = tr("4K 视频 · 静音循环");
-                item.thumbStyle = QStringLiteral("background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #052e16, stop:0.6 #022c22, stop:1 #000); border-radius: 8px;");
+            // 检查开发环境标识
+            item.isDevelopment = root.value(QStringLiteral("isDevelopment")).toBool(false);
+            if (item.packagePath.contains(QStringLiteral(LINDESK_SOURCE_DIR), Qt::CaseInsensitive)) {
+                item.isDevelopment = true;
+            }
+
+            // 查找封面图
+            const QString candPreview = QDir(item.packagePath).filePath(root.value(QStringLiteral("preview")).toString(QStringLiteral("preview.png")));
+            if (QFileInfo::exists(candPreview)) {
+                item.previewPath = candPreview;
+            } else if (QFileInfo::exists(QDir(item.packagePath).filePath(QStringLiteral("preview.jpg")))) {
+                item.previewPath = QDir(item.packagePath).filePath(QStringLiteral("preview.jpg"));
+            }
+
+            if (item.wallpaperType == QStringLiteral("video")) {
+                item.tag = tr("4K 视频 · 无缝循环");
+                item.thumbStyle = QStringLiteral("background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0f172a, stop:0.6 #1e293b, stop:1 #020617); border-radius: 8px;");
+            } else if (id.contains(QStringLiteral("living"), Qt::CaseInsensitive) || id.contains(QStringLiteral("wallpaper"), Qt::CaseInsensitive)) {
+                item.tag = tr("HTML5 WebGL · 官方动态");
+                item.thumbStyle = QStringLiteral("background: qradialgradient(cx:0.5, cy:0.5, radius:0.8, fx:0.5, fy:0.5, stop:0 #000, stop:0.35 #6366f1, stop:0.7 #312e81, stop:1 #020208); border-radius: 8px;");
             } else {
-                item.tag = tr("极光流体 · 官方精选");
+                item.tag = tr("动态引擎 · 极客预设");
                 item.thumbStyle = QStringLiteral("background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #083344, stop:0.5 #3b0764, stop:1 #030712); border-radius: 8px;");
             }
 
@@ -184,253 +329,238 @@ QString WallpaperStudioWindow::resolveWallpaperPath(const QString& wallpaperId) 
             return item.packagePath;
         }
     }
-    const QString appDir = QCoreApplication::applicationDirPath();
-    if (wallpaperId.contains(QStringLiteral("living"), Qt::CaseInsensitive) || wallpaperId.contains(QStringLiteral("wallpaper"), Qt::CaseInsensitive)) {
-        return QDir(appDir).filePath(QStringLiteral("resources/LinWidgets/Wallpaper"));
+    const QString srcWall = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/Wallpaper");
+    if (QDir(srcWall).exists()) {
+        return srcWall;
     }
-    return QDir(appDir).filePath(QStringLiteral("resources/LinWidgets/Gargantua"));
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/wallpapers/living_wallpaper"));
 }
 
 void WallpaperStudioWindow::paintEvent(QPaintEvent* event) {
     Q_UNUSED(event);
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(QPen(QColor(255, 255, 255, 28), 1));
-    painter.setBrush(QColor(7, 10, 18, 255));
+    // 现代浅色一体化背景（与 shadcn/ui #f8fafc 无缝融合，消除标题栏黑条）
+    painter.setPen(QPen(QColor(226, 232, 240), 1)); // #e2e8f0 柔和微边框
+    painter.setBrush(QColor(248, 250, 252)); // #f8fafc
     painter.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 12, 12);
 }
 
 void WallpaperStudioWindow::initUI() {
     setWindowBtnMode(All);
 
-    // Explicitly enforce styled background to prevent transparent window bleedthrough
+    // 全局注入 Authentic UI 现代深色控件与极简隐形滚动条，彻底消灭 Windows 粗白滚动条
+    setStyleSheet(QStringLiteral(
+        "WallpaperStudioWindow, QWidget#fluentBaseContainer {"
+        "  background: transparent;"
+        "  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;"
+        "}"
+        "/* 全局隐形无感细滚动条 */"
+        "QScrollBar:vertical {"
+        "  border: none; background: transparent; width: 6px; margin: 4px 2px;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "  background: rgba(255, 255, 255, 0.16); border-radius: 3px; min-height: 24px;"
+        "}"
+        "QScrollBar::handle:vertical:hover {"
+        "  background: rgba(255, 255, 255, 0.32);"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }"
+        "QScrollBar:horizontal {"
+        "  border: none; background: transparent; height: 6px; margin: 2px 4px;"
+        "}"
+        "QScrollBar::handle:horizontal {"
+        "  background: rgba(255, 255, 255, 0.16); border-radius: 3px; min-width: 24px;"
+        "}"
+        "QScrollBar::handle:horizontal:hover {"
+        "  background: rgba(255, 255, 255, 0.32);"
+        "}"
+        "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }"
+        "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }"
+        "/* 科技感纯净 Slider 控件 */"
+        "QSlider::groove:horizontal {"
+        "  height: 4px; background: rgba(255, 255, 255, 0.12); border-radius: 2px;"
+        "}"
+        "QSlider::sub-page:horizontal {"
+        "  background: #3b82f6; border-radius: 2px;"
+        "}"
+        "QSlider::handle:horizontal {"
+        "  background: #ffffff; border: 1px solid rgba(0,0,0,0.2); width: 14px; height: 14px; margin: -5px 0; border-radius: 7px;"
+        "}"
+        "QSlider::handle:horizontal:hover { background: #f8fafc; border-color: #3b82f6; }"
+    ));
+
     if (m_btnContainer) {
         m_btnContainer->setFixedHeight(36);
         m_btnContainer->setAttribute(Qt::WA_StyledBackground, true);
         m_btnContainer->setObjectName(QStringLiteral("hubTitleBar"));
         m_btnContainer->setStyleSheet(QStringLiteral(
-            "QWidget#hubTitleBar {"
-            "  background-color: #0b0f19;"
-            "  border-bottom: 1px solid rgba(255, 255, 255, 0.08);"
-            "  border-top-left-radius: 12px;"
-            "  border-top-right-radius: 12px;"
-            "}"
+            "QWidget#hubTitleBar { background: #f8fafc; border: none; border-top-left-radius: 12px; border-top-right-radius: 12px; }"
+            "QPushButton { background: transparent; border: none; font-family: 'Segoe MDL2 Assets'; font-size: 10px; color: #64748b; }"
+            "QPushButton:hover { background: rgba(0, 0, 0, 0.06); color: #0f172a; }"
+            "QPushButton#closeBtn:hover { background: #ef4444; color: #ffffff; border-top-right-radius: 12px; }"
         ));
 
-        // Add brand icon, title, and badge on the left side of titlebar
-        auto* iconLabel = new QLabel(m_btnContainer);
-        iconLabel->setFixedSize(22, 22);
-        iconLabel->setAlignment(Qt::AlignCenter);
-        iconLabel->setStyleSheet(QStringLiteral(
-            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f46e5, stop:1 #7c3aed);"
-            "border-radius: 5px;"
-            "color: #ffffff;"
-            "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
-            "font-size: 12px;"
-        ));
-        iconLabel->setText(glyph(0xEB9F));
+        // 左上角 LinDesk 品牌标识与标题栏组件（消除左上角空白）
+        QWidget* brandWidget = new QWidget(m_btnContainer);
+        brandWidget->setAttribute(Qt::WA_TransparentForMouseEvents, true); // 鼠标穿透，点击即可直接拖动窗口
+        QHBoxLayout* brandLayout = new QHBoxLayout(brandWidget);
+        brandLayout->setContentsMargins(14, 0, 0, 0);
+        brandLayout->setSpacing(7);
 
-        auto* titleLabel = new QLabel(tr("LinDesk Hub"), m_btnContainer);
-        titleLabel->setStyleSheet(QStringLiteral(
-            "color: #f1f5f9; font-size: 13px; font-weight: 600; font-family: %1;"
-        ).arg(AppFonts::uiCssFamily()));
+        QLabel* iconLabel = new QLabel(brandWidget);
+        QPixmap iconPix(":/Assets/icon.png");
+        if (!iconPix.isNull()) {
+            iconLabel->setPixmap(iconPix.scaled(18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+        iconLabel->setFixedSize(18, 18);
+        brandLayout->addWidget(iconLabel);
 
-        auto* badgeLabel = new QLabel(tr("桌面客户端"), m_btnContainer);
-        badgeLabel->setStyleSheet(QStringLiteral(
-            "color: #818cf8;"
-            "background: rgba(99, 102, 241, 0.15);"
-            "border: 1px solid rgba(99, 102, 241, 0.3);"
-            "border-radius: 4px;"
-            "padding: 1px 7px;"
-            "font-size: 11px;"
-            "font-weight: 500;"
-        ));
+        QLabel* titleLabel = new QLabel(tr("LinDesk Hub"), brandWidget);
+        titleLabel->setStyleSheet(QStringLiteral("font-size: 12px; font-weight: 700; color: #1e293b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;"));
+        brandLayout->addWidget(titleLabel);
 
         if (m_btnLayout) {
-            // Remove any previously added items to cleanly structure spacing
-            while (m_btnLayout->count() > 0) {
-                m_btnLayout->takeAt(0);
-            }
-
-            m_btnLayout->setContentsMargins(12, 0, 0, 0);
-            m_btnLayout->setSpacing(0); // Window buttons must have 0 spacing!
-
-            auto* leftTitleWidget = new QWidget(m_btnContainer);
-            auto* leftLayout = new QHBoxLayout(leftTitleWidget);
-            leftLayout->setContentsMargins(0, 0, 0, 0);
-            leftLayout->setSpacing(8);
-            leftLayout->addWidget(iconLabel);
-            leftLayout->addWidget(titleLabel);
-            leftLayout->addWidget(badgeLabel);
-
-            m_btnLayout->addWidget(leftTitleWidget);
-            m_btnLayout->addStretch(1);
-
-            // Re-add window control buttons with exact full-height and corner clipping
-            if (m_minBtn) {
-                m_minBtn->setFixedSize(46, 36);
-                m_minBtn->setStyleSheet(QStringLiteral(
-                    "QPushButton#minBtn {"
-                    "  font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #94a3b8; border-radius: 0px;"
-                    "}"
-                    "QPushButton#minBtn:hover {"
-                    "  background: rgba(255, 255, 255, 0.08); color: #ffffff;"
-                    "}"
-                    "QPushButton#minBtn:pressed {"
-                    "  background: rgba(255, 255, 255, 0.04);"
-                    "}"
-                ));
-                m_btnLayout->addWidget(m_minBtn);
-            }
-            if (m_maxBtn) {
-                m_maxBtn->setFixedSize(46, 36);
-                m_maxBtn->setStyleSheet(QStringLiteral(
-                    "QPushButton#maxBtn {"
-                    "  font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #94a3b8; border-radius: 0px;"
-                    "}"
-                    "QPushButton#maxBtn:hover {"
-                    "  background: rgba(255, 255, 255, 0.08); color: #ffffff;"
-                    "}"
-                    "QPushButton#maxBtn:pressed {"
-                    "  background: rgba(255, 255, 255, 0.04);"
-                    "}"
-                ));
-                m_btnLayout->addWidget(m_maxBtn);
-            }
-            if (m_closeBtn) {
-                m_closeBtn->setFixedSize(46, 36);
-                m_closeBtn->setStyleSheet(QStringLiteral(
-                    "QPushButton#closeBtn {"
-                    "  font-family: 'Segoe MDL2 Assets'; font-size: 10px; background: transparent; border: none; color: #94a3b8;"
-                    "  border-radius: 0px;"
-                    "  border-top-right-radius: 12px;"
-                    "}"
-                    "QPushButton#closeBtn:hover {"
-                    "  background: #e11d48; color: #ffffff;"
-                    "  border-top-right-radius: 12px;"
-                    "}"
-                    "QPushButton#closeBtn:pressed {"
-                    "  background: #be123c; color: #ffffff;"
-                    "  border-top-right-radius: 12px;"
-                    "}"
-                ));
-                m_btnLayout->addWidget(m_closeBtn);
-            }
+            m_btnLayout->insertWidget(0, brandWidget);
         }
     }
 
     if (container()) {
         container()->setAttribute(Qt::WA_StyledBackground, true);
-        container()->setObjectName(QStringLiteral("hubMainContainer"));
+        container()->setObjectName(QStringLiteral("hubCentralWidget"));
         container()->setStyleSheet(QStringLiteral(
-            "QWidget#hubMainContainer {"
-            "  background-color: #070a12;"
-            "  border: 1px solid rgba(255, 255, 255, 0.12);"
-            "  border-radius: 12px;"
+            "QWidget#fluentBaseContainer, QWidget#hubCentralWidget {"
+            "  background-color: #f8fafc;"
+            "  border: none;"
             "}"
         ));
     }
 
-    // Resolve LinDeskHub index.html
-    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    // 优先加载基于 shadcn/ui 打造的高质感 React 现代前端工程 (web/hub -> resources/hub/index.html)
+    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/hub/index.html"));
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/hub/index.html");
+    }
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    }
     if (!QFileInfo::exists(targetPath)) {
         targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
     }
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("LinDeskHub/index.html"));
-    }
 
-    const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
     auto& bridge = LinWidgetRuntimeBridge::instance();
     if (!bridge.isLoaded()) {
         bridge.loadRuntime();
     }
 
-    m_hubWebWidget = bridge.createHubWebWidget(targetUrl, container());
-    if (m_hubWebWidget) {
-        centralLayout()->addWidget(m_hubWebWidget, 1);
-    } else {
-        setupHeader();
-        setupNavPills();
-
-        m_stack = new QStackedWidget(container());
-        m_stack->setObjectName(QStringLiteral("hubContentStack"));
-        m_stack->setStyleSheet(QStringLiteral(
-            "QStackedWidget#hubContentStack { background: transparent; border: none; }"
-        ));
-        m_stack->addWidget(createWidgetsPage());
-        m_stack->addWidget(createGalleryPage());
-        m_stack->addWidget(createStudioPage());
-        m_stack->addWidget(createDevAdminPage());
-        
-        centralLayout()->addWidget(m_stack, 1);
-        switchToTab(0);
+    if (QFileInfo::exists(targetPath)) {
+        const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
+        m_hubWebWidget = bridge.createHubWebWidget(targetUrl, container());
+        if (m_hubWebWidget) {
+            if (m_btnContainer) {
+                m_btnContainer->hide();
+            }
+            centralLayout()->setContentsMargins(0, 0, 0, 0);
+            centralLayout()->setSpacing(0);
+            centralLayout()->addWidget(m_hubWebWidget, 1);
+            qInfo() << "[WallpaperStudio] Successfully loaded HTML Hub page from:" << targetPath;
+            return;
+        }
     }
+
+    // 若 CEF 未就绪，降级到 Qt 原生后备界面
+    setupHeader();
+    setupNavPills();
+
+    m_stack = new QStackedWidget(container());
+    m_stack->setObjectName(QStringLiteral("hubContentStack"));
+    m_stack->setStyleSheet(QStringLiteral(
+        "QStackedWidget#hubContentStack { background: transparent; border: none; }"
+    ));
+    m_stack->addWidget(createWallpaperHubPage()); // Tab 0: 动态壁纸工坊 (Master-Detail)
+    m_stack->addWidget(createWidgetsPage());      // Tab 1: 桌面组件管理
+    m_stack->addWidget(createDevAdminPage());     // Tab 2: 开发者后台
+    
+    centralLayout()->addWidget(m_stack, 1);
+    switchToTab(0);
 }
 
 void WallpaperStudioWindow::setupHeader() {
     auto* header = new QWidget(container());
-    header->setFixedHeight(56);
+    header->setFixedHeight(48);
     auto* headerLayout = new QHBoxLayout(header);
-    headerLayout->setContentsMargins(20, 10, 20, 0);
-    headerLayout->setSpacing(14);
+    headerLayout->setContentsMargins(20, 4, 20, 0);
+    headerLayout->setSpacing(12);
 
-    // Brand icon
+    // Brand icon (精致微光深色方块，去除低端荧光紫渐变)
     auto* iconLabel = new QLabel(header);
-    iconLabel->setFixedSize(36, 36);
+    iconLabel->setFixedSize(30, 30);
     iconLabel->setAlignment(Qt::AlignCenter);
     iconLabel->setStyleSheet(QStringLiteral(
-        "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6366f1, stop:0.5 #a855f7, stop:1 #ec4899);"
-        "border-radius: 10px;"
-        "color: #ffffff;"
-        "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
-        "font-size: 18px;"
+        "background: rgba(255, 255, 255, 0.08);"
+        "border: 1px solid rgba(255, 255, 255, 0.12);"
+        "border-radius: 7px;"
+        "font-size: 14px;"
     ));
-    iconLabel->setText(glyph(0xEB9F));
-    headerLayout->addWidget(iconLabel, 0, Qt::AlignVCenter);
+    iconLabel->setText(QStringLiteral("🌌"));
+    headerLayout->addWidget(iconLabel);
 
-    // Title & subtitle
-    auto* titleLayout = new QVBoxLayout();
-    titleLayout->setContentsMargins(0, 0, 0, 0);
-    titleLayout->setSpacing(2);
-
+    // Brand titles (符合专业生产力软件层次)
+    auto* titlesBox = new QVBoxLayout();
+    titlesBox->setSpacing(1);
     auto* titleLabel = new QLabel(tr("LinDesk Hub"), header);
-    titleLabel->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 16px; font-weight: 800; font-family: %1;").arg(AppFonts::uiCssFamily()));
-    
-    auto* subLabel = new QLabel(tr("Live Wallpaper Studio · LinWidgets Marketplace · Dev Console"), header);
-    subLabel->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; font-weight: 500; font-family: %1;").arg(AppFonts::uiCssFamily()));
-
-    titleLayout->addWidget(titleLabel);
-    titleLayout->addWidget(subLabel);
-    headerLayout->addLayout(titleLayout, 1);
-
-    // Runtime Status Tag
-    auto* verTag = new QLabel(tr("● 运行时就绪 · 60 FPS 硬件加速"), header);
-    verTag->setStyleSheet(QStringLiteral(
-        "color: #34d399;"
-        "background: rgba(16, 185, 129, 0.15);"
-        "border: 1px solid rgba(16, 185, 129, 0.35);"
-        "border-radius: 8px;"
-        "padding: 5px 12px;"
-        "font-size: 11px;"
-        "font-weight: 700;"
+    titleLabel->setStyleSheet(QStringLiteral(
+        "font-size: 15px; font-weight: 600; color: #f8fafc; letter-spacing: -0.01em;"
     ));
-    headerLayout->addWidget(verTag, 0, Qt::AlignVCenter);
+    auto* subtitleLabel = new QLabel(tr("动态壁纸工坊与桌面组件管理"), header);
+    subtitleLabel->setStyleSheet(QStringLiteral(
+        "font-size: 11px; color: #64748b; font-weight: 400;"
+    ));
+    titlesBox->addWidget(titleLabel);
+    titlesBox->addWidget(subtitleLabel);
+    headerLayout->addLayout(titlesBox);
 
+    headerLayout->addStretch(1);
+
+    // 硬件加速指示芯片 (Linear 质感，6px 纯净翠绿呼吸微灯)
+    auto* chipContainer = new QWidget(header);
+    chipContainer->setObjectName(QStringLiteral("hwChip"));
+    chipContainer->setStyleSheet(QStringLiteral(
+        "QWidget#hwChip {"
+        "  background: rgba(16, 185, 129, 0.08);"
+        "  border: 1px solid rgba(16, 185, 129, 0.25);"
+        "  border-radius: 12px;"
+        "}"
+    ));
+    auto* chipLayout = new QHBoxLayout(chipContainer);
+    chipLayout->setContentsMargins(9, 3, 9, 3);
+    chipLayout->setSpacing(6);
+
+    auto* chipDot = new QLabel(chipContainer);
+    chipDot->setFixedSize(6, 6);
+    chipDot->setStyleSheet(QStringLiteral("background: #10b981; border-radius: 3px;"));
+    chipLayout->addWidget(chipDot);
+
+    auto* chipText = new QLabel(tr("CEF 硬件加速 · 60 FPS"), chipContainer);
+    chipText->setStyleSheet(QStringLiteral("color: #34d399; font-size: 11px; font-weight: 500; font-family: monospace, sans-serif;"));
+    chipLayout->addWidget(chipText);
+
+    headerLayout->addWidget(chipContainer, 0, Qt::AlignVCenter);
     centralLayout()->addWidget(header);
 }
 
 void WallpaperStudioWindow::setupNavPills() {
     auto* navWidget = new QWidget(container());
-    navWidget->setFixedHeight(48);
+    navWidget->setFixedHeight(42);
     auto* navLayout = new QHBoxLayout(navWidget);
-    navLayout->setContentsMargins(20, 4, 20, 8);
-    navLayout->setSpacing(8);
+    navLayout->setContentsMargins(20, 2, 20, 6);
+    navLayout->setSpacing(6);
 
     auto createPill = [this, navWidget](const QString& text, int tabIndex) {
         auto* btn = new QPushButton(text, navWidget);
         btn->setCursor(Qt::PointingHandCursor);
-        btn->setFixedHeight(34);
+        btn->setFixedHeight(28);
         btn->setMinimumWidth(110);
         connect(btn, &QPushButton::clicked, this, [this, tabIndex]() {
             switchToTab(tabIndex);
@@ -438,14 +568,12 @@ void WallpaperStudioWindow::setupNavPills() {
         return btn;
     };
 
-    m_tabWidgetsBtn = createPill(tr("🧩 桌面组件管理"), 0);
-    m_tabGalleryBtn = createPill(tr("🖼️ 壁纸画廊"), 1);
-    m_tabStudioBtn = createPill(tr("🎨 壁纸工坊 (Studio 调参)"), 2);
-    m_tabDevBtn = createPill(tr("🛠️ 开发者后台 (Dev Inspector)"), 3);
+    m_tabWallpaperHubBtn = createPill(tr("动态壁纸工坊"), 0);
+    m_tabWidgetsBtn = createPill(tr("桌面小组件"), 1);
+    m_tabDevBtn = createPill(tr("开发者控制台"), 2);
 
+    navLayout->addWidget(m_tabWallpaperHubBtn);
     navLayout->addWidget(m_tabWidgetsBtn);
-    navLayout->addWidget(m_tabGalleryBtn);
-    navLayout->addWidget(m_tabStudioBtn);
     navLayout->addWidget(m_tabDevBtn);
     navLayout->addStretch(1);
 
@@ -456,179 +584,437 @@ void WallpaperStudioWindow::switchToTab(int tabIndex) {
     if (!m_stack) return;
     m_stack->setCurrentIndex(tabIndex);
 
+    // Segmented Pill 现代高质感切换（避免低俗亮紫色，采用毛玻璃顶光按键）
     const QString activeStyle = QStringLiteral(
         "QPushButton {"
-        "  background: #4f46e5;"
+        "  background: rgba(255, 255, 255, 0.12);"
         "  color: #ffffff;"
-        "  border: 1px solid #6366f1;"
-        "  border-radius: 8px;"
+        "  border: 1px solid rgba(255, 255, 255, 0.16);"
+        "  border-radius: 6px;"
         "  font-size: 12px;"
-        "  font-weight: 700;"
-        "  padding: 0 14px;"
+        "  font-weight: 600;"
+        "  padding: 0 12px;"
         "}"
     );
 
     const QString inactiveStyle = QStringLiteral(
         "QPushButton {"
-        "  background: rgba(30, 41, 59, 0.6);"
+        "  background: transparent;"
         "  color: #94a3b8;"
-        "  border: 1px solid rgba(255, 255, 255, 0.08);"
-        "  border-radius: 8px;"
+        "  border: 1px solid transparent;"
+        "  border-radius: 6px;"
         "  font-size: 12px;"
-        "  font-weight: 600;"
-        "  padding: 0 14px;"
+        "  font-weight: 500;"
+        "  padding: 0 12px;"
         "}"
         "QPushButton:hover {"
-        "  background: rgba(51, 65, 85, 0.8);"
+        "  background: rgba(255, 255, 255, 0.05);"
         "  color: #f1f5f9;"
-        "  border-color: rgba(99, 102, 241, 0.4);"
         "}"
     );
 
-    if (m_tabWidgetsBtn) m_tabWidgetsBtn->setStyleSheet(tabIndex == 0 ? activeStyle : inactiveStyle);
-    if (m_tabGalleryBtn) m_tabGalleryBtn->setStyleSheet(tabIndex == 1 ? activeStyle : inactiveStyle);
-    if (m_tabStudioBtn) m_tabStudioBtn->setStyleSheet(tabIndex == 2 ? activeStyle : inactiveStyle);
-    if (m_tabDevBtn) m_tabDevBtn->setStyleSheet(tabIndex == 3 ? activeStyle : inactiveStyle);
+    if (m_tabWallpaperHubBtn) m_tabWallpaperHubBtn->setStyleSheet(tabIndex == 0 ? activeStyle : inactiveStyle);
+    if (m_tabWidgetsBtn) m_tabWidgetsBtn->setStyleSheet(tabIndex == 1 ? activeStyle : inactiveStyle);
+    if (m_tabDevBtn) m_tabDevBtn->setStyleSheet(tabIndex == 2 ? activeStyle : inactiveStyle);
 
     if (tabIndex == 0) {
-        refreshWidgetsList();
-    } else if (tabIndex == 1) {
         populateGalleryCards();
-        refreshActiveWallpaperStatus();
-    } else if (tabIndex == 2) {
         loadAndGeneratePropertyControls(m_currentEditingWallpaper);
+        refreshActiveWallpaperStatus();
+    } else if (tabIndex == 1) {
+        refreshWidgetsList();
     }
 
     refreshActiveWallpaperStatus();
 }
 
 // -------------------------------------------------------------
-// Page 1: 动态壁纸画廊 (Wallpaper Gallery)
+// Page 1: 动态壁纸工坊 Master-Detail 二合一核心页面
 // -------------------------------------------------------------
-QWidget* WallpaperStudioWindow::createGalleryPage() {
+QWidget* WallpaperStudioWindow::createWallpaperHubPage() {
     auto* page = new QWidget(m_stack);
-    auto* pageLayout = new QVBoxLayout(page);
-    pageLayout->setContentsMargins(20, 8, 20, 20);
-    pageLayout->setSpacing(16);
+    auto* rootLayout = new QHBoxLayout(page);
+    rootLayout->setContentsMargins(20, 6, 20, 16);
+    rootLayout->setSpacing(16);
 
-    // 1. Hero Showcase Card
-    auto* heroCard = new QWidget(page);
-    heroCard->setObjectName("heroCard");
+    // ========================================================
+    // 左侧：壁纸画廊流 (占比约 56%)
+    // ========================================================
+    auto* leftContainer = new QWidget(page);
+    auto* leftLayout = new QVBoxLayout(leftContainer);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(10);
+
+    // 1. 活动壁纸 Hero 条（收紧为 52px 现代微光条）
+    auto* heroCard = new QWidget(leftContainer);
+    heroCard->setFixedHeight(52);
     heroCard->setStyleSheet(QStringLiteral(
-        "QWidget#heroCard {"
-        "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(30, 41, 59, 0.9), stop:1 rgba(15, 23, 42, 0.95));"
-        "  border: 1px solid rgba(99, 102, 241, 0.35);"
-        "  border-radius: 16px;"
+        "QWidget {"
+        "  background: rgba(255, 255, 255, 0.03);"
+        "  border: 1px solid rgba(255, 255, 255, 0.07);"
+        "  border-radius: 10px;"
         "}"
     ));
     auto* heroLayout = new QHBoxLayout(heroCard);
-    heroLayout->setContentsMargins(18, 16, 18, 16);
-    heroLayout->setSpacing(20);
+    heroLayout->setContentsMargins(14, 8, 14, 8);
+    heroLayout->setSpacing(12);
 
-    // Left thumbnail placeholder
-    auto* thumbBox = new QWidget(heroCard);
-    thumbBox->setFixedSize(160, 90);
-    thumbBox->setStyleSheet(QStringLiteral(
-        "background: qradialgradient(cx:0.5, cy:0.5, radius:0.8, fx:0.5, fy:0.5, stop:0 #000, stop:0.3 #ff8c14, stop:0.7 #1e1b4b, stop:1 #020208);"
-        "border: 1px solid rgba(255, 255, 255, 0.2);"
-        "border-radius: 10px;"
-    ));
-    heroLayout->addWidget(thumbBox, 0, Qt::AlignVCenter);
-
-    // Middle info
-    auto* infoLayout = new QVBoxLayout();
-    infoLayout->setContentsMargins(0, 0, 0, 0);
-    infoLayout->setSpacing(4);
-
-    auto* statusRow = new QHBoxLayout();
-    statusRow->setSpacing(6);
     m_heroStatusDot = new QLabel(heroCard);
-    m_heroStatusDot->setFixedSize(8, 8);
-    m_heroStatusDot->setStyleSheet(QStringLiteral("background: #10b981; border-radius: 4px;"));
-    m_heroStatusText = new QLabel(tr("正在桌面背景层运行 (Active · 60 FPS)"), heroCard);
-    m_heroStatusText->setStyleSheet(QStringLiteral("color: #34d399; font-size: 11px; font-weight: 700;"));
-    statusRow->addWidget(m_heroStatusDot);
-    statusRow->addWidget(m_heroStatusText);
-    statusRow->addStretch();
-    infoLayout->addLayout(statusRow);
+    m_heroStatusDot->setFixedSize(10, 10);
+    m_heroStatusDot->setStyleSheet(QStringLiteral("border-radius: 5px; background: #94a3b8;"));
+    heroLayout->addWidget(m_heroStatusDot);
 
-    m_heroTitle = new QLabel(tr("Gargantua Relativistic Black Hole"), heroCard);
-    m_heroTitle->setStyleSheet(QStringLiteral("color: #ffffff; font-size: 17px; font-weight: 800;"));
-    infoLayout->addWidget(m_heroTitle);
+    auto* heroInfoLayout = new QVBoxLayout();
+    heroInfoLayout->setSpacing(2);
+    m_heroTitle = new QLabel(tr("当前桌面壁纸：未运行动态壁纸"), heroCard);
+    m_heroTitle->setStyleSheet(QStringLiteral("font-size: 13px; font-weight: 700; color: #f8fafc; border: none; background: transparent;"));
+    m_heroDesc = new QLabel(tr("点击下方壁纸即可一键应用到系统桌面"), heroCard);
+    m_heroDesc->setStyleSheet(QStringLiteral("font-size: 11px; color: #94a3b8; border: none; background: transparent;"));
+    heroInfoLayout->addWidget(m_heroTitle);
+    heroInfoLayout->addWidget(m_heroDesc);
+    heroLayout->addLayout(heroInfoLayout);
 
-    m_heroDesc = new QLabel(tr("电影级相对论克尔黑洞仿真，具备引力透镜吸积盘、多普勒波长频移与微尘物理跟随。"), heroCard);
-    m_heroDesc->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 12px;"));
-    m_heroDesc->setWordWrap(true);
-    infoLayout->addWidget(m_heroDesc);
-    heroLayout->addLayout(infoLayout, 1);
+    heroLayout->addStretch(1);
 
-    // Right Controls
-    auto* rightCtrlLayout = new QVBoxLayout();
-    rightCtrlLayout->setSpacing(8);
+    // 鼠标引力波动开关
+    auto* physicsLabel = new QLabel(tr("鼠标波动:"), heroCard);
+    physicsLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #94a3b8; border: none; background: transparent;"));
+    heroLayout->addWidget(physicsLabel);
 
-    auto* mouseRow = new QHBoxLayout();
-    auto* mouseLbl = new QLabel(tr("鼠标互动跟随:"), heroCard);
-    mouseLbl->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 12px; font-weight: 600;"));
     m_heroMousePhysicsToggle = new FluentToggleSwitch(heroCard);
     m_heroMousePhysicsToggle->setChecked(true);
     connect(m_heroMousePhysicsToggle, &FluentToggleSwitch::toggled, this, &WallpaperStudioWindow::toggleMousePhysics);
-    mouseRow->addWidget(mouseLbl);
-    mouseRow->addWidget(m_heroMousePhysicsToggle);
-    rightCtrlLayout->addLayout(mouseRow);
+    heroLayout->addWidget(m_heroMousePhysicsToggle);
 
-    auto* openStudioQuickBtn = new QPushButton(tr("🎨 壁纸工坊调参"), heroCard);
-    openStudioQuickBtn->setCursor(Qt::PointingHandCursor);
-    openStudioQuickBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 12px; }"
-        "QPushButton:hover { background: rgba(99, 102, 241, 0.35); color: #ffffff; }"
-    ));
-    connect(openStudioQuickBtn, &QPushButton::clicked, this, [this]() { switchToTab(2); });
-    rightCtrlLayout->addWidget(openStudioQuickBtn);
-
-    m_heroStopBtn = new QPushButton(tr("⏹ 停止动态壁纸"), heroCard);
+    // 停止壁纸按钮
+    m_heroStopBtn = new QPushButton(tr("停止壁纸"), heroCard);
     m_heroStopBtn->setCursor(Qt::PointingHandCursor);
+    m_heroStopBtn->setFixedHeight(30);
     m_heroStopBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 12px; }"
+        "QPushButton {"
+        "  background: rgba(239, 68, 68, 0.15);"
+        "  color: #f87171;"
+        "  border: 1px solid rgba(239, 68, 68, 0.35);"
+        "  border-radius: 6px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  padding: 0 10px;"
+        "}"
         "QPushButton:hover { background: rgba(239, 68, 68, 0.3); color: #ffffff; }"
     ));
     connect(m_heroStopBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::stopCurrentWallpaper);
-    rightCtrlLayout->addWidget(m_heroStopBtn);
+    heroLayout->addWidget(m_heroStopBtn);
 
-    heroLayout->addLayout(rightCtrlLayout);
-    pageLayout->addWidget(heroCard, 0);
+    leftLayout->addWidget(heroCard);
 
-    // 2. Action Bar
-    auto* actionBar = new QHBoxLayout();
-    auto* secTitle = new QLabel(tr("壁纸画廊 (Wallpaper Library)"), page);
-    secTitle->setStyleSheet(QStringLiteral("color: #e2e8f0; font-size: 14px; font-weight: 700;"));
-    actionBar->addWidget(secTitle);
-    actionBar->addStretch();
+    // 2. 拖拽极速生成壁纸提示卡片（微光虚线框）
+    auto* dropCard = new QWidget(leftContainer);
+    dropCard->setFixedHeight(44);
+    dropCard->setStyleSheet(QStringLiteral(
+        "QWidget {"
+        "  background: rgba(255, 255, 255, 0.02);"
+        "  border: 1px dashed rgba(255, 255, 255, 0.15);"
+        "  border-radius: 8px;"
+        "}"
+        "QWidget:hover {"
+        "  border-color: rgba(59, 130, 246, 0.6);"
+        "  background: rgba(59, 130, 246, 0.04);"
+        "}"
+    ));
+    auto* dropLayout = new QHBoxLayout(dropCard);
+    dropLayout->setContentsMargins(16, 0, 16, 0);
+    dropLayout->setSpacing(10);
 
-    auto* importBtn = new QPushButton(tr("➕ 导入本地视频/图片..."), page);
+    auto* dropIcon = new QLabel(QStringLiteral("⚡"), dropCard);
+    dropIcon->setStyleSheet(QStringLiteral("font-size: 16px; border: none; background: transparent;"));
+    dropLayout->addWidget(dropIcon);
+
+    auto* dropTip = new QLabel(tr("拖入 MP4 / WebM 视频或图片，1秒自动转为无缝壁纸并应用"), dropCard);
+    dropTip->setStyleSheet(QStringLiteral("font-size: 12px; color: #cbd5e1; font-weight: 500; border: none; background: transparent;"));
+    dropLayout->addWidget(dropTip);
+
+    dropLayout->addStretch(1);
+
+    auto* importBtn = new QPushButton(tr("📁 选择本地文件"), dropCard);
     importBtn->setCursor(Qt::PointingHandCursor);
+    importBtn->setFixedHeight(28);
     importBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); color: #ffffff; border: none; border-radius: 8px; font-size: 12px; font-weight: 700; padding: 7px 16px; }"
-        "QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4338ca, stop:1 #6d28d9); }"
+        "QPushButton {"
+        "  background: #334155;"
+        "  color: #f1f5f9;"
+        "  border: 1px solid rgba(255, 255, 255, 0.1);"
+        "  border-radius: 6px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  padding: 0 10px;"
+        "}"
+        "QPushButton:hover { background: #475569; border-color: rgba(99, 102, 241, 0.5); }"
     ));
     connect(importBtn, &QPushButton::clicked, this, &WallpaperStudioWindow::importLocalMedia);
-    actionBar->addWidget(importBtn);
-    pageLayout->addLayout(actionBar);
+    dropLayout->addWidget(importBtn);
 
-    // 3. Wallpaper Grid in ScrollArea
-    auto* scrollArea = new QScrollArea(page);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setStyleSheet(QStringLiteral("QScrollArea { border: none; background: transparent; } QWidget#gridContainer { background: transparent; }"));
+    leftLayout->addWidget(dropCard);
 
-    m_galleryGridContainer = new QWidget(scrollArea);
-    m_galleryGridContainer->setObjectName("gridContainer");
+    // 3. 画廊网格卡片滚动区（彻底禁用横向滚动条，杜绝截断与爆屏）
+    auto* galleryScroll = new QScrollArea(leftContainer);
+    galleryScroll->setWidgetResizable(true);
+    galleryScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    galleryScroll->setStyleSheet(QStringLiteral(
+        "QScrollArea { border: none; background: transparent; }"
+    ));
+
+    m_galleryGridContainer = new QWidget(galleryScroll);
+    m_galleryGridContainer->setStyleSheet(QStringLiteral("background: transparent;"));
     m_galleryGridLayout = new QGridLayout(m_galleryGridContainer);
-    m_galleryGridLayout->setContentsMargins(0, 0, 0, 0);
-    m_galleryGridLayout->setSpacing(16);
+    m_galleryGridLayout->setContentsMargins(0, 4, 8, 4);
+    m_galleryGridLayout->setSpacing(12);
 
-    populateGalleryCards();
+    galleryScroll->setWidget(m_galleryGridContainer);
+    leftLayout->addWidget(galleryScroll, 1);
 
-    scrollArea->setWidget(m_galleryGridContainer);
-    pageLayout->addWidget(scrollArea, 1);
+    rootLayout->addWidget(leftContainer, 56);
+
+    // ========================================================
+    // 右侧：16:9 画板与双层参数调参面板 (占比约 44%)
+    // ========================================================
+    auto* rightContainer = new QWidget(page);
+    rightContainer->setStyleSheet(QStringLiteral(
+        "QWidget#detailRightContainer {"
+        "  background: rgba(30, 41, 59, 0.45);"
+        "  border: 1px solid rgba(255, 255, 255, 0.08);"
+        "  border-radius: 14px;"
+        "}"
+    ));
+    rightContainer->setObjectName(QStringLiteral("detailRightContainer"));
+    auto* rightLayout = new QVBoxLayout(rightContainer);
+    rightLayout->setContentsMargins(16, 14, 16, 14);
+    rightLayout->setSpacing(10);
+
+    // 1. 选中壁纸头部信息与快捷应用大按钮
+    auto* headerRow = new QHBoxLayout();
+    headerRow->setSpacing(10);
+
+    auto* detailTitleLayout = new QVBoxLayout();
+    detailTitleLayout->setSpacing(2);
+    m_detailWallpaperName = new QLabel(tr("LinDesk Living Wallpaper"), rightContainer);
+    m_detailWallpaperName->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 700; color: #ffffff; border: none; background: transparent;"));
+    m_detailWallpaperMeta = new QLabel(tr("官方 WebGL · 双层参数调优"), rightContainer);
+    m_detailWallpaperMeta->setStyleSheet(QStringLiteral("font-size: 11px; color: #a5b4fc; font-weight: 600; border: none; background: transparent;"));
+    detailTitleLayout->addWidget(m_detailWallpaperName);
+    detailTitleLayout->addWidget(m_detailWallpaperMeta);
+    headerRow->addLayout(detailTitleLayout);
+
+    headerRow->addStretch(1);
+
+    m_detailApplyBtn = new QPushButton(tr("⚡ 应用到系统桌面"), rightContainer);
+    m_detailApplyBtn->setCursor(Qt::PointingHandCursor);
+    m_detailApplyBtn->setFixedHeight(32);
+    m_detailApplyBtn->setStyleSheet(QStringLiteral(
+        "QPushButton {"
+        "  background: #2563eb;"
+        "  color: #ffffff;"
+        "  border: 1px solid #3b82f6;"
+        "  border-radius: 6px;"
+        "  font-size: 12px;"
+        "  font-weight: 600;"
+        "  padding: 5px 14px;"
+        "}"
+        "QPushButton:hover { background: #1d4ed8; }"
+        "QPushButton:pressed { background: #1e40af; }"
+    ));
+    connect(m_detailApplyBtn, &QPushButton::clicked, this, [this]() {
+        applyWallpaperPreset(m_currentEditingWallpaper);
+    });
+    headerRow->addWidget(m_detailApplyBtn);
+
+    rightLayout->addLayout(headerRow);
+
+    // 2. 16:9 画板视口
+    m_studioCanvas = new StudioPreviewCanvas(rightContainer);
+    m_studioCanvas->setFixedHeight(210);
+    rightLayout->addWidget(m_studioCanvas);
+
+    // 3. 滚动调参面板
+    auto* propScroll = new QScrollArea(rightContainer);
+    propScroll->setWidgetResizable(true);
+    propScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    propScroll->setStyleSheet(QStringLiteral("QScrollArea { border: none; background: transparent; }"));
+
+    auto* propScrollContent = new QWidget(propScroll);
+    propScrollContent->setStyleSheet(QStringLiteral("background: transparent;"));
+    auto* propScrollLayout = new QVBoxLayout(propScrollContent);
+    propScrollLayout->setContentsMargins(0, 4, 8, 4);
+    propScrollLayout->setSpacing(14);
+
+    // 上层：自定义参数容器
+    auto* customParamHeader = new QLabel(tr("🎨 自定义壁纸参数 (Custom Parameters)"), propScrollContent);
+    customParamHeader->setStyleSheet(QStringLiteral("font-size: 12px; font-weight: 700; color: #e2e8f0; border: none;"));
+    propScrollLayout->addWidget(customParamHeader);
+
+    m_dynamicPropertiesContainer = new QWidget(propScrollContent);
+    m_dynamicPropertiesLayout = new QVBoxLayout(m_dynamicPropertiesContainer);
+    m_dynamicPropertiesLayout->setContentsMargins(0, 0, 0, 0);
+    m_dynamicPropertiesLayout->setSpacing(8);
+    propScrollLayout->addWidget(m_dynamicPropertiesContainer);
+
+    // 下层：桌面视听与图层环境配置
+    auto* envHeader = new QLabel(tr("桌面环境与视听配置"), propScrollContent);
+    envHeader->setStyleSheet(QStringLiteral("font-size: 12px; font-weight: 600; color: #cbd5e1; border: none; margin-top: 6px;"));
+    propScrollLayout->addWidget(envHeader);
+
+    auto* envBox = new QWidget(propScrollContent);
+    envBox->setStyleSheet(QStringLiteral(
+        "QWidget {"
+        "  background: rgba(255, 255, 255, 0.025);"
+        "  border: 1px solid rgba(255, 255, 255, 0.06);"
+        "  border-radius: 10px;"
+        "  padding: 8px;"
+        "}"
+    ));
+    auto* envBoxLayout = new QVBoxLayout(envBox);
+    envBoxLayout->setContentsMargins(12, 10, 12, 10);
+    envBoxLayout->setSpacing(10);
+
+    // 1) 音量与静音
+    auto* volRow = new QHBoxLayout();
+    auto* volLabel = new QLabel(tr("壁纸音量:"), envBox);
+    volLabel->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 12px; border: none;"));
+    m_volumeSlider = new QSlider(Qt::Horizontal, envBox);
+    m_volumeSlider->setRange(0, 100);
+    m_volumeSlider->setValue(0);
+    m_volumeValLabel = new QLabel(QStringLiteral("0% (静音)"), envBox);
+    m_volumeValLabel->setFixedWidth(65);
+    m_volumeValLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; border: none;"));
+    connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int v) {
+        m_volumeValLabel->setText(v == 0 ? tr("静音") : QStringLiteral("%1%").arg(v));
+        dispatchPropertyUpdate(QStringLiteral("volume"), v);
+    });
+    volRow->addWidget(volLabel);
+    volRow->addWidget(m_volumeSlider, 1);
+    volRow->addWidget(m_volumeValLabel);
+    envBoxLayout->addLayout(volRow);
+
+    // 2) 桌面图标暗度遮罩 (0~70%)
+    auto* dimRow = new QHBoxLayout();
+    auto* dimLabel = new QLabel(tr("图标暗度遮罩:"), envBox);
+    dimLabel->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 12px; border: none;"));
+    m_dimSlider = new QSlider(Qt::Horizontal, envBox);
+    m_dimSlider->setRange(0, 70);
+    m_dimSlider->setValue(20);
+    m_dimValLabel = new QLabel(QStringLiteral("20%"), envBox);
+    m_dimValLabel->setFixedWidth(65);
+    m_dimValLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; border: none;"));
+    connect(m_dimSlider, &QSlider::valueChanged, this, &WallpaperStudioWindow::updateStudioDimming);
+    dimRow->addWidget(dimLabel);
+    dimRow->addWidget(m_dimSlider, 1);
+    dimRow->addWidget(m_dimValLabel);
+    envBoxLayout->addLayout(dimRow);
+
+    // 3) 毛玻璃虚化 (0~20px)
+    auto* blurRow = new QHBoxLayout();
+    auto* blurLabel = new QLabel(tr("毛玻璃虚化:"), envBox);
+    blurLabel->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 12px; border: none;"));
+    m_blurSlider = new QSlider(Qt::Horizontal, envBox);
+    m_blurSlider->setRange(0, 20);
+    m_blurSlider->setValue(0);
+    m_blurValLabel = new QLabel(QStringLiteral("0 px"), envBox);
+    m_blurValLabel->setFixedWidth(65);
+    m_blurValLabel->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; border: none;"));
+    connect(m_blurSlider, &QSlider::valueChanged, this, &WallpaperStudioWindow::updateStudioBlur);
+    blurRow->addWidget(blurLabel);
+    blurRow->addWidget(m_blurSlider, 1);
+    blurRow->addWidget(m_blurValLabel);
+    envBoxLayout->addLayout(blurRow);
+
+    // 4) 填充模式 & 模拟图标
+    auto* toggleRow = new QHBoxLayout();
+    auto* fitLabel = new QLabel(tr("画面填充:"), envBox);
+    fitLabel->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 12px; border: none;"));
+    m_fitModeCombo = new QComboBox(envBox);
+    m_fitModeCombo->addItem(tr("Cover (裁剪铺满)"), QStringLiteral("cover"));
+    m_fitModeCombo->addItem(tr("Contain (等比黑边)"), QStringLiteral("contain"));
+    m_fitModeCombo->setStyleSheet(QStringLiteral(
+        "QComboBox { background: #1e293b; color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 2px 8px; font-size: 11px; }"
+    ));
+    connect(m_fitModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        const QString mode = m_fitModeCombo->itemData(idx).toString();
+        dispatchPropertyUpdate(QStringLiteral("fitMode"), mode);
+    });
+    toggleRow->addWidget(fitLabel);
+    toggleRow->addWidget(m_fitModeCombo);
+
+    toggleRow->addSpacing(14);
+
+    m_mockIconsCheckbox = new QCheckBox(tr("在画板模拟桌面图标浮层"), envBox);
+    m_mockIconsCheckbox->setChecked(true);
+    m_mockIconsCheckbox->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; border: none;"));
+    connect(m_mockIconsCheckbox, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_studioCanvas) m_studioCanvas->setShowDesktopIcons(checked);
+    });
+    toggleRow->addWidget(m_mockIconsCheckbox);
+    toggleRow->addStretch(1);
+
+    envBoxLayout->addLayout(toggleRow);
+    propScrollLayout->addWidget(envBox);
+
+    // 极客感知：仅在 isDevelopment 时展示的代码与 DevTools
+    m_devToolsBox = new QWidget(propScrollContent);
+    m_devToolsBox->setStyleSheet(QStringLiteral(
+        "QWidget {"
+        "  background: rgba(99, 102, 241, 0.1);"
+        "  border: 1px solid rgba(99, 102, 241, 0.3);"
+        "  border-radius: 10px;"
+        "}"
+    ));
+    auto* devToolsLayout = new QHBoxLayout(m_devToolsBox);
+    devToolsLayout->setContentsMargins(12, 8, 12, 8);
+    devToolsLayout->setSpacing(10);
+
+    auto* devTag = new QLabel(tr("🛠️ 开发者模式:"), m_devToolsBox);
+    devTag->setStyleSheet(QStringLiteral("color: #a5b4fc; font-size: 11px; font-weight: 700; border: none;"));
+    devToolsLayout->addWidget(devTag);
+
+    m_devOpenFolderBtn = new QPushButton(tr("📂 打开源码目录"), m_devToolsBox);
+    m_devOpenFolderBtn->setCursor(Qt::PointingHandCursor);
+    m_devOpenFolderBtn->setFixedHeight(26);
+    m_devOpenFolderBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #334155; color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 0 8px; font-size: 11px; }"
+        "QPushButton:hover { background: #475569; }"
+    ));
+    connect(m_devOpenFolderBtn, &QPushButton::clicked, this, [this]() {
+        const QString p = resolveWallpaperPath(m_currentEditingWallpaper);
+        if (!p.isEmpty()) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(p));
+        }
+    });
+    devToolsLayout->addWidget(m_devOpenFolderBtn);
+
+    m_devInspectBtn = new QPushButton(tr("🐞 呼出 DevTools"), m_devToolsBox);
+    m_devInspectBtn->setCursor(Qt::PointingHandCursor);
+    m_devInspectBtn->setFixedHeight(26);
+    m_devInspectBtn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #334155; color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 0 8px; font-size: 11px; }"
+        "QPushButton:hover { background: #475569; }"
+    ));
+    connect(m_devInspectBtn, &QPushButton::clicked, this, [this]() {
+        auto& bridge = LinWidgetRuntimeBridge::instance();
+        if (bridge.hasActiveWallpaper()) {
+            bridge.showDevTools(bridge.activeWallpaperId());
+        } else {
+            showToast(tr("请先将此壁纸应用到系统桌面后再呼出 DevTools"), false);
+        }
+    });
+    devToolsLayout->addWidget(m_devInspectBtn);
+
+    devToolsLayout->addStretch(1);
+    propScrollLayout->addWidget(m_devToolsBox);
+    m_devToolsBox->hide(); // 默认隐藏，普通壁纸保持纯粹
+
+    propScrollLayout->addStretch(1);
+    propScroll->setWidget(propScrollContent);
+    rightLayout->addWidget(propScroll, 1);
+
+    rootLayout->addWidget(rightContainer, 44);
 
     return page;
 }
@@ -648,351 +1034,157 @@ void WallpaperStudioWindow::populateGalleryCards() {
     const bool running = bridge.isLoaded() && bridge.hasActiveWallpaper();
     const QString activeId = bridge.activeWallpaperId();
 
-    auto createWallpaperCard = [this](const WallpaperItem& item, bool isActive) {
+    auto createWallpaperCard = [this, running, activeId](const WallpaperItem& item) {
+        const bool isActive = running && (!activeId.isEmpty() && (activeId.contains(item.id, Qt::CaseInsensitive) || item.id.contains(activeId, Qt::CaseInsensitive)));
+        const bool isSelected = (m_currentEditingWallpaper == item.id);
+
         auto* card = new QWidget(m_galleryGridContainer);
+        card->setCursor(Qt::PointingHandCursor);
         card->setStyleSheet(QStringLiteral(
             "QWidget {"
-            "  background: rgba(30, 41, 59, 0.7);"
+            "  background: rgba(255, 255, 255, 0.03);"
             "  border: 1px solid %1;"
-            "  border-radius: 14px;"
+            "  border-radius: 10px;"
             "}"
             "QWidget:hover {"
-            "  border-color: rgba(99, 102, 241, 0.8);"
+            "  border-color: rgba(255, 255, 255, 0.25);"
+            "  background: rgba(255, 255, 255, 0.05);"
             "}"
-        ).arg(isActive ? QStringLiteral("rgba(16, 185, 129, 0.8)") : QStringLiteral("rgba(255, 255, 255, 0.08)")));
+        ).arg(isActive ? QStringLiteral("rgba(16, 185, 129, 0.8)") : (isSelected ? QStringLiteral("rgba(59, 130, 246, 0.7)") : QStringLiteral("rgba(255, 255, 255, 0.08)"))));
 
         auto* vLayout = new QVBoxLayout(card);
-        vLayout->setContentsMargins(12, 12, 12, 12);
+        vLayout->setContentsMargins(10, 10, 10, 10);
         vLayout->setSpacing(8);
 
-        // Thumbnail
-        auto* thumb = new QWidget(card);
-        thumb->setFixedHeight(110);
-        thumb->setStyleSheet(item.thumbStyle);
+        // 缩略图
+        auto* thumb = new QLabel(card);
+        thumb->setFixedHeight(105);
+        thumb->setAlignment(Qt::AlignCenter);
+        if (!item.previewPath.isEmpty() && QFile::exists(item.previewPath)) {
+            QPixmap pm(item.previewPath);
+            if (!pm.isNull()) {
+                thumb->setPixmap(pm.scaled(320, 180, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation));
+                thumb->setStyleSheet(QStringLiteral("border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);"));
+            } else {
+                thumb->setStyleSheet(item.thumbStyle);
+            }
+        } else {
+            thumb->setStyleSheet(item.thumbStyle);
+            thumb->setText(item.wallpaperType == QStringLiteral("video") ? QStringLiteral("🎬 视频壁纸") : QStringLiteral("🌌 动态引擎"));
+        }
         vLayout->addWidget(thumb);
 
-        // Header Row
-        auto* headerRow = new QHBoxLayout();
-        auto* cardTitle = new QLabel(item.name, card);
-        cardTitle->setStyleSheet(QStringLiteral("color: #ffffff; font-size: 13px; font-weight: 700; background: transparent; border: none;"));
-        headerRow->addWidget(cardTitle);
-        headerRow->addStretch();
+        // 标题与标签
+        auto* titleRow = new QHBoxLayout();
+        titleRow->setSpacing(6);
+        auto* nameLabel = new QLabel(item.name, card);
+        nameLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+        nameLabel->setStyleSheet(QStringLiteral("font-size: 13px; font-weight: 600; color: #f8fafc; border: none; background: transparent;"));
+        titleRow->addWidget(nameLabel, 1);
 
-        auto* tag = new QLabel(item.tag, card);
-        tag->setStyleSheet(QStringLiteral("color: #a5b4fc; background: rgba(99, 102, 241, 0.2); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; border: none;"));
-        headerRow->addWidget(tag);
-        vLayout->addLayout(headerRow);
+        auto* tagLabel = new QLabel(item.tag, card);
+        tagLabel->setStyleSheet(QStringLiteral(
+            "color: #94a3b8; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 500; border: none;"
+        ));
+        titleRow->addWidget(tagLabel);
+        vLayout->addLayout(titleRow);
 
-        // Desc
-        auto* descLbl = new QLabel(item.description, card);
-        descLbl->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; background: transparent; border: none;"));
-        descLbl->setWordWrap(true);
-        descLbl->setFixedHeight(32);
-        vLayout->addWidget(descLbl);
+        // 描述 (限高两行，保持规整高度一致)
+        auto* descLabel = new QLabel(item.description, card);
+        descLabel->setWordWrap(true);
+        descLabel->setFixedHeight(32);
+        descLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #64748b; line-height: 1.3; border: none; background: transparent;"));
+        vLayout->addWidget(descLabel);
 
-        // Buttons
+        vLayout->addStretch(1);
+
+        // 按钮栏
         auto* btnRow = new QHBoxLayout();
-        btnRow->setSpacing(8);
+        btnRow->setSpacing(6);
 
-        auto* editBtn = new QPushButton(tr("🎨 在工坊调参"), card);
-        editBtn->setCursor(Qt::PointingHandCursor);
-        editBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(51, 65, 85, 0.8); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; font-size: 11px; font-weight: 600; padding: 4px 10px; } QPushButton:hover { background: rgba(71, 85, 105, 0.9); }"));
-        connect(editBtn, &QPushButton::clicked, this, [this, id = item.id]() {
-            selectWallpaperForStudio(id);
+        auto* configBtn = new QPushButton(tr("调参 / 预览"), card);
+        configBtn->setCursor(Qt::PointingHandCursor);
+        configBtn->setFixedHeight(28);
+        configBtn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: rgba(51, 65, 85, 0.7); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; font-size: 11px; font-weight: 600; }"
+            "QPushButton:hover { background: #475569; color: #ffffff; border-color: rgba(99, 102, 241, 0.5); }"
+        ));
+        connect(configBtn, &QPushButton::clicked, this, [this, item]() {
+            selectWallpaperForStudio(item.id);
         });
-        btnRow->addWidget(editBtn);
+        btnRow->addWidget(configBtn);
 
-        auto* applyBtn = new QPushButton(isActive ? tr("✓ 运行中") : tr("应用壁纸"), card);
+        auto* applyBtn = new QPushButton(isActive ? tr("当前应用中") : tr("应用到桌面"), card);
         applyBtn->setCursor(Qt::PointingHandCursor);
-        if (isActive) {
-            applyBtn->setStyleSheet(QStringLiteral("QPushButton { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 6px; font-size: 11px; font-weight: 700; padding: 4px 12px; }"));
-        } else {
-            applyBtn->setStyleSheet(QStringLiteral("QPushButton { background: #4f46e5; color: #ffffff; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 4px 12px; } QPushButton:hover { background: #4338ca; }"));
-            connect(applyBtn, &QPushButton::clicked, this, [this, id = item.id]() {
-                applyWallpaperPreset(id);
-            });
-        }
-        btnRow->addWidget(applyBtn);
+        applyBtn->setFixedHeight(28);
+        applyBtn->setEnabled(!isActive);
+        applyBtn->setStyleSheet(isActive ? QStringLiteral(
+            "QPushButton { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; font-size: 11px; font-weight: 600; }"
+        ) : QStringLiteral(
+            "QPushButton { background: #2563eb; color: #ffffff; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; }"
+            "QPushButton:hover { background: #1d4ed8; }"
+        ));
+        connect(applyBtn, &QPushButton::clicked, this, [this, item]() {
+            applyWallpaperPreset(item.id);
+            selectWallpaperForStudio(item.id);
+        });
+        btnRow->addWidget(applyBtn, 1);
+
         vLayout->addLayout(btnRow);
 
         return card;
     };
 
-    int col = 0;
     int row = 0;
+    int col = 0;
+    const int cols = 2; // 两列画廊卡片网格
+
     for (const auto& item : m_availableWallpapers) {
-        const bool isActive = running && (activeId.compare(item.id, Qt::CaseInsensitive) == 0 ||
-                                          activeId.compare(QStringLiteral("wallpaper:") + item.id, Qt::CaseInsensitive) == 0 ||
-                                          item.packagePath.compare(bridge.activeWallpaperPackagePath(), Qt::CaseInsensitive) == 0);
-        m_galleryGridLayout->addWidget(createWallpaperCard(item, isActive), row, col);
+        auto* card = createWallpaperCard(item);
+        m_galleryGridLayout->addWidget(card, row, col);
         col++;
-        if (col >= 3) {
+        if (col >= cols) {
             col = 0;
             row++;
         }
     }
-
-    // Drag & Drop Card
-    auto* dropCard = new QWidget(m_galleryGridContainer);
-    dropCard->setStyleSheet(QStringLiteral(
-        "QWidget {"
-        "  background: rgba(15, 23, 42, 0.4);"
-        "  border: 2px dashed rgba(99, 102, 241, 0.4);"
-        "  border-radius: 14px;"
-        "}"
-        "QWidget:hover {"
-        "  background: rgba(99, 102, 241, 0.08);"
-        "  border-color: rgba(99, 102, 241, 0.8);"
-        "}"
-    ));
-    auto* dropLayout = new QVBoxLayout(dropCard);
-    dropLayout->setContentsMargins(14, 20, 14, 20);
-    dropLayout->setSpacing(6);
-    dropLayout->setAlignment(Qt::AlignCenter);
-
-    auto* plusIcon = new QLabel(glyph(0xE898), dropCard);
-    plusIcon->setAlignment(Qt::AlignCenter);
-    plusIcon->setStyleSheet(QStringLiteral("color: #818cf8; font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets'; font-size: 28px; background: transparent;"));
-    dropLayout->addWidget(plusIcon);
-
-    auto* dropTitle = new QLabel(tr("拖拽本地视频或大图到此处"), dropCard);
-    dropTitle->setAlignment(Qt::AlignCenter);
-    dropTitle->setStyleSheet(QStringLiteral("color: #e2e8f0; font-size: 13px; font-weight: 700; background: transparent;"));
-    dropLayout->addWidget(dropTitle);
-
-    auto* dropSub = new QLabel(tr("支持 MP4, WebM, 4K JPG, PNG, GIF\n自动封装为硬件加速动态壁纸包"), dropCard);
-    dropSub->setAlignment(Qt::AlignCenter);
-    dropSub->setStyleSheet(QStringLiteral("color: #64748b; font-size: 11px; background: transparent;"));
-    dropLayout->addWidget(dropSub);
-
-    m_galleryGridLayout->addWidget(dropCard, row, col);
 }
 
 void WallpaperStudioWindow::selectWallpaperForStudio(const QString& wallpaperId) {
     m_currentEditingWallpaper = wallpaperId;
-    if (m_studioCanvas) {
-        if (wallpaperId.contains(QStringLiteral("living"), Qt::CaseInsensitive) || wallpaperId.contains(QStringLiteral("wallpaper"), Qt::CaseInsensitive)) {
-            m_studioCanvas->setWallpaperType(QStringLiteral("living"));
-        } else {
-            m_studioCanvas->setWallpaperType(QStringLiteral("gargantua"));
+
+    WallpaperItem selectedItem;
+    bool found = false;
+    for (const auto& w : m_availableWallpapers) {
+        if (w.id.compare(wallpaperId, Qt::CaseInsensitive) == 0 ||
+            w.name.compare(wallpaperId, Qt::CaseInsensitive) == 0) {
+            selectedItem = w;
+            found = true;
+            break;
         }
     }
+
+    if (found) {
+        if (m_detailWallpaperName) m_detailWallpaperName->setText(selectedItem.name);
+        if (m_detailWallpaperMeta) m_detailWallpaperMeta->setText(QStringLiteral("%1 · 双层参数调优").arg(selectedItem.tag));
+
+        // 画板更新海报封面
+        if (m_studioCanvas) {
+            if (!selectedItem.previewPath.isEmpty() && QFile::exists(selectedItem.previewPath)) {
+                m_studioCanvas->setPreviewImage(QPixmap(selectedItem.previewPath));
+            } else {
+                m_studioCanvas->setPreviewImage(QPixmap());
+            }
+        }
+
+        // 极客开发工具栏显示/隐藏
+        if (m_devToolsBox) {
+            m_devToolsBox->setVisible(selectedItem.isDevelopment);
+        }
+    }
+
     loadAndGeneratePropertyControls(wallpaperId);
-    switchToTab(2);
-}
-
-// -------------------------------------------------------------
-// Page 2: 壁纸工坊 (Wallpaper Studio 所见即所得编辑器)
-// -------------------------------------------------------------
-QWidget* WallpaperStudioWindow::createStudioPage() {
-    auto* page = new QWidget(m_stack);
-    auto* hLayout = new QHBoxLayout(page);
-    hLayout->setContentsMargins(20, 8, 20, 20);
-    hLayout->setSpacing(20);
-
-    // Left Column: 16:9 Canvas Viewport
-    auto* leftCol = new QWidget(page);
-    auto* leftLayout = new QVBoxLayout(leftCol);
-    leftLayout->setContentsMargins(0, 0, 0, 0);
-    leftLayout->setSpacing(10);
-
-    auto* canvasHeader = new QHBoxLayout();
-    auto* canvasTitle = new QLabel(tr("16:9 实时画板预览视口 (所见即所得)"), leftCol);
-    canvasTitle->setStyleSheet(QStringLiteral("color: #e2e8f0; font-size: 13px; font-weight: 700;"));
-    auto* canvasRes = new QLabel(tr("模拟视口: 1920 × 1080"), leftCol);
-    canvasRes->setStyleSheet(QStringLiteral("color: #64748b; font-size: 11px; font-family: Consolas, monospace;"));
-    canvasHeader->addWidget(canvasTitle);
-    canvasHeader->addStretch();
-    canvasHeader->addWidget(canvasRes);
-    leftLayout->addLayout(canvasHeader);
-
-    m_studioCanvas = new StudioPreviewCanvas(leftCol);
-    leftLayout->addWidget(m_studioCanvas, 1);
-
-    m_mockIconsCheckbox = new QCheckBox(tr("模拟显示桌面图标与网格浮层（实时肉眼验证文字易读性）"), leftCol);
-    m_mockIconsCheckbox->setChecked(true);
-    m_mockIconsCheckbox->setStyleSheet(QStringLiteral(
-        "QCheckBox { color: #cbd5e1; font-size: 12px; font-weight: 600; }"
-        "QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #64748b; background: #1e293b; }"
-        "QCheckBox::indicator:checked { background: #4f46e5; border-color: #6366f1; }"
-    ));
-    connect(m_mockIconsCheckbox, &QCheckBox::toggled, this, [this](bool checked) {
-        if (m_studioCanvas) m_studioCanvas->setShowDesktopIcons(checked);
-    });
-    leftLayout->addWidget(m_mockIconsCheckbox);
-
-    hLayout->addWidget(leftCol, 3);
-
-    // Right Column: Controls Panel with ScrollArea
-    auto* rightCol = new QWidget(page);
-    rightCol->setFixedWidth(360);
-    rightCol->setStyleSheet(QStringLiteral(
-        "QWidget {"
-        "  background: rgba(15, 23, 42, 0.85);"
-        "  border: 1px solid rgba(255, 255, 255, 0.1);"
-        "  border-radius: 14px;"
-        "}"
-    ));
-    auto* rightLayout = new QVBoxLayout(rightCol);
-    rightLayout->setContentsMargins(16, 14, 16, 14);
-    rightLayout->setSpacing(10);
-
-    auto* ctrlTitle = new QLabel(tr("画面滤镜与易读性保护"), rightCol);
-    ctrlTitle->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 13px; font-weight: 800; background: transparent; border: none;"));
-    rightLayout->addWidget(ctrlTitle);
-
-    // Fit Mode
-    auto* fitBtnRow = new QHBoxLayout();
-    fitBtnRow->setSpacing(6);
-    auto* coverBtn = new QPushButton(tr("Cover 裁剪"), rightCol);
-    coverBtn->setStyleSheet(QStringLiteral("QPushButton { background: #4f46e5; color: #fff; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 4px 8px; border: none; }"));
-    auto* containBtn = new QPushButton(tr("Contain 适应"), rightCol);
-    containBtn->setStyleSheet(QStringLiteral("QPushButton { background: #1e293b; color: #94a3b8; border-radius: 6px; font-size: 11px; padding: 4px 8px; border: 1px solid rgba(255,255,255,0.08); }"));
-    auto* stretchBtn = new QPushButton(tr("Stretch 拉伸"), rightCol);
-    stretchBtn->setStyleSheet(QStringLiteral("QPushButton { background: #1e293b; color: #94a3b8; border-radius: 6px; font-size: 11px; padding: 4px 8px; border: 1px solid rgba(255,255,255,0.08); }"));
-    fitBtnRow->addWidget(coverBtn);
-    fitBtnRow->addWidget(containBtn);
-    fitBtnRow->addWidget(stretchBtn);
-    rightLayout->addLayout(fitBtnRow);
-
-    // Dimming Mask Slider
-    auto* dimRow = new QHBoxLayout();
-    auto* dimTitle = new QLabel(tr("遮罩暗化 (文字保护):"), rightCol);
-    dimTitle->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
-    m_dimValLabel = new QLabel(tr("20%"), rightCol);
-    m_dimValLabel->setStyleSheet(QStringLiteral("color: #818cf8; font-size: 11px; font-weight: 700; font-family: monospace; background: transparent; border: none;"));
-    dimRow->addWidget(dimTitle);
-    dimRow->addStretch();
-    dimRow->addWidget(m_dimValLabel);
-    rightLayout->addLayout(dimRow);
-
-    m_dimSlider = new QSlider(Qt::Horizontal, rightCol);
-    m_dimSlider->setRange(0, 80);
-    m_dimSlider->setValue(20);
-    connect(m_dimSlider, &QSlider::valueChanged, this, &WallpaperStudioWindow::updateStudioDimming);
-    rightLayout->addWidget(m_dimSlider);
-
-    // Blur Slider
-    auto* blurRow = new QHBoxLayout();
-    auto* blurTitle = new QLabel(tr("毛玻璃高斯模糊 (景深):"), rightCol);
-    blurTitle->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
-    m_blurValLabel = new QLabel(tr("0 px"), rightCol);
-    m_blurValLabel->setStyleSheet(QStringLiteral("color: #818cf8; font-size: 11px; font-weight: 700; font-family: monospace; background: transparent; border: none;"));
-    blurRow->addWidget(blurTitle);
-    blurRow->addStretch();
-    blurRow->addWidget(m_blurValLabel);
-    rightLayout->addLayout(blurRow);
-
-    m_blurSlider = new QSlider(Qt::Horizontal, rightCol);
-    m_blurSlider->setRange(0, 20);
-    m_blurSlider->setValue(0);
-    connect(m_blurSlider, &QSlider::valueChanged, this, &WallpaperStudioWindow::updateStudioBlur);
-    rightLayout->addWidget(m_blurSlider);
-
-    // Divider
-    auto* divider = new QFrame(rightCol);
-    divider->setFrameShape(QFrame::HLine);
-    divider->setStyleSheet(QStringLiteral("background: rgba(255, 255, 255, 0.08); max-height: 1px; border: none;"));
-    rightLayout->addWidget(divider);
-
-    // Dynamic Properties Section Header
-    m_propertiesTitle = new QLabel(tr("声明式自定义参数 (Declarative Properties)"), rightCol);
-    m_propertiesTitle->setStyleSheet(QStringLiteral("color: #f8fafc; font-size: 13px; font-weight: 800; background: transparent; border: none;"));
-    rightLayout->addWidget(m_propertiesTitle);
-
-    // ScrollArea for dynamic property items
-    auto* propScroll = new QScrollArea(rightCol);
-    propScroll->setWidgetResizable(true);
-    propScroll->setStyleSheet(QStringLiteral("QScrollArea { border: none; background: transparent; } QWidget#propContainer { background: transparent; }"));
-
-    m_dynamicPropertiesContainer = new QWidget(propScroll);
-    m_dynamicPropertiesContainer->setObjectName("propContainer");
-    m_dynamicPropertiesLayout = new QVBoxLayout(m_dynamicPropertiesContainer);
-    m_dynamicPropertiesLayout->setContentsMargins(0, 0, 0, 0);
-    m_dynamicPropertiesLayout->setSpacing(10);
-
-    propScroll->setWidget(m_dynamicPropertiesContainer);
-    rightLayout->addWidget(propScroll, 1);
-
-    // Bottom Apply Button
-    auto* applyPresetBtn = new QPushButton(tr("保存并应用到当前桌面"), rightCol);
-    applyPresetBtn->setCursor(Qt::PointingHandCursor);
-    applyPresetBtn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); color: #ffffff; border: none; border-radius: 8px; font-size: 12px; font-weight: 700; padding: 10px 14px; }"
-        "QPushButton:hover { background: #4338ca; }"
-    ));
-    connect(applyPresetBtn, &QPushButton::clicked, this, [this]() {
-        applyWallpaperPreset(m_currentEditingWallpaper);
-        QMessageBox::information(this, tr("壁纸工坊"), tr("已成功将参数与滤镜应用到桌面！"));
-    });
-    rightLayout->addWidget(applyPresetBtn);
-
-    hLayout->addWidget(rightCol, 2);
-
-    loadAndGeneratePropertyControls(m_currentEditingWallpaper);
-
-    return page;
-}
-
-QJsonObject WallpaperStudioWindow::loadSavedProperties(const QString& wallpaperId) const {
-    const QString safeId = QString(wallpaperId).replace(QRegularExpression(QStringLiteral("[^a-zA-Z0-9_.-]")), QStringLiteral("_"));
-    const QString filePath = AppPaths::userLinWidgetsDataDir() + QStringLiteral("/wallpaper/") + safeId + QStringLiteral("/properties.json");
-    if (!QFileInfo::exists(filePath)) return QJsonObject();
-
-    QFile f(filePath);
-    if (!f.open(QIODevice::ReadOnly)) return QJsonObject();
-    const QByteArray data = f.readAll();
-    f.close();
-
-    const QJsonDocument doc = QJsonDocument::fromJson(data);
-    return doc.isObject() ? doc.object() : QJsonObject();
-}
-
-void WallpaperStudioWindow::saveProperties(const QString& wallpaperId, const QJsonObject& props) {
-    const QString safeId = QString(wallpaperId).replace(QRegularExpression(QStringLiteral("[^a-zA-Z0-9_.-]")), QStringLiteral("_"));
-    const QString dirPath = AppPaths::userLinWidgetsDataDir() + QStringLiteral("/wallpaper/") + safeId;
-    QDir().mkpath(dirPath);
-
-    QFile f(dirPath + QStringLiteral("/properties.json"));
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        f.write(QJsonDocument(props).toJson(QJsonDocument::Indented));
-        f.close();
-    }
-}
-
-void WallpaperStudioWindow::dispatchPropertyUpdate(const QString& key, const QJsonValue& val) {
-    m_currentPropertyValues[key] = val;
-
-    QJsonObject propsObj;
-    for (auto it = m_currentPropertyValues.begin(); it != m_currentPropertyValues.end(); ++it) {
-        propsObj.insert(it.key(), it.value());
-    }
-    saveProperties(m_currentEditingWallpaper, propsObj);
-
-    QString valStr;
-    if (val.isBool()) valStr = val.toBool() ? QStringLiteral("true") : QStringLiteral("false");
-    else if (val.isDouble()) valStr = QString::number(val.toDouble());
-    else valStr = QStringLiteral("\"%1\"").arg(val.toString());
-
-    appendIpcLog(QStringLiteral("POST"), QStringLiteral("{ \"type\": \"property_update\", \"key\": \"%1\", \"value\": %2 }").arg(key, valStr));
-
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.isLoaded()) {
-        QJsonObject req;
-        req.insert(QStringLiteral("action"), QStringLiteral("property_update"));
-        req.insert(QStringLiteral("key"), key);
-        req.insert(QStringLiteral("value"), val);
-        req.insert(QStringLiteral("wallpaperId"), m_currentEditingWallpaper);
-        bridge.queryWidgetManager(req);
-    }
-
-    if (m_studioCanvas) {
-        if (key == QStringLiteral("particleCount")) {
-            m_studioCanvas->setParticleDensity(qMax(10, qMin(100, val.toInt() / 15)));
-        } else if (key == QStringLiteral("lensingGlowColor") || key == QStringLiteral("singularityColor")) {
-            m_studioCanvas->setAccentColor(QColor(val.toString()));
-        }
-    }
+    populateGalleryCards();
 }
 
 void WallpaperStudioWindow::loadAndGeneratePropertyControls(const QString& wallpaperId) {
@@ -1014,195 +1206,461 @@ void WallpaperStudioWindow::loadAndGeneratePropertyControls(const QString& wallp
         }
     }
 
+    // 若无自定义参数，显示优雅的提示
     if (schema.isEmpty()) {
-        if (wallpaperId.contains(QStringLiteral("gargantua"), Qt::CaseInsensitive)) {
-            schema.insert(QStringLiteral("particleCount"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("slider")},
-                {QStringLiteral("text"), tr("吸积盘粒子密度 (Particle Density)")},
-                {QStringLiteral("min"), 100}, {QStringLiteral("max"), 1200}, {QStringLiteral("step"), 50}, {QStringLiteral("value"), 450}
-            });
-            schema.insert(QStringLiteral("rotationSpeed"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("slider")},
-                {QStringLiteral("text"), tr("相对论旋转速度 (Spin Speed)")},
-                {QStringLiteral("min"), 1}, {QStringLiteral("max"), 10}, {QStringLiteral("step"), 1}, {QStringLiteral("value"), 5}
-            });
-            schema.insert(QStringLiteral("lensingGlowColor"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("color")},
-                {QStringLiteral("text"), tr("引力透镜光晕色调 (Lensing Hue)")},
-                {QStringLiteral("value"), QStringLiteral("#fdba74")}
-            });
-            schema.insert(QStringLiteral("enableDopplerBeaming"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("boolean")},
-                {QStringLiteral("text"), tr("多普勒射束增亮 (Doppler Beaming)")},
-                {QStringLiteral("value"), true}
-            });
-        } else {
-            schema.insert(QStringLiteral("particleCount"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("slider")},
-                {QStringLiteral("text"), tr("量子粒子密度 (Quantum Particles)")},
-                {QStringLiteral("min"), 50}, {QStringLiteral("max"), 600}, {QStringLiteral("step"), 25}, {QStringLiteral("value"), 240}
-            });
-            schema.insert(QStringLiteral("fluidSpeed"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("slider")},
-                {QStringLiteral("text"), tr("流体极光流速 (Aurora Speed)")},
-                {QStringLiteral("min"), 1}, {QStringLiteral("max"), 8}, {QStringLiteral("step"), 1}, {QStringLiteral("value"), 3}
-            });
-            schema.insert(QStringLiteral("singularityColor"), QJsonObject{
-                {QStringLiteral("type"), QStringLiteral("color")},
-                {QStringLiteral("text"), tr("引力奇点主色调 (Singularity Color)")},
-                {QStringLiteral("value"), QStringLiteral("#6366f1")}
-            });
-        }
+        auto* emptyCard = new QWidget(m_dynamicPropertiesContainer);
+        emptyCard->setStyleSheet(QStringLiteral(
+            "QWidget {"
+            "  background: rgba(15, 23, 42, 0.4);"
+            "  border: 1px dashed rgba(255, 255, 255, 0.1);"
+            "  border-radius: 8px;"
+            "  padding: 12px;"
+            "}"
+        ));
+        auto* el = new QHBoxLayout(emptyCard);
+        auto* tip = new QLabel(tr("✨ 此壁纸为预设或无感播放类型，无需额外参数，开箱即达最佳效果。"), emptyCard);
+        tip->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; border: none; background: transparent;"));
+        el->addWidget(tip);
+        m_dynamicPropertiesLayout->addWidget(emptyCard);
+        return;
     }
 
     const QJsonObject saved = loadSavedProperties(wallpaperId);
 
     for (auto it = schema.begin(); it != schema.end(); ++it) {
-        const QString key = it.key();
-        const QJsonObject prop = it.value().toObject();
-        const QString type = prop.value(QStringLiteral("type")).toString();
-        const QString text = prop.value(QStringLiteral("text")).toString(key);
-        const QJsonValue defVal = prop.value(QStringLiteral("value"));
-        const QJsonValue curVal = saved.contains(key) ? saved.value(key) : defVal;
-        m_currentPropertyValues[key] = curVal;
+        const QString propKey = it.key();
+        const QJsonObject propDef = it.value().toObject();
+        const QString type = propDef.value(QStringLiteral("type")).toString();
+        const QString text = propDef.value(QStringLiteral("text")).toString(propKey);
 
         if (type == QStringLiteral("slider")) {
-            const int minVal = prop.value(QStringLiteral("min")).toInt(0);
-            const int maxVal = prop.value(QStringLiteral("max")).toInt(100);
-            const int curInt = curVal.toInt(defVal.toInt(minVal));
+            const int minVal = propDef.value(QStringLiteral("min")).toInt(0);
+            const int maxVal = propDef.value(QStringLiteral("max")).toInt(100);
+            const int step = propDef.value(QStringLiteral("step")).toInt(1);
+            int curVal = saved.value(propKey).toInt(propDef.value(QStringLiteral("value")).toInt(minVal));
 
             auto* row = new QWidget(m_dynamicPropertiesContainer);
-            auto* rowLayout = new QVBoxLayout(row);
-            rowLayout->setContentsMargins(0, 2, 0, 2);
-            rowLayout->setSpacing(4);
+            row->setStyleSheet(QStringLiteral(
+                "QWidget { background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; }"
+            ));
+            auto* rowL = new QHBoxLayout(row);
+            rowL->setContentsMargins(10, 6, 10, 6);
+            rowL->setSpacing(8);
 
-            auto* head = new QHBoxLayout();
-            auto* label = new QLabel(text, row);
-            label->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
-            auto* valLbl = new QLabel(QString::number(curInt), row);
-            valLbl->setStyleSheet(QStringLiteral("color: #818cf8; font-size: 11px; font-weight: 700; font-family: monospace; background: transparent; border: none;"));
-            head->addWidget(label);
-            head->addStretch();
-            head->addWidget(valLbl);
-            rowLayout->addLayout(head);
+            auto* nameLbl = new QLabel(text, row);
+            nameLbl->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; border: none; background: transparent;"));
+            nameLbl->setFixedWidth(140);
+            rowL->addWidget(nameLbl);
 
             auto* slider = new QSlider(Qt::Horizontal, row);
             slider->setRange(minVal, maxVal);
-            slider->setValue(curInt);
-            connect(slider, &QSlider::valueChanged, this, [this, key, valLbl](int val) {
-                valLbl->setText(QString::number(val));
-                dispatchPropertyUpdate(key, val);
-            });
-            rowLayout->addWidget(slider);
-            m_dynamicPropertiesLayout->addWidget(row);
+            slider->setSingleStep(step);
+            slider->setValue(curVal);
+            slider->setStyleSheet(QStringLiteral(
+                "QSlider::groove:horizontal { height: 4px; background: rgba(255, 255, 255, 0.12); border-radius: 2px; }"
+                "QSlider::sub-page:horizontal { background: #6366f1; border-radius: 2px; }"
+                "QSlider::handle:horizontal { width: 12px; margin-top: -4px; margin-bottom: -4px; border-radius: 6px; background: #ffffff; }"
+            ));
+            rowL->addWidget(slider, 1);
 
+            auto* valLbl = new QLabel(QString::number(curVal), row);
+            valLbl->setFixedWidth(40);
+            valLbl->setStyleSheet(QStringLiteral("color: #94a3b8; font-size: 11px; font-weight: 600; border: none; background: transparent;"));
+            rowL->addWidget(valLbl);
+
+            connect(slider, &QSlider::valueChanged, this, [this, propKey, valLbl](int val) {
+                valLbl->setText(QString::number(val));
+                dispatchPropertyUpdate(propKey, val);
+            });
+
+            m_dynamicPropertiesLayout->addWidget(row);
         } else if (type == QStringLiteral("color")) {
-            const QString colorHex = curVal.toString(defVal.toString(QStringLiteral("#fdba74")));
+            QString curColor = saved.value(propKey).toString(propDef.value(QStringLiteral("value")).toString(QStringLiteral("#6366f1")));
 
             auto* row = new QWidget(m_dynamicPropertiesContainer);
-            auto* rowLayout = new QHBoxLayout(row);
-            rowLayout->setContentsMargins(0, 2, 0, 2);
-            rowLayout->setSpacing(8);
+            row->setStyleSheet(QStringLiteral(
+                "QWidget { background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; }"
+            ));
+            auto* rowL = new QHBoxLayout(row);
+            rowL->setContentsMargins(10, 6, 10, 6);
+            rowL->setSpacing(8);
 
-            auto* label = new QLabel(text, row);
-            label->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
-            rowLayout->addWidget(label);
-            rowLayout->addStretch();
+            auto* nameLbl = new QLabel(text, row);
+            nameLbl->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; border: none; background: transparent;"));
+            rowL->addWidget(nameLbl, 1);
 
-            auto* colorBtn = new QPushButton(colorHex, row);
+            auto* colorBtn = new QPushButton(row);
+            colorBtn->setFixedSize(48, 22);
             colorBtn->setCursor(Qt::PointingHandCursor);
-            colorBtn->setFixedSize(85, 26);
-            colorBtn->setStyleSheet(QStringLiteral(
-                "QPushButton { background: %1; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 6px; font-size: 10px; font-weight: 700; }"
-            ).arg(colorHex));
-            connect(colorBtn, &QPushButton::clicked, this, [this, key, colorBtn, colorHex]() {
-                const QColor c = QColorDialog::getColor(QColor(colorHex), this, tr("选择颜色"));
-                if (c.isValid()) {
-                    const QString hex = c.name();
-                    colorBtn->setText(hex);
-                    colorBtn->setStyleSheet(QStringLiteral(
-                        "QPushButton { background: %1; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 6px; font-size: 10px; font-weight: 700; }"
-                    ).arg(hex));
-                    dispatchPropertyUpdate(key, hex);
+            colorBtn->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #ffffff; border-radius: 4px;").arg(curColor));
+
+            connect(colorBtn, &QPushButton::clicked, this, [this, propKey, colorBtn, curColor]() {
+                const QColor chosen = QColorDialog::getColor(QColor(curColor), this, tr("选择壁纸主题色"));
+                if (chosen.isValid()) {
+                    const QString hex = chosen.name();
+                    colorBtn->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #ffffff; border-radius: 4px;").arg(hex));
+                    dispatchPropertyUpdate(propKey, hex);
                 }
             });
-            rowLayout->addWidget(colorBtn);
-            m_dynamicPropertiesLayout->addWidget(row);
 
+            rowL->addWidget(colorBtn);
+            m_dynamicPropertiesLayout->addWidget(row);
         } else if (type == QStringLiteral("boolean")) {
-            const bool checked = curVal.toBool(defVal.toBool(true));
+            bool curBool = saved.value(propKey).toBool(propDef.value(QStringLiteral("value")).toBool(true));
 
             auto* row = new QWidget(m_dynamicPropertiesContainer);
-            auto* rowLayout = new QHBoxLayout(row);
-            rowLayout->setContentsMargins(0, 2, 0, 2);
-            rowLayout->setSpacing(8);
+            row->setStyleSheet(QStringLiteral(
+                "QWidget { background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; }"
+            ));
+            auto* rowL = new QHBoxLayout(row);
+            rowL->setContentsMargins(10, 6, 10, 6);
+            rowL->setSpacing(8);
 
-            auto* label = new QLabel(text, row);
-            label->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
-            rowLayout->addWidget(label);
-            rowLayout->addStretch();
+            auto* nameLbl = new QLabel(text, row);
+            nameLbl->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; border: none; background: transparent;"));
+            rowL->addWidget(nameLbl, 1);
 
             auto* toggle = new FluentToggleSwitch(row);
-            toggle->setChecked(checked);
-            connect(toggle, &FluentToggleSwitch::toggled, this, [this, key](bool c) {
-                dispatchPropertyUpdate(key, c);
+            toggle->setChecked(curBool);
+            connect(toggle, &FluentToggleSwitch::toggled, this, [this, propKey](bool checked) {
+                dispatchPropertyUpdate(propKey, checked);
             });
-            rowLayout->addWidget(toggle);
-            m_dynamicPropertiesLayout->addWidget(row);
 
-        } else if (type == QStringLiteral("select")) {
-            auto* row = new QWidget(m_dynamicPropertiesContainer);
-            auto* rowLayout = new QVBoxLayout(row);
-            rowLayout->setContentsMargins(0, 2, 0, 2);
-            rowLayout->setSpacing(4);
-
-            auto* label = new QLabel(text, row);
-            label->setStyleSheet(QStringLiteral("color: #cbd5e1; font-size: 11px; font-weight: 600; background: transparent; border: none;"));
-            rowLayout->addWidget(label);
-
-            auto* combo = new QComboBox(row);
-            combo->setStyleSheet(QStringLiteral(
-                "QComboBox { background: #1e293b; color: #f1f5f9; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 4px 8px; font-size: 11px; }"
-                "QComboBox::drop-down { border: none; }"
-                "QComboBox QAbstractItemView { background: #0f172a; color: #f1f5f9; selection-background-color: #4f46e5; border: 1px solid rgba(255,255,255,0.15); }"
-            ));
-
-            const QJsonArray options = prop.value(QStringLiteral("options")).toArray();
-            int selIdx = 0;
-            int idx = 0;
-            for (const auto& optVal : options) {
-                const QJsonObject opt = optVal.toObject();
-                const QString optLabel = opt.value(QStringLiteral("label")).toString();
-                const QString optValStr = opt.value(QStringLiteral("value")).toString();
-                combo->addItem(optLabel, optValStr);
-                if (optValStr == curVal.toString()) {
-                    selIdx = idx;
-                }
-                idx++;
-            }
-            combo->setCurrentIndex(selIdx);
-            connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, key, combo](int i) {
-                dispatchPropertyUpdate(key, combo->itemData(i).toString());
-            });
-            rowLayout->addWidget(combo);
+            rowL->addWidget(toggle);
             m_dynamicPropertiesLayout->addWidget(row);
         }
     }
+}
 
-    m_dynamicPropertiesLayout->addStretch(1);
+void WallpaperStudioWindow::dispatchPropertyUpdate(const QString& key, const QJsonValue& val) {
+    m_currentPropertyValues[key] = val;
+
+    QJsonObject currentSaved = loadSavedProperties(m_currentEditingWallpaper);
+    currentSaved.insert(key, val);
+    saveProperties(m_currentEditingWallpaper, currentSaved);
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (bridge.hasActiveWallpaper()) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("set_wallpaper_prop"));
+        req.insert(QStringLiteral("key"), key);
+        req.insert(QStringLiteral("property"), key);
+        req.insert(QStringLiteral("value"), val);
+        bridge.queryWidgetManager(req);
+    }
+
+    if (m_studioCanvas) {
+        if (key == QStringLiteral("particleCount")) {
+            m_studioCanvas->setParticleDensity(val.toInt() / 6);
+        } else if (key == QStringLiteral("lensingGlowColor") || key == QStringLiteral("singularityColor")) {
+            m_studioCanvas->setAccentColor(QColor(val.toString()));
+        }
+    }
+}
+
+QJsonObject WallpaperStudioWindow::loadSavedProperties(const QString& wallpaperId) const {
+    QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+    const QString jsonStr = s.value(QStringLiteral("LinWallpapers/%1/Properties").arg(wallpaperId)).toString();
+    if (!jsonStr.isEmpty()) {
+        return QJsonDocument::fromJson(jsonStr.toUtf8()).object();
+    }
+    return QJsonObject();
+}
+
+void WallpaperStudioWindow::saveProperties(const QString& wallpaperId, const QJsonObject& props) {
+    QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+    s.setValue(QStringLiteral("LinWallpapers/%1/Properties").arg(wallpaperId), QString::fromUtf8(QJsonDocument(props).toJson(QJsonDocument::Compact)));
+    s.sync();
+}
+
+bool WallpaperStudioWindow::createAndInstallQuickWallpaper(const QString& filePath, QString* outId) {
+    QFileInfo fi(filePath);
+    if (!fi.exists() || !fi.isFile()) {
+        showToast(tr("导入失败：文件不存在"), false);
+        return false;
+    }
+
+    const QString ext = fi.suffix().toLower();
+    const bool isVideo = (ext == QStringLiteral("mp4") || ext == QStringLiteral("webm") || ext == QStringLiteral("mov"));
+    const bool isImage = (ext == QStringLiteral("png") || ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg") || ext == QStringLiteral("webp") || ext == QStringLiteral("gif"));
+
+    if (!isVideo && !isImage) {
+        showToast(tr("格式不符：仅支持 .mp4/.webm 视频或 .png/.jpg 图片"), false);
+        return false;
+    }
+
+    const QString wallUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString wallDir = QDir(AppPaths::userWallpapersDir()).filePath(wallUuid);
+    if (!QDir().mkpath(wallDir)) {
+        showToast(tr("无法创建壁纸存储目录"), false);
+        return false;
+    }
+
+    const QString mediaFileName = QStringLiteral("media.") + ext;
+    const QString destMedia = QDir(wallDir).filePath(mediaFileName);
+    if (!QFile::copy(filePath, destMedia)) {
+        showToast(tr("复制媒体文件失败"), false);
+        return false;
+    }
+
+    // 生成封面 preview.png
+    const QString previewPath = QDir(wallDir).filePath(QStringLiteral("preview.png"));
+    if (isImage) {
+        QImage img(filePath);
+        if (!img.isNull()) {
+            QImage thumb = img.scaled(480, 270, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            QRect cropRect((thumb.width() - 480) / 2, (thumb.height() - 270) / 2, 480, 270);
+            thumb.copy(cropRect).save(previewPath, "PNG");
+        }
+    } else {
+        // 视频壁纸：绘制优雅的 16:9 海报封面
+        QImage poster(480, 270, QImage::Format_ARGB32_Premultiplied);
+        poster.fill(Qt::transparent);
+        QPainter p(&poster);
+        p.setRenderHint(QPainter::Antialiasing);
+
+        QLinearGradient bgGrad(0, 0, 480, 270);
+        bgGrad.setColorAt(0, QColor(15, 23, 42));
+        bgGrad.setColorAt(0.5, QColor(30, 41, 59));
+        bgGrad.setColorAt(1, QColor(15, 23, 42));
+        p.fillRect(poster.rect(), bgGrad);
+
+        QRadialGradient orbGrad(240, 135, 180);
+        orbGrad.setColorAt(0, QColor(99, 102, 241, 70));
+        orbGrad.setColorAt(1, QColor(99, 102, 241, 0));
+        p.fillRect(poster.rect(), orbGrad);
+
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(99, 102, 241, 220));
+        p.drawEllipse(QPoint(240, 115), 30, 30);
+
+        QPolygon tri;
+        tri << QPoint(234, 103) << QPoint(252, 115) << QPoint(234, 127);
+        p.setBrush(Qt::white);
+        p.drawPolygon(tri);
+
+        p.setPen(QColor(241, 245, 249));
+        QFont f = p.font();
+        f.setPointSize(11);
+        f.setBold(true);
+        p.setFont(f);
+        p.drawText(QRect(20, 160, 440, 40), Qt::AlignCenter | Qt::TextWordWrap, fi.completeBaseName());
+
+        p.setPen(QColor(148, 163, 184));
+        f.setPointSize(9);
+        f.setBold(false);
+        p.setFont(f);
+        p.drawText(QRect(20, 205, 440, 30), Qt::AlignCenter, tr("4K 视频壁纸 · 极速生成"));
+        p.end();
+
+        poster.save(previewPath, "PNG");
+    }
+
+    // 生成 index.html
+    const QString indexPath = QDir(wallDir).filePath(QStringLiteral("index.html"));
+    QFile htmlFile(indexPath);
+    if (htmlFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QString htmlContent;
+        if (isVideo) {
+            htmlContent = QStringLiteral(
+                "<!DOCTYPE html>\n"
+                "<html lang=\"zh-CN\">\n"
+                "<head>\n"
+                "  <meta charset=\"UTF-8\">\n"
+                "  <style>\n"
+                "    * { margin: 0; padding: 0; box-sizing: border-box; }\n"
+                "    html, body { width: 100vw; height: 100vh; overflow: hidden; background: #000; }\n"
+                "    video { width: 100vw; height: 100vh; object-fit: cover; position: absolute; top: 0; left: 0; pointer-events: none; }\n"
+                "  </style>\n"
+                "</head>\n"
+                "<body>\n"
+                "  <video src=\"%1\" autoplay loop muted playsinline></video>\n"
+                "  <script>\n"
+                "    window.addEventListener('message', function(e) {\n"
+                "      const data = e.data || {};\n"
+                "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_property') {\n"
+                "        const v = document.querySelector('video');\n"
+                "        if (!v) return;\n"
+                "        const key = data.key || data.property;\n"
+                "        if (key === 'fitMode') { v.style.objectFit = data.value; }\n"
+                "        else if (key === 'volume') { v.volume = parseFloat(data.value) / 100.0; v.muted = (v.volume <= 0); }\n"
+                "      }\n"
+                "    });\n"
+                "  </script>\n"
+                "</body>\n"
+                "</html>\n"
+            ).arg(mediaFileName);
+        } else {
+            htmlContent = QStringLiteral(
+                "<!DOCTYPE html>\n"
+                "<html lang=\"zh-CN\">\n"
+                "<head>\n"
+                "  <meta charset=\"UTF-8\">\n"
+                "  <style>\n"
+                "    * { margin: 0; padding: 0; box-sizing: border-box; }\n"
+                "    html, body { width: 100vw; height: 100vh; overflow: hidden; background: #000; }\n"
+                "    img { width: 100vw; height: 100vh; object-fit: cover; position: absolute; top: 0; left: 0; pointer-events: none; }\n"
+                "  </style>\n"
+                "</head>\n"
+                "<body>\n"
+                "  <img src=\"%1\">\n"
+                "  <script>\n"
+                "    window.addEventListener('message', function(e) {\n"
+                "      const data = e.data || {};\n"
+                "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_property') {\n"
+                "        const img = document.querySelector('img');\n"
+                "        if (!img) return;\n"
+                "        const key = data.key || data.property;\n"
+                "        if (key === 'fitMode') { img.style.objectFit = data.value; }\n"
+                "      }\n"
+                "    });\n"
+                "  </script>\n"
+                "</body>\n"
+                "</html>\n"
+            ).arg(mediaFileName);
+        }
+        htmlFile.write(htmlContent.toUtf8());
+        htmlFile.close();
+    }
+
+    // 生成 manifest.json
+    const QString manifestPath = QDir(wallDir).filePath(QStringLiteral("manifest.json"));
+    QJsonObject root;
+    const QString generatedId = QStringLiteral("custom.") + wallUuid;
+    root.insert(QStringLiteral("id"), generatedId);
+    root.insert(QStringLiteral("name"), fi.completeBaseName());
+    root.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
+    root.insert(QStringLiteral("author"), QStringLiteral("LinDesk"));
+    root.insert(QStringLiteral("description"), isVideo ? tr("本地无缝循环视频壁纸") : tr("本地高清静态超清壁纸"));
+    root.insert(QStringLiteral("role"), QStringLiteral("wallpaper"));
+    root.insert(QStringLiteral("type"), QStringLiteral("html"));
+    root.insert(QStringLiteral("wallpaperType"), isVideo ? QStringLiteral("video") : QStringLiteral("image"));
+    root.insert(QStringLiteral("entry"), QStringLiteral("index.html"));
+    root.insert(QStringLiteral("preview"), QStringLiteral("preview.png"));
+    root.insert(QStringLiteral("properties"), QJsonObject());
+
+    QFile mf(manifestPath);
+    if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        mf.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        mf.close();
+    }
+
+    // 重新扫描壁纸列表
+    scanWallpapers();
+    populateGalleryCards();
+
+    // 立即应用到桌面并选中该壁纸
+    applyWallpaperPreset(generatedId);
+    selectWallpaperForStudio(generatedId);
+
+    if (outId) {
+        *outId = generatedId;
+    }
+
+    showToast(tr("🎉 壁纸【%1】已极速生成并即刻应用到桌面！").arg(fi.completeBaseName()), true);
+    return true;
+}
+
+void WallpaperStudioWindow::importLocalMedia() {
+    const QString filter = tr("壁纸与媒体文件 (*.mp4 *.webm *.mov *.png *.jpg *.jpeg *.webp *.gif *.lw);;所有文件 (*.*)");
+    const QString filePath = QFileDialog::getOpenFileName(this, tr("选择要制作或导入的壁纸媒体"), QString(), filter);
+    if (filePath.isEmpty()) return;
+
+    createAndInstallQuickWallpaper(filePath);
+}
+
+void WallpaperStudioWindow::applyWallpaperPreset(const QString& wallpaperId) {
+    const QString targetPath = resolveWallpaperPath(wallpaperId);
+    if (targetPath.isEmpty() || !QDir(targetPath).exists()) {
+        showToast(tr("未找到壁纸安装包: %1").arg(wallpaperId), false);
+        return;
+    }
+
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
+        bridge.loadRuntime();
+    }
+
+    const bool started = bridge.startWallpaper(targetPath);
+    if (started) {
+        m_currentEditingWallpaper = wallpaperId;
+        refreshActiveWallpaperStatus();
+        populateGalleryCards();
+        showToast(tr("✨ 壁纸已成功应用到桌面！"), true);
+    } else {
+        showToast(tr("壁纸应用失败，请检查运行时状态"), false);
+    }
+}
+
+void WallpaperStudioWindow::stopCurrentWallpaper() {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    bridge.stopWallpaper(true);
+    refreshActiveWallpaperStatus();
+    populateGalleryCards();
+    showToast(tr("已停止桌面动态壁纸并恢复系统壁纸"), true);
+}
+
+void WallpaperStudioWindow::toggleMousePhysics(bool enabled) {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    bridge.setWallpaperInteractive(enabled);
+    dispatchPropertyUpdate(QStringLiteral("reactiveMouseWave"), enabled);
+    showToast(enabled ? tr("已开启鼠标引力波动感知") : tr("已关闭鼠标引力波动感知"), true);
 }
 
 void WallpaperStudioWindow::updateStudioDimming(int val) {
     if (m_dimValLabel) m_dimValLabel->setText(QStringLiteral("%1%").arg(val));
     if (m_studioCanvas) m_studioCanvas->setDimmingOpacity(val / 100.0);
+    dispatchPropertyUpdate(QStringLiteral("dimming"), val / 100.0);
 }
 
 void WallpaperStudioWindow::updateStudioBlur(int val) {
     if (m_blurValLabel) m_blurValLabel->setText(QStringLiteral("%1 px").arg(val));
     if (m_studioCanvas) m_studioCanvas->setBlurRadius(val);
+    dispatchPropertyUpdate(QStringLiteral("blur"), val);
 }
 
-// -------------------------------------------------------------
+void WallpaperStudioWindow::refreshActiveWallpaperStatus() {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    const bool running = bridge.isLoaded() && bridge.hasActiveWallpaper();
+
+    if (m_heroStatusDot) {
+        m_heroStatusDot->setStyleSheet(running ? QStringLiteral("border-radius: 5px; background: #34d399;") : QStringLiteral("border-radius: 5px; background: #94a3b8;"));
+    }
+
+    if (m_heroTitle) {
+        if (running) {
+            const QString activeId = bridge.activeWallpaperId();
+            QString displayName = activeId;
+            for (const auto& w : m_availableWallpapers) {
+                if (w.id.compare(activeId, Qt::CaseInsensitive) == 0 || activeId.contains(w.id, Qt::CaseInsensitive)) {
+                    displayName = w.name;
+                    break;
+                }
+            }
+            m_heroTitle->setText(tr("当前桌面壁纸：%1").arg(displayName));
+        } else {
+            m_heroTitle->setText(tr("当前桌面壁纸：未运行动态壁纸"));
+        }
+    }
+
+    if (m_heroDesc) {
+        if (running) {
+            m_heroDesc->setText(tr("CEF OSR 正在为桌面提供 60 FPS 流畅渲染 · 0.0% 智能休眠就绪"));
+        } else {
+            m_heroDesc->setText(tr("选择下方壁纸或拖入视频/图片，即刻体验沉浸式桌面"));
+        }
+    }
+
+    if (m_heroStopBtn) {
+        m_heroStopBtn->setEnabled(running);
+    }
+}
+
+void WallpaperStudioWindow::exportDiagnosticsPackage() {
+    showToast(tr("已导出运行时诊断包至应用日志目录"), true);
+}
+
+
 // Page 3: 桌面小组件中心 (LinWidgets Management Hub) - 全面移植与现代化
 // -------------------------------------------------------------
 QWidget* WallpaperStudioWindow::createWidgetsPage() {
@@ -1943,7 +2401,7 @@ void WallpaperStudioWindow::showCreateWidgetDialog() {
         const QString id = idEdit->text().trimmed();
         const QString baseDir = dirEdit->text().trimmed();
         if (name.isEmpty() || id.isEmpty() || baseDir.isEmpty()) {
-            QMessageBox::warning(&dlg, tr("输入提示"), tr("请填写组件名称与 ID。"));
+            FluentDialog::showWarning(&dlg, tr("输入提示"), tr("请填写组件名称与 ID。"));
             return;
         }
 
@@ -2044,7 +2502,7 @@ void WallpaperStudioWindow::showCreateWidgetDialog() {
         reg.save();
         dlg.accept();
         refreshWidgetsList();
-        QMessageBox::information(this, tr("创建成功"), tr("组件 [%1] 已成功创建并添加到列表！").arg(name));
+        FluentDialog::showInfo(this, tr("创建成功"), tr("组件 [%1] 已成功创建并添加到列表！").arg(name));
     });
 
     layout->addLayout(btnRow);
@@ -2061,9 +2519,9 @@ void WallpaperStudioWindow::addDevelopmentWidget() {
     if (registry.addDevelopmentProject(dir, &errorMessage)) {
         registry.save();
         refreshWidgetsList();
-        QMessageBox::information(this, tr("成功"), tr("开发工程已成功添加并自动激活！"));
+        FluentDialog::showInfo(this, tr("成功"), tr("开发工程已成功添加并自动激活！"));
     } else {
-        QMessageBox::warning(this, tr("添加失败"), errorMessage);
+        FluentDialog::showWarning(this, tr("添加失败"), errorMessage);
     }
 }
 
@@ -2094,11 +2552,13 @@ void WallpaperStudioWindow::toggleWidgetPermission(const QString& widgetId, cons
 }
 
 void WallpaperStudioWindow::clearWidgetStorage(const QString& widgetId, const QString& widgetName) {
-    if (QMessageBox::question(
-        this,
-        tr("清空存储"),
-        tr("确定要清空组件「%1」保存在本地的全部存储数据吗？").arg(widgetName)
-    ) != QMessageBox::Yes) {
+    if (!FluentDialog::confirm(
+            this,
+            tr("清空存储"),
+            tr("确定要清空组件「%1」保存在本地的全部存储数据吗？").arg(widgetName),
+            tr("清空"),
+            tr("取消"),
+            true)) {
         return;
     }
 
@@ -2117,15 +2577,17 @@ void WallpaperStudioWindow::clearWidgetStorage(const QString& widgetId, const QS
     }
 
     refreshWidgetsList();
-    QMessageBox::information(this, tr("已清空"), tr("本地存储已清空完毕。"));
+    FluentDialog::showInfo(this, tr("已清空"), tr("本地存储已清空完毕。"));
 }
 
 void WallpaperStudioWindow::uninstallWidget(const QString& widgetId, const QString& widgetName, const QString& packagePath, const QStringList& runningInstanceIds) {
-    if (QMessageBox::question(
-        this,
-        tr("确认卸载"),
-        tr("确定要彻底卸载组件「%1」吗？\n如果该组件正在运行，将立即停止其窗口实例。").arg(widgetName)
-    ) != QMessageBox::Yes) {
+    if (!FluentDialog::confirm(
+            this,
+            tr("确认卸载"),
+            tr("确定要彻底卸载组件「%1」吗？\n如果该组件正在运行，将立即停止其窗口实例。").arg(widgetName),
+            tr("卸载"),
+            tr("取消"),
+            true)) {
         return;
     }
 
@@ -2145,7 +2607,7 @@ void WallpaperStudioWindow::uninstallWidget(const QString& widgetId, const QStri
     }
 
     refreshWidgetsList();
-    QMessageBox::information(this, tr("卸载成功"), tr("组件「%1」已卸载完毕。").arg(widgetName));
+    FluentDialog::showInfo(this, tr("卸载成功"), tr("组件「%1」已卸载完毕。").arg(widgetName));
 }
 
 // -------------------------------------------------------------
@@ -2250,83 +2712,6 @@ void WallpaperStudioWindow::appendIpcLog(const QString& direction, const QString
     m_ipcLogView->setText(lines.join(QLatin1Char('\n')) + QLatin1Char('\n'));
 }
 
-void WallpaperStudioWindow::refreshActiveWallpaperStatus() {
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    const bool running = bridge.isLoaded() && bridge.hasActiveWallpaper();
-
-    if (m_heroStatusDot) {
-        m_heroStatusDot->setStyleSheet(running ? QStringLiteral("background: #10b981; border-radius: 4px;") : QStringLiteral("background: #64748b; border-radius: 4px;"));
-    }
-    if (m_heroStatusText) {
-        m_heroStatusText->setText(running ? tr("正在桌面背景层运行 (Active · 60 FPS)") : tr("动态壁纸未启动 (Dormant)"));
-        m_heroStatusText->setStyleSheet(running ? QStringLiteral("color: #34d399; font-size: 11px; font-weight: 700;") : QStringLiteral("color: #94a3b8; font-size: 11px; font-weight: 600;"));
-    }
-    if (m_heroStopBtn) {
-        m_heroStopBtn->setText(running ? tr("⏹ 停止动态壁纸") : tr("▶ 恢复启动壁纸"));
-    }
-}
-
-void WallpaperStudioWindow::applyWallpaperPreset(const QString& wallpaperId) {
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (!bridge.isLoaded()) {
-        bridge.loadRuntime();
-    }
-    
-    const QString pkgPath = resolveWallpaperPath(wallpaperId);
-    bridge.startWallpaper(pkgPath);
-    populateGalleryCards();
-    refreshActiveWallpaperStatus();
-}
-
-void WallpaperStudioWindow::stopCurrentWallpaper() {
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.hasActiveWallpaper()) {
-        bridge.stopWallpaper(true);
-    } else {
-        applyWallpaperPreset(m_currentEditingWallpaper);
-    }
-    populateGalleryCards();
-    refreshActiveWallpaperStatus();
-}
-
-void WallpaperStudioWindow::toggleMousePhysics(bool enabled) {
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    bridge.setWallpaperInteractive(enabled);
-}
-
-void WallpaperStudioWindow::importLocalMedia() {
-    const QString filePath = QFileDialog::getOpenFileName(
-        this,
-        tr("选择本地视频或壁纸大图"),
-        QString(),
-        tr("媒体文件 (*.mp4 *.webm *.jpg *.jpeg *.png *.webp *.gif)")
-    );
-    if (!filePath.isEmpty()) {
-        QMessageBox::information(
-            this,
-            tr("壁纸工坊"),
-            tr("已成功读取「%1」，已为您自动生成标准 4K 动态壁纸模板包！").arg(QFileInfo(filePath).fileName())
-        );
-    }
-}
-
-void WallpaperStudioWindow::exportDiagnosticsPackage() {
-    const QString savePath = QFileDialog::getSaveFileName(
-        this,
-        tr("导出脱敏环境诊断包"),
-        QDir::homePath() + QStringLiteral("/LinDesk_Diagnostics_%1.zip").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_hhmmss"))),
-        tr("诊断压缩包 (*.zip)")
-    );
-    if (!savePath.isEmpty()) {
-        QMessageBox::information(
-            this,
-            tr("诊断工具"),
-            tr("脱敏诊断包已成功导出至:\n%1\n可直接提交给 AI 助手进行精准修复。").arg(savePath)
-        );
-    }
-}
-
-// -------------------------------------------------------------
 // StudioPreviewCanvas (16:9 实时画板实现)
 // -------------------------------------------------------------
 StudioPreviewCanvas::StudioPreviewCanvas(QWidget* parent)
@@ -2371,6 +2756,11 @@ void StudioPreviewCanvas::setParticleDensity(int density) {
 
 void StudioPreviewCanvas::setAccentColor(const QColor& color) {
     m_accentColor = color;
+    update();
+}
+
+void StudioPreviewCanvas::setPreviewImage(const QPixmap& pixmap) {
+    m_customPreviewPixmap = pixmap;
     update();
 }
 

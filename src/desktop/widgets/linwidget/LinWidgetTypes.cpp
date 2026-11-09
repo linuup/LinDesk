@@ -303,6 +303,9 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("maxHeight"), manifest.maxHeight);
     object.insert(QStringLiteral("type"), runtimeTypeToString(manifest.type));
     object.insert(QStringLiteral("role"), manifest.role);
+    if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+        object.insert(QStringLiteral("wallpaperType"), manifest.wallpaperType);
+    }
     object.insert(QStringLiteral("transparent"), manifest.transparent);
     object.insert(QStringLiteral("resizable"), manifest.resizable);
     object.insert(QStringLiteral("interactive"), manifest.interactive);
@@ -367,6 +370,29 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         !requireString(object, QStringLiteral("icon"), false, &parsed.icon, errorMessage)) {
         return false;
     }
+    QString typeText;
+    if (!requireString(object, QStringLiteral("type"), false, &typeText, errorMessage)) {
+        return false;
+    }
+    // New 2.0 standard: type can be "widget" or "wallpaper"
+    // Legacy standard: role is "widget" | "wallpaper", type is "html" | "native"
+    if (typeText.compare(QStringLiteral("widget"), Qt::CaseInsensitive) == 0 ||
+        typeText.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+        parsed.role = typeText.toLower();
+        parsed.type = RuntimeType::Html;
+    } else if (!typeText.isEmpty()) {
+        if (typeText.compare(QStringLiteral("html"), Qt::CaseInsensitive) != 0 &&
+            typeText.compare(QStringLiteral("native"), Qt::CaseInsensitive) != 0) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Widget manifest field type must be widget, wallpaper, html, or native.");
+            }
+            return false;
+        }
+        parsed.type = runtimeTypeFromString(typeText);
+    } else {
+        parsed.type = RuntimeType::Html;
+    }
+
     if (parsed.role.isEmpty()) {
         parsed.role = QStringLiteral("widget");
     }
@@ -378,21 +404,15 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         return false;
     }
 
-    QString typeText;
-    if (!requireString(object, QStringLiteral("type"), false, &typeText, errorMessage)) {
-        return false;
-    }
-    if (typeText.isEmpty()) {
-        typeText = QStringLiteral("html");
-    }
-    if (typeText.compare(QStringLiteral("html"), Qt::CaseInsensitive) != 0 &&
-        typeText.compare(QStringLiteral("native"), Qt::CaseInsensitive) != 0) {
-        if (errorMessage) {
-            *errorMessage = QStringLiteral("Widget manifest field type must be html or native.");
+    QString wpType;
+    if (requireString(object, QStringLiteral("wallpaperType"), false, &wpType, errorMessage)) {
+        if (!wpType.isEmpty()) {
+            wpType = wpType.toLower();
+            if (wpType == QStringLiteral("web") || wpType == QStringLiteral("video") || wpType == QStringLiteral("picture")) {
+                parsed.wallpaperType = wpType;
+            }
         }
-        return false;
     }
-    parsed.type = runtimeTypeFromString(typeText);
 
     if (!readInt(object, QStringLiteral("width"), 300, &parsed.width, errorMessage) ||
         !readInt(object, QStringLiteral("height"), 120, &parsed.height, errorMessage) ||

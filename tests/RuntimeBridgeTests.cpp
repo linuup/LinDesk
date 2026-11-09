@@ -129,6 +129,36 @@ TEST_F(RuntimeBridgeTest, PackageValidatorLinting)
 #include <windows.h>
 #endif
 
+TEST_F(RuntimeBridgeTest, WallpaperSuspensionAndFramerateContract)
+{
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    const QString runtimeDll = QDir(QCoreApplication::applicationDirPath()).filePath("runtime/linwidget/LinWidgetRuntime.dll");
+    if (!QFile::exists(runtimeDll)) {
+        return;
+    }
+
+    ASSERT_TRUE(bridge.loadRuntime(runtimeDll));
+    LinWidgetDesktopCtx ctx = {};
+    ASSERT_TRUE(bridge.init(ctx));
+
+    // 默认休眠状态为 false
+    EXPECT_FALSE(bridge.isWallpaperSuspended());
+
+    // 调用挂起与唤醒
+    bridge.setWallpaperSuspended(true);
+    EXPECT_TRUE(bridge.isWallpaperSuspended());
+
+    bridge.setWallpaperSuspended(false);
+    EXPECT_FALSE(bridge.isWallpaperSuspended());
+
+    // 调节帧率 (30 FPS 节能模式 / 60 FPS 满血模式)
+    bridge.setWallpaperFramerate(30);
+    bridge.setWallpaperFramerate(60);
+
+    bridge.shutdown();
+    bridge.unloadRuntime();
+}
+
 TEST_F(RuntimeBridgeTest, RestoreFromConfigInitializesCefWithoutCrash)
 {
     auto& bridge = LinWidgetRuntimeBridge::instance();
@@ -213,4 +243,3 @@ TEST_F(RuntimeBridgeTest, RestoreFromConfigInitializesCefWithoutCrash)
     }
 #endif
 }
-

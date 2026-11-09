@@ -12,16 +12,16 @@
 #include "ui/Fluent/FluentButton.h"
 
 /**
- * @brief Formal Fluent Design Dialog with Smoke Backdrop.
- * Based on Microsoft's "ContentDialog" specification.
+ * @brief Windows 11 WinUI 3 ContentDialog implementation.
  */
 class FluentDialog : public QDialog {
     Q_OBJECT
 public:
     enum class ActionType {
-        Primary,    // Solid Accent
-        Secondary,  // White with Border
-        Close       // Transparent
+        Primary,      // Solid Win11 Accent Blue
+        Secondary,    // Neutral bordered button
+        Close,        // Neutral bordered close button
+        Destructive   // Solid Win11 Danger Red
     };
 
     struct ActionInfo {
@@ -31,7 +31,7 @@ public:
     };
 
     explicit FluentDialog(QWidget* parent = nullptr);
-    virtual ~FluentDialog();
+    ~FluentDialog() override;
 
     // Configuration
     void setDialogTitle(const QString& title);
@@ -42,21 +42,40 @@ public:
 
     // Static Helpers
     static void showInfo(QWidget* parent, const QString& title, const QString& msg);
+    static void showWarning(QWidget* parent, const QString& title, const QString& msg);
+    static bool confirm(QWidget* parent,
+                        const QString& title,
+                        const QString& msg,
+                        const QString& confirmText = QString(),
+                        const QString& cancelText = QString(),
+                        bool destructive = false);
 
 protected:
     void setupUi();
     void paintEvent(QPaintEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
-    QWidget* m_background;      // Smoke layer
-    QWidget* m_contentWidget;   // Centered Card
-    QVBoxLayout* m_mainLayout;  // Component layout
-    QHBoxLayout* m_buttonLayout; // Horizontal button row
-    
-    QLabel* m_titleLabel;
-    QLabel* m_messageLabel;
+    QWidget* hostTopWindow() const;
+    bool hasVisibleHostWindow() const;
+    void rebuildButtonLayout();
+    void syncDialogGeometry();
+
+    QWidget* m_contentWidget = nullptr;   // Centered ContentDialog card
+    QVBoxLayout* m_cardLayout = nullptr;  // Card outer layout (body + footer)
+    QVBoxLayout* m_bodyLayout = nullptr;  // Padded body layout (title, message, custom widgets)
+    QWidget* m_footerWidget = nullptr;    // Bottom #f3f3f3 command bar
+    QHBoxLayout* m_buttonLayout = nullptr;// Horizontal button row
+    QVBoxLayout* m_outerLayout = nullptr; // Top-level dialog layout
+
+    QLabel* m_titleLabel = nullptr;
+    QLabel* m_messageLabel = nullptr;
     QVector<ActionInfo> m_actions;
     bool m_keepOpenOnce = false;
+    bool m_dragging = false;
+    QPoint m_dragOffset;
 };

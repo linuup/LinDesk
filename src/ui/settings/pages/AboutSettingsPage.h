@@ -23,8 +23,12 @@ private:
     void installDownloadedUpdate();
 
 private:
+    QLabel* m_pageTitle = nullptr;
+    QLabel* m_pageSubtitle = nullptr;
     QLabel* m_aboutNameLabel = nullptr;
     QLabel* m_aboutVersionLabel = nullptr;
+    QLabel* m_updateSectionTitle = nullptr;
+    QLabel* m_updateRowTitle = nullptr;
     QLabel* m_updateStatusLabel = nullptr;
     QLabel* m_updateNotesLabel = nullptr;
     QProgressBar* m_updateProgressBar = nullptr;

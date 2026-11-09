@@ -94,42 +94,92 @@
   <div class="meta">
     <span>读者：antigravity / 开发者</span>
     <span>结构：第 2 章=已落地地基；第 3-6 章=组件体系设计；第 7 章=壁纸工坊与 Hub 中心；第 8 章=任务总表；第 9-10 章=路线与风险</span>
-    <span>更新：2026-11-01</span>
+    <span>更新：2026-11-02（重构为去 AI 化 · 纯 Web 极简架构）</span>
   </div>
 </header>
 
 <section>
   <h2>0. 实施状态总览</h2>
-  <h3>已落地（保留一句，细节见第 2 章与第 6 章）</h3>
+  <h3>已落地能力</h3>
   <ul>
-    <li><strong>运行时拆分与动态加载闭环</strong>：<code>LinWidgetRuntime.dll</code> 独立目标 + C 导出桥（LoadLibrary/卸载/门控）；<code>RuntimeInstaller</code> 安装/卸载/版本管理；设置页组件系统区入口；打包脚本 <code>scripts/package_linwidget_runtime.ps1</code>。<span class="tag keep">已落地</span></li>
-    <li><strong>CEF 四项缺口</strong>：本地资源 scheme（<code>linwidget://</code>）、console 捕获、网络权限沙箱（OnBeforeResourceLoad）、IME 组合/提交/取消——均已实现。<span class="tag keep">已落地</span>（仅 IME 候选框回调待接线，P1 可选）</li>
-    <li><strong>组件注册表与协议规范</strong>：registry.json 读写、<code>docs/LinWidget_Protocol.md</code> 定稿。<span class="tag keep">已落地</span></li>
-    <li><strong>壁纸组件 P0 与壁纸工坊/Hub 中心（第 7 章）</strong>：role=wallpaper 全屏渲染、层级、穿透、单例持久化、内置壁纸包；<strong>LinDesk Hub 独立现代化悬浮工坊窗口 (1120×720)</strong> + <strong>桌面右键与设置页双激活入口</strong> + <strong>16:9 所见即所得实时画板与桌面图标模拟浮层</strong> + <strong>对标 Wallpaper Engine 的 properties 声明式参数规范与 property_update 实时 IPC 派发</strong>。<span class="tag keep">已落地</span></li>
-    <li><strong>体验层全能力闭环（第 6 章）</strong>：<strong>组件 Ctrl+拖拽移动</strong>（ListView 拦截 + 视口防出界 + 抬起持久化 + Ctrl 单击无损转发 OSR + 壁纸/默认页不可拖拽）；<strong>双栏组件管理窗口</strong>（<code>widget_manager</code> 统一请求/响应协议 + 权限逐项开关 + 16MB 存储配额监控/清空/导出 + 累计崩溃计数与日志）；<strong>设置 UI 与 manifest.settingsSchema 自动渲染</strong>（表单控件生成 + 回写 widget.json + 广播 settings_changed，主设置页组件区动作栏与显隐联动）。<span class="tag keep">已落地</span></li>
+    <li><strong>运行时拆分与动态加载闭环</strong>：<code>LinWidgetRuntime.dll</code> 独立目标 + C 导出桥（LoadLibrary/卸载/门控）；<code>RuntimeInstaller</code> 安装/卸载/版本管理；设置页组件系统区入口。<span class="tag keep">已落地</span></li>
+    <li><strong>CEF 底座与隔离 Scheme</strong>：本地资源 scheme（<code>linwidget://</code>）实现域名级存储隔离；console 日志捕获；IME 文本输入合成。<span class="tag keep">已落地</span></li>
+    <li><strong>壁纸组件与壁纸工坊 (LinDesk Hub)</strong>：role=wallpaper 全屏渲染、层级混流、输入穿透；<strong>LinDesk Hub 独立现代化悬浮工坊窗口 (1120×720)</strong> + <strong>桌面右键与设置页双激活入口</strong> + <strong>16:9 实时画板与图标模拟浮层</strong> + <strong>声明式 properties 参数与 property_update 实时响应</strong>。<span class="tag keep">已落地</span></li>
+    <li><strong>体验层全能力闭环</strong>：<strong>组件 Ctrl+拖拽移动与边缘缩放</strong>（视口防出界、抬起持久化、网格尺寸预设）；<strong>双栏组件管理窗口</strong>；<strong>设置 UI 与 manifest 自动渲染</strong>。<span class="tag keep">已落地</span></li>
   </ul>
-  <h3>待办全景（设计细节见第 3-7 章，任务分解见第 8 章）</h3>
+  <h3>重构待办全景（按 2026-11-02 最新极简 Web 规范）</h3>
   <table>
     <colgroup><col style="width:12%"><col style="width:60%"><col style="width:28%"></colgroup>
     <tr><th>级别</th><th>任务</th><th>章节</th></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>组件包目录监听热加载 + 启动对账（清失效注册条目）</td><td>2.3 / 8.1</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>组件市场：索引 / 在线安装 / 更新（GitHub Releases）</td><td>4 / 8.1</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>作者层：示例组件仓库、校验器、诊断包导出、意图保留</td><td>3 / 8.2</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>运行层：权限申请流、system_info 订阅推送；壁纸设置 UI + 本地文件选择 + 视频性能治理</td><td>5 / 7 / 8.3 / 8.5</td></tr>
+    <tr><td><span class="tag keep">已落地实装</span></td><td>目录分流解耦（Wallpapers/ vs LinWidgets/）+ 安装器按 type 自动归档（<code>WidgetPackage::installPackage</code>）</td><td>2.2 / 8.1</td></tr>
+    <tr><td><span class="tag keep">已落地实装</span></td><td>极简三合一 <code>window.LinDesk</code> 原生能力注入（system/shell/widget/wallpaper）</td><td>3.2 / 8.1</td></tr>
+    <tr><td><span class="tag keep">已落地实装</span></td><td>创作者极客开发支持：本地文件夹热加载、右键 F12 DevTools 与 Ctrl+R 热刷新</td><td>3.1 / 8.1</td></tr>
+    <tr><td><span class="tag keep">已落地实装</span></td><td>openPath 物理级只读定位（底层硬拦截可执行程序）与目录穿越强阻断</td><td>5.1 / 8.3</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>CEF 运行时在线下载安装进度条与卸载卡片 UI 闭环</td><td>2.4 / 8.2</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><code>.lw</code> 包离线拖拽安装、校验与打包导出功能</td><td>2.2 / 8.2</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td>全屏独占 3D 游戏/应用智能免打扰休眠与 0.0% 能耗治理</td><td>5.3 / 8.3</td></tr>
   </table>
 </section>
 
 <section>
-  <h2>1. 背景与定位</h2>
-  <p>LinDesk 的差异化价值在于 HTML 组件系统：任何 HTML/CSS/JS 内容都能成为桌面组件。组件系统<strong>运行在主程序进程内（单进程）</strong>，但组件系统本体（运行时）与业务组件都<strong>不捆绑进主程序</strong>：用户经 LinDesk 安装/卸载组件系统运行时，再动态下载/放置组件包即加载。<span class="tag keep">已实现</span></p>
-  <p><strong>核心开发者是 AI 而不是人</strong>（已拍板）：SDK、TS 类型、API 文档站点等"人向"工具一律不做。平台三项职责——给 AI 清晰的规则（协议规范极简固定、示例组件可参考）、及时的反馈（校验器报错、日志/异常可导出）、产物安全兜底（权限最小化、危险代码拦截、资源限制）。</p>
-  <p class="note"><strong>视觉自由（已拍板）：</strong>不做设计令牌、不做视觉规范强制。组件长什么样由作者和用户决定，平台只管功能、安全与迭代闭环。</p>
+  <h2>1. 背景与核心定位</h2>
+  <p>LinDesk 组件平台的定位是<strong>极致轻量的桌面开放式纯 Web 容器</strong>：任何标准的 HTML/CSS/JS 页面都能无缝成为桌面小组件或动态壁纸。组件系统作为独立动态库（<code>LinWidgetRuntime.dll</code>）运行在主进程内，按需挂载，零捆绑、零冗余侵入。<span class="tag keep">已实现</span></p>
+  <p><strong>创作者画像（面向真实人类开发者）：</strong></p>
+  <ul>
+    <li><strong>零 C++ 依赖</strong>：懂 HTML/CSS/JS 的普通前端开发者即可开发，无需配置任何 C++ 编译环境或构建工具链；</li>
+    <li><strong>零多余 SDK 与私有 API</strong>：不搞复杂的专有 RPC 协议与繁重 SDK，网页数据直接用 <code>localStorage</code>，网络直接用 <code>fetch</code>，图形动画直接用 Canvas/WebGL；</li>
+    <li><strong>极简系统能力补足</strong>：宿主仅提供三合一全局对象 <code>window.LinDesk</code>，仅负责补足浏览器缺失的“硬件指标监测、安全定位文件/网页、容器控制”三类原生能力；</li>
+    <li><strong>视觉与实现 100% 自由</strong>：不设强制设计令牌或预设样式库，UI 表现完全由创作者自主决定。</li>
+  </ul>
 </section>
 
 <section>
-  <h2>2. 现状与已落地地基</h2>
-  <h3>2.1 运行时安装 / 卸载 <span class="tag keep">已落地</span></h3>
-  <p>组件系统已拆为 <code>LinWidgetRuntime.dll</code>（独立 SHARED 目标，含 WidgetManager / CEF OSR / 组件包加载器），经 <code>RuntimeInstaller</code> 安装到 <code>&lt;userData&gt;/runtime/linwidget/</code> 并 <code>LoadLibrary</code> 动态加载；主程序经 C 导出接口判空调用，<strong>未安装时无组件代码、可独立编译运行</strong>。设置页可安装/卸载/更新运行时，全程不重启主程序；<code>scripts/package_linwidget_runtime.ps1</code> 打独立包（zip + sha256 + manifest）发 GitHub Releases。</p>
+  <h2>2. 系统架构、全流程拓扑与目录存储隔离</h2>
+
+  <h3>2.0 组件系统全流程闭环拓扑与六大核心管道</h3>
+  <p>LinDesk 组件系统打通了从底层二进制装载、磁盘包分流、多层像素混流到原生能力注入与全屏休眠的完整闭环，由六大管道协同运行：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:38%"><col style="width:42%"></colgroup>
+    <thead>
+      <tr><th>核心管道</th><th>系统职责与内部机制</th><th>用户体验与交付价值</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. 运行时装载流<br>(Runtime Lifecycle)</strong></td>
+        <td>主程序与 CEF 零静态依赖；<code>LinWidgetRuntime.dll</code> 按需 <code>LoadLibrary</code>；支持在线下载进度条、离线 zip 安装、SHA-256 校验与无重启动态卸载。</td>
+        <td>未安装时 0 额外进程、0 显存占用，底座纯绿色秒开；随时安全启停与更新。</td>
+      </tr>
+      <tr>
+        <td><strong>2. 包管理与分流流<br>(Package & Routing)</strong></td>
+        <td>统一 <code>.lw</code> 格式；安装器按 <code>type</code> 自动分流解压至 <code>LinWidgets/</code>（组件）与 <code>Wallpapers/</code>（壁纸）；开发期支持明文文件夹直接放入热读取。</td>
+        <td>壁纸与组件物理级彻底解耦，彻底消灭历史混放与目录混乱。</td>
+      </tr>
+      <tr>
+        <td><strong>3. 四层图层混合流<br>(Compositing & Layers)</strong></td>
+        <td>单条 QPainter 绘制管线无窗口句柄叠加：Layer 0（系统底层）→ Layer 1（壁纸层，CEF OSR 全屏）→ Layer 2（桌面图标与 LinBox 容器）→ Layer 3（桌面小组件）→ Layer 4（交互框选与 Ctrl 手柄）。</td>
+        <td>杜绝 Windows DWM 子窗口闪烁与白屏，像素级支持 Alpha 透明通道与亚克力混流。</td>
+      </tr>
+      <tr>
+        <td><strong>4. 交互穿透与仲裁流<br>(Input Arbitration)</strong></td>
+        <td>小组件遵循「Ctrl 键宿主编排（8 方向缩放/平移/滚轮等比缩放）」与「免 Ctrl 原生交付（透明区域穿透，不透明区域点击）」；全屏壁纸与图标框选执行「6px 曼哈顿位移仲裁」。</td>
+        <td>壁纸粒子互动丝滑，桌面拉框选图标零冲突，组件内部网页按钮/输入框 100% 原生响应。</td>
+      </tr>
+      <tr>
+        <td><strong>5. 原生注入与数据流<br>(window.LinDesk)</strong></td>
+        <td>每个组件与壁纸以 <code>linwidget://&lt;id&gt;/</code> 独占 Origin，天然获得 Chromium 隔离的 <code>localStorage</code>/<code>IndexedDB</code>；宿主仅注入 <code>window.LinDesk</code>（<code>system</code> 硬件监控、<code>shell</code> 资源管理器安全定位、<code>widget</code> 容器控制、<code>wallpaper</code> 参数同步）。</td>
+        <td>普通能力直接使用原生 Web 标准；数据永不污染 LinDesk 宿主；杜绝恶意二进制拉起。</td>
+      </tr>
+      <tr>
+        <td><strong>6. 能耗治理与熔断流<br>(Suspension & Fault)</strong></td>
+        <td>前台独占运行 3D 游戏（如 CS2、赛博朋克 2077）或视频放映时，宿主检测后立即调用 <code>WasHidden(true)</code> 挂起渲染管线与媒体解码（CPU/GPU 0.0%）；前台发声自动静音；单组件 60s 内累计崩溃 3 次触发熔断保护。</td>
+        <td>绝对不抢占前台生产力与游戏算力；避免宿主陷入死循环崩溃风暴。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>2.1 运行时拆分与数据隔离红线 <span class="tag keep">已落地</span></h3>
+  <p>组件系统已完全拆分为 <code>LinWidgetRuntime.dll</code>（独立 SHARED 目标，含 WidgetManager / CEF OSR / 组件包加载器），经 <code>RuntimeInstaller</code> 安装到 <code>&lt;userData&gt;/runtime/linwidget/</code> 并 <code>LoadLibrary</code> 动态加载；主程序经 C 导出接口判空调用，<strong>未安装时无组件代码、可独立编译运行</strong>。设置页可安装/卸载/更新运行时，全程不重启主程序。</p>
   <p><strong>数据隔离三条硬约束（验收红线）</strong>：</p>
   <ol>
     <li>安装/卸载/更新<strong>只操作</strong> <code>&lt;userData&gt;/runtime/linwidget/</code> 与 config.ini 组件系统段；</li>
@@ -137,21 +187,29 @@
     <li><code>BoxManager</code> / <code>LayoutPersistenceService</code> / <code>DesktopItemLoader</code> <strong>留在主程序</strong>，不迁入运行时 DLL。</li>
   </ol>
 
-  <h3>2.2 主程序集成（现状）</h3>
-  <p>同进程单实例架构：主程序 LoadLibrary 加载 <code>LinWidgetRuntime.dll</code>；OSR 帧经 <code>LinWidgetCanvasWidget</code> 合成进桌面画布；ListView 捕获鼠标/滚轮/键盘/IME 经桥接口转发；<code>isWidgetAt / widgetAt</code> 按实例几何命中、透明区域穿透；组件包目录扫描 + manifest 校验 + registry 注册 + 实例创建/销毁；崩溃由 <code>handleBrowserCrashed</code> 自动重建（60s 内 3 次熔断）。</p>
-
-  <h3>2.3 前置地基：CEF 四项缺口 <span class="tag keep">已基本补齐</span></h3>
+  <h3>2.2 目录分流与统一 .lw 包规范（<span class="tag keep">已落地实装</span>）</h3>
+  <p>为彻底消灭“壁纸与组件混放导致开发混乱”的历史痛点，系统确立<strong>统一包格式、严格目录物理分流</strong>机制：</p>
   <ul>
-    <li><strong>本地资源 scheme</strong>：<code>linwidget://</code> + GetResourceHandler，组件内图片/字体/相对路径 JS 全可加载。<span class="tag keep">已实现</span></li>
-    <li><strong>console 捕获</strong>：OnConsoleMessage → 调试面板日志查看器。<span class="tag keep">已实现</span></li>
-    <li><strong>网络权限沙箱</strong>：OnBeforeResourceLoad 按 <code>allowNetwork()</code> 拦截 http/https/ws/wss/ftp。<span class="tag keep">已实现</span></li>
-    <li><strong>IME</strong>：组合/提交/取消已实现；<span class="tag check">待补</span> 候选框查询回调（OnIMECandidateCountToQuery，P1 可选，参考 cefclient osr_ime_handler_win.cpp）。</li>
+    <li><strong>统一归档格式</strong>：小组件与动态壁纸均使用 <code>.lw</code> 标准 zip 压缩包格式；</li>
+    <li><strong>安装器智能分流</strong>：安装器解压前读取 <code>manifest.json</code> 中的 <code>type</code> 字段：
+      <ul>
+        <li><code>type: "widget"</code> → 自动归档解压至 <code>LinWidgets/&lt;id&gt;/</code> 目录，并在桌面组件层管理；</li>
+        <li><code>type: "wallpaper"</code> → 自动归档解压至 <code>Wallpapers/&lt;id&gt;/</code> 目录，并在壁纸工坊 (LinDesk Hub) 管理；</li>
+      </ul>
+    </li>
+    <li><strong>开发期明文文件夹直读</strong>：创作者直接在 <code>LinWidgets/</code> 或 <code>Wallpapers/</code> 下新建文件夹即被识别，无需繁琐打包即可启动调试。</li>
   </ul>
-  <p class="note warn"><strong>P0 待办</strong>：组件包目录<strong>监听热加载</strong>（新增包目录即时注册、删除即时清理）+ <strong>启动对账</strong>（用户手动删包后注册表失效条目自动清理/标记不可用）。任务见 8.1。</p>
 
-  <h3>2.4 CEF 运行时端到端安装、开启与生命周期闭环流程（待办规划） <span class="tag p1">P1</span></h3>
-  <p><strong>现状痛点剖析</strong>：当前在本地开发编译时，CMake 自动将 <code>LinWidgetRuntime.dll</code> 及 CEF 二进制拷贝至 <code>&lt;appDir&gt;/runtime/linwidget/</code>，导致 <code>RuntimeInstaller::isRuntimeInstalled()</code> 始终返回 <code>true</code>，主程序在用户毫不知情下自动后台挂载 CEF 并直接弹出默认页；而在 <code>SettingUI.cpp</code> 中，底层 <code>RuntimeInstaller</code> 的在线下载与解压函数尚未接入完整的 UI 状态卡片。</p>
-  <p><strong>端到端标准用户流程设计（后续落地规范）</strong>：</p>
+  <h3>2.3 Chromium 域隔离存储机制（零私有 API） <span class="tag keep">已实现</span></h3>
+  <p>宿主注册自定义本地资源协议 <code>linwidget://</code>：</p>
+  <ul>
+    <li>每个小组件以 <code>linwidget://&lt;id&gt;/</code> 作为独立 Origin（域）；</li>
+    <li>每个动态壁纸以 <code>linwidget://wallpaper-&lt;id&gt;/</code> 作为独立 Origin；</li>
+    <li><strong>天然数据沙箱</strong>：Chromium 内核自动为每个独立域分配独立的 <code>localStorage</code>、<code>IndexedDB</code> 与 Cache 存储配额，不同组件之间、组件与壁纸之间数据物理隔离，<strong>完全不需要宿主实现任何私有存储 IPC</strong>。</li>
+  </ul>
+
+  <h3>2.4 CEF 运行时端到端安装、开启与生命周期闭环流程（待办规划 P1）</h3>
+  <p><strong>端到端标准用户流程设计</strong>：</p>
   <div class="tbl-scroll">
     <table>
       <thead>
@@ -160,7 +218,7 @@
       <tbody>
         <tr>
           <td><strong>未安装态<br>(NotInstalled)</strong></td>
-          <td>主程序绝对不初始化 CEF，0 进程，0 显存占用，前台不出现任何默认占位页，保持纯绿色零开销。</td>
+          <td>主程序绝对不初始化 CEF，0 额外进程，0 显存占用，前台不出现任何默认占位页，保持纯绿色零开销。</td>
           <td>组件设置页展示【组件系统运行时（CEF OSR）未安装】引导卡片（标注包体积约 150MB、功能介绍）；提供 <code>[一键在线安装]</code> 与 <code>[本地 zip 离线包安装]</code> 两个明确按钮。</td>
         </tr>
         <tr>
@@ -184,26 +242,99 @@
 </section>
 
 <section>
-  <h2>3. 作者层：AI 开发闭环（待办）</h2>
-  <p>AI 不需要 SDK，需要"规范 + 示例 + 校验器 + 反馈"：<strong>AI 读规范与示例 → 生成组件包 → 校验器报错 → AI 按错误修 → 安装运行 → 诊断导出再迭代</strong>。</p>
+  <h2>3. 创作者极客手册：规范与 API 速查</h2>
+  <p>LinDesk 坚持极简极客原则：不设复杂的脚手架与繁冗配置，创作者只需两张速查表即可开发出任何强大的组件或壁纸。</p>
+
+  <h3>3.1 <code>manifest.json</code> 极简规范速查表</h3>
+  <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
+{
+  "id": "my-cool-clock",                    // 唯一标识（字母、数字、连字符）
+  "name": "极简时钟",                       // 展示名称
+  "type": "widget",                         // 类别：必须为 "widget" 或 "wallpaper"
+  "version": "1.0.0",                       // 版本号
+  "author": "LinDesk Creator",              // 作者
+  "entry": "index.html",                    // 入口页面文件
+  
+  // === 以下仅 widget 可选 ===
+  "defaultSize": { "width": 360, "height": 200 },
+  "minSize": { "width": 180, "height": 100 },
+  "maxSize": { "width": 800, "height": 600 },
+  
+  // === 以下仅 wallpaper 可选 (对标 Wallpaper Engine 参数规范) ===
+  "properties": {
+    "speed": { "type": "slider", "text": "旋转速度", "min": 1, "max": 10, "value": 5 },
+    "glowColor": { "type": "color", "text": "光晕颜色", "value": "#60a5fa" }
+  }
+}
+  </pre>
+
+  <h3>3.2 <code>window.LinDesk</code> 原生系统能力速查表</h3>
+  <p>普通 Web 能力（localStorage、fetch、Canvas）直接由浏览器原生提供；宿主仅注入全局对象 <code>window.LinDesk</code>：</p>
+  <div class="tbl-scroll">
+    <table>
+      <thead>
+        <tr><th>模块</th><th>方法 / 事件</th><th>说明与参数契约</th><th>安全与约束</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="2"><strong>system</strong><br>系统硬件监控</td>
+          <td><code>LinDesk.system.getMetrics()</code></td>
+          <td>返回 <code>Promise&lt;SystemMetrics&gt;</code>，包含：<br><code>{ cpu: number, memory: { usedMB, totalMB }, battery: number, gpu: number, network: { upSpeed, downSpeed } }</code></td>
+          <td>只读数据，无特权风险</td>
+        </tr>
+        <tr>
+          <td><code>LinDesk.system.onMetrics(callback)</code></td>
+          <td>订阅硬件周期更新（标称 1 秒推送一次），返回 <code>unsubscribe</code> 取消函数。</td>
+          <td>组件被隐藏/挂起时自动暂停推送</td>
+        </tr>
+        <tr>
+          <td rowspan="2"><strong>shell</strong><br>原生定位与外链</td>
+          <td><code>LinDesk.shell.openPath(filePath)</code></td>
+          <td>在 Windows 资源管理器中打开指定目录或高亮选中文件，返回 <code>Promise&lt;boolean&gt;</code>。</td>
+          <td><strong>物理级硬拦截</strong>：禁止执行 <code>.exe/.bat/.cmd/.ps1/.vbs</code> 等二进制，杜绝恶意执行</td>
+        </tr>
+        <tr>
+          <td><code>LinDesk.shell.openUrl(url)</code></td>
+          <td>调用系统默认浏览器打开外链网页，返回 <code>Promise&lt;boolean&gt;</code>。</td>
+          <td>仅允许标准 <code>http://</code> 与 <code>https://</code> 协议</td>
+        </tr>
+        <tr>
+          <td rowspan="2"><strong>widget</strong><br>容器控制</td>
+          <td><code>LinDesk.widget.close()</code></td>
+          <td>关闭并隐藏当前小组件实例。</td>
+          <td>仅 widget 生效</td>
+        </tr>
+        <tr>
+          <td><code>LinDesk.widget.openSettings()</code></td>
+          <td>呼出 LinDesk 设置窗口并跳转至本组件管理页面。</td>
+          <td>仅 widget 生效</td>
+        </tr>
+        <tr>
+          <td><strong>wallpaper</strong><br>工坊参数联动</td>
+          <td><code>LinDesk.wallpaper.onPropertyChange(callback)</code></td>
+          <td>监听壁纸工坊 (Hub) 的实时滑块/取色器调节事件：<br><code>callback({ key: string, value: any })</code></td>
+          <td>仅 wallpaper 生效，实现所见即所得调节</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>3.3 极客本地调试工作流</h3>
   <ul>
-    <li><strong>3.1 协议规范</strong>：<span class="tag keep">已定稿</span>（<code>docs/LinWidget_Protocol.md</code>）——消息面收敛（geometry/settings/system_info/storage/实例管理/error）、snake_case、错误码 <code>OK / DENIED / INVALID</code>、每类消息带请求/响应示例、可整段放入 AI 上下文。</li>
-    <li><strong>3.2 示例组件仓库</strong>：<span class="tag p1">P1</span> GitHub 开源官方模板 + 3 个完整参考实现（Clock / Notes / Todo），兼作 AI few-shot 素材与组件索引载体。</li>
-    <li><strong>3.3 组件校验器</strong>：<span class="tag p1">P1</span>（静态部分此前已定）安装 lint（manifest 字段/权限声明/语法）+ 危险模式分级（error：eval+远程执行、远程脚本注入；warning：内联事件/超大包/未声明权限却外联）+ <strong>与权限模型联动防误伤</strong>（已声明权限的合法外联不误报）→ 输出结构化错误清单可直接回喂 AI。</li>
-    <li><strong>3.4 诊断包</strong>：<span class="tag p1">P1</span> 调试面板一键导出 manifest + 日志 + 异常 + 最近错误（只含组件自身数据），可直接粘贴给 AI 迭代。</li>
-    <li><strong>3.5 意图保留</strong>：<span class="tag p1">P1</span> manifest 记录生成意图（需求描述 + AI 引擎/版本）；出问题时"旧包 + 意图 + 新需求 + 诊断包"四件套做增量修复。</li>
-    <li><strong>3.6 生成入口</strong>：主路径 = 用户在任意 AI 工具生成 → LinDesk 校验安装（现在就用）；调试面板内"描述式生成"仅远期探索，不做承诺。</li>
+    <li><strong>纯浏览器直写</strong>：日常开发无需打开 LinDesk，直接在 Chrome/Edge 打开 <code>index.html</code> 调试样式与逻辑；</li>
+    <li><strong>零编译热加载</strong>：将开发中的代码文件夹直接放入 <code>LinWidgets/dev_xxx</code> 或 <code>Wallpapers/dev_xxx</code>，LinDesk 运行时自动加载；</li>
+    <li><strong>F12 DevTools 与热刷新</strong>：桌面右键组件/壁纸提供一键呼出 Chromium F12 开发者工具，支持按 <kbd>Ctrl</kbd>+<kbd>R</kbd> 热重载页面。</li>
   </ul>
 </section>
 
 <section>
-  <h2>4. 市场层：组件包发现与更新（待办 <span class="tag p1">P1</span>）</h2>
-  <p>复用已设计好的 GitHub 更新思路（客户端请求 Releases API + gh CLI 发布 + digest 免手算），不引入新基建。<strong>下载/校验/安装/卸载由组件运行时执行</strong>，设置页组件区提供入口与状态。</p>
+  <h2>4. 市场层：组件包发现与更新（架构设计预留 · 暂不配置启用）</h2>
+  <p><strong>当前策略说明</strong>：当前阶段坚持<strong>本地优先</strong>（Local-First），用户通过拖拽本地 <code>.lw</code> 压缩包或直接在 <code>LinWidgets/</code>、<code>Wallpapers/</code> 下放置文件夹即可使用。本章方案作为未来在线市场的轻量架构储备，暂不接入实际服务端配置。</p>
   <table>
     <colgroup><col style="width:16%"><col style="width:50%"><col style="width:34%"></colgroup>
     <tr><th>能力</th><th>设计</th><th>要点</th></tr>
-    <tr><td>组件索引</td><td>GitHub 仓库根 <code>index.json</code>：id / 名称 / 简介 / 图标 / 最新版本 / 包下载 URL</td><td>与示例组件仓库合并维护，版本号由发布流程统一管理</td></tr>
-    <tr><td>在线安装 / 卸载</td><td>拉取 index → 下载 .lw 包 → SHA-256 校验 → 解压注册；卸载仅移除代码、保留用户数据</td><td>校验失败拒绝安装并提示原因</td></tr>
+    <tr><td>组件索引</td><td>GitHub Releases 仓库根 <code>index.json</code>：id / 名称 / 简介 / 图标 / 最新版本 / 包下载 URL</td><td>无中心化服务器，完全静态托管</td></tr>
+    <tr><td>在线安装 / 卸载</td><td>拉取 index → 下载 .lw 包 → SHA-256 校验 → 自动分流解压注册；卸载仅移除代码、保留用户数据</td><td>校验失败拒绝安装并提示原因</td></tr>
     <tr><td>组件更新</td><td>对比已装版本与索引最新版，提示一键更新；更新前备份旧包可回滚</td><td>复用 UpdateChecker / compareVersions 数字语义</td></tr>
     <tr><td>离线降级</td><td>GitHub 不可达时组件照常运行，仅更新提示置灰并说明原因</td><td>不做静默失败</td></tr>
     <tr><td>来源信任</td><td>哈希校验 + 来源白名单（官方仓库固定），不做第三方索引</td><td>避免供应链风险</td></tr>
@@ -211,13 +342,93 @@
 </section>
 
 <section>
-  <h2>5. 运行层：权限、推送、生命周期、沙箱（待办）</h2>
+  <h2>5. 运行层：安全沙箱、敏感限制与生命周期休眠</h2>
+  
+  <h3>5.1 <code>openPath</code> 物理级只读定位与外链协议限制</h3>
+  <p>用户弹窗无法从根本上防止恶意操作，系统在底层对原生操作执行<strong>物理级硬限制</strong>：</p>
   <ul>
-    <li><strong>5.1 权限模型</strong>：三类为主——<code>network</code> / <code>storage</code> / <code>desktop</code>（拖放/文件/快捷键预留），可选 <code>clipboard</code>；不做存储读写分离（过度设计）；安装时最小化授予。</li>
-    <li><strong>5.2 运行时申请流</strong>：<span class="tag p1">P1</span> 首次调用未授权权限 → 主程序弹窗询问、请求挂起等待决策；拒绝后 API 返回 <code>DENIED</code>；同组件同权限记住选择，可随时撤销。</li>
-    <li><strong>5.3 订阅-推送</strong>：<span class="tag p1">P1</span> system_info 增加 subscribe/unsubscribe；1s 节流；组件挂起不推送、恢复补一帧；销毁强制清理订阅。</li>
-    <li><strong>5.4 生命周期</strong>：<span class="tag p2">P2</span> 挂起条件 = 窗口最小化/显式隐藏（不做遮挡检测）；内存压力按 LRU 卸载挂起 OSR 实例，恢复时重建 + 从 storage 恢复。</li>
-    <li><strong>5.5 沙箱</strong>：网络拦截已实现；<span class="tag p2">P2</span> CSP 随 scheme 响应注入 + 组件存储配额（16MB，超限返回 <code>INVALID</code>）。</li>
+    <li><strong>禁止任何二进制直接执行</strong>：<code>LinDesk.shell.openPath(target)</code> 在底层使用 <code>SHOpenFolderAndSelectItems</code> 或仅调用资源管理器浏览目录；<strong>凡是目标扩展名为 <code>.exe</code>、<code>.bat</code>、<code>.cmd</code>、<code>.ps1</code>、<code>.vbs</code>、<code>.msi</code>、<code>.com</code> 等可执行文件，宿主直接拒绝执行并返回 false</strong>，物理杜绝恶意组件静默唤起外部木马或病毒程序；</li>
+    <li><strong>外链协议严格白名单</strong>：<code>LinDesk.shell.openUrl(url)</code> 仅允许标准 <code>http://</code> 与 <code>https://</code> 协议，严格拦截 <code>file://</code>、<code>javascript:</code>、系统特权 URI（如 <code>ms-settings:</code>）等高危协议。</li>
+  </ul>
+
+  <h3>5.2 目录穿越防护 (Path Traversal Protection)</h3>
+  <p>在 CEF 自定义 Scheme（<code>linwidget://</code>）资源加载器中，严格对请求相对路径进行规范化解析（<code>QDir::cleanPath</code>），<strong>强行阻断包含 <code>../</code> 或绝对盘符路径的越权资源请求</strong>，严禁组件包访问包目录以外的系统敏感文件。</p>
+
+  <h3>5.3 智能功耗与休眠状态机（阶段一落地工程规范）</h3>
+  <p>成熟动态壁纸的核心生死线在于<strong>极致性能与零负担体验</strong>。桌面壁纸绝不能与前台 3D 游戏、生产力工作争抢 GPU/CPU 算力，更不能在笔记本电池模式下引发风扇狂转或异常耗电。系统构建五重状态机（<code>WallpaperPowerState</code>）与四大检测子系统协同治理：</p>
+
+  <h4>5.3.1 五重运行状态模型 (Power State Matrix)</h4>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:28%"><col style="width:26%"><col style="width:26%"></colgroup>
+    <thead>
+      <tr><th>状态枚举</th><th>触发场景与前台特征</th><th>CEF OSR 宿主控制</th><th>性能、帧率与音频表现</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong><code>RunningActive</code><br>(高刷活跃)</strong></td>
+        <td>处于桌面交互、无全屏程序遮挡、AC 交流电源供电</td>
+        <td><code>WasHidden(false)</code><br>正常分发鼠标移动与点击穿透</td>
+        <td><strong>60 FPS</strong>（依配置最高 144 FPS），GPU 满血光栅化，音频正常播放</td>
+      </tr>
+      <tr>
+        <td><strong><code>RunningThrottled</code><br>(电池节电降频)</strong></td>
+        <td>处于桌面，系统检测到正处于笔记本电池供电状态</td>
+        <td><code>WasHidden(false)</code><br>调用 <code>SetWindowlessFrameRate(30)</code></td>
+        <td><strong>强制锁定 30 FPS</strong>，削减 WebGL/Canvas 采样负担与电池消耗，音频正常</td>
+      </tr>
+      <tr>
+        <td><strong><code>SuspendedExclusive</code><br>(全屏独占挂起)</strong></td>
+        <td>前台运行独占程序（3D 游戏如 CS2/黑神话、全屏播放器、PPT 全屏放映）</td>
+        <td><code>WasHidden(true)</code><br><code>SetWindowlessFrameRate(1)</code><br>广播 <code>wallpaper_suspend</code></td>
+        <td><strong>0.0% CPU / 0.0% GPU 零开销</strong>，停止 Chromium 光栅化与 V-Sync 回调；壁纸音频立即静音暂停</td>
+      </tr>
+      <tr>
+        <td><strong><code>SuspendedOccluded</code><br>(最大化全遮挡)</strong></td>
+        <td>桌面被最大化工作窗口（如浏览器、IDE）100% 遮挡覆盖</td>
+        <td><code>WasHidden(true)</code><br>广播 <code>wallpaper_suspend</code></td>
+        <td><strong>0.0% CPU / 0.0% GPU 零开销</strong>，后台暂停无用渲染；壁纸音频静音暂停</td>
+      </tr>
+      <tr>
+        <td><strong><code>SuspendedSession</code><br>(锁屏/显示器休眠)</strong></td>
+        <td>Windows 锁屏 (Win+L) 或显示器省电黑屏进入休眠</td>
+        <td>彻底切断渲染时钟与定时器</td>
+        <td><strong>0.0% 零开销</strong>，音频彻底切断</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4>5.3.2 四大检测子系统与核心技术选型</h4>
+  <ul>
+    <li><strong>全屏与独占 3D 游戏检测 (<code>FullscreenDetector</code>)</strong>：
+      <ol>
+        <li>监听 Windows 系统的 <code>EVENT_SYSTEM_FOREGROUND</code> 钩子及 1000ms 定期低频采样 <code>GetForegroundWindow()</code>；</li>
+        <li>严格排除任务栏（<code>Shell_TrayWnd</code>）、桌面底层（<code>Progman</code>/<code>WorkerW</code>）以及 LinDesk 自身窗口；</li>
+        <li>比对窗口矩形 <code>GetWindowRect(hwnd)</code> 与主屏幕物理分辨率 <code>GetMonitorInfo()</code>，当覆盖全屏时触发判定；</li>
+        <li>辅以 Windows Shell 原生 API <code>SHQueryUserNotificationState()</code> 双重校验：当处于 <code>QUNS_RUNNING_D3D_FULL_SCREEN</code> 或 <code>QUNS_PRESENTATION_MODE</code> 时直接判定为 3D 游戏独占或演示模式。</li>
+      </ol>
+    </li>
+    <li><strong>最大化全遮挡检测 (<code>OcclusionDetector</code>)</strong>：
+      <ol>
+        <li>检测当前前台窗口是否携带 <code>WS_MAXIMIZE</code> 样式且非最小化；</li>
+        <li>计算其工作区覆盖率，当桌面已被 100% 遮挡且用户正专注前台办公时触发挂起，切回桌面时即刻 0 延迟恢复。</li>
+      </ol>
+    </li>
+    <li><strong>笔记本电池模式与电源感知 (<code>BatteryStatusMonitor</code>)</strong>：
+      <ol>
+        <li>注册主窗口 <code>WM_POWERBROADCAST</code> 消息（<code>PBT_APMPOWERSTATUSCHANGE</code>）；</li>
+        <li>调用 Win32 <code>GetSystemPowerStatus(&sps)</code>，<code>sps.ACLineStatus == 0</code> 时自动切入 <code>RunningThrottled</code>（限 30 FPS），插入电源恢复 60 FPS；</li>
+        <li>向网页下发 <code>window.LinDesk.wallpaper.onPowerStateChange({ onBattery: true, fpsLimit: 30 })</code>。</li>
+      </ol>
+    </li>
+    <li><strong>跨进程音频智能避让 (<code>AudioDuckingMonitor</code>)</strong>：
+      <ol>
+        <li>利用 Windows Core Audio API（<code>IAudioSessionManager2</code> / <code>IAudioSessionEnumerator</code>）监听扬声器活动音频会话；</li>
+        <li>排除 LinDesk 进程自身的 PID；当检测到第三方媒体（网易云、QQ音乐、B站视频、游戏）正在发声时，壁纸视频音量以 300ms 缓动平滑淡出至 0；</li>
+        <li>第三方音频停止 2 秒后，壁纸音量无缝淡入恢复，彻底消除音频打架痛点。</li>
+      </ol>
+    </li>
   </ul>
 </section>
 
@@ -316,34 +527,44 @@
 +-------------------------------------------------------------------------------------------------+
   </pre>
 
-  <h3>7.2 壁纸工坊 (Wallpaper Studio)：所见即所得编辑器</h3>
-  <p>终端用户拥有强烈的零代码个性化诉求（更换 4K 大图、参数微调或 MP4/WebM 视频）。壁纸工坊提供全流程可视化调节：</p>
+  <h3>7.2 壁纸组件的使用规范 (Usage Experience)</h3>
+  <p>壁纸作为桌面沉浸感基座，在体验设计上严格保障视觉美感与免打扰人机工学：</p>
   <ul>
-    <li><strong>16:9 实时画板预览 (StudioPreviewCanvas)</strong>：以 16:9 黄金比例等比还原现代高清/4K 屏幕视口，画布内运行真实的粒子引力仿真与动态渲染循环；</li>
-    <li><strong>桌面图标模拟浮层 (Desktop Icons Mock Overlay)</strong>：首创在画板上叠加半透明真实桌面图标排布网格与文本标签，用户可一键开启/关闭，肉眼直观验证动态背景在复杂光影下是否会导致桌面图标文字不可辨识；</li>
-    <li><strong>文字保护与易读性滤镜</strong>：
+    <li><strong>16:9 实时工坊画板 (StudioPreviewCanvas)</strong>：以 16:9 黄金比例等比还原现代高清/4K 屏幕视口，画布内运行真实的粒子仿真循环；</li>
+    <li><strong>桌面图标模拟浮层 (Desktop Icons Mock Overlay)</strong>：在画板上叠加半透明真实桌面图标排布网格与文本标签，直观验证动态背景在复杂光影下是否会导致桌面图标文字不可辨识；</li>
+    <li><strong>智能免打扰音频策略</strong>：
       <ul>
-        <li><strong>遮罩暗化 (Dimming Mask 0%~80%)</strong>：无级调节半透明黑色遮罩，压制背景高亮区域；</li>
-        <li><strong>毛玻璃高斯模糊 (Backdrop Blur 0~20px)</strong>：虚化壁纸高频噪点与复杂几何边缘，凸显前景桌面图标；</li>
+        <li><strong>动态静音仲裁</strong>：当检测到前台任何其他应用程序（如播放器、网页视频、游戏、会议软件）有音频输出时，壁纸自动瞬时静音；</li>
+        <li><strong>非桌面态绝对静音</strong>：离开桌面、最小化或处于锁屏状态时，绝对禁止发出声音；</li>
+        <li><strong>工坊全局音量控制</strong>：支持 0%~100% 无级调节音量与一键静音快捷开关；</li>
       </ul>
     </li>
-    <li><strong>物理交互与音频控制</strong>：鼠标引力/粒子扰动实时开关、背景音量调节 (0~100%) 与全屏独占暂停。</li>
+    <li><strong>桌面鼠标交互协同（6px 曼哈顿位移仲裁）</strong>：
+      <ul>
+        <li><strong>纯视频/被动壁纸（<code>interactive: false</code>）</strong>：鼠标事件 100% 无损穿透给桌面图标层；</li>
+        <li><strong>粒子/互动壁纸（<code>interactive: true</code>）</strong>：鼠标微动（位移 &lt; 6px）交付壁纸接收粒子引力扰动；一旦鼠标拖拽位移 ≥ 6px，宿主立即抢占并仲裁为原生桌面多选框选（<code>SelectArea</code>），彻底根除“选图标与玩壁纸冲突”的缺陷。</li>
+      </ul>
+    </li>
   </ul>
 
-  <h3>7.3 开发者声明式参数规范（对标 Wallpaper Engine 标准）</h3>
-  <p>为彻底摆脱为每款壁纸手写专属设置窗口的低效繁琐，LinDesk 规范基座与壁纸作者的职责分界：<strong>壁纸作者仅需在 manifest.json 中以 JSON Schema 声明参数，基座工坊自动动态生成界面控件，并经 IPC 实时向网页广播更新。</strong></p>
-
-  <h4>1. manifest.json 声明式定义语法</h4>
+  <h3>7.3 壁纸组件的开发规范 (Development Guide)</h3>
+  <p>创作者仅需关注纯 Web 标准技术（HTML5/Canvas/WebGL），免去编写私有 C++ 扩展：</p>
+  <ul>
+    <li><strong>目录与正交包规范</strong>：物理独立存放于 <code>Wallpapers/&lt;id&gt;/</code> 目录，统一归档为 <code>.lw</code> 格式；采用 <code>wallpaperType</code>（媒介："web" | "video" | "picture"）与 <code>interactive</code>（交互布尔：true | false）正交模型，开发者声明基准能力，工坊负责筛选与开关；</li>
+    <li><strong>声明式参数规范（对标 Wallpaper Engine 标准）</strong>：创作者在 <code>manifest.json</code> 的 <code>properties</code> 中声明可调节项，工坊自动动态生成 Fluent 调节控件：</li>
+  </ul>
   <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
 {
   "id": "lindesk.wallpaper.gargantua",
-  "name": "Gargantua Relativistic Black Hole",
-  "role": "wallpaper",
+  "name": "卡冈图雅引力黑洞",
+  "type": "wallpaper",
+  "wallpaperType": "web",
+  "interactive": true,
   "entry": "index.html",
   "properties": {
     "particleCount": {
       "type": "slider",
-      "text": "吸积盘粒子密度 (Particle Density)",
+      "text": "吸积盘粒子密度",
       "min": 100,
       "max": 1200,
       "step": 50,
@@ -351,70 +572,62 @@
     },
     "rotationSpeed": {
       "type": "slider",
-      "text": "相对论旋转角速度 (Relativistic Spin)",
+      "text": "旋转角速度",
       "min": 1,
       "max": 10,
-      "step": 1,
       "value": 4
     },
-    "lensingGlowColor": {
+    "lensingColor": {
       "type": "color",
-      "text": "引力透镜光晕色调 (Gravitational Lensing Hue)",
+      "text": "引力光晕色彩",
       "value": "#fdba74"
-    },
-    "enableDopplerBeaming": {
-      "type": "boolean",
-      "text": "多普勒射束相对论增亮 (Doppler Beaming)",
-      "value": true
     },
     "colorScheme": {
       "type": "select",
-      "text": "星际色谱风格 (Cosmic Palette)",
+      "text": "色谱风格",
       "options": [
-        { "label": "经典黑洞黄昏 (Interstellar Amber)", "value": "amber" },
-        { "label": "超大质量蓝巨星 (Supermassive Blue)", "value": "blue" },
-        { "label": "量子引力奇点 (Quantum Violet)", "value": "violet" }
+        { "label": "经典黑洞黄昏", "value": "amber" },
+        { "label": "超大质量蓝巨星", "value": "blue" }
       ],
       "value": "amber"
     }
   }
 }
   </pre>
-
-  <h4>2. 运行时 IPC 信令契约 (property_update)</h4>
-  <p>用户在工坊中拖动滑块或挑选颜色时，工坊向当前运行的壁纸网页即时发送如下信令：</p>
+  
+  <h4>参数实时监听与媒体加载</h4>
+  <p>前端通过 <code>window.LinDesk.wallpaper.onPropertyChange</code> 监听工坊参数调节，无需重载页面：</p>
   <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
-// 宿主 -> 网页 OSR 窗口派发
-{
-  "type": "property_update",
-  "key": "particleCount",
-  "value": 600,
-  "timestamp": 1730452800120
-}
-  </pre>
-
-  <h4>3. 壁纸前端 JavaScript 极简监听模板</h4>
-  <pre style="background:var(--code-bg);border:1px solid var(--line-soft);border-radius:4px;padding:12px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;overflow-x:auto;">
-window.addEventListener('message', function (e) {
-  const data = e.data || {};
-  if (data.type === 'property_update') {
-    switch (data.key) {
-      case 'particleCount':
-        updateParticleCount(data.value);
-        break;
-      case 'rotationSpeed':
-        engine.spinVelocity = data.value * 0.005;
-        break;
-      case 'lensingGlowColor':
-        engine.glowColor = data.value;
-        break;
-      case 'colorScheme':
-        engine.switchPalette(data.value);
-        break;
-    }
+window.LinDesk.wallpaper.onPropertyChange(function (prop) {
+  switch (prop.key) {
+    case 'particleCount':
+      engine.setParticleDensity(prop.value);
+      break;
+    case 'lensingColor':
+      engine.setGlowColor(prop.value);
+      break;
+    case 'colorScheme':
+      engine.switchPalette(prop.value);
+      break;
   }
 });
   </pre>
+  <p><strong>视频与音频大文件加载约定</strong>：</p>
+  <ul>
+    <li><strong>包内内置视频</strong>：使用相对路径直接引用 <code>&lt;video src="background.mp4" autoplay loop muted&gt;</code>；</li>
+    <li><strong>用户导入本地大视频</strong>：通过专用流式协议 <code>linwidget://media?path=&lt;urlEncodedAbsolutePath&gt;</code> 加载，既突破浏览器安全沙箱限制，又不膨胀壁纸代码包体积。</li>
+  </ul>
+
+  <h3>7.4 壁纸组件的限制体系 (Hard Restrictions)</h3>
+  <div class="note" style="border-left-color:var(--danger);background:#fff5f5;">
+    <strong>三重硬限制红线</strong>：为保障系统绝对稳定与游戏极致帧率，宿主对壁纸执行底层物理约束：
+  </div>
+  <ul>
+    <li><strong>API 隔离红线</strong>：壁纸运行沙箱中<strong>严格禁用 <code>LinDesk.widget</code> 容器操作（如 <code>close()</code>、<code>openSettings()</code>）</strong>，防止壁纸误调导致桌面背景异常黑屏；壁纸仅允许调用 <code>LinDesk.system</code> 查询硬件与 <code>LinDesk.wallpaper</code> 监听参数；</li>
+    <li><strong>渲染帧率强制锁 (60FPS / 30FPS)</strong>：宿主对 CEF OSR 离屏渲染强制执行 60FPS（或省电模式 30FPS）帧率锁，严禁 WebGL/Shader 无限制跑满 GPU 造成笔记本发热降频；</li>
+    <li><strong>全屏独占智能休眠 (0.0% CPU/GPU)</strong>：当前台启动独占全屏 3D 游戏（如 CS2、赛博朋克 2077）、全屏播放视频或 PPT 演示时，宿主检测后立即调用 <code>WasHidden(true)</code> 暂停渲染管线与媒体解码，使壁纸算力开销归零；退回桌面时瞬时唤醒恢复首帧呈现；</li>
+    <li><strong>文件与进程硬拦截</strong>：禁止任何 <code>../../</code> 目录穿越请求；<code>openPath</code> 物理阻断一切可执行二进制程序启动。</li>
+  </ul>
 
   <h3>7.4 双级激活入口落地</h3>
   <div class="tbl-scroll">
@@ -442,40 +655,39 @@ window.addEventListener('message', function (e) {
     <li><strong>硬件与实例监控看板</strong>：实时跟踪 CEF OSR 进程 PID、离屏渲染 FPS（标称 60FPS 节流）、专用显存占用与内存物理工作集；</li>
     <li><strong>IPC 消息总线审查器</strong>：可视化监视 <code>linwidget://bridge/postMessage</code> 消息日志，展示信令名称、载荷 JSON、延迟毫秒数与响应状态码；</li>
     <li><strong>Chromium DevTools (F12)</strong>：一键唤起真实 Chromium 开发者控制台或开启 <code>http://localhost:9222</code> 远程断点调试通道；</li>
-    <li><strong>一键导出脱敏诊断包</strong>：自动汇总环境拓扑、注册表快照、CEF 崩溃日志与 IPC 交互追踪，供 AI 或开发者直接定位故障。</li>
+    <li><strong>一键导出运行诊断日志</strong>：自动汇总环境拓扑、注册表快照、CEF 崩溃日志与运行报错追踪，供开发者快速定位故障。</li>
   </ul>
 </section>
 
 <section>
-  <h2>8. 任务总表（给 antigravity 排期）</h2>
-  <p>级别：<span class="tag p0">P0</span> 必须 → <span class="tag p1">P1</span> 平台化 → <span class="tag p2">P2</span> 体验完善 → <span class="tag p3">P3</span> 扩展探索。已完成项（运行时拆分、CEF 缺口、壁纸 P0）见第 2 章，不列入本表。设计细节按「章节」列索引，表格只做排期与指路。</p>
+  <h2>8. 任务总表（2026-11-02 极简落地排期）</h2>
+  <p>级别：<span class="tag p0">P0</span> 核心地基 → <span class="tag p1">P1</span> 安装与生态闭环 → <span class="tag p2">P2</span> 安全与性能治理。设计细节按「章节」列索引，表格统一与 <code>LinDesk_Todo.html</code> 保持单一真实来源。</p>
 
-  <h3>8.1 组件包加载与市场（设计：2.3 / 4）</h3>
+  <h3>8.1 核心地基（P0 <span class="tag keep">已全量落地实装</span>）</h3>
   <table>
     <colgroup><col style="width:30%"><col style="width:44%"><col style="width:12%"><col style="width:14%"></colgroup>
     <tr><th>文件 / 位置</th><th>任务</th><th>级别</th><th>章节</th></tr>
-    <tr><td>组件包加载器（目录监听 + 启动对账）</td><td>新增包目录即时注册可启动；删除即时清理；启动时对账，失效注册条目自动清理/标记不可用</td><td><span class="tag p0">P0</span></td><td>2.3</td></tr>
-    <tr><td><code>linwidget/WidgetMarket.cpp</code>（新增）</td><td>组件市场：index.json 拉取 / SHA-256 校验 / 解压注册 / 版本对比（复用 UpdateChecker / compareVersions）；离线降级</td><td><span class="tag p1">P1</span></td><td>4</td></tr>
+    <tr><td><code>WidgetPackage.cpp</code></td><td><strong>目录与包规范分流解耦</strong>：统一 .lw 包规范；安装器（<code>WidgetPackage::installPackage</code>）按 manifest 中的 <code>type: "widget"|"wallpaper"</code>（兼容旧 role）自动分流解压归档至专属目录 <code>LinWidgets/</code> 与 <code>LinWallpapers/</code>，切断混放混乱</td><td><span class="tag keep">已落地</span></td><td>2.2</td></tr>
+    <tr><td><code>CefOsrBrowserInstance.cpp</code> / 运行时桥</td><td><strong>极简三合一 <code>window.LinDesk</code> 原生注入</strong>：摒弃冗余的 API 包装与版本号心智负担；仅注入 <code>system</code>（硬件指标）、<code>shell</code>（安全定位与外链）、<code>widget</code>（容器控制）与 <code>wallpaper</code>（工坊调节）</td><td><span class="tag keep">已落地</span></td><td>3.2</td></tr>
+    <tr><td><code>ListView.cpp</code> / 调试菜单</td><td><strong>创作者极客工作流与热重载</strong>：支持明文文件夹直接放入加载；提供桌面右键一键呼出 Chromium F12 DevTools 与 <kbd>Ctrl</kbd>+<kbd>R</kbd> 热重载刷新</td><td><span class="tag keep">已落地</span></td><td>3.3</td></tr>
   </table>
 
-  <h3>8.2 作者层（AI 开发闭环，设计：第 3 章）</h3>
+  <h3>8.2 安装与生态闭环（P1）</h3>
   <table>
     <colgroup><col style="width:30%"><col style="width:44%"><col style="width:12%"><col style="width:14%"></colgroup>
     <tr><th>文件 / 位置</th><th>任务</th><th>级别</th><th>章节</th></tr>
-    <tr><td>GitHub 示例组件仓库（Clock / Notes / Todo + 模板）</td><td>官方参考实现 + 组件索引承载，AI few-shot 素材</td><td><span class="tag p1">P1</span></td><td>3.2</td></tr>
-    <tr><td><code>linwidget/WidgetValidator.cpp</code>（新增）</td><td>安装 lint + 危险模式分级扫描 + 与权限模型联动（防误伤合法外联）</td><td><span class="tag p1">P1</span></td><td>3.3</td></tr>
-    <tr><td>调试面板诊断包导出</td><td>manifest + 运行日志 + 异常 + 最近错误一键导出（脱敏），可直接喂 AI</td><td><span class="tag p1">P1</span></td><td>3.4</td></tr>
-    <tr><td>manifest 意图字段 + 增量修复流程</td><td>记录生成意图；"旧包 + 意图 + 新需求 + 诊断包"四件套闭环</td><td><span class="tag p1">P1</span></td><td>3.5</td></tr>
+    <tr><td><code>RuntimeInstaller.cpp</code> & <code>SettingUI.cpp</code></td><td><strong>CEF 运行时安装/卸载 UI 闭环</strong>：未安装引导卡片 + 在线流式下载进度条 + SHA-256 校验 + 本地 zip 离线安装 + 安全卸载二次确认</td><td><span class="tag p1">P1</span></td><td>2.4</td></tr>
+    <tr><td>组件管理与壁纸工坊窗口</td><td><strong><code>.lw</code> 离线包拖拽安装与一键打包导出</strong>：支持将当前编辑或调试的文件夹一键归档为 <code>.lw</code> 分享包</td><td><span class="tag p1">P1</span></td><td>2.2</td></tr>
+    <tr><td><code>WallpaperStudioWindow.cpp</code></td><td><strong>壁纸工坊可视化编辑器持续完善</strong>：本地图片/视频拖拽导入、Cover/Contain 裁剪、视频声音与速率调节、图标易读性毛玻璃与遮罩暗度滤镜</td><td><span class="tag p1">P1</span></td><td>7.2</td></tr>
   </table>
 
-  <h3>8.3 运行层（设计：第 5 章）</h3>
+  <h3>8.3 安全与性能治理（P2）</h3>
   <table>
     <colgroup><col style="width:30%"><col style="width:44%"><col style="width:12%"><col style="width:14%"></colgroup>
     <tr><th>文件 / 位置</th><th>任务</th><th>级别</th><th>章节</th></tr>
-    <tr><td>PermissionManager（申请流）</td><td>首次调用弹窗询问、挂起等待、拒绝返回 DENIED、记住选择、可撤销</td><td><span class="tag p1">P1</span></td><td>5.2</td></tr>
-    <tr><td>system_info 订阅-推送</td><td>subscribe/unsubscribe、1s 节流、挂起不推送、销毁强制清理</td><td><span class="tag p1">P1</span></td><td>5.3</td></tr>
-    <tr><td>生命周期（OSR WasHidden + LRU）</td><td>最小化/隐藏暂停帧；内存压力按 LRU 卸载挂起实例并恢复</td><td><span class="tag p2">P2</span></td><td>5.4</td></tr>
-    <tr><td>沙箱收尾（CSP + 配额）</td><td>CSP 随 scheme 注入；组件存储上限 16MB，超限返回 INVALID</td><td><span class="tag p2">P2</span></td><td>5.5</td></tr>
+    <tr><td><code>WidgetManager.cpp</code></td><td><strong><code>openPath</code> 物理级硬拦截</strong>：严格限制为资源管理器定位与浏览，底层物理黑名单硬拦截 <code>.exe/.bat/.cmd/.ps1/.vbs/.msi</code> 等二进制可执行文件；<code>openUrl</code> 严格限制仅允许 http/https</td><td><span class="tag keep">已落地</span></td><td>5.1</td></tr>
+    <tr><td><code>CefOsrBrowserInstance.cpp</code></td><td><strong>目录穿越防护</strong>：在 <code>linwidget://</code> 本地 Scheme 资源加载器中基于规范化前缀严格阻断包含 <code>../../</code> 穿越路径的越权资源请求</td><td><span class="tag keep">已落地</span></td><td>5.2</td></tr>
+    <tr><td><code>ListView.cpp</code> / 运行时桥</td><td><strong>全屏独占免打扰与智能休眠</strong>：检测前台独占 3D 游戏/视频播放时自动暂停 OSR 渲染（0.0% CPU/GPU 占用）</td><td><span class="tag p2">P2</span></td><td>5.3</td></tr>
   </table>
 
   <h3>8.4 体验层（设计：第 6 章 <span class="tag keep">已落地</span>）</h3>
@@ -485,7 +697,6 @@ window.addEventListener('message', function (e) {
     <tr><td><code>ListView.cpp</code>（鼠标事件）+ 运行时桥</td><td><strong>组件 Ctrl+拖拽移动</strong>：命中 + Ctrl → 移动模式（不转发 OSR）→ 实时更新 geometry（桥导出 get/set_widget_geometry，复用 moveWidget）→ 抬起持久化；Ctrl+点击仍转发；壁纸/默认页不可拖</td><td><span class="tag keep">已落地</span></td><td>6.1</td></tr>
     <tr><td>设置页组件区完善</td><td>组件列表 + [下载组件] + [检查更新] + [卸载] + [打开组件管理]；入口按运行时/组件显隐</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
     <tr><td>组件管理窗口</td><td>两栏窗口 + 权限开关 / 数据管理 / 运行状态 / 重启 / 日志；消息走 widget_manager 收敛类型</td><td><span class="tag keep">已落地</span></td><td>6.2</td></tr>
-    <tr><td>SettingUI 运行时完整安装/卸载/状态机 UI 对接</td><td>未安装引导卡片 + 在线流式下载进度条 + SHA-256 校验 + 本地 zip 离线安装 + 安全卸载确认弹窗</td><td><span class="tag p1">P1</span></td><td>2.4</td></tr>
     <tr><td>settings schema 渲染</td><td>manifest settingsSchema → 自动渲染设置对话框；与 settings.html 并存</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
   </table>
 
@@ -497,8 +708,6 @@ window.addEventListener('message', function (e) {
     <tr><td><code>src/desktop/RightMenu.cpp</code> & <code>DesktopSettingsPage.cpp</code></td><td><strong>双级激活入口</strong>：桌面右键菜单 <code>🎨 动态壁纸与工坊...</code> + 设置中心直达大卡片</td><td><span class="tag keep">已落地</span></td><td>7.4</td></tr>
     <tr><td><code>src/resources/LinWidgets/LinDeskHub/</code></td><td><strong>Web SPA 独立包模板</strong>：manifest.json + index.html，可在独立 CEF 窗口中作为现代单页应用加载</td><td><span class="tag keep">已落地</span></td><td>7.1</td></tr>
     <tr><td><code>manifest.json</code> properties 声明式规范</td><td>对标 Wallpaper Engine 标准，支持 slider/color/boolean/select 动态生成控件与 property_update 实时 IPC</td><td><span class="tag keep">已落地</span></td><td>7.3</td></tr>
-    <tr><td>视频性能治理（帧率控制 + 最小化挂起）</td><td>wallpaper_set_source/get_source、内容帧率节流、全屏独占暂停</td><td><span class="tag p1">P1</span></td><td>7.3</td></tr>
-    <tr><td>在线 URL 壁纸 / 多屏多壁纸</td><td>network 权限验证；多屏（可选）</td><td><span class="tag p2">P2</span></td><td>7</td></tr>
   </table>
 </section>
 
@@ -507,14 +716,12 @@ window.addEventListener('message', function (e) {
   <table>
     <colgroup><col style="width:8%"><col style="width:42%"><col style="width:50%"></colgroup>
     <tr><th>级别</th><th>内容</th><th>验收要点</th></tr>
-    <tr><td><span class="tag p0">P0</span></td><td>运行时拆分/安装/卸载、CEF 缺口、壁纸 P0、组件目录扫描注册 <span class="tag keep">已落地</span>；<strong>目录监听热加载 + 启动对账</strong> 待补</td><td>组件包目录增删即时生效；注册表无失效条目</td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td><strong>第 8.1 节核心地基</strong>：统一 .lw 包规范与目录分流（Wallpapers/ vs LinWidgets/）；三合一 window.LinDesk 极简原生能力注入；极客本地明文热重载与 F12 调试支持</td><td>组件与壁纸物理解耦且安装分流准确；window.LinDesk 接口可用且无冗余 IPC 报错；文件夹修改保存按 Ctrl+R 瞬时刷新</td></tr>
     <tr><td><span class="tag keep">已落地</span></td><td><strong>第 6 章体验层全闭环</strong>：组件 Ctrl+拖拽移动、组件管理窗口（双栏）、设置页组件区动作完善、manifest.settingsSchema 自动渲染</td><td>按住 Ctrl 拖动组件到任意位置且重启恢复；双栏管理窗口权限/数据/运行状态闭环；settingsSchema 自动生成表单并即时生效</td></tr>
     <tr><td><span class="tag keep">已落地</span></td><td><strong>第 7 章壁纸工坊 (Wallpaper Studio) 与 LinDesk Hub</strong>：1120×720 Fluent 悬浮独立大窗口、双级激活入口（桌面右键+设置卡片）、16:9 实时画板、桌面图标浮层、声明式 properties 规范与 property_update IPC 闭环</td><td>桌面右键一键呼出工坊；16:9 画布实时动画与图标透视；支持声明式参数动态生成与壁纸启停</td></tr>
-    <tr><td><span class="tag p1">P1</span></td><td>组件市场 + 作者层（示例仓库/校验器/诊断包/意图保留）+ 权限申请流与订阅推送</td><td>在线装/卸/更新组件全流程可用；诊断包可直接喂 AI 完成增量修复</td></tr>
-    <tr><td><span class="tag p2">P2</span></td><td>生命周期挂起/恢复 + 沙箱收尾</td><td>全新机器"装主程序 → 安装组件系统 → 下载组件包 → 启用 → 卸载"全流程可用；最小化后组件帧暂停</td></tr>
-    <tr><td><span class="tag p3">P3</span></td><td>组件间通信 + 桌面集成扩展点（拖放/文件/快捷键）</td><td>组件间通信按来源隔离并需用户授权</td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td><strong>第 8.2 节安装与生态闭环</strong>：CEF 运行时在线安装/卸载 UI 卡片；.lw 离线拖拽安装与打包导出；壁纸工坊体验打磨</td><td>无 CEF 用户直观看到引导安装进度条；.lw 包拖拽即装即用</td></tr>
+    <tr><td><span class="tag p2">P2</span></td><td><strong>第 8.3 节安全与性能治理</strong>：openPath 物理级二进制拦截、目录穿越防护、前台独占全屏智能休眠 (0.0% CPU/GPU)</td><td>恶意 .exe 无法被拉起；前台全屏游戏时壁纸与组件自动挂起</td></tr>
   </table>
-  <p class="note"><strong>依赖顺序</strong>：Ctrl+拖拽依赖桥层新增 geometry 导出（get/set）与组件管理窗口需要的管理查询接口已全部落地；组件市场依赖 scheme（已实现，见 2.3）；校验器与权限申请流互相独立，可并行；壁纸设置 UI 依赖组件管理窗口（或先做独立入口）。</p>
 </section>
 
 <section>
@@ -524,17 +731,13 @@ window.addEventListener('message', function (e) {
     <li><strong>DLL 加载 / CEF 初始化失败</strong>：版本不匹配、杀软拦截、缺 VC 运行库——安装流程显式报错（原因 + 建议），不做静默失败。</li>
     <li><strong>运行时更新中断</strong>：解压先落临时目录 + 原子 move，旧包 <code>.old</code> 备份，加载失败自动回滚。</li>
     <li><strong>卸载数据语义</strong>：卸载组件系统不删组件包/组件数据/壁纸配置，重新安装自动恢复；确认弹窗写明该语义。</li>
-    <li><strong>校验器规则质量</strong>：与权限模型的联动判定是防误伤关键，随真实组件反馈迭代，起步宁严勿松（error 集小、warning 集大）。</li>
-    <li><strong>GitHub 可达性</strong>：运行时安装与组件索引/更新依赖网络；离线降级随市场层一同交付；运行时已装后离线不影响组件使用。</li>
-    <li><strong>协议冻结</strong>：协议定稿后新增消息类型需评审，防止膨胀稀释 AI 生成正确率。</li>
-    <li><strong>组件包目录一致性</strong>：用户手动删/换包目录可能致注册表残留——启动对账自动清理（P0 待办）。</li>
-    <li><strong>崩溃风暴</strong>：组件实例反复崩溃 → 60s 内 3 次熔断 + 用户提示；crash-dumps-dir 日志辅助定位。</li>
-    <li><strong>AI 生成质量下限</strong>：由校验器 + 沙箱兜底，不承诺"生成即正确"；坏组件安装前被拦、运行中被治理。</li>
+    <li><strong>开源组件安全性兜底</strong>：虽然开放普通 Web 运行，但通过 <code>openPath</code> 物理拦截二进制执行与目录穿越阻断，从操作系统物理层杜绝恶意提权与病毒运行风险。</li>
+    <li><strong>崩溃风暴熔断</strong>：若某组件实例反复崩溃（如 60s 内连续 3 次），宿主自动熔断停用该实例并向用户弹出排查建议，防止拖垮整个桌面宿主。</li>
   </ul>
 </section>
 
 <footer class="doc-foot">
-  组件系统方案：P0 地基（运行时拆分/安装卸载、CEF 缺口、壁纸 P0）与<strong>第 6 章体验层（组件 Ctrl+拖拽移动、双栏组件管理窗口、settingsSchema 自动渲染与设置页联动）</strong>已全部落地验收。剩余待办集中在组件市场与作者层（P1）、生命周期治理（P2）。完成一项更新一项。
+  组件系统方案：以普通前端开发者友好为核心，实现纯 Web 极简架构与严格物理隔离。P0 核心地基（包与目录解耦、window.LinDesk 注入、创作者本地热重载）全面推进中。
 </footer>
 
 </div>

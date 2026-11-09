@@ -185,34 +185,34 @@
   </table>
   </div>
 
-  <h4>3.2.1 desktop/widgets/linwidget —— LinWidget 桌面小组件系统</h4>
-  <p>桌面小组件（Widget）与动态壁纸的运行时：组件包加载、组件运行时（当前主渲染为 CEF OSR，WebView2 运行时待移除）、配置/布局/权限管理。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>。</p>
+  <h4>3.2.1 desktop/widgets/linwidget —— LinWidget 桌面小组件与动态壁纸运行时</h4>
+  <p>桌面小组件（Widget）与动态壁纸系统的业务核心：统一包管理与分流安装、配置/布局/权限持久化、系统级原生能力总控与安全硬拦截。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a> 与 <a href="LinDesk_Widget_Platform_Plan.html">组件平台方案</a>。</p>
   <div class="tbl-scroll">
   <table>
     <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
     <tr><th>关键类</th><th>职责</th></tr>
-    <tr><td><code>WidgetManager</code></td><td>组件总控：启动组件、动态壁纸（startWallpaper）、配置读写、层级同步</td></tr>
-    <tr><td><code>LinWidgetWebViewRuntime</code></td><td>小组件的 WebView 运行时（待移除，当前主渲染为 CEF）</td></tr>
-    <tr><td><code>LinWallpaperWebViewRuntime</code></td><td>动态壁纸的 WebView 运行时（CEF 无替代，去留待决策）</td></tr>
-    <tr><td><code>WidgetPackage</code></td><td>组件包（描述、资源）</td></tr>
-    <tr><td><code>ConfigManager</code> / <code>LayoutManager</code> / <code>PermissionManager</code></td><td>组件配置、布局与权限管理</td></tr>
-    <tr><td><code>WidgetRegistryManager</code></td><td>组件注册表管理</td></tr>
-    <tr><td><code>WidgetSettingsDialog</code></td><td>组件设置对话框</td></tr>
-    <tr><td><code>WidgetMessageTypes</code> / <code>LinWidgetTypes</code></td><td>组件消息与类型定义</td></tr>
-    <tr><td><code>LinWidgetProjectTools</code></td><td>组件开发辅助工具</td></tr>
+    <tr><td><code>WidgetManager</code></td><td>组件系统总控：组件生命周期（启动/停止/重启/多实例）、动态壁纸单例管控与全屏视口自适应、系统原生桥接消息处理（<code>shell_open_path</code> 物理级可执行文件硬拦截、<code>shell_open_url</code> 协议校验、<code>close_widget</code> 壁纸沙箱防误关）、壁纸工坊属性实时派发（<code>wallpaper_set_property</code>）</td></tr>
+    <tr><td><code>WidgetPackage</code></td><td>统一包规范与物理分流安装器：<code>manifest.json</code> 加载校验、<code>.lw</code> 压缩包安全解压与文件夹安装（<code>installPackage</code>）、依据 <code>type: "widget" | "wallpaper"</code> 物理分流归档至 <code>LinWidgets/&lt;id&gt;</code> 或 <code>LinWallpapers/&lt;id&gt;</code></td></tr>
+    <tr><td><code>LinWidgetTypes</code></td><td>2.0 规范核心类型定义：支持 <code>type: "widget" | "wallpaper"</code> 与旧 <code>role</code> 双向兼容；壁纸正交元数据 <code>wallpaperType: "web" | "video" | "picture"</code> 与 <code>interactive: true | false</code>；Manifest 序列化与校验</td></tr>
+    <tr><td><code>WidgetRegistryManager</code></td><td>注册表与热目录同步：扫描 <code>LinWidgets/</code> 与 <code>LinWallpapers/</code> 目录、明文项目即时加载与持久化同步</td></tr>
+    <tr><td><code>ConfigManager</code> / <code>LayoutManager</code> / <code>PermissionManager</code></td><td>组件配置序列化、桌面空间布局与四项权限（网络/存储/桌面/音频）校验</td></tr>
+    <tr><td><code>WidgetSettingsDialog</code></td><td>组件设置对话框与声明式 schema 动态表单生成</td></tr>
+    <tr><td><code>WidgetMessageTypes</code></td><td>标准化轻量级 IPC 信封格式（<code>WidgetEnvelope</code>）与错误码常量</td></tr>
+    <tr><td><code>LinWidgetProjectTools</code></td><td>组件开发辅助工具：模板工程脚手架与目录打包</td></tr>
   </table>
   </div>
 
-  <h4>3.2.2 desktop/widgets/cef —— CEF OSR 渲染集成</h4>
-  <p>基于 Chromium Embedded Framework 的离屏渲染（OSR）集成，为 LinWidget 提供浏览器内核渲染能力。</p>
+  <h4>3.2.2 desktop/widgets/cef —— CEF OSR 离屏渲染与桥接集成</h4>
+  <p>基于 Chromium Embedded Framework 的高帧率离屏渲染（OSR）引擎与原生 JavaScript 桥接层，为小组件和动态壁纸提供纯 Web 开放运行环境。</p>
   <div class="tbl-scroll">
   <table>
     <colgroup><col style="width:30%"><col style="width:70%"></colgroup>
     <tr><th>关键类</th><th>职责</th></tr>
-    <tr><td><code>CefManager</code></td><td>CEF 生命周期与全局初始化管理</td></tr>
-    <tr><td><code>CefOsrBrowserInstance</code></td><td>OSR 浏览器实例（单组件对应实例）</td></tr>
-    <tr><td><code>CefOsrRenderHandler</code></td><td>离屏渲染回调处理</td></tr>
-    <tr><td><code>LinWidgetCanvasWidget</code></td><td>组件画布控件，承载 OSR 内容显示</td></tr>
+    <tr><td><code>CefManager</code></td><td>CEF 生命周期总控、全局多进程初始化、<code>linwidget://</code> 自定义安全域 Scheme 注册与崩溃转储配置</td></tr>
+    <tr><td><code>CefOsrBrowserInstance</code></td><td>单组件/壁纸 OSR 浏览器实例：像素帧缓冲管理；JavaScript 现代标准 <code>window.LinDesk</code>（system / shell / widget / wallpaper）三合一接口注入；本地资源防目录穿越加载器；大文件视频流式协议（<code>linwidget://media?path=</code>）；<kbd>F12</kbd> DevTools 弹出；<kbd>Ctrl</kbd>+<kbd>R</kbd> 与 <kbd>F5</kbd> 原生无缓存热重载拦截</td></tr>
+    <tr><td><code>CefOsrRenderHandler</code></td><td>离屏渲染回调处理，将 Chromium 脏矩形与色彩帧高效提交至 QPainter 桌面合成管线</td></tr>
+    <tr><td><code>LinWidgetCanvasWidget</code></td><td>组件画布控件，承载 OSR 内容显示与输入事件穿透仲裁</td></tr>
+    <tr><td><code>LinHubWebWidget</code></td><td>LinDesk Hub 独立窗口专用的 CEF 浏览器嵌入控件，承载壁纸工坊 Web SPA 单页</td></tr>
   </table>
   </div>
 

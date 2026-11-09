@@ -102,3 +102,7 @@ dist/
 docs/_shots/
 docs/_backup/
 
+
+# Frontend build & packages
+node_modules/
+**/node_modules/

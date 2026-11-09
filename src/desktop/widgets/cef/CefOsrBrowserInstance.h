@@ -46,6 +46,8 @@ public:
     bool isCreated() const { return m_created; }
     bool isVisible() const { return m_visible; }
     void setVisible(bool visible);
+    void setFramerate(int fps);
+    int framerate() const { return m_framerate; }
 
     bool create(const QString& url, const QRect& geometry);
     void close();
@@ -103,6 +105,7 @@ private:
     QRect m_geometry;
     bool m_created = false;
     bool m_visible = true;
+    int m_framerate = 60;
     bool m_allowNetwork = true;
 
 #ifdef LINDESK_HAS_CEF

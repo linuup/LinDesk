@@ -42,6 +42,7 @@ struct WidgetManifest {
     QString description;
     RuntimeType type = RuntimeType::Html;
     QString role = QStringLiteral("widget");
+    QString wallpaperType = QStringLiteral("web");
     int width = 300;
     int height = 120;
     int minWidth = 120;

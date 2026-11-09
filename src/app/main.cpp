@@ -1,3 +1,5 @@
+#include "ui/hub/WallpaperStudioWindow.h"
+#include <QLocalSocket>
 #include <Windows.h>
 #include <ole2.h>
 #include <shlobj.h>
@@ -87,6 +89,11 @@ static void ensureDevelopmentResources()
     if (QDir(sourceDir).exists()) {
         copyDirRecursively(sourceDir, targetDir);
     }
+    const QString widgetsDir = QString::fromUtf8(LINDESK_SOURCE_DIR) + QStringLiteral("/widgets");
+    const QString widgetsTargetDir = targetDir + QStringLiteral("/LinWidgets");
+    if (QDir(widgetsDir).exists()) {
+        copyDirRecursively(widgetsDir, widgetsTargetDir);
+    }
 }
 #endif
 
@@ -129,19 +136,51 @@ int main(int argc, char *argv[])
 	//qDebug() << "Application Dir:" << app.applicationDirPath();
     //LinDesk *lindesk = LinDesk::instance();
     //lindesk->show();
+    bool openStudioRequested = false;
+    for (int i = 1; i < argc; ++i) {
+        const QString arg = QString::fromLocal8Bit(argv[i]).trimmed();
+        if (arg.compare(QStringLiteral("--studio"), Qt::CaseInsensitive) == 0 ||
+            arg.compare(QStringLiteral("-studio"), Qt::CaseInsensitive) == 0 ||
+            arg.compare(QStringLiteral("--wallpaper"), Qt::CaseInsensitive) == 0) {
+            openStudioRequested = true;
+            break;
+        }
+    }
+
     LinDesktop linDesktop;
     if (linDesktop.isSecondaryInstance()) {
-        int result = app.exec();
-        LogManager::shutdown();
+        // 副实例：静默激活主进程并立即退出，绝不常驻运行
+        QLocalSocket socket;
+        socket.connectToServer(QString::fromLatin1("LinDesk_SingleInstance_IPC"));
+        const char* cmd = openStudioRequested ? "SHOW_STUDIO\n" : "RESTORE\n";
+        if (socket.waitForConnected(600)) {
+            socket.write(cmd);
+            socket.flush();
+            socket.waitForBytesWritten(600);
+            socket.disconnectFromServer();
+        } else {
+            // 管道备用：直接向 LinDesk 主窗口句柄发送自愈消息
+            HWND hostHwnd = reinterpret_cast<HWND>(GetPropW(GetDesktopWindow(), L"LinDesk_HostHwnd"));
+            if (hostHwnd && IsWindow(hostHwnd)) {
+                static const UINT s_msgRestore = RegisterWindowMessageW(L"LINDESK_IPC_RESTORE_MSG");
+                static const UINT s_msgStudio = RegisterWindowMessageW(L"LINDESK_IPC_SHOW_STUDIO_MSG");
+                PostMessageW(hostHwnd, openStudioRequested ? s_msgStudio : s_msgRestore, 0, 0);
+            }
+        }
         if (SUCCEEDED(oleHr)) {
             OleUninitialize();
         }
-        return result;
+        return 0;
     }
 
     LinDeskHoveredItemServer hoveredItemServer;
     launchOptions.apply(&linDesktop);
     linDesktop.show();
+    if (openStudioRequested) {
+        QTimer::singleShot(150, []() {
+            LinHub::WallpaperStudioWindow::showStudio();
+        });
+    }
     hoveredItemServer.startListening();
     if (RightMenu::isWindows11SystemContextMenuSupported()) {
         Win11MenuBridge::warmupHost();

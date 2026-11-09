@@ -182,19 +182,21 @@ void ContextMenuSettingsPage::ensureInitialSelection()
 void ContextMenuSettingsPage::initUI()
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(54, 34, 54, 36);
+    layout->setContentsMargins(36, 12, 36, 32);
     layout->setSpacing(0);
     layout->setAlignment(Qt::AlignTop);
 
     QLabel* pageTitle = createPageTitle(tr("Context Menu"), this);
     pageTitle->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(pageTitle, 0, Qt::AlignLeft);
-    layout->addSpacing(8);
+    layout->addSpacing(4);
+    layout->addWidget(createPageSubtitle(tr("Filter right-click context menu items and manage shell menu exclusion rules across file types."), this));
+    layout->addSpacing(20);
 
     QWidget* filterTogglePanel = createPanel(this);
     filterTogglePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QVBoxLayout* filterToggleLayout = new QVBoxLayout(filterTogglePanel);
-    filterToggleLayout->setContentsMargins(22, 10, 22, 10);
+    filterToggleLayout->setContentsMargins(4, 2, 4, 2);
     filterToggleLayout->setSpacing(0);
 
     FluentToggleSwitch* enableFilterToggle = new FluentToggleSwitch(filterTogglePanel);
@@ -212,35 +214,29 @@ void ContextMenuSettingsPage::initUI()
     shellExcludePanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     shellExcludePanel->setMinimumHeight(620);
     QVBoxLayout* shellExcludeLayout = new QVBoxLayout(shellExcludePanel);
-    shellExcludeLayout->setContentsMargins(22, 18, 22, 20);
+    shellExcludeLayout->setContentsMargins(20, 16, 20, 18);
     shellExcludeLayout->setSpacing(12);
 
     QHBoxLayout* shellHeaderLayout = new QHBoxLayout();
+    shellHeaderLayout->setSpacing(8);
     QVBoxLayout* shellTitleLayout = new QVBoxLayout();
     shellTitleLayout->setSpacing(4);
     shellTitleLayout->addWidget(createCardTitle(tr("Shell Menu Exclusions"), shellExcludePanel));
     shellTitleLayout->addWidget(createCardSubtitle(tr("Choose a menu type. LinDesk scans the real menu immediately, then you can hide items from future context menus."), shellExcludePanel));
     shellHeaderLayout->addLayout(shellTitleLayout, 1);
-    const auto applyOutlineButtonStyle = [](FluentButton* button) {
-        button->setColors(QColor("#ffffff"), QColor("#eef6ff"), QColor("#005a9e"), QColor("#0078d4"));
-    };
-    FluentButton* addExtensionButton = new FluentButton(tr("Add"), shellExcludePanel);
-    applyOutlineButtonStyle(addExtensionButton);
-    addExtensionButton->setFixedWidth(86);
+
+    QPushButton* addExtensionButton = createSettingsActionButton(tr("Add"), shellExcludePanel);
     shellHeaderLayout->addWidget(addExtensionButton, 0, Qt::AlignTop);
-    FluentButton* removeExtensionButton = new FluentButton(tr("Remove"), shellExcludePanel);
-    removeExtensionButton->setColors(QColor("#ffffff"), QColor("#fff1f0"), QColor("#a4262c"), QColor("#d13438"));
-    removeExtensionButton->setFixedWidth(96);
+
+    QPushButton* removeExtensionButton = createSettingsActionButton(tr("Remove"), shellExcludePanel, false, true);
     removeExtensionButton->setEnabled(false);
     removeExtensionButton->setVisible(false);
     shellHeaderLayout->addWidget(removeExtensionButton, 0, Qt::AlignTop);
-    FluentButton* copyRulesButton = new FluentButton(tr("Copy From"), shellExcludePanel);
-    applyOutlineButtonStyle(copyRulesButton);
-    copyRulesButton->setFixedWidth(112);
+
+    QPushButton* copyRulesButton = createSettingsActionButton(tr("Copy From"), shellExcludePanel);
     shellHeaderLayout->addWidget(copyRulesButton, 0, Qt::AlignTop);
-    FluentButton* applyRulesButton = new FluentButton(tr("Apply To"), shellExcludePanel);
-    applyOutlineButtonStyle(applyRulesButton);
-    applyRulesButton->setFixedWidth(100);
+
+    QPushButton* applyRulesButton = createSettingsActionButton(tr("Apply To"), shellExcludePanel);
     shellHeaderLayout->addWidget(applyRulesButton, 0, Qt::AlignTop);
     shellExcludeLayout->addLayout(shellHeaderLayout);
 
@@ -250,7 +246,7 @@ void ContextMenuSettingsPage::initUI()
     shellBody->setMinimumHeight(520);
     shellBody->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QHBoxLayout* shellBodyLayout = new QHBoxLayout(shellBody);
-    shellBodyLayout->setContentsMargins(0, 0, 0, 0);
+    shellBodyLayout->setContentsMargins(12, 12, 12, 12);
     shellBodyLayout->setSpacing(14);
 
     QWidget* shellTypePanel = new QWidget(shellBody);

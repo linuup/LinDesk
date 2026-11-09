@@ -78,7 +78,7 @@
   <h1>LinDesk 文档中心</h1>
   <div class="meta">
     <span>docs 目录索引与导航</span>
-    <span>更新：2026-11-01</span>
+    <span>更新：2026-11-02</span>
   </div>
 </header>
 
@@ -93,7 +93,7 @@
     <li><strong>要深入小组件系统 (LinWidget)</strong>：
       <ul>
         <li><strong>平台架构与交互体系</strong> → <a href="LinDesk_Widget_Platform_Plan.html">组件平台方案</a>（单进程动态加载、三层交互仲裁、Ctrl 尺寸缩放体系、市场与沙箱）</li>
-        <li><strong>开发手册与通信协议字典</strong> → <a href="LinWidget_Protocol.html">组件通信协议</a>（Manifest 规范、Bridge 双向 IPC、API 字典）</li>
+        <li><strong>开发手册与原生 API 速查</strong> → <a href="LinWidget_Protocol.html">组件通信协议</a>（Manifest 规范、window.LinDesk 原生能力速查、极客工作流）</li>
       </ul>
     </li>
   </ul>
@@ -110,8 +110,8 @@
     <tr><td><a href="LinDesk_Module_Guide.html">LinDesk_Module_Guide.html</a></td><td>模块介绍：src 下各模块职责、关键类、依赖关系、构建目标</td><td><span class="tag current">当前</span></td><td>开发者</td></tr>
     <tr><td><a href="LinDesk_Architecture_Guide.html">LinDesk_Architecture_Guide.html</a></td><td>架构指南：桌面底座、统一绘制管线、LinWidget 组件系统、消息桥现状、持久化</td><td><span class="tag current">当前</span></td><td>开发者</td></tr>
     <tr><td><a href="LinDesk_Todo.html">LinDesk_Todo.html</a></td><td>全局任务清单：单一真实来源，整合底座冷启动、右键菜单、组件系统与体验优化全景进度</td><td><span class="tag current">当前</span></td><td>所有人 / 开发者 / 产品</td></tr>
-    <tr><td><a href="LinDesk_Widget_Platform_Plan.html">LinDesk_Widget_Platform_Plan.html</a></td><td>组件系统方案：单进程 · 组件系统运行时安装/卸载（动态加载）+ 组件包动态加载（CEF 缺口、AI 开发闭环、组件市场、权限与沙箱、壁纸组件、与主程序集成）、按代码细分的任务清单、P0-P3 路线图</td><td><span class="tag current">当前</span></td><td>antigravity / 开发者</td></tr>
-    <tr><td><a href="LinWidget_Protocol.html">LinWidget_Protocol.html</a></td><td>组件通信协议规范：C++ 宿主与 HTML5 小组件之间的双向 JSON IPC 信封、存储、硬件指标推送与生命周期控制</td><td><span class="tag current">当前</span></td><td>小组件开发者 / 开发者</td></tr>
+    <tr><td><a href="LinDesk_Widget_Platform_Plan.html">LinDesk_Widget_Platform_Plan.html</a></td><td>组件系统方案：纯 Web 桌面容器 · 统一 .lw 规范与 Wallpapers/LinWidgets 物理分流、Chromium 域隔离本地存储、window.LinDesk 极简原生能力、壁纸工坊与 Hub 中心、P0-P2 落地总表</td><td><span class="tag current">当前</span></td><td>所有人 / 开发者</td></tr>
+    <tr><td><a href="LinWidget_Protocol.html">LinWidget_Protocol.html</a></td><td>组件开发规范与原生 API 手册：window.LinDesk 原生系统能力速查、Manifest 规范、物理级安全限制与极客本地调试流</td><td><span class="tag current">当前</span></td><td>组件创作者 / 前端开发者</td></tr>
   </table>
   </div>
   <p class="note">历史文档（旧 WebView2 架构指南、CEF POC 与改造规划、核心体验方案、三层交互设计 <code>LinDesk_Three_Tier_Interaction_Design.md</code>、小组件管理与交互方案 <code>LinDesk_Widget_Management_Interaction_Plan.html</code>）已全量落地并归档合并至《架构指南》与《组件平台方案》后安全删除；未完成待办事项已全量收录至 <a href="LinDesk_Todo.html">任务清单</a>；<code>docs/assets/</code> 临时素材目录已清理；<code>docs/_shots/</code> 为自检产物目录，保留。</p>

@@ -61,6 +61,12 @@ bool WidgetRegistryManager::load(QString* errorMessage)
         if (!registryEntryFromJson(value.toObject(), &entry)) {
             continue;
         }
+        if (entry.packagePath.isEmpty() || !QDir(entry.packagePath).exists()) {
+            continue;
+        }
+        if (entry.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+            continue;
+        }
         m_entries.insert(registryKey(entry.id, entry.isDevelopment), entry);
     }
 
@@ -214,6 +220,10 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
     WidgetManifest manifest;
     if (!WidgetPackage::loadManifest(packagePath, &manifest, errorMessage)) {
         return false;
+    }
+
+    if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
+        return true;
     }
 
     if (normalizedId(manifest.id).isEmpty()) {

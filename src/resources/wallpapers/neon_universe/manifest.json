@@ -1,8 +1,9 @@
 {
   "id": "com.lindesk.wallpaper.neon_universe",
-  "name": "Neon Universe Interactive Starfield",
+  "name": "Neon Universe 赛博星空",
   "version": "1.0.0",
-  "description": "An official dynamic web wallpaper featuring reactive particle dust, gravity attractions, and music visualizer elements.",
+  "author": "LinDesk",
+  "description": "动态互动星空粒子流，具备引力吸引力场与动态星云背景。",
   "type": "html",
   "entry": "index.html",
   "role": "wallpaper",

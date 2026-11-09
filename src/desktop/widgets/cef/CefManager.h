@@ -24,6 +24,9 @@ public:
     QString localesDirectoryPath() const;
     QString cacheStoragePath() const;
 
+public slots:
+    void scheduleMessagePumpWork(qint64 delayMs);
+
 signals:
     void cefInitialized();
     void cefShutdown();
@@ -37,7 +40,8 @@ private:
 
     static CefManager* s_instance;
     bool m_initialized = false;
-    QTimer* m_messagePumpTimer = nullptr;
+    QTimer* m_pumpWorkTimer = nullptr;
+    QTimer* m_idleWatchdogTimer = nullptr;
 };
 
 } // namespace LinCef

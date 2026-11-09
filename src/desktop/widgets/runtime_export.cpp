@@ -65,13 +65,11 @@ LINWIDGET_EXPORT bool linwidget_init(const LinWidgetDesktopCtx* ctx)
 
 LINWIDGET_EXPORT void linwidget_shutdown()
 {
-    LinCef::LinWidgetCanvasWidget::setHostWidget(nullptr);
+    linwidget_close_hub_browser();
     if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setEnabled(false);
         s_runtimeWidgetManager->stopAll(true);
-        delete s_runtimeWidgetManager;
-        s_runtimeWidgetManager = nullptr;
     }
-    LinCef::CefManager::instance()->shutdown();
 }
 
 LINWIDGET_EXPORT void* linwidget_widget_manager()
@@ -294,6 +292,26 @@ LINWIDGET_EXPORT void linwidget_set_wallpaper_interactive(bool interactive)
     }
 }
 
+LINWIDGET_EXPORT bool linwidget_is_wallpaper_suspended()
+{
+    if (!s_runtimeWidgetManager) return false;
+    return s_runtimeWidgetManager->isWallpaperSuspended();
+}
+
+LINWIDGET_EXPORT void linwidget_set_wallpaper_suspended(bool suspended)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setWallpaperSuspended(suspended);
+    }
+}
+
+LINWIDGET_EXPORT void linwidget_set_wallpaper_framerate(int fps)
+{
+    if (s_runtimeWidgetManager) {
+        s_runtimeWidgetManager->setWallpaperFramerate(fps);
+    }
+}
+
 LINWIDGET_EXPORT bool linwidget_forward_mouse_move_to_wallpaper(int clientX, int clientY)
 {
     return s_runtimeWidgetManager ? s_runtimeWidgetManager->forwardMouseMoveToWallpaper(QPoint(clientX, clientY)) : false;
@@ -500,7 +518,7 @@ public:
                             if (action == QStringLiteral("stop_wallpaper")) {
                                 s_runtimeWidgetManager->stopWallpaper(true);
                             } else if (action == QStringLiteral("set_master_enabled")) {
-                                s_runtimeWidgetManager->setEnabled(obj.value(QStringLiteral("enabled")).toBool(true));
+                                s_runtimeWidgetManager->handleWidgetManagerRequest(obj);
                             } else if (action == QStringLiteral("set_show_bounds")) {
                                 s_runtimeWidgetManager->setShowWidgetBounds(obj.value(QStringLiteral("showBounds")).toBool(false));
                             } else if (action == QStringLiteral("open_folder")) {
@@ -629,7 +647,6 @@ LinWidgetRuntimeBridge::LinWidgetRuntimeBridge()
 
 LinWidgetRuntimeBridge::~LinWidgetRuntimeBridge()
 {
-    unloadRuntime();
 }
 
 LinWidgetRuntimeBridge& LinWidgetRuntimeBridge::instance()
@@ -674,6 +691,9 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
     m_pfnHasActiveWallpaper = nullptr;
     m_pfnIsWallpaperInteractive = nullptr;
     m_pfnSetWallpaperInteractive = nullptr;
+    m_pfnIsWallpaperSuspended = nullptr;
+    m_pfnSetWallpaperSuspended = nullptr;
+    m_pfnSetWallpaperFramerate = nullptr;
     m_pfnForwardMouseMoveToWallpaper = nullptr;
     m_pfnForwardMouseClickToWallpaper = nullptr;
     m_pfnForwardWheelToWallpaper = nullptr;
@@ -702,16 +722,19 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     }
 
     QString targetPath = dllPath;
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString userCefDir = QDir(AppPaths::appDataDir()).filePath(QStringLiteral("runtime/linwidget"));
     if (targetPath.isEmpty()) {
-        const QString localRuntimePath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("runtime/linwidget/LinWidgetRuntime.dll"));
-        if (QFileInfo::exists(localRuntimePath)) {
-            targetPath = localRuntimePath;
+        // 优先加载随主程序打包安装的 LinWidgetRuntime.dll，确保与主程序版本 100% 同步
+        const QString localAppPath = QDir(appDir).filePath(QStringLiteral("LinWidgetRuntime.dll"));
+        if (QFileInfo::exists(localAppPath)) {
+            targetPath = localAppPath;
         } else {
-            const QString localAppPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("LinWidgetRuntime.dll"));
-            if (QFileInfo::exists(localAppPath)) {
-                targetPath = localAppPath;
+            const QString localRuntimePath = QDir(appDir).filePath(QStringLiteral("runtime/linwidget/LinWidgetRuntime.dll"));
+            if (QFileInfo::exists(localRuntimePath)) {
+                targetPath = localRuntimePath;
             } else {
-                const QString runtimeUserPath = QDir(AppPaths::appDataDir()).filePath(QStringLiteral("runtime/linwidget/LinWidgetRuntime.dll"));
+                const QString runtimeUserPath = QDir(userCefDir).filePath(QStringLiteral("LinWidgetRuntime.dll"));
                 if (QFileInfo::exists(runtimeUserPath)) {
 #ifdef QT_DEBUG
                     qWarning() << "[LinWidgetRuntimeBridge] Running in Debug mode; skipping AppData release runtime DLL to avoid Qt ABI crash.";
@@ -728,9 +751,20 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     }
 
 #ifdef Q_OS_WIN
-    // 添加运行时目录到 DLL 搜索路径，确保 CEF 依赖的 libcef.dll 能被正确定位
-    const QString runtimeDir = QFileInfo(targetPath).absolutePath();
-    SetDllDirectoryW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(runtimeDir).utf16()));
+    // 查找实际存放 libcef.dll 的目录并注入 DLL 搜索路径，使随包安装的 LinWidgetRuntime.dll 能自动定位按需安装的 CEF 核心库
+    QString cefSearchDir = QFileInfo(targetPath).absolutePath();
+    const QStringList cefDirCandidates = {
+        userCefDir,
+        QDir(appDir).filePath(QStringLiteral("runtime/linwidget")),
+        appDir
+    };
+    for (const QString& cand : cefDirCandidates) {
+        if (QFileInfo::exists(QDir(cand).filePath(QStringLiteral("libcef.dll")))) {
+            cefSearchDir = cand;
+            break;
+        }
+    }
+    SetDllDirectoryW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(cefSearchDir).utf16()));
 
     HMODULE hMod = LoadLibraryW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(targetPath).utf16()));
     if (!hMod) {
@@ -779,6 +813,9 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_has_active_wallpaper", m_pfnHasActiveWallpaper);
     RESOLVE_FN("linwidget_is_wallpaper_interactive", m_pfnIsWallpaperInteractive);
     RESOLVE_FN("linwidget_set_wallpaper_interactive", m_pfnSetWallpaperInteractive);
+    RESOLVE_FN("linwidget_is_wallpaper_suspended", m_pfnIsWallpaperSuspended);
+    RESOLVE_FN("linwidget_set_wallpaper_suspended", m_pfnSetWallpaperSuspended);
+    RESOLVE_FN("linwidget_set_wallpaper_framerate", m_pfnSetWallpaperFramerate);
     RESOLVE_FN("linwidget_forward_mouse_move_to_wallpaper", m_pfnForwardMouseMoveToWallpaper);
     RESOLVE_FN("linwidget_forward_mouse_click_to_wallpaper", m_pfnForwardMouseClickToWallpaper);
     RESOLVE_FN("linwidget_forward_wheel_to_wallpaper", m_pfnForwardWheelToWallpaper);
@@ -810,12 +847,12 @@ bool LinWidgetRuntimeBridge::unloadRuntime()
     if (!m_hModule) {
         return false;
     }
-    shutdown();
-#ifdef Q_OS_WIN
-    FreeLibrary(m_hModule);
-#endif
-    m_hModule = nullptr;
-    resetFunctionPointers();
+    // 停止所有正在运行的桌面小组件、动态壁纸及 Hub 视图，
+    // 但不在进程运行期间执行 CefShutdown() 与 FreeLibrary()，
+    // 彻底避免 CEF 异步 Browser 引用计数 FATAL 断言崩溃与 Qt deleteLater 野虚表崩溃。
+    setEnabled(false);
+    stopWallpaper(false);
+    closeHubBrowser();
     return true;
 }
 
@@ -930,6 +967,30 @@ void LinWidgetRuntimeBridge::setEnabled(bool enabled)
     if (m_pfnSetEnabled) {
         m_pfnSetEnabled(enabled);
     }
+    notifyEnabledChanged(enabled);
+}
+
+void LinWidgetRuntimeBridge::addEnabledListener(void* receiver, EnabledListener listener)
+{
+    if (receiver && listener) {
+        m_enabledListeners.insert(receiver, listener);
+    }
+}
+
+void LinWidgetRuntimeBridge::removeEnabledListener(void* receiver)
+{
+    if (receiver) {
+        m_enabledListeners.remove(receiver);
+    }
+}
+
+void LinWidgetRuntimeBridge::notifyEnabledChanged(bool enabled)
+{
+    for (auto it = m_enabledListeners.begin(); it != m_enabledListeners.end(); ++it) {
+        if (it.value()) {
+            it.value()(enabled);
+        }
+    }
 }
 
 bool LinWidgetRuntimeBridge::restoreFromConfig(const QString& configPath)
@@ -1029,6 +1090,28 @@ void LinWidgetRuntimeBridge::setWallpaperInteractive(bool interactive)
 {
     if (m_pfnSetWallpaperInteractive) {
         m_pfnSetWallpaperInteractive(interactive);
+    }
+}
+
+bool LinWidgetRuntimeBridge::isWallpaperSuspended() const
+{
+    if (m_pfnIsWallpaperSuspended) {
+        return m_pfnIsWallpaperSuspended();
+    }
+    return false;
+}
+
+void LinWidgetRuntimeBridge::setWallpaperSuspended(bool suspended)
+{
+    if (m_pfnSetWallpaperSuspended) {
+        m_pfnSetWallpaperSuspended(suspended);
+    }
+}
+
+void LinWidgetRuntimeBridge::setWallpaperFramerate(int fps)
+{
+    if (m_pfnSetWallpaperFramerate) {
+        m_pfnSetWallpaperFramerate(fps);
     }
 }
 

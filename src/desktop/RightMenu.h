@@ -10,6 +10,7 @@
 #include <QList>
 #include <vector>
 #include <memory>
+#include <atomic>
 
 #include <ShellContextMenu.h>
 #include "CommonEnum.h"
@@ -47,6 +48,11 @@ public:
     static void setThirdPartyShellMenuEnabled(bool enabled);
     static bool isShellMenuExclusionEnabled();
     static void setShellMenuExclusionEnabled(bool enabled);
+
+    static bool isMenuShowing();
+    static bool isMenuRecentlyClosed(qint64 thresholdMs = 400);
+    static void markMenuShowing(bool showing);
+    static void purgePendingMouseMessages();
 
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);
     static std::vector<ShellContextMenu::CustomMenuItem> exportCustomMenuItems(
@@ -230,4 +236,6 @@ private:
     mutable bool m_pasteStateRefreshPending = false;
     bool m_clipboardRefreshConnected = false;
     mutable QPoint m_lastMenuGlobalPos;
+    static inline std::atomic<bool> s_isMenuShowing{false};
+    static inline std::atomic<qint64> s_lastMenuCloseTime{0};
 };

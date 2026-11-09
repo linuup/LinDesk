@@ -1,3 +1,4 @@
+#include "ui/hub/WallpaperStudioWindow.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
 #include "desktop/RenameManager.h"
@@ -8,6 +9,7 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include "services/AppPaths.h"
+#include "services/CrashHandler.h"
 #include "services/DpiCoordinateHelper.h"
 #include <QCoreApplication>
 #include <QFutureWatcher>
@@ -17,12 +19,106 @@
 #include <QAction>
 #include <QMenu>
 #include <QWindow>
+#include <QProcess>
 #include <QDebug>
 #include <psapi.h>
+#include <shellapi.h>
 
 
 namespace {
 QPointer<LinDesktop> g_desktopHostWindowMonitorOwner;
+QPointer<LinDesktop> g_primaryDesktopInstance;
+
+HWND findCurrentProcessTrayMessageHwnd()
+{
+    HWND foundHwnd = nullptr;
+    EnumThreadWindows(GetCurrentThreadId(), [](HWND hwnd, LPARAM lParam) -> BOOL {
+        wchar_t className[128] = {};
+        if (GetClassNameW(hwnd, className, 127) > 0) {
+            if (wcsstr(className, L"QTrayIcon") != nullptr ||
+                wcsstr(className, L"QSystemTrayIcon") != nullptr) {
+                *reinterpret_cast<HWND*>(lParam) = hwnd;
+                return FALSE;
+            }
+        }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&foundHwnd));
+    return foundHwnd;
+}
+
+void sweepToolbarForStaleTrayIcons(HWND hToolbar)
+{
+    if (!hToolbar || !IsWindow(hToolbar)) {
+        return;
+    }
+    RECT rc = {};
+    if (!GetClientRect(hToolbar, &rc) || rc.right <= 0 || rc.bottom <= 0) {
+        if (!GetWindowRect(hToolbar, &rc)) {
+            return;
+        }
+        rc.right = rc.right - rc.left;
+        rc.bottom = rc.bottom - rc.top;
+        rc.left = 0;
+        rc.top = 0;
+    }
+    const int width = qBound(64, static_cast<int>(rc.right), 800);
+    const int height = qBound(48, static_cast<int>(rc.bottom), 600);
+    for (int y = 8; y < height; y += 16) {
+        for (int x = 8; x < width; x += 16) {
+            PostMessageW(hToolbar, WM_MOUSEMOVE, 0, MAKELPARAM(x, y));
+        }
+    }
+}
+
+void purgeStaleSystemTrayIcons(const QString& configPath)
+{
+    // 1. 若上次运行记录了托盘底层消息窗口 HWND 且已非当前进程存活窗口，直接通知 Explorer 移除
+    if (!configPath.isEmpty()) {
+        QSettings settings(configPath, QSettings::IniFormat);
+        const qulonglong rawHwnd = settings.value(QStringLiteral("Tray/LastNotifyHwnd"), 0ULL).toULongLong();
+        if (rawHwnd != 0) {
+            HWND oldHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(rawHwnd));
+            DWORD ownerPid = 0;
+            if (IsWindow(oldHwnd)) {
+                GetWindowThreadProcessId(oldHwnd, &ownerPid);
+            }
+            if (!IsWindow(oldHwnd) || ownerPid != GetCurrentProcessId()) {
+                for (UINT uid = 0; uid <= 2; ++uid) {
+                    NOTIFYICONDATAW nid = {};
+                    nid.cbSize = sizeof(nid);
+                    nid.hWnd = oldHwnd;
+                    nid.uID = uid;
+                    Shell_NotifyIconW(NIM_DELETE, &nid);
+                }
+            }
+        }
+    }
+
+    // 2. 向任务栏通知区域与溢出面板 ToolbarWindow32 投递非侵入式 WM_MOUSEMOVE，使 Explorer 自动淘汰所有失效进程残留图标
+    if (HWND hShellTray = FindWindowW(L"Shell_TrayWnd", nullptr)) {
+        if (HWND hTrayNotify = FindWindowExW(hShellTray, nullptr, L"TrayNotifyWnd", nullptr)) {
+            if (HWND hSysPager = FindWindowExW(hTrayNotify, nullptr, L"SysPager", nullptr)) {
+                sweepToolbarForStaleTrayIcons(FindWindowExW(hSysPager, nullptr, L"ToolbarWindow32", nullptr));
+            }
+            sweepToolbarForStaleTrayIcons(FindWindowExW(hTrayNotify, nullptr, L"ToolbarWindow32", nullptr));
+        }
+    }
+    if (HWND hOverflow = FindWindowW(L"NotifyIconOverflowWindow", nullptr)) {
+        sweepToolbarForStaleTrayIcons(FindWindowExW(hOverflow, nullptr, L"ToolbarWindow32", nullptr));
+    }
+}
+
+void recordCurrentProcessTrayHwnd(const QString& configPath)
+{
+    HWND trayHwnd = findCurrentProcessTrayMessageHwnd();
+    CrashHandler::registerTrayWindow(trayHwnd);
+    if (!configPath.isEmpty() && trayHwnd) {
+        QSettings settings(configPath, QSettings::IniFormat);
+        settings.setValue(QStringLiteral("Tray/LastNotifyHwnd"),
+                          static_cast<qulonglong>(reinterpret_cast<quintptr>(trayHwnd)));
+        settings.sync();
+    }
+}
 
 // 解码壁纸：若原图大于目标尺寸，解码阶段直接缩到"刚好覆盖目标"的大小，避免先解出整张原图（如 4K 约 33MB）造成内存峰值。
 QImage loadWallpaperImageScaled(const QString& path, const QSize& targetSize)
@@ -91,75 +187,7 @@ static void sendSingleInstanceCommand(const QString& cmd)
     PostMessageW(HWND_BROADCAST, msg, 0, 0);
 }
 
-void showAlreadyRunningDialogAndHandle()
-{
-    // 弹出层级检测/恢复菜单时，立即唤醒并显示系统托盘图标，让用户知晓其存在
-    sendSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
-
-    auto* dialog = new FluentDialog(nullptr);
-    dialog->setAttribute(Qt::WA_DeleteOnClose, true);
-    dialog->setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-    dialog->setDialogTitle(QCoreApplication::translate("LinDesktop", "LinDesk is Already Running"));
-    dialog->setMessage(QCoreApplication::translate("LinDesktop",
-        "LinDesk is already running in the background, but the desktop presentation may have been obscured by the Windows desktop or third-party software.\n\n"
-        "• Click [Restore Desktop] to bring LinDesk back to the front.\n"
-        "• Click [Cancel] to keep the current desktop and show the icon in the system tray."));
-
-    auto handled = std::make_shared<bool>(false);
-
-    dialog->addActionButton(
-        QCoreApplication::translate("LinDesktop", "Cancel"),
-        FluentDialog::ActionType::Secondary,
-        [handled]() {
-            if (!*handled) {
-                *handled = true;
-                sendSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
-                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
-            }
-        }
-    );
-
-    dialog->addActionButton(
-        QCoreApplication::translate("LinDesktop", "Restore Desktop"),
-        FluentDialog::ActionType::Secondary,
-        [handled]() {
-            if (!*handled) {
-                *handled = true;
-                sendSingleInstanceCommand(QStringLiteral("RESTORE"));
-                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
-            }
-        }
-    );
-
-    dialog->addActionButton(
-        QCoreApplication::translate("LinDesktop", "Open Settings"),
-        FluentDialog::ActionType::Primary,
-        [handled]() {
-            if (!*handled) {
-                *handled = true;
-                sendSingleInstanceCommand(QStringLiteral("SHOW_SETTINGS"));
-                QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
-            }
-        }
-    );
-
-    QObject::connect(dialog, &QObject::destroyed, [handled]() {
-        if (!*handled) {
-            *handled = true;
-            sendSingleInstanceCommand(QStringLiteral("SHOW_TRAY"));
-            QTimer::singleShot(80, QCoreApplication::instance(), &QCoreApplication::quit);
-        }
-    });
-
-    const QRect screenRect = QApplication::primaryScreen()
-        ? QApplication::primaryScreen()->availableGeometry()
-        : QRect(0, 0, 800, 600);
-    dialog->show();
-    const QPoint center = screenRect.center() - QPoint(dialog->width() / 2, dialog->height() / 2);
-    dialog->move(center);
-    dialog->raise();
-    dialog->activateWindow();
-}
+// Secondary instance dialog removed in favor of silent single-instance activation
 
 void CALLBACK desktopHostWindowEventProc(HWINEVENTHOOK,
                                          DWORD event,
@@ -221,19 +249,18 @@ LinDesktop::LinDesktop(QWidget* parent)
     : QWidget(parent)
 {
     m_singleInstanceMutex = CreateMutexW(nullptr, TRUE, L"Local\\LinDesk_SingleInstance");
-    if (!m_singleInstanceMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+    const DWORD mutexErr = GetLastError();
+    if (!m_singleInstanceMutex || mutexErr == ERROR_ALREADY_EXISTS) {
         if (m_singleInstanceMutex) {
             CloseHandle(m_singleInstanceMutex);
             m_singleInstanceMutex = nullptr;
         }
         m_isSecondaryInstance = true;
-        QTimer::singleShot(0, []() {
-            showAlreadyRunningDialogAndHandle();
-        });
         return;
     }
 
     m_configPath = AppPaths::configFilePath();
+    g_primaryDesktopInstance = this;
     {
         QSettings settings(m_configPath, QSettings::IniFormat);
         m_isFirstLaunch = settings.value("Firslanuch", true).toBool();
@@ -332,8 +359,10 @@ LinDesktop::~LinDesktop()
         m_ipcServer = nullptr;
     }
 
-    if (m_trayIcon) {
-        m_trayIcon->hide();
+    cleanupTrayIcon();
+
+    if (g_primaryDesktopInstance == this) {
+        g_primaryDesktopInstance.clear();
     }
 
     if (m_singleInstanceMutex) {
@@ -734,6 +763,14 @@ void LinDesktop::initializeTrayIcon()
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
         return;
     }
+    if (m_trayIcon) {
+        if (!m_trayIcon->isVisible()) {
+            m_trayIcon->show();
+        }
+        return;
+    }
+
+    purgeStaleSystemTrayIcons(m_configPath);
 
     m_trayIcon = new QSystemTrayIcon(this);
     QIcon trayIcon = QApplication::windowIcon();
@@ -792,7 +829,57 @@ void LinDesktop::initializeTrayIcon()
         }
     });
 
+    if (QCoreApplication* app = QCoreApplication::instance()) {
+        connect(app, &QCoreApplication::aboutToQuit, this, &LinDesktop::cleanupTrayIcon, Qt::UniqueConnection);
+    }
+
     m_trayIcon->show();
+    recordCurrentProcessTrayHwnd(m_configPath);
+}
+
+void LinDesktop::cleanupTrayIcon()
+{
+    HWND trayHwnd = findCurrentProcessTrayMessageHwnd();
+    if (m_trayIcon) {
+        m_trayIcon->hide();
+        delete m_trayIcon;
+        m_trayIcon = nullptr;
+    }
+    if (trayHwnd) {
+        for (UINT uid = 0; uid <= 2; ++uid) {
+            NOTIFYICONDATAW nid = {};
+            nid.cbSize = sizeof(nid);
+            nid.hWnd = trayHwnd;
+            nid.uID = uid;
+            Shell_NotifyIconW(NIM_DELETE, &nid);
+        }
+    }
+    CrashHandler::registerTrayWindow(nullptr);
+}
+
+bool LinDesktop::relaunchApplication()
+{
+    if (g_primaryDesktopInstance) {
+        g_primaryDesktopInstance->m_isQuittingFromTray = true;
+        g_primaryDesktopInstance->cleanupTrayIcon();
+        if (g_primaryDesktopInstance->m_ipcServer) {
+            g_primaryDesktopInstance->m_ipcServer->close();
+        }
+        if (g_primaryDesktopInstance->m_singleInstanceMutex) {
+            ReleaseMutex(g_primaryDesktopInstance->m_singleInstanceMutex);
+            CloseHandle(g_primaryDesktopInstance->m_singleInstanceMutex);
+            g_primaryDesktopInstance->m_singleInstanceMutex = nullptr;
+        }
+    }
+
+    const bool started = QProcess::startDetached(
+        QCoreApplication::applicationFilePath(),
+        QCoreApplication::arguments(),
+        QCoreApplication::applicationDirPath());
+    if (started) {
+        QCoreApplication::quit();
+    }
+    return started;
 }
 
 bool LinDesktop::shouldMinimizeToTray() const
@@ -804,7 +891,7 @@ bool LinDesktop::shouldMinimizeToTray() const
 void LinDesktop::restoreFromTray()
 {
     selfHealAndRestoreDesktop();
-    if (m_trayIcon) {
+    if (m_trayIcon && !m_trayIcon->isVisible()) {
         m_trayIcon->show();
     }
 }
@@ -812,9 +899,7 @@ void LinDesktop::restoreFromTray()
 void LinDesktop::exitFromTray()
 {
     m_isQuittingFromTray = true;
-    if (m_trayIcon) {
-        m_trayIcon->hide();
-    }
+    cleanupTrayIcon();
     QCoreApplication::quit();
 }
 
@@ -1024,25 +1109,33 @@ void LinDesktop::startSingleInstanceServer()
 void LinDesktop::handleSingleInstanceCommand(const QString& command)
 {
     qWarning() << "[LinDesktop] Received single instance command:" << command;
+    if (command == QStringLiteral("QUIT") || command == QStringLiteral("EXIT")) {
+        exitFromTray();
+        return;
+    }
     if (!m_trayIcon) {
         initializeTrayIcon();
     }
-    if (command == QStringLiteral("SHOW_SETTINGS")) {
-        if (m_trayIcon) {
+    if (command == QStringLiteral("SHOW_STUDIO") || command == QStringLiteral("SHOW_WALLPAPER")) {
+        LinHub::WallpaperStudioWindow::showStudio();
+    } else if (command == QStringLiteral("SHOW_SETTINGS")) {
+        if (m_trayIcon && !m_trayIcon->isVisible()) {
             m_trayIcon->show();
         }
         if (listView) {
             listView->showSettings(nullptr);
         }
     } else if (command == QStringLiteral("RESTORE")) {
-        if (m_trayIcon) {
+        if (m_trayIcon && !m_trayIcon->isVisible()) {
             m_trayIcon->show();
         }
         selfHealAndRestoreDesktop();
     } else if (command == QStringLiteral("SHOW_TRAY")) {
         // 唤醒托盘：保持当前桌面状态，把托盘打开以供随时操作并弹出系统气泡
         if (m_trayIcon) {
-            m_trayIcon->show();
+            if (!m_trayIcon->isVisible()) {
+                m_trayIcon->show();
+            }
             m_trayIcon->showMessage(
                 tr("LinDesk"),
                 tr("LinDesk is running in the background. Right-click here to restore or exit."),
@@ -1507,6 +1600,11 @@ void LinDesktop::contextMenuEvent(QContextMenuEvent* event)
 bool LinDesktop::nativeEvent(const QByteArray& eventType, void* message, long* result)
 {
     MSG* msg = static_cast<MSG*>(message);
+    if (msg && (msg->message == WM_ENDSESSION || msg->message == WM_CLOSE)) {
+        if (msg->message == WM_ENDSESSION && msg->wParam != FALSE) {
+            cleanupTrayIcon();
+        }
+    }
     if (msg && m_restoreWindowMessage != 0 && msg->message == m_restoreWindowMessage) {
         handleSingleInstanceCommand(QStringLiteral("RESTORE"));
         if (result) *result = 0;

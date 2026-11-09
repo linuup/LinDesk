@@ -1,3 +1,6 @@
+#include "services/AppPaths.h"
+#include <QProcess>
+#include <QUuid>
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 
 #include <QDir>
@@ -85,6 +88,141 @@ bool WidgetPackage::loadManifest(const QString& packagePath, WidgetManifest* man
     }
 
     *manifest = parsed;
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+
+
+bool WidgetPackage::installPackage(const QString& packageOrLwPath,
+                                   QString* installedTargetDir,
+                                   QString* detectedType,
+                                   QString* errorMessage)
+{
+    const QFileInfo fileInfo(packageOrLwPath);
+    if (!fileInfo.exists()) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Source package path does not exist: %1").arg(packageOrLwPath);
+        }
+        return false;
+    }
+
+    auto copyDirRecursively = [](const QString& srcPath, const QString& dstPath) -> bool {
+        auto copyHelper = [](auto& self, const QString& src, const QString& dst) -> bool {
+            QDir srcDir(src);
+            if (!srcDir.exists()) return false;
+            QDir().mkpath(dst);
+            const QFileInfoList entries = srcDir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot);
+            for (const QFileInfo& entry : entries) {
+                const QString srcItem = entry.absoluteFilePath();
+                const QString dstItem = QDir(dst).filePath(entry.fileName());
+                if (entry.isDir()) {
+                    if (!self(self, srcItem, dstItem)) return false;
+                } else {
+                    QFile::remove(dstItem);
+                    if (!QFile::copy(srcItem, dstItem)) return false;
+                }
+            }
+            return true;
+        };
+        return copyHelper(copyHelper, srcPath, dstPath);
+    };
+
+    QString sourceDir;
+    QString tempExtractDir;
+    bool isArchive = false;
+
+    if (fileInfo.isFile()) {
+        const QString ext = fileInfo.suffix().toLower();
+        if (ext != QStringLiteral("lw") && ext != QStringLiteral("zip")) {
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Unsupported package archive format: .%1 (expected .lw or .zip)").arg(ext);
+            }
+            return false;
+        }
+
+        tempExtractDir = QDir(AppPaths::userLocalConfigDir()).filePath(
+            QStringLiteral("temp_lw_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+        QDir().mkpath(tempExtractDir);
+
+#ifdef Q_OS_WIN
+        QProcess proc;
+        QStringList args;
+        args << "-xf" << QDir::toNativeSeparators(fileInfo.absoluteFilePath()) << "-C" << QDir::toNativeSeparators(tempExtractDir);
+        proc.start("tar", args);
+        if (!proc.waitForFinished(30000) || proc.exitCode() != 0) {
+            QDir(tempExtractDir).removeRecursively();
+            if (errorMessage) {
+                *errorMessage = QStringLiteral("Failed to extract .lw package archive.");
+            }
+            return false;
+        }
+#else
+        QDir(tempExtractDir).removeRecursively();
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Platform does not support .lw package archive extraction.");
+        }
+        return false;
+#endif
+        isArchive = true;
+        sourceDir = tempExtractDir;
+
+        if (!QFile::exists(manifestPath(sourceDir))) {
+            const QFileInfoList subDirs = QDir(sourceDir).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+            if (subDirs.size() == 1 && QFile::exists(manifestPath(subDirs.first().absoluteFilePath()))) {
+                sourceDir = subDirs.first().absoluteFilePath();
+            }
+        }
+    } else if (fileInfo.isDir()) {
+        sourceDir = fileInfo.absoluteFilePath();
+    } else {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Package path is neither a file nor a directory.");
+        }
+        return false;
+    }
+
+    WidgetManifest manifest;
+    QString loadErr;
+    if (!loadManifest(sourceDir, &manifest, &loadErr)) {
+        if (isArchive) {
+            QDir(tempExtractDir).removeRecursively();
+        }
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Invalid package manifest: %1").arg(loadErr);
+        }
+        return false;
+    }
+
+    const bool isWallpaper = (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0);
+    const QString targetParentDir = isWallpaper ? AppPaths::userWallpapersDir() : AppPaths::userLinWidgetsDir();
+    const QString destinationDir = QDir(targetParentDir).filePath(manifest.id);
+
+    if (QDir(destinationDir).exists()) {
+        QDir(destinationDir).removeRecursively();
+    }
+    QDir().mkpath(destinationDir);
+
+    bool copyOk = copyDirRecursively(sourceDir, destinationDir);
+    if (isArchive) {
+        QDir(tempExtractDir).removeRecursively();
+    }
+
+    if (!copyOk) {
+        if (errorMessage) {
+            *errorMessage = QStringLiteral("Failed to copy package contents to destination: %1").arg(destinationDir);
+        }
+        return false;
+    }
+
+    if (installedTargetDir) {
+        *installedTargetDir = destinationDir;
+    }
+    if (detectedType) {
+        *detectedType = isWallpaper ? QStringLiteral("wallpaper") : QStringLiteral("widget");
+    }
     if (errorMessage) {
         errorMessage->clear();
     }

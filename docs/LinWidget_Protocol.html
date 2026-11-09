@@ -82,226 +82,240 @@
     <a href="LinDesk_Architecture_Guide.html">架构指南</a>
     <a href="LinDesk_Todo.html">任务清单</a>
     <a href="LinDesk_Widget_Platform_Plan.html">组件平台</a>
-    <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互</a>
     <a href="LinWidget_Protocol.html" class="active">组件通信协议</a>
 </nav>
 
 <header class="doc-head">
   <h1>LinWidget 协议与组件开发规范</h1>
   <div class="meta">
-    <span>版本：1.0.0</span>
+    <span>版本：2.0.0（纯 Web 极简架构规范）</span>
     <span>适用环境：Qt 5.15+ / CEF OSR Windowless</span>
-    <span>读者：小组件开发者、AI 编程代理、底层架构师</span>
+    <span>更新时间：2026-11-02</span>
+    <span>读者：前端开发者、组件创作者、底层架构师</span>
   </div>
 </header>
 
 <div class="note">
-  <strong>小组件体系导航提示</strong>：本篇为<strong>底层通信协议与开发手册</strong>。有关组件系统架构、沙箱安全与市场方案请参阅 <a href="LinDesk_Widget_Platform_Plan.html">组件平台方案</a>；有关组件管理 SPA 页面与全屏壁纸框选协同请参阅 <a href="LinDesk_Widget_Management_Interaction_Plan.html">组件管理与交互方案</a>。
+  <strong>小组件体系导航提示</strong>：本篇为<strong>极客开发规范与原生 API 接口速查手册</strong>。关于组件系统平台整体架构与路线规划，请参阅 <a href="LinDesk_Widget_Platform_Plan.html">组件平台方案</a>；关于项目总体待办任务，请参阅 <a href="LinDesk_Todo.html">任务清单</a>。
 </div>
 
 <section>
-  <h2>1. 架构总览 (Architecture Overview)</h2>
-  <p>LinDesk 组件系统采用 <strong>单进程 · 动态加载 · 离线画布合成 (CEF OSR Windowless)</strong> 架构：</p>
+  <h2>1. 核心架构与设计理念 (Architecture & Philosophy)</h2>
+  <p>LinDesk 组件系统全面遵循<strong>“去过度设计、回归纯 Web 原生”</strong>原则：</p>
   <ul>
-    <li><strong>主程序 (<code>LinDesk.exe</code>)</strong>：零静态 CEF 链接，仅在需要时通过动态库桥接接口 (<code>LinWidgetRuntimeBridge</code>) 动态加载 <code>LinWidgetRuntime.dll</code>。</li>
-    <li><strong>组件运行时 (<code>LinWidgetRuntime.dll</code>)</strong>：宿主 Chromium Embedded Framework (CEF)、管理 OSR 离线渲染浏览器实例、执行安全沙箱策略并处理双向 IPC 消息。</li>
-    <li><strong>桌面画布合成 (<code>LinWidgetCanvasWidget</code>)</strong>：将各组件实例与动态壁纸的 BGRA 渲染帧，直接绘制到 Windows 桌面图层画布，与原生图标完美混流。</li>
-    <li><strong>数据隔离约束</strong>：组件系统只读写 <code>LinWidgets/</code>、<code>LinWidgetsData/</code> 与 <code>LinWallpapers/</code>，严禁触碰或修改主桌面持久化数据文件 (<code>data.dat</code> / <code>data.json</code>)。</li>
+    <li><strong>纯 Web 标准运行</strong>：数据持久化原生使用 <code>localStorage</code> / <code>IndexedDB</code>，网络请求原生使用 <code>fetch</code> / <code>WebSocket</code>，音视频与动画原生使用 HTML5 <code>&lt;video&gt;</code> 与 Canvas / WebGL。宿主绝对不造多余的私有存储与网络代理轮子。</li>
+    <li><strong>Chromium 域隔离 (Origin Isolation)</strong>：每个组件与壁纸分配独立的自定义 Scheme（<code>linwidget://&lt;id&gt;/</code>），天然获得 Chromium 浏览器内核的独立本地存储配额与安全沙箱，不同组件间数据物理级隔离。</li>
+    <li><strong>三合一原生补足 (<code>window.LinDesk</code>)</strong>：宿主仅负责补足浏览器无法做到的系统级能力（硬件监控指标、安全资源管理器定位、窗口控制、壁纸工坊参数同步），全局挂载于 <code>window.LinDesk</code>。</li>
+    <li><strong>零 C++ 编译负担</strong>：创作者在任意现代浏览器（Chrome/Edge）中即可双击 <code>index.html</code> 编写调试，放入 LinDesk 即热加载生效。</li>
   </ul>
 </section>
 
 <section>
   <h2>2. 组件包规范与 Manifest 规范 (Package & Manifest)</h2>
-  <p>每个小组件为一个独立文件夹（或 <code>.zip</code> 压缩包），包根目录下必须包含 <code>manifest.json</code>：</p>
+  <p>小组件与壁纸统一采用 <code>.lw</code> 格式（标准 zip 压缩包，开发期可直接以同名明文文件夹存在）。包根目录下必须包含 <code>manifest.json</code>：</p>
 
-  <h3>2.1 目录结构</h3>
-  <pre><code>MyWidget/
-├── manifest.json       # 组件元数据与权限声明（必须）
-├── icon.png            # 组件图标（推荐 128x128 PNG）
-├── index.html          # 入口 HTML 页面
+  <h3>2.1 目录结构与分流规则</h3>
+  <pre><code>MyCoolPackage/
+├── manifest.json       # 元数据（必须）
+├── icon.png            # 预览图标（推荐 128x128 PNG）
+├── index.html          # 入口 HTML 页面（必须）
 ├── style.css           # 样式表
 └── script.js           # 逻辑脚本</code></pre>
+  <p><strong>智能分流约定</strong>：安装器解压前读取 <code>manifest.json</code> 中的 <code>type</code> 字段：</p>
+  <ul>
+    <li><code>"type": "widget"</code> → 自动分流解压归档至 <code>LinWidgets/&lt;id&gt;/</code> 目录（小组件）；</li>
+    <li><code>"type": "wallpaper"</code> → 自动分流解压归档至 <code>Wallpapers/&lt;id&gt;/</code> 目录（动态壁纸）。</li>
+  </ul>
 
-  <h3>2.2 <code>manifest.json</code> 字段规范</h3>
-  <pre><code>{
-  "id": "com.example.clock",
-  "name": "极简时钟",
+  <h3>2.2 <code>manifest.json</code> 规范示例</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div>
+      <p><strong>小组件规范 (type="widget")</strong>：</p>
+      <pre><code>{
+  "id": "lindesk.cyber.clock",
+  "name": "赛博时钟",
+  "type": "widget",
   "version": "1.0.0",
-  "author": "LinDesk Community",
-  "description": "半透明毛玻璃桌面时钟组件",
-  "icon": "icon.png",
-  "role": "widget",
-  "type": "html",
   "entry": "index.html",
-  "width": 320,
-  "height": 140,
-  "minWidth": 160,
-  "minHeight": 100,
-  "maxWidth": 640,
-  "maxHeight": 480,
-  "transparent": true,
-  "resizable": true,
-  "autoLoad": true,
-  "multiInstance": false,
-  "permissions": [
-    "storage",
-    "desktop"
-  ],
-  "intent": {
-    "prompt": "创建一个带有暗黑毛玻璃质感、秒针呼吸灯效果的桌面时钟",
-    "ai_engine": "Claude-3.7-Sonnet",
-    "created_at": "2026-10-14T01:30:00Z"
+  "defaultSize": { "width": 360, "height": 180 },
+  "minSize": { "width": 200, "height": 100 },
+  "maxSize": { "width": 800, "height": 600 }
+}</code></pre>
+    </div>
+    <div>
+      <p><strong>动态壁纸规范 (type="wallpaper")</strong>：</p>
+      <pre><code>{
+  "id": "lindesk.wallpaper.gargantua",
+  "name": "卡冈图雅引力黑洞",
+  "type": "wallpaper",
+  "wallpaperType": "web",
+  "interactive": true,
+  "version": "1.0.0",
+  "entry": "index.html",
+  "properties": {
+    "speed": { "type": "slider", "text": "旋转速度", "value": 5 }
   }
 }</code></pre>
+    </div>
+  </div>
 
   <h4>核心字段说明</h4>
   <div class="tbl-scroll">
   <table>
-    <colgroup><col style="width:20%"><col style="width:12%"><col style="width:10%"><col style="width:14%"><col style="width:44%"></colgroup>
+    <colgroup><col style="width:18%"><col style="width:12%"><col style="width:10%"><col style="width:16%"><col style="width:44%"></colgroup>
     <tr><th>字段</th><th>类型</th><th>必填</th><th>默认值</th><th>说明</th></tr>
-    <tr><td><code>id</code></td><td>string</td><td>是</td><td>-</td><td>唯一标识符，小写字母、数字及点号（如 <code>lindesk.clock</code>）</td></tr>
-    <tr><td><code>name</code></td><td>string</td><td>是</td><td>-</td><td>组件显示名称</td></tr>
-    <tr><td><code>version</code></td><td>string</td><td>是</td><td>1.0.0</td><td>语义化版本号（<code>X.Y.Z</code>）</td></tr>
-    <tr><td><code>role</code></td><td>string</td><td>否</td><td>"widget"</td><td>角色：<code>"widget"</code>（普通组件）或 <code>"wallpaper"</code>（全屏动态壁纸）</td></tr>
-    <tr><td><code>entry</code></td><td>string</td><td>否</td><td>"index.html"</td><td>包内入口页面相对路径</td></tr>
-    <tr><td><code>width</code> / <code>height</code></td><td>number</td><td>是</td><td>-</td><td>初始宽度与高度（像素，仅 <code>role="widget"</code> 生效）</td></tr>
-    <tr><td><code>transparent</code></td><td>boolean</td><td>否</td><td>true</td><td>是否支持 Alpha 透明通道渲染</td></tr>
-    <tr><td><code>resizable</code></td><td>boolean</td><td>否</td><td>true</td><td>是否允许用户拖拽边角手柄缩放尺寸</td></tr>
-    <tr><td><code>permissions</code></td><td>array</td><td>否</td><td>[]</td><td>申请特权数组：<code>"storage"</code>, <code>"desktop"</code>, <code>"network"</code></td></tr>
-    <tr><td><code>properties</code></td><td>object</td><td>否</td><td>{}</td><td><strong>声明式用户可调参数</strong>（对标 Wallpaper Engine 标准，基座据此自动生成 Fluent UI 滑块/调色盘/开关）</td></tr>
-    <tr><td><code>intent</code></td><td>object</td><td>否</td><td>{}</td><td>记录 AI 辅助生成的原始需求与引擎信息，供增量修复参考</td></tr>
+    <tr><td><code>id</code></td><td>string</td><td>是</td><td>-</td><td>全局唯一标识（小写字母、数字、点号与中划线）</td></tr>
+    <tr><td><code>name</code></td><td>string</td><td>是</td><td>-</td><td>展示名称</td></tr>
+    <tr><td><code>type</code></td><td>string</td><td>是</td><td>"widget"</td><td>大类分类：<code>"widget"</code>（小组件）或 <code>"wallpaper"</code>（动态壁纸）</td></tr>
+    <tr><td><code>wallpaperType</code></td><td>string</td><td>否</td><td>"web"</td><td><strong>壁纸媒介格式</strong>（仅 <code>type="wallpaper"</code>）：<code>"web"</code>（Canvas/WebGL/Shader）、<code>"video"</code>（MP4/WebM 视频）、<code>"picture"</code>（高清静态大图）</td></tr>
+    <tr><td><code>interactive</code></td><td>boolean</td><td>否</td><td>false</td><td><strong>桌面鼠标交互开关</strong>（仅 <code>type="wallpaper"</code>）：<code>true</code> 启用粒子引力/波纹物理交互并接入 6px 曼哈顿框选仲裁；<code>false</code> 100% 鼠标无感穿透</td></tr>
+    <tr><td><code>version</code></td><td>string</td><td>是</td><td>"1.0.0"</td><td>版本号</td></tr>
+    <tr><td><code>entry</code></td><td>string</td><td>否</td><td>"index.html"</td><td>入口文件相对路径</td></tr>
+    <tr><td><code>author</code></td><td>string</td><td>否</td><td>-</td><td>作者信息</td></tr>
+    <tr><td><code>defaultSize</code></td><td>object</td><td>否</td><td>{ width: 320, height: 200 }</td><td>初始宽高（仅 <code>type="widget"</code> 生效）</td></tr>
+    <tr><td><code>minSize</code> / <code>maxSize</code></td><td>object</td><td>否</td><td>-</td><td>边缘缩放最小/最大宽高限制（仅 <code>type="widget"</code> 生效）</td></tr>
+    <tr><td><code>properties</code></td><td>object</td><td>否</td><td>{}</td><td><strong>声明式用户调节参数</strong>（仅 <code>type="wallpaper"</code> 生效，对标 Wallpaper Engine 标准，工坊自动据此生成滑块/取色器）</td></tr>
+  </table>
+  </div>
+
+  <h3>2.3 壁纸正交分类矩阵 (Orthogonal Matrix)</h3>
+  <div class="tbl-scroll">
+  <table>
+    <thead>
+      <tr><th>wallpaperType</th><th>interactive</th><th>壁纸语义与典型体验</th><th>工坊画廊标签</th><th>宿主鼠标处理与性能策略</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>"web"</code></td>
+        <td><code>true</code></td>
+        <td><strong>互动式 Web 动态壁纸</strong>（引力粒子、水波波纹、3D 视差倾斜、可点击切换场景）</td>
+        <td><span class="tag spec">🎮 Web 交互</span></td>
+        <td>开启 60FPS MouseMove 广播；原地点击交付壁纸，拖拽 ≥ 6px 交付桌面多选框选；工坊提供「启用鼠标互动」用户开关</td>
+      </tr>
+      <tr>
+        <td><code>"web"</code></td>
+        <td><code>false</code></td>
+        <td><strong>展示型 Web 动态壁纸</strong>（纯 Shader 极光流体、数字雨、动态时钟景观）</td>
+        <td><span class="tag spec">🌐 Web 动效</span></td>
+        <td>切断鼠标移动广播（降低 CPU/GPU 消息开销）；鼠标事件 100% 穿透交付桌面</td>
+      </tr>
+      <tr>
+        <td><code>"video"</code></td>
+        <td><code>false</code></td>
+        <td><strong>视频壁纸</strong>（4K 循环视频、影视实拍、二次元动效短片）</td>
+        <td><span class="tag spec">🎬 循环视频</span></td>
+        <td>纯流媒体播放；100% 鼠标穿透；工坊自动呈现「视频音量、循环、倍速」控制卡片</td>
+      </tr>
+      <tr>
+        <td><code>"picture"</code></td>
+        <td><code>false</code></td>
+        <td><strong>超高清大图壁纸</strong>（4K/8K 摄影、插画）</td>
+        <td><span class="tag spec">🖼️ 静态大图</span></td>
+        <td>轻量 CSS 渲染；100% 鼠标穿透；工坊呈现「暗度遮罩、毛玻璃高斯模糊」滤镜卡片</td>
+      </tr>
+    </tbody>
   </table>
   </div>
 </section>
 
 <section>
-  <h2>3. 双向通信桥接机制 (Bridge Protocol)</h2>
-  <p>小组件运行在独立的 Chromium 隔离沙箱环境中，通过统一的 Bridge 协议与 C++ 宿主双向通信：</p>
+  <h2>3. <code>window.LinDesk</code> 原生系统能力速查 (Native API Reference)</h2>
+  <p>宿主通过 CEF 离屏渲染管道向组件网页全局注入 <code>window.LinDesk</code> 对象。所有方法均采用现代 Promise 与事件监听接口风格。</p>
 
-  <h3>3.1 组件向宿主发送请求 (Outbound)</h3>
-  <p>组件支持两种等价的消息发送通道：</p>
-  <h4>推荐方式 A：原生 Bridge 拦截通道 (零开销)</h4>
-  <pre><code>function sendHostMessage(message) {
-  fetch('http://linwidget.bridge/postMessage', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(message)
-  }).catch(function (err) {
-    console.error('Bridge postMessage error:', err);
-  });
-}</code></pre>
-
-  <h4>兼容方式 B：Standard postMessage</h4>
-  <pre><code>window.parent.postMessage(message, '*');</code></pre>
-
-  <h3>3.2 宿主向组件推送消息/响应 (Inbound)</h3>
-  <pre><code>window.addEventListener('message', function (event) {
-  const msg = event.data;
-  if (!msg || typeof msg !== 'object') return;
-  console.log('Received from host:', msg.type, msg);
+  <h3>3.1 系统硬件监控 (<code>LinDesk.system</code>)</h3>
+  <p>用于开发仪表盘、悬浮球、硬件监控类小组件。</p>
+  
+  <h4>3.1.1 异步获取硬件快照 <code>getMetrics()</code></h4>
+  <pre><code>window.LinDesk.system.getMetrics().then(function(metrics) {
+  console.log("CPU 占用:", metrics.cpu + "%");
+  console.log("已用内存:", metrics.memory.usedMB + " MB / " + metrics.memory.totalMB + " MB");
+  console.log("当前电量:", metrics.battery + "%");
+  console.log("网络速率:", metrics.network.downSpeed + " KB/s");
 });</code></pre>
-</section>
 
-<section>
-  <h2>4. 标准协议消息面字典 (Message Schema Reference)</h2>
+  <h4>3.1.2 订阅周期推送 <code>onMetrics(callback)</code></h4>
+  <p>宿主每隔 1000ms 采样并派发最新数据。组件被隐藏或全屏独占休眠时自动挂起推送。</p>
+  <pre><code>// 开始监听并保存退订句柄
+const unlisten = window.LinDesk.system.onMetrics(function(metrics) {
+  document.getElementById("cpu-val").innerText = metrics.cpu + "%";
+});
 
-  <h3>4.1 系统信息 API (<code>SystemInfo</code>)</h3>
-  <p><strong>所需权限</strong>：<code>desktop</code></p>
-  <h4>4.1.1 获取即时快照 (<code>system_info_snapshot</code>)</h4>
-  <pre><code>// 请求
-{ "type": "system_info_snapshot", "requestId": "req_101", "action": "snapshot" }
+// 适时取消监听
+// unlisten();</code></pre>
 
-// 宿主响应 (systemInfoResponse)
-{
-  "type": "systemInfoResponse",
-  "requestId": "req_101",
-  "ok": true,
-  "data": {
-    "cpu": { "usagePercent": 14.5, "coreCount": 16, "brand": "13th Gen Intel Core i7" },
-    "memory": { "totalBytes": 34359738368, "usedBytes": 17179869184, "usagePercent": 50.0 },
-    "battery": { "hasBattery": true, "percent": 98, "charging": true }
+  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
+
+  <h3>3.2 原生定位与外链 (<code>LinDesk.shell</code>)</h3>
+  <p>用于便签、快捷启动板、常用目录跳转类小组件。</p>
+
+  <h4>3.2.1 资源管理器安全定位 <code>openPath(filePath)</code></h4>
+  <p>在 Windows 资源管理器中打开指定目录或高亮选中文件。</p>
+  <pre><code>window.LinDesk.shell.openPath("C:\\Users\\Desktop").then(function(success) {
+  if (!success) console.error("路径不存在或被安全策略拦截");
+});</code></pre>
+  <div class="note" style="border-left-color:var(--danger);background:#fff5f5;">
+    <strong>物理级硬拦截约束</strong>：为防止恶意组件，<code>openPath</code> 物理级禁止唤起任何二进制可执行程序（<code>.exe</code>, <code>.bat</code>, <code>.cmd</code>, <code>.ps1</code>, <code>.vbs</code>, <code>.msi</code> 等）。传入此类目标直接被拒绝并返回 <code>false</code>。
+  </div>
+
+  <h4>3.2.2 系统浏览器打开外链 <code>openUrl(url)</code></h4>
+  <p>调用系统默认外部浏览器打开指定网页链接。</p>
+  <pre><code>window.LinDesk.shell.openUrl("https://github.com").catch(function(err) {
+  console.error("打开链接失败:", err);
+});</code></pre>
+  <p class="note"><strong>协议限制</strong>：仅允许标准 <code>http://</code> 与 <code>https://</code> 协议，拦截其他敏感 URI Scheme。</p>
+
+  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
+
+  <h3>3.3 容器控制 (<code>LinDesk.widget</code>)</h3>
+  <p>仅对小组件（<code>type="widget"</code>）生效。</p>
+  <pre><code>// 关闭并隐藏当前组件
+window.LinDesk.widget.close();
+
+// 唤起 LinDesk 主设置窗口并跳转到当前组件的管理面板
+window.LinDesk.widget.openSettings();</code></pre>
+
+  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
+
+  <h3>3.4 壁纸工坊参数监听与媒体加载 (<code>LinDesk.wallpaper</code>)</h3>
+  <p>仅对动态壁纸（<code>type="wallpaper"</code>）生效。当用户在壁纸工坊 (LinDesk Hub) 中拖动滑块、修改调色盘或拨动开关时实时触发：</p>
+  <pre><code>window.LinDesk.wallpaper.onPropertyChange(function(prop) {
+  console.log("参数变动:", prop.key, "新数值:", prop.value);
+  if (prop.key === "speed") {
+    particleEngine.setSpeed(prop.value);
+  } else if (prop.key === "glowColor") {
+    particleEngine.setGlowColor(prop.value);
   }
-}</code></pre>
-
-  <h4>4.1.2 订阅周期推送 (<code>system_info_watch</code>)</h4>
-  <pre><code>// 订阅
-{ "type": "system_info_watch", "requestId": "req_102", "watchId": "cpu_watcher_1", "action": "watch", "intervalMs": 1000 }
-
-// 宿主推送 (systemInfoUpdate)
-{ "type": "systemInfoUpdate", "watchId": "cpu_watcher_1", "data": { ... } }
-
-// 取消订阅 (system_info_unwatch)
-{ "type": "system_info_unwatch", "requestId": "req_103", "watchId": "cpu_watcher_1", "action": "unwatch" }</code></pre>
-
-  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
-
-  <h3>4.2 本地持久化存储 API (<code>Storage</code>)</h3>
-  <p><strong>所需权限</strong>：<code>storage</code>。数据独立保存在 <code>&lt;userData&gt;/LinWidgetsData/&lt;widgetId&gt;/storage.json</code> 中，绝对隔离。</p>
-  <pre><code>// 存入键值
-{ "type": "storage_set", "requestId": "req_201", "action": "set", "key": "theme_mode", "value": "dark" }
-
-// 读取键值
-{ "type": "storage_get", "requestId": "req_202", "action": "get", "key": "theme_mode" }
-
-// 响应
-{ "type": "storageResponse", "requestId": "req_202", "ok": true, "value": "dark" }
-
-// 删除与清空
-{ "type": "storage_remove", "requestId": "req_203", "action": "remove", "key": "theme_mode" }
-{ "type": "storage_clear", "requestId": "req_204", "action": "clear" }</code></pre>
-
-  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
-
-  <h3>4.3 动态壁纸专用 API (<code>Wallpaper</code>)</h3>
-  <p>仅对 <code>manifest.role = "wallpaper"</code> 的壁纸组件生效。</p>
-  <pre><code>// 弹出系统文件选择框选择本地视频或图片
-{ "type": "wallpaper_set_source", "requestId": "req_301", "dialog": true }
-
-// 宿主响应：注入本地媒体
-{ "type": "wallpaper_source_changed", "requestId": "req_301", "ok": true, "sourcePath": "D:/Wallpapers/cyberpunk.mp4" }
-
-// 切换内置主题预设 (aurora / twilight / deepblue)
-{ "type": "wallpaper_set_preset", "requestId": "req_303", "preset": "twilight" }
-
-// 宿主实时推送工坊调节参数（用户拖动滑块或选色时触发）
-{
-  "type": "property_update",
-  "key": "particleCount",
-  "value": 500
-}</code></pre>
-  <p class="note"><strong>媒体加载规范</strong>：选定本地媒体文件后，通过 <code>linwidget://wallpaper:&lt;id&gt;/_media?path=</code> 自定义协议直接赋予 <code>&lt;video src="..."&gt;</code>，突破 Chromium 本地文件访问拦截。</p>
-
-  <hr style="border:none;border-top:1px solid var(--line-soft);margin:24px 0;">
-
-  <h3>4.4 窗口与视口控制 API</h3>
-  <pre><code>// 组件主动请求变更位置与尺寸
-{ "type": "widget_geometry_changed", "x": 100, "y": 120, "width": 360, "height": 200 }
-
-// 请求打开宿主对应组件的设置面板
-{ "type": "open_widget_settings" }</code></pre>
-</section>
-
-<section>
-  <h2>5. 权限沙箱与安全模型 (Security & Sandbox)</h2>
+});</code></pre>
+  <p><strong>视频壁纸媒体流式加载</strong>：</p>
   <ul>
-    <li><strong>资源协议隔离 (<code>linwidget://</code>)</strong>：所有组件页面及内部静态资源必须通过 <code>linwidget://&lt;instanceId&gt;/&lt;relativePath&gt;</code> 加载。宿主执行严密的目录穿越检测，拦截任何跳出组件目录的非法请求。</li>
-    <li><strong>外网权限拦截 (<code>network</code>)</strong>：未在 <code>manifest.permissions</code> 中声明 <code>"network"</code> 的组件，所有外发网络连接在 CEF <code>OnBeforeResourceLoad</code> 层直接拦截并返回 <code>RV_CANCEL</code>。</li>
-    <li><strong>输入穿透检测</strong>：鼠标点击组件像素 Alpha &lt; 10 的透明区域时，事件自动穿透给桌面原生图标，确保原生桌面操作零受阻。</li>
+    <li>包内相对视频直接引用：<code>&lt;video src="bg.mp4" autoplay loop muted&gt;</code>；</li>
+    <li>用户外部导入大文件视频引用：<code>&lt;video src="linwidget://media?path=D%3A%2FMyWallpapers%2Fmovie.mp4" autoplay loop&gt;</code>。</li>
   </ul>
 </section>
 
 <section>
-  <h2>6. 开发者工具与 AI 增量修复闭环</h2>
-  <p>调试面板内置 <strong>「导出诊断包」</strong> 功能：</p>
+  <h2>4. 安全沙箱与防护体系 (Security & Sandbox)</h2>
   <ul>
-    <li><strong>脱敏保护</strong>：自动将用户绝对路径替换为 <code>&lt;USER_HOME&gt;</code>；</li>
-    <li><strong>诊断包内容</strong>：完整 Manifest 元数据、当前运行时状态（尺寸、Z 序、已授予特权）、最后 200 行控制台异常日志；</li>
-    <li><strong>闭环修复模式</strong>：组件异常时，将诊断包直接提交给 AI 编程助手，即可在保持原有组件结构的前提下完成增量精准修复。</li>
+    <li><strong>壁纸 API 调用隔离</strong>：壁纸运行沙箱中严格禁用 <code>LinDesk.widget</code> 容器操作（如 <code>close()</code>），防止壁纸误调导致桌面背景异常黑屏；</li>
+    <li><strong>60FPS / 30FPS 渲染帧率锁</strong>：宿主对 CEF OSR 强制锁定最高 60FPS（或省电模式 30FPS），严禁 WebGL 跑满 GPU 造成笔记本发热降频；</li>
+    <li><strong>本地资源隔离 (<code>linwidget://</code>)</strong>：组件静态资源仅限在各自包目录内加载。资源加载器强制规范化路径，严格阻断 <code>../../</code> 穿越路径，禁止跨包越权访问磁盘；</li>
+    <li><strong>物理级执行拦截</strong>：<code>LinDesk.shell.openPath</code> 严禁执行一切外部二进制程序，切断木马与勒索病毒的静默启动途径；</li>
+    <li><strong>全屏独占智能休眠</strong>：当系统前台运行独占 3D 游戏或全屏视频时，宿主自动暂停 OSR 离屏渲染循环与周期推送，实现 0.0% CPU/GPU 零开销；</li>
+    <li><strong>透明区域鼠标穿透</strong>：小组件未绘制内容的透明区域（Alpha &lt; 10）自动将鼠标事件穿透回桌面底层，确保原生桌面图标框选与点击体验丝滑无阻。</li>
   </ul>
+</section>
+
+<section>
+  <h2>5. 创作者极客开发流 (Developer Workflow)</h2>
+  <ol>
+    <li><strong>本地零依赖开发</strong>：在本地新建文件夹并创建 <code>index.html</code> 和 <code>manifest.json</code>，直接在 Chrome/Edge 浏览器中双击打开调试排版；</li>
+    <li><strong>丢入即热重载</strong>：将文件夹放入 LinDesk 的 <code>LinWidgets/</code> 或 <code>Wallpapers/</code> 目录，LinDesk 运行时自动识别载入；</li>
+    <li><strong>呼出 F12 调试</strong>：桌面右键组件选择呼出 Chromium F12 DevTools 控制台；修改本地 HTML/JS 代码后按 <kbd>Ctrl</kbd>+<kbd>R</kbd> 即时热刷新。</li>
+  </ol>
 </section>
 
 <footer class="doc-foot">
-  <span>LinDesk 文档中心 · LinWidget 协议规范手册</span>
+  <span>LinDesk 文档中心 · LinWidget 协议规范手册（2026-11-02 修订）</span>
 </footer>
 </div>
 </body>

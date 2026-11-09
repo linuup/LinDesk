@@ -13,6 +13,10 @@ public:
                              QString* errorMessage = nullptr);
     static QString manifestPath(const QString& packagePath);
     static QString entryPath(const QString& packagePath, const WidgetManifest& manifest);
+    static bool installPackage(const QString& packageOrLwPath,
+                               QString* installedTargetDir = nullptr,
+                               QString* detectedType = nullptr,
+                               QString* errorMessage = nullptr);
 };
 
 }

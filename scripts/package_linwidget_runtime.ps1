@@ -30,9 +30,9 @@ if (-not (Test-Path $runtimeSourceDir)) {
     $runtimeSourceDir = $BuildDir
 }
 
-$dllPath = Join-Path $runtimeSourceDir "LinWidgetRuntime.dll"
-if (-not (Test-Path $dllPath)) {
-    throw "Cannot find LinWidgetRuntime.dll in '$runtimeSourceDir'. Please build target LinWidgetRuntime first."
+$cefDllPath = Join-Path $runtimeSourceDir "libcef.dll"
+if (-not (Test-Path $cefDllPath)) {
+    throw "Cannot find libcef.dll in '$runtimeSourceDir'. Please build target LinWidgetRuntime first."
 }
 
 $stagingDir = Join-Path $env:TEMP ("linwidget_runtime_staging_" + [guid]::NewGuid().ToString("N"))
@@ -42,8 +42,8 @@ if (Test-Path $stagingDir) {
 New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
 try {
-    Write-Host "Staging files from $runtimeSourceDir..." -ForegroundColor Yellow
-    Copy-Item -Path (Join-Path $runtimeSourceDir "*") -Destination $stagingDir -Recurse -Force
+    Write-Host "Staging CEF runtime files from $runtimeSourceDir..." -ForegroundColor Yellow
+    Copy-Item -Path (Join-Path $runtimeSourceDir "*") -Destination $stagingDir -Recurse -Force -Exclude @("LinWidgetRuntime.dll", "LinDeskSubprocess.exe", "*.lib", "*.exp", "*.pdb")
 
     # Write manifest.json
     $manifest = [ordered]@{

@@ -26,5 +26,4 @@ private:
     QLabel* m_comingTitle = nullptr;
     QLabel* m_comingSubtitle = nullptr;
     QVBoxLayout* m_mainLayout = nullptr;
-    QWidget* m_contentWidget = nullptr;
 };

@@ -13,6 +13,7 @@
 #include "services/AppPaths.h"
 #include "services/DebugInfoExporter.h"
 #include "ai/AICoreService.h"
+#include "ui/hub/WallpaperStudioWindow.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -26,7 +27,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMessageBox>
+#include "ui/Fluent/FluentDialog.h"
 #include <QProcess>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -711,7 +712,7 @@ void ListViewDebugPanel::initUI() {
     m_tabBar = new QTabBar(headerContainer);
     m_tabBar->setObjectName(QStringLiteral("debugSegmentedTabBar"));
     m_tabBar->addTab(QString::fromUtf8(u8"\uE777  General"));
-    m_tabBar->addTab(QString::fromUtf8(u8"\uE74C  LinWidgets"));
+    m_tabBar->addTab(QString::fromUtf8(u8"\uEB9F  壁纸与组件"));
     m_tabBar->addTab(QString::fromUtf8(u8"\uE945  AI Studio"));
     m_tabBar->addTab(QString::fromUtf8(u8"\uE7F4  Layout"));
     m_tabBar->setDrawBase(false);
@@ -963,8 +964,7 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
 
         QPushButton* restartBtn = createActionButton("Restart", false, true);
         connect(restartBtn, &QPushButton::clicked, this, []() {
-            QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments(), QCoreApplication::applicationDirPath());
-            QCoreApplication::quit();
+            LinDesktop::relaunchApplication();
         });
         s1.cards.append(registerCard(new FluentCard(u8"\uE777", "Restart", "Relaunch the LinDesk application", restartBtn)));
 
@@ -1073,7 +1073,7 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
         connect(exportBtn, &QPushButton::clicked, this, [this]() {
             QString path;
             if (DebugInfoExporter::exportToApplicationDir(m_listView, &path))
-                QMessageBox::information(this, "Export", "Exported to " + path);
+                FluentDialog::showInfo(this, "Export", "Exported to " + path);
         });
         s3.cards.append(registerCard(new FluentCard(u8"\uE8AB", "Export Debug Snapshot", "Dump full desktop state to debug.json", exportBtn), true));
 
@@ -2102,12 +2102,12 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     layout->setContentsMargins(28, 24, 28, 28);
     layout->setSpacing(16);
 
-    layout->addWidget(createPageTitleLabel("LinWidgets"));
-    layout->addWidget(createPageSubtitleLabel("Manage installed widgets and development projects. Development projects run directly from their source folders with live reload."));
+    layout->addWidget(createPageTitleLabel("壁纸与组件底层诊断"));
+    layout->addWidget(createPageSubtitleLabel("多进程隔离运行时健康诊断、沙箱安全通信流与开发工程热重载调测。"));
 
     m_linWidgetsPageStatusLabel = new QLabel(page);
     m_linWidgetsPageStatusLabel->setWordWrap(true);
-    m_linWidgetsPageStatusLabel->setText(QStringLiteral("CEF OSR widget engine ready. All widgets run in an isolated sandbox with hot-reload support."));
+    m_linWidgetsPageStatusLabel->setText(QStringLiteral("壁纸与小组件多进程隔离运行时就绪 · 硬件图形加速正常"));
     m_linWidgetsPageStatusLabel->setStyleSheet(QStringLiteral(
         "background: #eff6ff;"
         "border: 1px solid #bfdbfe;"
@@ -2174,10 +2174,10 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             if (m_linWidgetsPageStatusLabel) {
                 if (checked) {
                     m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("CEF OSR widget system enabled."));
+                        QStringLiteral("壁纸与小组件运行支持已启用 · 沙箱多进程已就绪。"));
                 } else {
                     m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("Widget system disabled. CEF OSR unmounted, showing native desktop icons only."));
+                        QStringLiteral("壁纸与小组件运行支持已停用，已退回原生桌面图标模式。"));
                 }
             }
         }
@@ -2204,8 +2204,8 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("Widget boundary visualization enabled (cyan border and [CEF OSR] tag).")
-                : QStringLiteral("Widget boundary visualization disabled."));
+                ? QStringLiteral("小组件视口矩形辅助边界已开启（青色线框）。")
+                : QStringLiteral("小组件视口边界已关闭。"));
         }
     });
 
@@ -2225,7 +2225,10 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
     });
 
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("CEF OSR"), QStringLiteral("Toggle CEF OSR widget engine"), m_linWidgetEnabledToggle));
+    auto* hubButton = createActionButton(QStringLiteral("管理中心 (Hub)"), true, false);
+    connect(hubButton, &QPushButton::clicked, []() { LinHub::WallpaperStudioWindow::showStudio(); });
+    controlBarLayout->addWidget(hubButton);
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("运行底座"), QStringLiteral("开关壁纸与小组件底层运行时"), m_linWidgetEnabledToggle));
     controlBarLayout->addWidget(addToggleRow(QStringLiteral("Show Bounds"), QStringLiteral("Draw widget bounding boxes"), m_linWidgetBoundsToggle));
     controlBarLayout->addWidget(addToggleRow(QStringLiteral("Occupied Cells"), QStringLiteral("Highlight grid cells blocked by widgets"), m_linWidgetBlockedCellsToggle));
     controlBarLayout->addStretch(1);
@@ -2544,14 +2547,14 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
 
         const QString modeText = isDevelopment ? QStringLiteral("development project") : QStringLiteral("installed widget");
-        const int confirm = QMessageBox::warning(
-            this,
-            QStringLiteral("Delete LinWidget"),
-            QStringLiteral("Delete this %1?\n\n%2\n\nThis removes the registry record, saved layout state, and the widget folder.")
-                .arg(modeText, packagePath),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No);
-        if (confirm != QMessageBox::Yes) {
+        if (!FluentDialog::confirm(
+                this,
+                QStringLiteral("Delete LinWidget"),
+                QStringLiteral("Delete this %1?\n\n%2\n\nThis removes the registry record, saved layout state, and the widget folder.")
+                    .arg(modeText, packagePath),
+                QStringLiteral("Delete"),
+                QStringLiteral("Cancel"),
+                true)) {
             return;
         }
 

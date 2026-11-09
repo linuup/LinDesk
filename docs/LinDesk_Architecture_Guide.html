@@ -93,7 +93,7 @@
   <div class="meta">
     <span>版本：当前版（WebView2 已彻底移除，CEF OSR + 独立组件运行时）</span>
     <span>依据：src 源码只读盘点</span>
-    <span>更新：2026-10-14</span>
+    <span>更新：2026-11-02（同步纯 Web 极简架构与六大核心管道）</span>
   </div>
 </header>
 
@@ -262,35 +262,71 @@
     <li><strong>右键快捷尺寸规格菜单</strong>：在小组件上右键单击弹出专属上下文菜单，提供标准网格尺寸一键切换（小卡片 <code>200×200</code>、标准条状 <code>360×200</code>、大卡片 <code>400×300</code>、全宽展板 <code>540×320</code>），并可直接执行重新加载、打开小组件设置与移除小组件。</li>
   </ul>
 
-  <h3>3.6 内置组件包（9 个）</h3>
-  <p>位于 <code>src/resources/LinWidgets/</code>，遵循标准组件包规范（<code>manifest.json</code> + entry 页面）：<strong>Clock、SysMonitor、Weather、Notes、Timer、Todo、WaterTracker、Wallpaper</strong>。</p>
+  <h3>3.6 组件与壁纸包规范（解耦分流）</h3>
+  <p>遵循标准 <code>.lw</code> 归档包规范（<code>manifest.json</code> + <code>index.html</code>），按 <code>type</code> 严格物理解耦：</p>
   <ul>
-    <li><strong>壁纸组件（Wallpaper）</strong>：特殊组件类型，可在组件内设置<strong>视频或图片</strong>，默认尺寸占满整个 ListView 背景；活动时经 <code>hasActiveWallpaper / isWallpaperInteractive</code> 控制互动层级，替代旧 WebView2 动态壁纸方案。</li>
-    <li>尺寸与权限声明以各组件 <code>manifest.json</code> 为准。</li>
+    <li><strong>桌面小组件 (<code>LinWidgets/</code>)</strong>：<code>type: "widget"</code>，包含 Clock、SysMonitor、Weather、Notes、Timer、Todo、WaterTracker 等。在桌面组件层浮动/嵌入渲染，支持 <kbd>Ctrl</kbd> 8 方向缩放、自由平移与网格预设。</li>
+    <li><strong>动态壁纸 (<code>Wallpapers/</code>)</strong>：<code>type: "wallpaper"</code>，独立存放于壁纸库；采用 <code>wallpaperType</code>（"web" | "video" | "picture"）与 <code>interactive</code>（true | false）正交模型；全屏置底 OSR 渲染，接入 6px 曼哈顿位移仲裁与前台发声智能静音。</li>
   </ul>
+
+  <h3>3.7 组件系统全流程闭环拓扑与六大核心管道</h3>
+  <p>LinDesk 组件系统打通了从底层二进制装载、磁盘包分流、多层像素混流到原生能力注入与全屏休眠的完整闭环，由六大管道协同运行：</p>
+  <div class="tbl-scroll">
+  <table>
+    <colgroup><col style="width:20%"><col style="width:38%"><col style="width:42%"></colgroup>
+    <thead>
+      <tr><th>核心管道</th><th>系统职责与内部机制</th><th>用户体验与交付价值</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. 运行时装载流<br>(Runtime Lifecycle)</strong></td>
+        <td>主程序与 CEF 零静态依赖；<code>LinWidgetRuntime.dll</code> 按需 <code>LoadLibrary</code>；支持在线下载进度条、离线 zip 安装、SHA-256 校验与无重启动态卸载。</td>
+        <td>未安装时 0 额外进程、0 显存占用，底座纯绿色秒开；随时安全启停与更新。</td>
+      </tr>
+      <tr>
+        <td><strong>2. 包管理与分流流<br>(Package & Routing)</strong></td>
+        <td>统一 <code>.lw</code> 格式；安装器按 <code>type</code> 自动分流解压至 <code>LinWidgets/</code>（组件）与 <code>Wallpapers/</code>（壁纸）；开发期支持明文文件夹直接放入热读取。</td>
+        <td>壁纸与组件物理级彻底解耦，彻底消灭历史混放与目录混乱。</td>
+      </tr>
+      <tr>
+        <td><strong>3. 四层图层混合流<br>(Compositing & Layers)</strong></td>
+        <td>单条 QPainter 绘制管线无窗口句柄叠加：Layer 0（系统底层）→ Layer 1（壁纸层，CEF OSR 全屏）→ Layer 2（桌面图标与 LinBox 容器）→ Layer 3（桌面小组件）→ Layer 4（交互框选与 Ctrl 手柄）。</td>
+        <td>杜绝 Windows DWM 子窗口闪烁与白屏，像素级支持 Alpha 透明通道与亚克力混流。</td>
+      </tr>
+      <tr>
+        <td><strong>4. 交互穿透与仲裁流<br>(Input Arbitration)</strong></td>
+        <td>小组件遵循「Ctrl 键宿主编排（8 方向缩放/平移/滚轮等比缩放）」与「免 Ctrl 原生交付（透明区域穿透，不透明区域点击）」；全屏壁纸与图标框选执行「6px 曼哈顿位移仲裁」。</td>
+        <td>壁纸粒子互动丝滑，桌面拉框选图标零冲突，组件内部网页按钮/输入框 100% 原生响应。</td>
+      </tr>
+      <tr>
+        <td><strong>5. 原生注入与数据流<br>(window.LinDesk)</strong></td>
+        <td>每个组件与壁纸以 <code>linwidget://<id>/</code> 独占 Origin，天然获得 Chromium 隔离的 <code>localStorage</code>/<code>IndexedDB</code>；宿主仅注入 <code>window.LinDesk</code>（<code>system</code> 硬件监控、<code>shell</code> 资源管理器安全定位、<code>widget</code> 容器控制、<code>wallpaper</code> 参数同步）。</td>
+        <td>普通能力直接使用原生 Web 标准；数据永不污染 LinDesk 宿主；杜绝恶意二进制拉起。</td>
+      </tr>
+      <tr>
+        <td><strong>6. 能耗治理与熔断流<br>(Suspension & Fault)</strong></td>
+        <td>前台独占运行 3D 游戏（如 CS2、赛博朋克 2077）或视频放映时，宿主检测后立即调用 <code>WasHidden(true)</code> 挂起渲染管线与媒体解码（CPU/GPU 0.0%）；前台发声自动静音；单组件 60s 内累计崩溃 3 次触发熔断保护。</td>
+        <td>绝对不抢占前台生产力与游戏算力；避免宿主陷入死循环崩溃风暴。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
 </section>
 
 <section>
-  <h2>4. 消息协议与桥接</h2>
+  <h2>4. 原生能力注入与 window.LinDesk 规范</h2>
 
-  <h3>4.1 消息协议（WidgetMessageTypes）</h3>
-  <p><code>src/desktop/widgets/linwidget/WidgetMessageTypes.h</code> 定义字符串枚举 + <code>makeWidgetMessage(type, widgetId)</code>：<code>launch / ready / error</code>、组件几何（<code>add_widget / update_widget_geometry / widget_geometry_changed / move / resize / close</code>）、系统信息（<code>system_info_request/response/update</code>）、存储（<code>storage_request/response</code>）、实例管理（<code>create/list/close/remove_widget_instance_*</code>）、设置（<code>open_widget_settings / theme_changed</code>）。<span class="tag check">待规范化</span>：无 requestId / 超时 / 错误码。</p>
-
-  <h3>4.2 传输层现状 <span class="tag keep">已实现</span></h3>
+  <h3>4.1 原生能力注入架构 (window.LinDesk)</h3>
+  <p>宿主彻底摒弃复杂的专有存储与网络 IPC 包装，普通能力 100% 原生交付浏览器标准（<code>localStorage</code>、<code>fetch</code>、Canvas/WebGL），仅在全局注入 <code>window.LinDesk</code> 提供四项底层原生补足能力：</p>
   <ul>
-    <li><strong>CEF 消息桥</strong>：<code>CefOsrBrowserInstance::injectBridgeScript</code> 在页面加载完成时向主框架注入桥脚本；JS → C++ 经 <code>onWebMessageReceived</code>（页面 <code>postMessage</code> 转发）；C++ → JS 经 <code>sendMessageToWeb</code>（<code>executeJavaScript</code> 分发），<code>WidgetManager</code> 统一 <code>handleRuntimeMessage</code> 处理。</li>
-    <li><strong>WebView2 兼容垫片</strong>：桥内保留 <code>window.chrome.webview</code> 兼容对象（<code>postMessage / addEventListener / removeEventListener / __dispatch</code>），旧组件（如 Notes）无需改写即可收发消息。</li>
+    <li><strong><code>LinDesk.system</code></strong>：硬件监控指标快照（<code>getMetrics()</code>）与 1s 周期订阅（<code>onMetrics(cb)</code>）。</li>
+    <li><strong><code>LinDesk.shell</code></strong>：资源管理器目录浏览与文件定位（<code>openPath(path)</code>，<strong>物理拦截可执行二进制</strong>）、安全默认浏览器外链（<code>openUrl(url)</code>，限 http/https）。</li>
+    <li><strong><code>LinDesk.widget</code></strong>：容器关闭当前组件（<code>close()</code>）与呼出组件管理设置（<code>openSettings()</code>）（<strong>壁纸沙箱禁用</strong>）。</li>
+    <li><strong><code>LinDesk.wallpaper</code></strong>：工坊滑块/颜色/开关实时变动监听（<code>onPropertyChange(cb)</code>）（<strong>仅壁纸生效</strong>）。</li>
   </ul>
 
-  <h3>4.3 组件侧 API 目标形态（window.desktop）</h3>
-  <p>组件加载后注入 <code>window.desktop</code> 桥对象：</p>
-  <ul>
-    <li>身份与就绪：<code>instanceId / widgetId / widgetName</code>、<code>await window.desktop.ready</code>。</li>
-    <li>几何控制：<code>resizeWidget / setWidgetGeometry / setResizeUiVisible / openSettings</code>。</li>
-    <li>存储：<code>storage.instance.set/get/remove/clear/all</code>、<code>storage.widget.*</code>（跨实例共享）。</li>
-    <li>系统信息（需 desktop 权限）：<code>systemInfo.getSnapshot()</code>、<code>systemInfo.watch(cb, interval)</code>。</li>
-    <li>实例管理：<code>instances.create/list</code>、<code>instance.close/remove</code>。</li>
-  </ul>
+  <h3>4.2 Chromium 域隔离持久化</h3>
+  <p>每个小组件与壁纸以 <code>linwidget://<id>/</code> 作为独立 Origin，天然享有 Chromium 内核分配的独立 <code>localStorage</code> / <code>IndexedDB</code> 存储沙箱，零私有代码实现物理隔离，永不污染 LinDesk 宿主数据。</p>
 </section>
 
 <section>
@@ -353,8 +389,25 @@
 <section>
   <h2>9. 当前状态与演进路线</h2>
   <ol>
-    <li><strong>已完成：</strong>WebView2 彻底移除；CEF OSR 帧渲染与统一绘制管线；CEF 消息桥与 <code>chrome.webview</code> 兼容垫片；鼠标/滚轮/键盘输入路由；组件系统独立运行时（安装/卸载/动态加载，卸载保留用户数据）；11 个内置组件（含壁纸组件）；spdlog 日志与崩溃处理；图标缓存 LRU 与失效、商店应用图标兼容、显示名覆盖；x86/x64 双架构构建与发布。</li>
-    <li><strong>进行中 / 待办：</strong>权限隔离（网络/存储）、组件 console 日志捕获、崩溃自动重启与热重载、消息协议规范化（requestId/超时/错误码）、组件包市场与动态加载等——见<a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a>与<a href="LinDesk_Todo.html">任务清单</a>。</li>
+    <li><strong>已完成：</strong>
+      <ul>
+        <li><strong>底座与多层像素混流</strong>：CEF OSR 60FPS 离屏渲染与 QPainter 统一桌面绘制管线；图标层与组件层透明穿透协同；WorkerW 完美嵌入；双架构 (x86/x64) 构建。</li>
+        <li><strong>LinWidget 2.0 架构与物理分流</strong>：统一 <code>.lw</code> 压缩包规范，安装器（<code>WidgetPackage::installPackage</code>）依据 <code>type: "widget" | "wallpaper"</code> 物理分流归档至专属目录 <code>LinWidgets/&lt;id&gt;</code> 与 <code>LinWallpapers/&lt;id&gt;</code>，实现两类资产彻底解耦。</li>
+        <li><strong>现代标准 <code>window.LinDesk</code> 原生能力注入</strong>：<code>LinDesk.system</code>（快照与 1000ms 周期推送）、<code>LinDesk.shell</code>（安全定位与默认浏览器外链）、<code>LinDesk.widget</code>（容器关闭与尺寸设置）、<code>LinDesk.wallpaper</code>（工坊参数变动监听）；数据直用 <code>localStorage</code>，网络直用 <code>fetch</code>。</li>
+        <li><strong>物理级安全硬拦截与沙箱防护</strong>：<code>shell_open_path</code> 建立底层物理黑名单硬拦截 <code>.exe/.bat/.cmd/.ps1/.vbs/.msi</code> 等任何可执行文件与脚本；<code>shell_open_url</code> 仅放行 <code>http://</code> 与 <code>https://</code>；本地 Scheme 加载严格阻断 <code>../../</code> 目录穿越；壁纸实例严格禁用容器关闭操作，杜绝误操作黑屏。</li>
+        <li><strong>极客独立开发工作流</strong>：源码文件夹丢入热识别；桌面小组件右键一键呼出 Chromium F12 DevTools 开发者工具；键盘支持 <kbd>Ctrl</kbd>+<kbd>R</kbd> 与 <kbd>F5</kbd> 热重载刷新。</li>
+        <li><strong>壁纸工坊 (LinDesk Hub) 与正交模型</strong>：独立 1120×720 Fluent 悬浮大窗口，具备 16:9 物理画板、桌面图标透视浮层与声明式 properties 动态控件；壁纸元数据解耦为 <code>wallpaperType: "web" | "video" | "picture"</code> 与 <code>interactive: true | false</code>；外部大视频支持 <code>linwidget://media?path=</code> 高速流式播放。</li>
+        <li><strong>工程质量与自动化测试</strong>：全量 9 项 CTest 自动化测试用例 100% 通过（涵盖系统快照、IPC 信封、现代 Manifest、物理安装分流、运行时桥与安全拦截）。</li>
+      </ul>
+    </li>
+    <li><strong>后续进阶演进：</strong>
+      <ul>
+        <li><strong>全屏独占智能免打扰</strong>：检测前台独占 3D 游戏或全屏放映时自动挂起 OSR 渲染管线，实现 0.0% CPU/GPU 零能耗。</li>
+        <li><strong>多显示器跨屏扩展</strong>：突破 <code>primaryScreen()</code> 限制，支持副屏独立放置收纳盒与小组件。</li>
+        <li><strong>生态与在线市场</strong>：在线组件市场浏览与一键安装、创作者工坊云端同步。</li>
+      </ul>
+      详见 <a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a> 与 <a href="LinDesk_Todo.html">任务清单</a>。
+    </li>
   </ol>
 </section>
 

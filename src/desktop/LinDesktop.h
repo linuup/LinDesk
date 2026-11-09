@@ -70,6 +70,8 @@ public:
     void requestHoverEffect();
     void checkFirstLaunchPrompt();
     void initializeTrayIcon();
+    void cleanupTrayIcon();
+    static bool relaunchApplication();
     bool shouldMinimizeToTray() const;
     void restoreFromTray();
     void exitFromTray();

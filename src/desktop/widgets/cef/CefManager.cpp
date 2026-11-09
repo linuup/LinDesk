@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTimer>
+#include <QThread>
 #include <QDebug>
 
 #ifdef Q_OS_WIN
@@ -47,7 +48,8 @@ CefManager::CefManager(QObject* parent)
 
 CefManager::~CefManager()
 {
-    shutdown();
+    stopMessageLoopPump();
+    m_initialized = false;
     if (s_instance == this) {
         s_instance = nullptr;
     }
@@ -79,6 +81,13 @@ public:
 
     void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
         Q_UNUSED(process_type);
+        // 关键开关：在以管理员身份运行（如 VS 调试）时防止 Chromium 尝试提权/降权导致 Exit Code 38
+        command_line->AppendSwitch("do-not-de-elevate");
+        // 沙箱开关：与 settings.no_sandbox = 1 呼应
+        command_line->AppendSwitch("no-sandbox");
+        command_line->AppendSwitch("disable-site-isolation-trials");
+        command_line->AppendSwitch("disable-features=RendererCodeIntegrity");
+
         // OSR 离屏渲染关键开关：禁用 GPU 合成，使 Chromium 走软件渲染管线将帧数据回调到 OnPaint
         command_line->AppendSwitch("disable-gpu");
         command_line->AppendSwitch("disable-gpu-compositing");
@@ -91,6 +100,24 @@ public:
 
     IMPLEMENT_REFCOUNTING(LinCefApp);
 };
+
+#ifdef Q_OS_WIN
+static bool callCefInitializeRaw(const CefMainArgs* args, const CefSettings* settings, CefApp* app, void* sandboxInfo)
+{
+    return CefInitialize(*args, *settings, app, sandboxInfo);
+}
+
+static bool doCefInitializeSEH(const CefMainArgs* args, const CefSettings* settings, CefApp* app, void* sandboxInfo, bool* outSuccess)
+{
+    __try {
+        *outSuccess = callCefInitializeRaw(args, settings, app, sandboxInfo);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        *outSuccess = false;
+        return false;
+    }
+}
+#endif
 
 static CefRefPtr<LinCefApp> s_cefApp;
 #endif
@@ -263,30 +290,71 @@ QString CefManager::localesDirectoryPath() const
     return QString();
 }
 
+#ifdef Q_OS_WIN
+static HANDLE s_hPrimaryCacheMutex = nullptr;
+#endif
+
 static bool isCefCacheDirectoryLocked(const QString& cacheDir)
 {
-    const QString lockFilePath = QDir(cacheDir).filePath(QStringLiteral("lockfile"));
-    if (!QFileInfo::exists(lockFilePath)) {
+    if (!QDir(cacheDir).exists()) {
         return false;
     }
 #ifdef Q_OS_WIN
-    const std::wstring lockFileW = QDir::toNativeSeparators(lockFilePath).toStdWString();
-    HANDLE hFile = CreateFileW(
-        lockFileW.c_str(),
-        GENERIC_READ | GENERIC_WRITE,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        const DWORD err = GetLastError();
-        if (err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION || err == ERROR_ACCESS_DENIED) {
-            return true;
+    const QStringList candidateFiles = {
+        QDir(cacheDir).filePath(QStringLiteral("lockfile")),
+        QDir(cacheDir).filePath(QStringLiteral("Local State")),
+        QDir(cacheDir).filePath(QStringLiteral("Default/LOCK")),
+        QDir(cacheDir).filePath(QStringLiteral("Default/Preferences")),
+        QDir(cacheDir).filePath(QStringLiteral("first_party_sets.db"))
+    };
+
+    for (const QString& filePath : candidateFiles) {
+        if (!QFileInfo::exists(filePath)) {
+            continue;
         }
-        return false;
+        const std::wstring filePathW = QDir::toNativeSeparators(filePath).toStdWString();
+        HANDLE hFile = CreateFileW(
+            filePathW.c_str(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            const DWORD err = GetLastError();
+            if (err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION || err == ERROR_ACCESS_DENIED) {
+                return true;
+            }
+        } else {
+            CloseHandle(hFile);
+        }
     }
-    CloseHandle(hFile);
+
+    // 检查 BrowserMetrics 下的持久内存映射文件是否被另一 Chromium 进程独占
+    const QDir metricsDir(QDir(cacheDir).filePath(QStringLiteral("BrowserMetrics")));
+    if (metricsDir.exists()) {
+        const QFileInfoList metricFiles = metricsDir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+        for (const QFileInfo& fi : metricFiles) {
+            const std::wstring filePathW = QDir::toNativeSeparators(fi.absoluteFilePath()).toStdWString();
+            HANDLE hFile = CreateFileW(
+                filePathW.c_str(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                nullptr,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+            if (hFile == INVALID_HANDLE_VALUE) {
+                const DWORD err = GetLastError();
+                if (err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION || err == ERROR_ACCESS_DENIED) {
+                    return true;
+                }
+            } else {
+                CloseHandle(hFile);
+            }
+        }
+    }
 #endif
     return false;
 }
@@ -307,10 +375,28 @@ QString CefManager::cacheStoragePath() const
         }
     }
 
+    bool primaryLocked = false;
+#ifdef Q_OS_WIN
+    if (!s_hPrimaryCacheMutex) {
+        s_hPrimaryCacheMutex = CreateMutexW(nullptr, FALSE, L"Local\\LinDesk_CefCache_Primary_Lock");
+    }
+    if (s_hPrimaryCacheMutex) {
+        const DWORD waitRes = WaitForSingleObject(s_hPrimaryCacheMutex, 0);
+        if (waitRes == WAIT_TIMEOUT) {
+            primaryLocked = true;
+        } else if (waitRes == WAIT_ABANDONED) {
+            // 前序持有进程异常终止，安全清理残留 lock 标记
+            QFile::remove(QDir(defaultCacheDir).filePath(QStringLiteral("Default/LOCK")));
+            QFile::remove(QDir(defaultCacheDir).filePath(QStringLiteral("lockfile")));
+        }
+    }
+#endif
+
     // Chromium 在 cache_path 被另一进程锁定时会返回 RESULT_CODE_PROFILE_IN_USE (21) 并在 CefInitialize 内部触发 0xc0000005 崩溃
-    if (isCefCacheDirectoryLocked(defaultCacheDir)) {
+    if (primaryLocked || isCefCacheDirectoryLocked(defaultCacheDir)) {
         const QString fallbackCacheDir = linWidgetsLocalDir.filePath(currentPidSuffix);
-        qWarning() << "[LinWidget][CefManager] Primary CEF cache dir is locked by another process:" << defaultCacheDir
+        qWarning() << "[LinWidget][CefManager] Primary CEF cache dir is locked by another process (primaryLocked="
+                   << primaryLocked << "):" << defaultCacheDir
                    << "- falling back to per-process cache dir:" << fallbackCacheDir;
         return QDir::toNativeSeparators(QDir::cleanPath(fallbackCacheDir));
     }
@@ -360,7 +446,7 @@ bool CefManager::initialize(QString* errorMessage)
     CefString(&settings.log_file).FromWString(cefLogW);
 
 #ifdef QT_DEBUG
-    settings.log_severity = LOGSEVERITY_DEFAULT;
+    settings.log_severity = LOGSEVERITY_VERBOSE;
 #else
     settings.log_severity = LOGSEVERITY_WARNING;
 #endif
@@ -393,6 +479,7 @@ bool CefManager::initialize(QString* errorMessage)
 
     const std::wstring cacheW = cachePath.toStdWString();
     CefString(&settings.cache_path).FromWString(cacheW);
+    CefString(&settings.root_cache_path).FromWString(cacheW);
 
     const std::wstring localeW = L"zh-CN";
     CefString(&settings.locale).FromWString(localeW);
@@ -446,7 +533,21 @@ bool CefManager::initialize(QString* errorMessage)
             << "\n  cache=" << cachePath;
 
     s_cefApp = new LinCefApp();
-    const bool success = CefInitialize(mainArgs, settings, s_cefApp, nullptr);
+    bool success = false;
+#ifdef Q_OS_WIN
+    const bool sehOk = doCefInitializeSEH(&mainArgs, &settings, s_cefApp.get(), nullptr, &success);
+    if (!sehOk) {
+        s_cefApp = nullptr;
+        const QString err = tr("CefInitialize crashed with an unhandled exception.");
+        if (errorMessage) {
+            *errorMessage = err;
+        }
+        qCritical() << "[LinWidget][CefManager]" << err;
+        return false;
+    }
+#else
+    success = CefInitialize(mainArgs, settings, s_cefApp, nullptr);
+#endif
     if (!success) {
         s_cefApp = nullptr;
         const QString err = tr("CefInitialize failed.");
@@ -487,32 +588,52 @@ void CefManager::shutdown()
     if (QDir(pidCacheDir).exists() && !isCefCacheDirectoryLocked(pidCacheDir)) {
         QDir(pidCacheDir).removeRecursively();
     }
+
+#ifdef Q_OS_WIN
+    if (s_hPrimaryCacheMutex) {
+        ReleaseMutex(s_hPrimaryCacheMutex);
+        CloseHandle(s_hPrimaryCacheMutex);
+        s_hPrimaryCacheMutex = nullptr;
+    }
+#endif
 #endif
 
     m_initialized = false;
     emit cefShutdown();
 }
 
+void CefManager::scheduleMessagePumpWork(qint64 delayMs)
+{
+    Q_UNUSED(delayMs);
+}
+
 void CefManager::startMessageLoopPump()
 {
-    if (!m_messagePumpTimer) {
-        m_messagePumpTimer = new QTimer(this);
-        m_messagePumpTimer->setInterval(10); // 100Hz cooperative dispatch
-        connect(m_messagePumpTimer, &QTimer::timeout, this, []() {
+    if (!m_pumpWorkTimer) {
+        m_pumpWorkTimer = new QTimer(this);
+        m_pumpWorkTimer->setInterval(10); // 100Hz cooperative dispatch
+        connect(m_pumpWorkTimer, &QTimer::timeout, this, []() {
 #ifdef LINDESK_HAS_CEF
-            CefDoMessageLoopWork();
+            if (CefManager::instance() && CefManager::instance()->isInitialized()) {
+                CefDoMessageLoopWork();
+            }
 #endif
         });
     }
-    m_messagePumpTimer->start();
+    m_pumpWorkTimer->start();
 }
 
 void CefManager::stopMessageLoopPump()
 {
-    if (m_messagePumpTimer) {
-        m_messagePumpTimer->stop();
-        m_messagePumpTimer->deleteLater();
-        m_messagePumpTimer = nullptr;
+    if (m_pumpWorkTimer) {
+        m_pumpWorkTimer->stop();
+        m_pumpWorkTimer->deleteLater();
+        m_pumpWorkTimer = nullptr;
+    }
+    if (m_idleWatchdogTimer) {
+        m_idleWatchdogTimer->stop();
+        m_idleWatchdogTimer->deleteLater();
+        m_idleWatchdogTimer = nullptr;
     }
 }
 
