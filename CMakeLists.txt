@@ -134,7 +134,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/ListItem\\.(cpp|h)$")
 list(FILTER SOURCES EXCLUDE REGEX ".*/subprocess/.*")
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/cef/.*")
-list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetManager\\.(cpp|h)$")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetManager.*\\.(cpp|h)$")
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetContainer\\.(cpp|h)$")
 list(FILTER SOURCES EXCLUDE REGEX ".*/src/desktop/widgets/linwidget/WidgetSettingsDialog\\.(cpp|h)$")
 
