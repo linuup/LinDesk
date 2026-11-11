@@ -1,4 +1,5 @@
 #include "desktop/Win11MenuBridge.h"
+#include "desktop/widgets/runtime_export.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -10,6 +11,7 @@
 #include <QUuid>
 
 #include <Windows.h>
+#include <algorithm>
 #include <thread>
 
 namespace {
@@ -45,7 +47,7 @@ bool waitForPipe(int timeoutMs)
 {
     int waited = 0;
     while (waited <= timeoutMs) {
-        if (WaitNamedPipeW(kPipeName, kPipeConnectStepMs)) {
+        if (WaitNamedPipeW(kPipeName, 20)) {
             return true;
         }
 
@@ -54,7 +56,8 @@ bool waitForPipe(int timeoutMs)
             return false;
         }
 
-        waited += kPipeConnectStepMs;
+        LinWidgetRuntimeBridge::instance().doMessageLoopWork();
+        waited += 20;
     }
 
     return false;
@@ -80,12 +83,27 @@ bool readAll(HANDLE pipe, void* data, DWORD size)
     char* cursor = static_cast<char*>(data);
     DWORD remaining = size;
     while (remaining > 0) {
-        DWORD read = 0;
-        if (!ReadFile(pipe, cursor, remaining, &read, nullptr) || read == 0) {
-            return false;
+        DWORD bytesAvailable = 0;
+        if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &bytesAvailable, nullptr)) {
+            const DWORD err = GetLastError();
+            if (err == ERROR_BROKEN_PIPE || err == ERROR_PIPE_NOT_CONNECTED) {
+                return false;
+            }
         }
-        cursor += read;
-        remaining -= read;
+        if (bytesAvailable > 0) {
+            const DWORD toRead = (std::min)(remaining, bytesAvailable);
+            DWORD read = 0;
+            if (!ReadFile(pipe, cursor, toRead, &read, nullptr) || read == 0) {
+                return false;
+            }
+            cursor += read;
+            remaining -= read;
+            continue;
+        }
+
+        // Win11MenuIsland 菜单正在展示中，保持 CEF 消息泵运转与桌面画布重绘，确保壁纸动画极致丝滑
+        LinWidgetRuntimeBridge::instance().doMessageLoopWork();
+        Sleep(8);
     }
     return true;
 }

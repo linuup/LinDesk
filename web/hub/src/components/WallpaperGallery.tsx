@@ -73,7 +73,7 @@ const WallpaperThumbnail: React.FC<{ wallpaper: WallpaperInfo; isActive: boolean
       {/* Active Pill Overlay */}
       {isActive && (
         <div className="absolute top-2.5 left-2.5">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold shadow-xs">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold shadow-md">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             桌面正在使用
           </span>
@@ -103,7 +103,7 @@ const HeroPreviewWindow: React.FC<{ currentWall: WallpaperInfo; isRunning: boole
   }, []);
 
   return (
-    <div ref={containerRef} className="relative w-full lg:w-96 aspect-video rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-black shrink-0 select-none">
+    <div ref={containerRef} className="relative w-full lg:w-96 aspect-video rounded-xl overflow-hidden border border-slate-800 shadow-lg bg-black shrink-0 select-none">
       <div
         style={{
           width: '1280px',
@@ -121,9 +121,9 @@ const HeroPreviewWindow: React.FC<{ currentWall: WallpaperInfo; isRunning: boole
           scrolling="no"
         />
       </div>
-      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-xs">
-        <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
-        <span className={`font-medium ${isRunning ? 'text-emerald-300' : 'text-slate-300'}`}>
+      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-md border border-white/10 text-xs">
+        <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+        <span className={`font-medium ${isRunning ? 'text-emerald-300' : 'text-slate-400'}`}>
           {isRunning ? '当前桌面正在使用' : '未应用 (Windows 默认壁纸)'}
         </span>
       </div>
@@ -162,7 +162,7 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
     <div className="space-y-6 animate-in fade-in duration-150">
       {/* 1. Active Wallpaper Showcase Hero (Using Real Wallpaper Live Preview) */}
       {currentWall ? (
-        <section className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-5 md:p-6 shadow-2xs">
+        <section className="relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#131927] p-5 md:p-6 shadow-xs dark:shadow-xl">
           <div className="flex flex-col lg:flex-row items-center gap-6">
             {/* Real Wallpaper Live Preview Window */}
             <HeroPreviewWindow currentWall={currentWall} isRunning={isRunning} />
@@ -170,34 +170,34 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
             {/* Active Info & Controls */}
             <div className="flex-1 space-y-3 w-full">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
                   当前活动壁纸
                 </span>
-                <span className="text-xs font-mono text-slate-500">
+                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
                   {currentWall.name}
                 </span>
               </div>
 
-              <h2 className="text-lg md:text-xl font-bold text-slate-900 tracking-tight">
+              <h2 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white tracking-tight">
                 {currentWall.name}
               </h2>
-              <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
                 {currentWall.description || '支持动态交互与微粒跟随渲染。'}
               </p>
 
-              <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80">
                 {isRunning ? (
                   <button
                     onClick={onStopWallpaper}
-                    className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-2xs"
+                    className="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/15 dark:hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30 text-xs font-semibold flex items-center gap-2 transition-all active:scale-95 shadow-xs"
                   >
-                    <Square className="w-3.5 h-3.5 fill-rose-600 text-rose-600" />
+                    <Square className="w-3.5 h-3.5 fill-rose-600 dark:fill-rose-400 text-rose-600 dark:text-rose-400" />
                     关闭壁纸
                   </button>
                 ) : (
                   <button
                     onClick={() => onApplyWallpaper(currentWall.id, currentWall.packagePath)}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs flex items-center gap-2 transition-all active:scale-95"
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition-all active:scale-95"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
                     设为桌面壁纸
@@ -206,9 +206,9 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
 
                 <button
                   onClick={() => onOpenStudio(currentWall.id)}
-                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium flex items-center gap-2 shadow-2xs transition-all"
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-900/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs font-medium flex items-center gap-2 shadow-2xs transition-all"
                 >
-                  <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                  <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   进入工坊调参...
                 </button>
               </div>
@@ -221,16 +221,16 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
       <div>
         <div className="flex items-center justify-between mb-3.5">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-900">动态壁纸库</h3>
+            <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">动态壁纸库</h3>
           </div>
         </div>
 
         {wallpapers.length === 0 ? (
-          <div className="p-12 text-center rounded-2xl border border-dashed border-slate-200 bg-white/60 space-y-2">
-            <ImageOff className="w-8 h-8 text-slate-400 mx-auto" />
-            <p className="text-sm text-slate-700 font-semibold">未检测到已安装的动态壁纸</p>
-            <p className="text-xs text-slate-400">请在 resources/wallpapers 目录下放置有效的动态壁纸包工程</p>
+          <div className="p-12 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-[#131927]/60 space-y-2">
+            <ImageOff className="w-8 h-8 text-slate-400 dark:text-slate-500 mx-auto" />
+            <p className="text-sm text-slate-700 dark:text-slate-300 font-semibold">未检测到已安装的动态壁纸</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">请在 resources/wallpapers 目录下放置有效的动态壁纸包工程</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -240,10 +240,10 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
               return (
                 <div
                   key={preset.id}
-                  className={`rounded-2xl border transition-all duration-200 bg-white flex flex-col justify-between overflow-hidden ${
+                  className={`rounded-2xl border transition-all duration-200 bg-white dark:bg-[#131927] flex flex-col justify-between overflow-hidden ${
                     isActive
-                      ? 'border-indigo-400 ring-1 ring-indigo-500/20 shadow-xs'
-                      : 'border-slate-200/90 shadow-2xs hover:border-slate-300 hover:shadow-xs'
+                      ? 'border-indigo-500 ring-1 ring-indigo-500/30 shadow-md'
+                      : 'border-slate-200/90 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-xs hover:shadow-md'
                   }`}
                 >
                   {/* Real Live Wallpaper Preview Thumbnail with 1280x720 scaling */}
@@ -253,27 +253,27 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
                   <div className="p-4.5 space-y-2.5 flex-1 flex flex-col justify-between">
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-900 tracking-tight line-clamp-1">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white tracking-tight line-clamp-1">
                           {preset.name}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 border border-slate-200">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
                           v{preset.version || '1.0.0'}
                         </span>
                       </div>
 
-                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
                         {preset.description || '支持动态交互与微粒跟随渲染。'}
                       </p>
                     </div>
                   </div>
 
                   {/* Card Action Footer */}
-                  <div className="px-4.5 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="px-4.5 py-3 bg-slate-50/70 dark:bg-slate-950/50 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between text-xs">
                     <button
                       onClick={() => onOpenStudio(preset.id)}
-                      className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all"
+                      className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs font-medium flex items-center gap-1.5 shadow-2xs transition-all"
                     >
-                      <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                      <Sliders className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                       工坊调参
                     </button>
 
@@ -281,13 +281,13 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
                       onClick={() => onApplyWallpaper(preset.id, preset.packagePath)}
                       className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 ${
                         isActive
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default shadow-2xs'
-                          : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs'
+                          ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 cursor-default shadow-xs'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30'
                       }`}
                     >
                       {isActive ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                           正在使用
                         </>
                       ) : (

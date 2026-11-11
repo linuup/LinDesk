@@ -3,7 +3,7 @@
 #endif
 
 #ifndef AppVersion
-#define AppVersion "1.3.0"
+#define AppVersion "1.5.0"
 #endif
 
 #ifndef AppExeName
@@ -15,7 +15,7 @@
 #endif
 
 #ifndef BuildDir
-#define BuildDir "D:/Desktop/LinDesk/build/Release"
+#define BuildDir "D:/Desktop/LinDesk/build/build_32/Release"
 #endif
 
 #ifndef PackageOutputDir
@@ -65,7 +65,7 @@ en.closeFailed=Unable to close {#AppName}. Please close it manually and try agai
 zh.closeFailed=无法关闭 {#AppName}。请手动关闭后重试。
 
 [Files]
-Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini,resources,resources\*,runtime,runtime\*,*.lib,*.exp,*.pdb,vc_redist.*.exe"
+Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs; Excludes: "config.ini,data.dat,data.json,debug.json,desktop.log,*.log,*.ini,plugins\*.ini,plugins\*\*.ini,resources,resources\*,vc_redist.*.exe"
 Source: "..\src\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs; Excludes: "*.git,*node_modules*,*cache*,*tmp*,*temp*"
 Source: "..\widgets\*"; DestDir: "{app}\resources\LinWidgets"; Flags: ignoreversion recursesubdirs; Excludes: "*.git,preview.html,README.md,*node_modules*,*cache*,*tmp*,*temp*"
 Source: "redist\vc_redist.{#MyArch}.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall ignoreversion

@@ -86,7 +86,12 @@ export interface StagedWallpaperMedia {
   editWallpaperId?: string;
   packagePath?: string;
   description?: string;
+  sourcePath?: string;
+  isArchived?: boolean;
+  fileSizeBytes?: number;
+  isMissing?: boolean;
   customConfig?: CustomWallpaperConfig;
+  isNewlyStaged?: boolean;
 }
 
 export interface WallpaperInfo {
@@ -104,6 +109,11 @@ export interface WallpaperInfo {
   wallpaperType?: 'video' | 'image' | 'web' | string;
   isCustom?: boolean;
   mediaUrl?: string;
+  previewUrl?: string;
+  sourcePath?: string;
+  isArchived?: boolean;
+  fileSizeBytes?: number;
+  isMissing?: boolean;
   customConfig?: CustomWallpaperConfig;
 }
 
@@ -123,13 +133,14 @@ export interface UniversalWallpaperSettings {
   volume: number; // 0 - 100
   audioDucking: boolean; // 第三方发声时自动避让静音
   dimming: number; // 0 - 80 桌面图标易读性暗度遮罩
-  blur: number; // 0 - 20 高斯模糊半径
+  blur: number; // 0 - 100 桌面背景高斯模糊百分比
   scaling: 'cover' | 'contain' | 'fill';
   playbackRate: number; // 0.5 - 2.0
   interactive: boolean;
+  muted?: boolean;
 }
 
-export type MainTabType = 'studio' | 'widgets' | 'desktop';
+export type MainTabType = 'overview' | 'studio' | 'widgets' | 'desktop';
 
 export interface IPCMessageLog {
   id: string;

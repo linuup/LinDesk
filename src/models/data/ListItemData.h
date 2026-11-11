@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QPixmap>
 #include <QImage>
+#include <QImageReader>
 #include <windows.h>
 #include <shlobj.h>
 #include <QDebug>
@@ -450,12 +451,56 @@ public:
 			} else {
 				// 普通文件 / 普通文件快捷方式
 				QString targetPath = m_fileInfo.symLinkTarget();
+				if (targetPath.isEmpty() && isShortcut) {
+					if (!m_iconItem.shortcutTargetPath.isEmpty()) {
+						targetPath = m_iconItem.shortcutTargetPath;
+					} else {
+						targetPath = SysInfoUtil::ResolveShortcutTargetPath(m_iconItem.path);
+					}
+				}
 				if (!targetPath.isEmpty()) {
 					QFileInfo targetData(targetPath);
-					newIcon = icon_provider.icon(targetData);
+					const QString targetSuffix = targetData.suffix().toLower();
+					if (targetSuffix == "ico") {
+						newIcon = QIcon(targetPath);
+					} else if (targetSuffix == "msi" || targetSuffix == "msp") {
+						newIcon = SysInfoUtil::SysFileIconByDLL(1, 48, QStringLiteral("msiexec.exe"));
+					} else {
+						static const QSet<QString> s_imgExts = {
+							QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("png"),
+							QStringLiteral("webp"), QStringLiteral("bmp"), QStringLiteral("gif"),
+							QStringLiteral("jfif"), QStringLiteral("tif"), QStringLiteral("tiff")
+						};
+						if (s_imgExts.contains(targetSuffix) && targetData.exists()) {
+							QImageReader r(targetPath);
+							r.setAutoTransform(true);
+							if (r.canRead()) {
+								QImage img = r.read();
+								if (!img.isNull()) {
+									if (img.width() > tierSourceSize || img.height() > tierSourceSize) {
+										img = img.scaled(tierSourceSize, tierSourceSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+									}
+									newIcon = QIcon(QPixmap::fromImage(img));
+								}
+							}
+						}
+					}
+					if (newIcon.isNull()) {
+						newIcon = icon_provider.icon(targetData);
+					}
 				}
 				if (newIcon.isNull() && !isShortcut) {
-					if (!fileSuffix.isEmpty() && fileSuffix != "exe") {
+					if (fileSuffix == "ico") {
+						newIcon = QIcon(m_iconItem.path);
+						if (newIcon.isNull()) {
+							newIcon = icon_provider.icon(m_fileInfo);
+						}
+					} else if (fileSuffix == "msi" || fileSuffix == "msp") {
+						const QString extKey = QString("ext:%1|pure|%2").arg(fileSuffix).arg(tierSourceSize);
+						newIcon = IconCacheManager::instance().getIcon(extKey, [&]() {
+							return SysInfoUtil::SysFileIconByDLL(1, 48, QStringLiteral("msiexec.exe"));
+						});
+					} else if (!fileSuffix.isEmpty() && fileSuffix != "exe") {
 						const QString extKey = QString("ext:%1|base|%2").arg(fileSuffix).arg(tierSourceSize);
 						newIcon = IconCacheManager::instance().getIcon(extKey, [&]() {
 							return icon_provider.icon(m_fileInfo);

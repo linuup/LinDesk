@@ -99,6 +99,22 @@ void WallpaperStudioWindow::showStudio(int defaultTab) {
             SetParent(hwnd, nullptr);
         }
 
+        // 绑定 Hub 专属独立窗口图标（任务栏与 Alt+Tab）
+        QString hubIcoPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/Assets/hub_icon.ico"));
+        if (!QFileInfo::exists(hubIcoPath)) {
+            hubIcoPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/hub/hub_icon.ico"));
+        }
+        if (QFileInfo::exists(hubIcoPath)) {
+            HICON hIconBig = (HICON)LoadImageW(nullptr, reinterpret_cast<LPCWSTR>(hubIcoPath.utf16()), IMAGE_ICON, 32, 32, LR_LOADFROMFILE);
+            HICON hIconSmall = (HICON)LoadImageW(nullptr, reinterpret_cast<LPCWSTR>(hubIcoPath.utf16()), IMAGE_ICON, 16, 16, LR_LOADFROMFILE);
+            if (hIconBig) {
+                SendMessage(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIconBig));
+            }
+            if (hIconSmall) {
+                SendMessage(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIconSmall));
+            }
+        }
+
         // 允许从资源管理器或桌面拖入外部媒体或组件工程目录
         DragAcceptFiles(hwnd, TRUE);
         ChangeWindowMessageFilterEx(hwnd, WM_DROPFILES, MSGFLT_ALLOW, nullptr);
@@ -130,6 +146,10 @@ WallpaperStudioWindow::WallpaperStudioWindow(QWidget* parent)
     : FluentBaseWidget(parent)
 {
     setWindowTitle(tr("LinDesk Hub · 动态壁纸工坊与桌面组件"));
+    QIcon hubIcon;
+    hubIcon.addFile(QStringLiteral(":/Assets/hub_icon.png"));
+    hubIcon.addFile(QStringLiteral(":/Assets/hub_icon.ico"));
+    setWindowIcon(hubIcon);
     resize(1180, 750);
     setMinimumSize(960, 620);
     setResizable(true);
@@ -192,6 +212,12 @@ void WallpaperStudioWindow::closeEvent(QCloseEvent* event) {
 }
 
 void WallpaperStudioWindow::dragEnterEvent(QDragEnterEvent* event) {
+    if (m_hubWebWidget) {
+        QCoreApplication::sendEvent(m_hubWebWidget, event);
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+        return;
+    }
     if (event->mimeData() && event->mimeData()->hasUrls()) {
         event->setDropAction(Qt::CopyAction);
         event->accept();
@@ -201,12 +227,25 @@ void WallpaperStudioWindow::dragEnterEvent(QDragEnterEvent* event) {
 }
 
 void WallpaperStudioWindow::dragMoveEvent(QDragMoveEvent* event) {
+    if (m_hubWebWidget) {
+        QCoreApplication::sendEvent(m_hubWebWidget, event);
+        event->setDropAction(Qt::CopyAction);
+        event->accept();
+        return;
+    }
     if (event->mimeData() && event->mimeData()->hasUrls()) {
         event->setDropAction(Qt::CopyAction);
         event->accept();
     } else {
         event->ignore();
     }
+}
+
+void WallpaperStudioWindow::dragLeaveEvent(QDragLeaveEvent* event) {
+    if (m_hubWebWidget) {
+        QCoreApplication::sendEvent(m_hubWebWidget, event);
+    }
+    FluentBaseWidget::dragLeaveEvent(event);
 }
 
 void WallpaperStudioWindow::dropEvent(QDropEvent* event) {
@@ -410,7 +449,7 @@ void WallpaperStudioWindow::initUI() {
         brandLayout->setSpacing(7);
 
         QLabel* iconLabel = new QLabel(brandWidget);
-        QPixmap iconPix(":/Assets/icon.png");
+        QPixmap iconPix(":/Assets/hub_icon.png");
         if (!iconPix.isNull()) {
             iconLabel->setPixmap(iconPix.scaled(18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         }

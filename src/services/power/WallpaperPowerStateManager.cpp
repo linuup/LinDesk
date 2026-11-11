@@ -3,6 +3,7 @@
 #include <QRegion>
 #include <QRect>
 #include "desktop/widgets/runtime_export.h"
+#include "desktop/RightMenu.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -202,6 +203,11 @@ void WallpaperPowerStateManager::stop() {
 QString WallpaperPowerStateManager::detectSuspendReason() const
 {
 #ifdef Q_OS_WIN
+    // 0. 桌面右键菜单正在展示中（Win11 或经典菜单）→ 壁纸必然可见且正在交互
+    if (RightMenu::isMenuShowing()) {
+        return QString();
+    }
+
     // 1. 用户正在与 LinDesk 自身交互（桌面框选、拖拽、重命名、Hub、设置）→ 壁纸必然可见
     HWND fg = GetForegroundWindow();
     if (fg && isOwnProcessWindow(fg)) {

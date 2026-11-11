@@ -31,7 +31,7 @@ void FluentNavigationPanel::initDefaultItems()
     addItem(0xE7F8, tr("Desktop"));
     addItem(0xECAA, tr("Context Menu"));
     addItem(0xF133, tr("Box"));
-    addItem(0xEB9F, tr("壁纸与小组件"));
+    addItem(0xEB9F, tr("壁纸与小组件"), QPixmap(QStringLiteral(":/Assets/hub_icon.png")));
     addItem(0xF22C, tr("Plugins"));
     addItem(0xE946, tr("About"));
 }
@@ -50,11 +50,12 @@ void FluentNavigationPanel::updateTranslations()
     }
 }
 
-void FluentNavigationPanel::addItem(char16_t iconGlyph, const QString& text)
+void FluentNavigationPanel::addItem(char16_t iconGlyph, const QString& text, const QPixmap& iconPixmap)
 {
     ItemData data;
     data.icon = iconGlyph;
     data.text = text;
+    data.iconPixmap = iconPixmap;
     m_items.append(data);
     updateItemGeometries();
 
@@ -177,15 +178,21 @@ void FluentNavigationPanel::paintEvent(QPaintEvent* /*event*/)
         }
 
         // Draw item glyph icon
-        painter.setFont(iconFont);
-        if (isSelected) {
-            painter.setPen(QColor(0x00, 0x67, 0xc0)); // Win11 Accent #0067c0
-        } else {
-            painter.setPen(isPressed ? QColor(0x5c, 0x5c, 0x5c) : QColor(0x1b, 0x1b, 0x1b));
-        }
-
         const QRect iconRect(cardRect.left() + 12, cardRect.top(), 20, cardRect.height());
-        painter.drawText(iconRect, Qt::AlignCenter, QString(QChar(item.icon)));
+        if (!item.iconPixmap.isNull()) {
+            const int pixSize = 16;
+            const int px = iconRect.center().x() - pixSize / 2;
+            const int py = iconRect.center().y() - pixSize / 2;
+            painter.drawPixmap(px, py, item.iconPixmap.scaled(pixSize, pixSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        } else {
+            painter.setFont(iconFont);
+            if (isSelected) {
+                painter.setPen(QColor(0x00, 0x67, 0xc0)); // Win11 Accent #0067c0
+            } else {
+                painter.setPen(isPressed ? QColor(0x5c, 0x5c, 0x5c) : QColor(0x1b, 0x1b, 0x1b));
+            }
+            painter.drawText(iconRect, Qt::AlignCenter, QString(QChar(item.icon)));
+        }
 
         // Draw item text
         textFont.setWeight(isSelected ? QFont::DemiBold : QFont::Normal);

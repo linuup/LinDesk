@@ -1,5 +1,7 @@
 ﻿
 #include "ShellContextMenu.h"
+#include "desktop/widgets/runtime_export.h"
+#include <QCoreApplication>
 #include <algorithm>
 #include <cwctype>
 #include <cstdint>
@@ -17,6 +19,50 @@
 
 namespace {
 constexpr wchar_t kShellMenuExclusionSection[] = L"ShellMenuExclusions";
+
+static HHOOK s_hMenuMsgFilterHook = nullptr;
+static UINT_PTR s_menuPumpTimerId = 0;
+
+static VOID CALLBACK MenuPumpTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+{
+    Q_UNUSED(uMsg);
+    Q_UNUSED(idEvent);
+    Q_UNUSED(dwTime);
+    LinWidgetRuntimeBridge::instance().doMessageLoopWork();
+    if (hwnd) {
+        UpdateWindow(hwnd);
+    }
+}
+
+static LRESULT CALLBACK MenuMsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode == MSGF_MENU) {
+        LinWidgetRuntimeBridge::instance().doMessageLoopWork();
+    }
+    return CallNextHookEx(s_hMenuMsgFilterHook, nCode, wParam, lParam);
+}
+
+class MenuModalLoopPumpScope {
+public:
+    explicit MenuModalLoopPumpScope(HWND hwnd) : m_hwnd(hwnd) {
+        if (m_hwnd) {
+            s_menuPumpTimerId = SetTimer(m_hwnd, 0xCEF001, 8, MenuPumpTimerProc);
+        }
+        s_hMenuMsgFilterHook = SetWindowsHookExW(WH_MSGFILTER, MenuMsgFilterHookProc, nullptr, GetCurrentThreadId());
+    }
+    ~MenuModalLoopPumpScope() {
+        if (s_hMenuMsgFilterHook) {
+            UnhookWindowsHookEx(s_hMenuMsgFilterHook);
+            s_hMenuMsgFilterHook = nullptr;
+        }
+        if (s_menuPumpTimerId && m_hwnd) {
+            KillTimer(m_hwnd, s_menuPumpTimerId);
+            s_menuPumpTimerId = 0;
+        }
+    }
+private:
+    HWND m_hwnd = nullptr;
+};
 
 HBITMAP CopyMenuBitmap(HBITMAP source)
 {
@@ -2541,7 +2587,11 @@ void ShellContextMenu::ShowMenu(HWND hwnd, const POINT* pt, IUnknown* site, Flag
     SetForegroundWindow(hwnd);
     SetActiveWindow(hwnd);
 
-    UINT cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
+    UINT cmd = 0;
+    {
+        MenuModalLoopPumpScope pumpScope(hwnd);
+        cmd = TrackPopupMenu(hMenu.get(), TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, pt->x, pt->y, 0, hwnd, nullptr);
+    }
     PostMessage(hwnd, WM_NULL, 0, 0);
     if (cmd == 0)
     {

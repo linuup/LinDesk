@@ -1,0 +1,177 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <!-- Soft dimensional drop shadow for the freeform emblem -->
+    <filter id="hubAmbientShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0369a1" flood-opacity="0.25" />
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.18" />
+    </filter>
+
+    <filter id="foldShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="-1" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.28" />
+    </filter>
+
+    <!-- Wing 1: Dynamic Cyan to Cobalt (Top-Left Loop) -->
+    <linearGradient id="gradCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff" />
+      <stop offset="40%" stop-color="#00a6ff" />
+      <stop offset="80%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+
+    <!-- Wing 2: Royal Violet to Hot Magenta (Top-Right Loop) -->
+    <linearGradient id="gradViolet" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="40%" stop-color="#7c3aed" />
+      <stop offset="80%" stop-color="#c026d3" />
+      <stop offset="100%" stop-color="#e11d48" />
+    </linearGradient>
+
+    <!-- Wing 3: Vibrant Coral Pink to Radiant Amber (Bottom Loop) -->
+    <linearGradient id="gradCoral" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185" />
+      <stop offset="40%" stop-color="#f43f5e" />
+      <stop offset="80%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#fbbf24" />
+    </linearGradient>
+
+    <!-- Wing 4: Radiant Golden Lime to Bright Aqua (Bottom-Left Connecting Ribbon) -->
+    <linearGradient id="gradLime" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#facc15" />
+      <stop offset="35%" stop-color="#34d399" />
+      <stop offset="70%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#00f5ff" />
+    </linearGradient>
+
+    <!-- Glossy Rim Highlight Gradient -->
+    <linearGradient id="rimGleam" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Central Radiant Aura -->
+    <radialGradient id="hubCoreAura" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95" />
+      <stop offset="35%" stop-color="#67e8f9" stop-opacity="0.6" />
+      <stop offset="70%" stop-color="#818cf8" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
+    </radialGradient>
+  </defs>
+
+  <g filter="url(#hubAmbientShadow)">
+    <!-- Central soft ambient glow behind loop -->
+    <circle cx="128" cy="128" r="62" fill="url(#hubCoreAura)" />
+
+    <!-- 1. Top-Left Arc (Cyan to Royal Blue) -->
+    <path
+      d="M 128 26
+         C 184 26, 230 72, 230 128
+         C 230 152, 222 174, 206 190
+         C 192 172, 186 148, 186 128
+         C 186 96, 160 70, 128 70
+         C 96 70, 70 96, 70 128
+         C 70 148, 64 172, 50 190
+         C 34 174, 26 152, 26 128
+         C 26 72, 72 26, 128 26
+         Z"
+      fill="url(#gradCyan)"
+    />
+
+    <!-- 2. Right Swirl Wing (Violet to Magenta) -->
+    <path
+      d="M 230 128
+         C 230 184, 184 230, 128 230
+         C 104 230, 82 222, 66 206
+         C 84 192, 108 186, 128 186
+         C 160 186, 186 160, 186 128
+         C 186 96, 210 72, 230 128
+         Z"
+      fill="url(#gradViolet)"
+      filter="url(#foldShadow)"
+    />
+
+    <!-- 3. Bottom Swirl Wing (Coral to Amber Sun) -->
+    <path
+      d="M 128 230
+         C 72 230, 26 184, 26 128
+         C 26 104, 34 82, 50 66
+         C 64 84, 70 108, 70 128
+         C 70 160, 96 186, 128 186
+         C 160 186, 184 210, 128 230
+         Z"
+      fill="url(#gradCoral)"
+      filter="url(#foldShadow)"
+    />
+
+    <!-- 4. Left Swirl Wing (Emerald to Bright Cyan) -->
+    <path
+      d="M 26 128
+         C 26 72, 72 26, 128 26
+         C 152 26, 174 34, 190 50
+         C 172 64, 148 70, 128 70
+         C 96 70, 70 96, 70 128
+         C 70 160, 46 184, 26 128
+         Z"
+      fill="url(#gradLime)"
+      filter="url(#foldShadow)"
+    />
+
+    <!-- Specular Rim Highlights for 3D Glass Depth -->
+    <path
+      d="M 128 30 C 180 30, 224 74, 226 126"
+      fill="none"
+      stroke="url(#rimGleam)"
+      stroke-width="3"
+      stroke-linecap="round"
+      opacity="0.8"
+    />
+    <path
+      d="M 30 128 C 30 76, 74 32, 126 30"
+      fill="none"
+      stroke="url(#rimGleam)"
+      stroke-width="3"
+      stroke-linecap="round"
+      opacity="0.9"
+    />
+    <path
+      d="M 74 128 C 74 98, 98 74, 128 74"
+      fill="none"
+      stroke="url(#rimGleam)"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      opacity="0.6"
+    />
+
+    <!-- Center Floating Hub Nexus: Dazzling 4-Point Radiant Studio Star (✦) -->
+    <g transform="translate(128, 128)">
+      <!-- Outer aura glow -->
+      <circle cx="0" cy="0" r="26" fill="#ffffff" opacity="0.4" />
+      <circle cx="0" cy="0" r="18" fill="#67e8f9" opacity="0.6" />
+
+      <!-- Center 4-Point Studio Star (Crisp pure white) -->
+      <path
+        d="M 0 -26
+           C 0 -7, 7 0, 26 0
+           C 7 0, 0 7, 0 26
+           C 0 7, -7 0, -26 0
+           C -7 0, 0 -7, 0 -26
+           Z"
+        fill="#ffffff"
+      />
+      <!-- Diagonal secondary micro-flare (45 deg) -->
+      <path
+        d="M 0 -11
+           C 0 -3, 3 0, 11 0
+           C 3 0, 0 3, 0 11
+           C 0 3, -3 0, -11 0
+           C -3 0, 0 -3, 0 -11
+           Z"
+        fill="#ffffff"
+        transform="rotate(45)"
+        opacity="0.8"
+      />
+      <!-- Sharp center jewel bead -->
+      <circle cx="0" cy="0" r="4" fill="#0284c7" />
+      <circle cx="0" cy="0" r="2.2" fill="#ffffff" />
+    </g>
+  </g>
+</svg>

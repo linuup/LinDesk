@@ -553,5 +553,59 @@ inline QString resolveOptimalPackagePath(const QString& inputPath, bool* isDevOu
     return resolved;
 }
 
+inline QString customWallpapersRegistryPath() {
+    return QDir(AppPaths::userWallpapersDir()).filePath(QStringLiteral("custom_wallpapers.json"));
+}
+
+inline QString customWallpapersImagesDir() {
+    const QString d = QDir(AppPaths::userWallpapersDir()).filePath(QStringLiteral("images"));
+    QDir().mkpath(d);
+    return d;
+}
+
+inline QString customWallpapersVideosDir() {
+    const QString d = QDir(AppPaths::userWallpapersDir()).filePath(QStringLiteral("videos"));
+    QDir().mkpath(d);
+    return d;
+}
+
+inline QString customWallpapersPreviewsDir() {
+    const QString d = QDir(AppPaths::userWallpapersDir()).filePath(QStringLiteral("previews"));
+    QDir().mkpath(d);
+    return d;
+}
+
+inline QJsonArray loadCustomWallpapersArray() {
+    QFile f(customWallpapersRegistryPath());
+    if (!f.open(QIODevice::ReadOnly)) {
+        return QJsonArray();
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    return doc.isArray() ? doc.array() : QJsonArray();
+}
+
+inline void saveCustomWallpapersArray(const QJsonArray& arr) {
+    QFile f(customWallpapersRegistryPath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+        f.close();
+    }
+}
+
+inline QJsonObject findCustomWallpaper(const QString& idOrPath) {
+    if (idOrPath.isEmpty()) return QJsonObject();
+    const QString clean = idOrPath.startsWith(QStringLiteral("wallpaper:"), Qt::CaseInsensitive)
+        ? idOrPath.mid(10).trimmed() : idOrPath.trimmed();
+    const QJsonArray arr = loadCustomWallpapersArray();
+    for (const QJsonValue& v : arr) {
+        const QJsonObject obj = v.toObject();
+        if (obj.value(QStringLiteral("id")).toString().compare(clean, Qt::CaseInsensitive) == 0 ||
+            obj.value(QStringLiteral("sourcePath")).toString().compare(idOrPath, Qt::CaseInsensitive) == 0 ||
+            obj.value(QStringLiteral("packagePath")).toString().compare(idOrPath, Qt::CaseInsensitive) == 0) {
+            return obj;
+        }
+    }
+    return QJsonObject();
+} 
 
 } // namespace LinWidget

@@ -68,6 +68,9 @@ vcpkg_installed/**/*
 *.swp
 *.swo
 *~
+*.vcxproj.user
+Plugins/**/*.vcxproj*
+Plugins/**/*.sln
 
 # CMake 临时文件
 CMakeCache.txt
@@ -106,3 +109,10 @@ docs/_backup/
 # Frontend build & packages
 node_modules/
 **/node_modules/
+
+# 本地私密配置与发布凭据（防止泄露，仅保留 template 模板）
+scripts/release_config.ini
+**/release_config.ini
+scripts/release_config.json
+**/release_config.json
+*.local.*

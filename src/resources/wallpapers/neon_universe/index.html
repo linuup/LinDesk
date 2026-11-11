@@ -1,20 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neon Universe Wallpaper</title>
+  <title>Breeze Meadow · 清风原野</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Fullscreen WebGL/Canvas Background -->
+  <!-- 纯代码手绘全屏自然画卷 -->
   <canvas id="wallpaper-canvas"></canvas>
   
-  <!-- Interactive Ambient HUD Layer (Hidden by default, can be toggled via JS) -->
+  <!-- 极简清新磨砂环境时钟 (可通过属性随时开关) -->
   <div id="hud-overlay">
-    <div class="clock-container">
+    <div class="clock-card">
       <div id="clock-time">00:00</div>
-      <div id="clock-date">LOADING SPACE</div>
+      <div class="clock-sub">
+        <span id="clock-date">LOADING</span>
+        <span class="sub-badge">NATURAL BREEZE</span>
+      </div>
     </div>
   </div>
 

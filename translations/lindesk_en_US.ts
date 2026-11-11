@@ -90,6 +90,18 @@
         <source>Failed to start updater.</source>
         <translation type="unfinished">Failed to start updater.</translation>
     </message>
+    <message>
+        <source>About</source>
+        <translation type="unfinished">About</translation>
+    </message>
+    <message>
+        <source>View application version information and check for online updates.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update Status</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>BoxSettingsPage</name>
@@ -189,6 +201,10 @@
         <source>Assets.zip</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Customize the theme color, acrylic glass appearance, and hover interaction of desktop boxes.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>CefManager</name>
@@ -238,6 +254,10 @@
     </message>
     <message>
         <source>CEF runtime required assets missing (icudtl=%1, v8=%2, subprocess=%3, resources=%4, locales=%5).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CefInitialize crashed with an unhandled exception.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -407,12 +427,16 @@
         <source>Removed extension type.</source>
         <translation type="unfinished">Removed extension type.</translation>
     </message>
+    <message>
+        <source>Filter right-click context menu items and manage shell menu exclusion rules across file types.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>DesktopSettingsPage</name>
     <message>
         <source>Desktop Customization</source>
-        <translation type="unfinished">Desktop Customization</translation>
+        <translation type="obsolete">Desktop Customization</translation>
     </message>
     <message>
         <source>Selection Rectangle Style</source>
@@ -542,6 +566,45 @@
         <source>Show registered third party Shell menu items in the Windows 11 style context menu.</source>
         <translation type="unfinished">Show registered third party Shell menu items in the Windows 11 style context menu.</translation>
     </message>
+    <message>
+        <source>Desktop</source>
+        <translation type="unfinished">Desktop</translation>
+    </message>
+    <message>
+        <source>Customize desktop selection style, icon behavior, live wallpaper studio, and Windows 11 context menu.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Live Wallpaper &amp; Studio (LinDesk Hub)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Wallpaper Studio &amp; Hub Center</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open the standalone visual wallpaper gallery, real-time configurator studio, desktop widgets manager, and dev inspector.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open Studio</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>FluentDialog</name>
+    <message>
+        <source>确定</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>知道了</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>FluentNavigationPanel</name>
@@ -562,10 +625,6 @@
         <translation type="unfinished">Box</translation>
     </message>
     <message>
-        <source>LinWidgets</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Plugins</source>
         <translation type="unfinished">Plugins</translation>
     </message>
@@ -577,12 +636,16 @@
         <source>LinDesk</source>
         <translation type="unfinished">LinDesk</translation>
     </message>
+    <message>
+        <source>壁纸与小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>GeneralSettingsPage</name>
     <message>
         <source>Settings Home</source>
-        <translation type="unfinished">Settings Home</translation>
+        <translation type="obsolete">Settings Home</translation>
     </message>
     <message>
         <source>Manage LinDesk preferences, desktop behavior, and plugins from one place.</source>
@@ -594,7 +657,7 @@
     </message>
     <message>
         <source>Configure core application behavior and preferences.</source>
-        <translation type="unfinished">Configure core application behavior and preferences.</translation>
+        <translation type="obsolete">Configure core application behavior and preferences.</translation>
     </message>
     <message>
         <source>Desktop</source>
@@ -614,11 +677,11 @@
     </message>
     <message>
         <source>Plugins</source>
-        <translation type="unfinished">Plugins</translation>
+        <translation type="obsolete">Plugins</translation>
     </message>
     <message>
         <source>Browse, install, and manage plugins.</source>
-        <translation type="unfinished">Browse, install, and manage plugins.</translation>
+        <translation type="obsolete">Browse, install, and manage plugins.</translation>
     </message>
     <message>
         <source>System Status</source>
@@ -699,6 +762,22 @@
     <message>
         <source>Tip: You can find more settings in each section. Explore the categories above to personalize your LinDesk experience.</source>
         <translation type="unfinished">Tip: You can find more settings in each section. Explore the categories above to personalize your LinDesk experience.</translation>
+    </message>
+    <message>
+        <source>Context Menu</source>
+        <translation type="unfinished">Right Menu</translation>
+    </message>
+    <message>
+        <source>Manage right-click menu items and filtering rules.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>壁纸与小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Configure live wallpapers, desktop widgets, and runtime.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -855,19 +934,8 @@
         <translation>OK</translation>
     </message>
     <message>
-        <source>LinDesk is Already Running</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinDesk is already running in the background, but the desktop presentation may have been obscured by the Windows desktop or third-party software.
-
-• Click [Restore Desktop] to bring LinDesk back to the front.
-• Click [Cancel] to keep the current desktop and show the icon in the system tray.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Cancel</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation type="obsolete">Cancel</translation>
     </message>
     <message>
         <source>Restore Desktop</source>
@@ -887,416 +955,681 @@
     </message>
 </context>
 <context>
+    <name>LinHub::StudioPreviewCanvas</name>
+    <message>
+        <source>此电脑</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>回收站</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>项目文档.docx</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>工作汇报.pptx</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>代码仓库</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📦 常用收纳盒</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>LinHub::WallpaperStudioWindow</name>
+    <message>
+        <source>LinDesk Hub · 动态壁纸工坊与桌面组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>4K 视频 · 无缝循环</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>HTML5 WebGL · 官方动态</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>动态引擎 · 极客预设</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinDesk Hub</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>动态壁纸工坊与桌面组件管理</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CEF 硬件加速 · 60 FPS</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>动态壁纸工坊</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>桌面小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>开发者控制台</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前桌面壁纸：未运行动态壁纸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>点击下方壁纸即可一键应用到系统桌面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>鼠标波动:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>停止壁纸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>拖入 MP4 / WebM 视频或图片，1秒自动转为无缝壁纸并应用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📁 选择本地文件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinDesk Living Wallpaper</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>官方 WebGL · 双层参数调优</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⚡ 应用到系统桌面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🎨 自定义壁纸参数 (Custom Parameters)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>桌面环境与视听配置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>壁纸音量:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>静音</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>图标暗度遮罩:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>毛玻璃虚化:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>画面填充:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cover (裁剪铺满)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contain (等比黑边)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>在画板模拟桌面图标浮层</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🛠️ 开发者模式:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📂 打开源码目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🐞 呼出 DevTools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>请先将此壁纸应用到系统桌面后再呼出 DevTools</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>调参 / 预览</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前应用中</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>应用到桌面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>✨ 此壁纸为预设或无感播放类型，无需额外参数，开箱即达最佳效果。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>选择壁纸主题色</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>导入失败：文件不存在</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>格式不符：仅支持 .mp4/.webm 视频或 .png/.jpg 图片</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>无法创建壁纸存储目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>复制媒体文件失败</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>4K 视频壁纸 · 极速生成</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>本地无缝循环视频壁纸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>本地高清静态超清壁纸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🎉 壁纸【%1】已极速生成并即刻应用到桌面！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>壁纸与媒体文件 (*.mp4 *.webm *.mov *.png *.jpg *.jpeg *.webp *.gif *.lw);;所有文件 (*.*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>选择要制作或导入的壁纸媒体</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>未找到壁纸安装包: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>✨ 壁纸已成功应用到桌面！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>壁纸应用失败，请检查运行时状态</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已停止桌面动态壁纸并恢复系统壁纸</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已开启鼠标引力波动感知</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已关闭鼠标引力波动感知</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前桌面壁纸：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CEF OSR 正在为桌面提供 60 FPS 流畅渲染 · 0.0% 智能休眠就绪</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>选择下方壁纸或拖入视频/图片，即刻体验沉浸式桌面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已导出运行时诊断包至应用日志目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🧩 桌面小组件管理中心 (LinWidgets Hub)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>基于独立 CEF OSR 离屏沙箱与轻量 IPC 桥接 · 零进程泄漏 · 支持热启停与权限管控</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>系统启用:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>辅助边界:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>➕ 新建组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📂 导入工程</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📂 组件目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🔄 刷新</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🔍 搜索组件名称、ID 或功能描述...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>全部</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>运行中</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>内置官方</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>开发中</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🧩 桌面组件管理 (%1 运行中)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🧩 桌面组件管理</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>暂无详细描述。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>● 运行中 (%1实例)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>● 运行中</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>○ 未启动</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>💾 本地存储: %1 KB / 16 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>清空</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>授权:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>点击撤销 %1 权限</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>点击授予 %1 权限</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🌐 网络</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📁 存储</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🖥 桌面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>多实例运行:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>实例 #%1 ✕</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>实例 ID: %1 (点击单独停止此实例)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⏹ 停止运行</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已停止组件: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>▶ 启动小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已在桌面启动小组件「%1」</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>小组件「%1」启动失败，请检查组件路径</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>↻ 重启</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在重新拉起小组件「%1」...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⚙ 设置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已打开「%1」配置面板</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🛠 F12 调试</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件「%1」未运行，正在启动并连接 DevTools...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DevTools 调试窗口已打开 (目标: %1)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在连接本地 Chromium 调试端口 9222...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📂 源码</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>💾 数据</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🗑 卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>未匹配到任何符合条件的小组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>➕ 新建桌面小组件 (Create LinWidget)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>创建全新 LinWidget 独立小组件项目</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>例如：极简时钟</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>新组件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件名称:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>唯一标识符，例如：my-clock</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件 ID:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>浏览...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>选择小组件保存目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>保存目录:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>💡 创建后将自动生成 manifest.json、index.html 并立即注册进开发列表，方便实时调试。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>创建并载入</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>输入提示</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>请填写组件名称与 ID。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>基于 LinWidget CEF 架构的独立轻量桌面小组件。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>创建成功</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件 [%1] 已成功创建并添加到列表！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>选择 LinWidget 开发工程目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>成功</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>开发工程已成功添加并自动激活！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>添加失败</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>清空存储</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>确定要清空组件「%1」保存在本地的全部存储数据吗？</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已清空</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>本地存储已清空完毕。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>确认卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>确定要彻底卸载组件「%1」吗？
+如果该组件正在运行，将立即停止其窗口实例。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载成功</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件「%1」已卸载完毕。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>🛠️ 开发者控制台与 IPC 消息总线审查 (Dev Admin Inspector)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>一键打开 Chromium DevTools (F12)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📋 导出脱敏环境诊断包</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>CEF OSR 渲染帧率</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>硬件垂直同步加速 · 0 丢帧</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>物理显存占用 (VRAM)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>DirectX 11 纹理共享池</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>IPC 总线调度延迟</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>本地命名管道极速转发</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>崩溃安全熔断阈值</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>60s 窗口自动熔断保护正常</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>📡 IPC Bridge 消息流水实时审查 (Message Bus Trace)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>⚙️ 组件属性设置 - %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>小组件基础运行与视图参数</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>置顶于最前 (Always on Top)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>图层置顶:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>鼠标事件穿透至系统桌面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>鼠标穿透:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>不透明度:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>随 LinDesk 启动时自动运行</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>开机自启:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>保存并生效</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>小组件「%1」参数已成功保存并即时生效！</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>LinWidgetsSettingsPage</name>
     <message>
-        <source>LinWidgets</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Make your desktop more powerful and beautiful</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Widget Runtime</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Manage LinWidget runtime environment. Closing it will release widget resources.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Desktop Widgets</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Live Wallpaper</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Official</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install widgets provided by LinDesk.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Marketplace</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Browse the local market source, online discovery capability will be opened later.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Installed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Manage widgets that have been copied to the Roaming directory.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Inspector</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Select a widget to inspect details.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Permissions</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Actions</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Load</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Unload</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reload</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Open Folder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Uninstall</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Live Log</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Recent Errors</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No errors.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Development</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Run widgets from source code directory and export local packages.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Advanced Tools</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Create, add, run and export development widgets.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Add Development Project</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>New Widget Project</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Export Zip Package</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Remove Development Record</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Open Logs Directory</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Open Roaming Directory</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Refresh</source>
-        <translation type="unfinished">Refresh</translation>
-    </message>
-    <message>
-        <source>No live wallpaper currently active.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Stop Wallpaper</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Wallpaper Library</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Select an official or imported live wallpaper to apply to your desktop.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1 (Active)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Live wallpaper is currently running on the background layer.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Live Wallpaper (Inactive)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No live wallpaper currently active. Your desktop uses Windows wallpaper.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1
-Manifest error: %2
-%3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Active</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Apply Wallpaper</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Close</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Marketplace is coming soon.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Marketplace install failed: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Marketplace install canceled: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Installed and loaded marketplace widget: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Installed marketplace widget: %1
-Load skipped: %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Installed %1    Development %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1
-Manifest errors:
-%2</source>
-        <translation type="unfinished"></translation>
+        <translation type="obsolete">Refresh</translation>
     </message>
     <message>
         <source>Add</source>
-        <translation type="unfinished">Add</translation>
-    </message>
-    <message>
-        <source>Close One</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Select an installed widget or development project.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Select a widget to view its log.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No log instance.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Log file has not been created yet:
-%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Cannot open log file:
-%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinWidget 桌面小组件。</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>install</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>manage</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>add</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>close</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>load</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Details</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>version</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>author</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>permission</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>status</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>running %1/3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>running</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>installed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>uninstall</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>description</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>no description</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>This widget is already installed. Open the installed instance to manage permissions and runtime state.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>no error</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>log file not created: 
-%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>failed to open log file: 
-%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>The widget request was intercepted by the permission system. Please authorize %1 and reload.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>grant %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>permissions</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>reload</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>open folder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>preview</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1 preview</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Recent errors</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Load blocked: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Load failed: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Runtime not loaded</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Load failed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Loaded widget: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Unloaded widget: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Reloaded widget: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>卸载小组件</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>确定要卸载这个小组件和它的保存记录吗？
-%1</source>
-        <translation type="unfinished"></translation>
+        <translation type="obsolete">Add</translation>
     </message>
     <message>
         <source>卸载</source>
@@ -1307,128 +1640,219 @@ Manifest errors:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Removed development record: %1</source>
+        <source>正在配置动态渲染支持组件...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Widget record removed, folder delete failed: %1</source>
+        <source>壁纸与小组件</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Uninstalled installed widget: %1</source>
+        <source>组件运行库已成功配置就绪！
+
+您现在可以畅享高帧率动态壁纸与轻量小组件。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Official install failed: %1</source>
+        <source>配置失败</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Official install canceled: %1</source>
+        <source>组件运行库安装遇到问题：%1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Installed and loaded official widget: %1</source>
+        <source>管理动态壁纸与桌面小组件的开关、省电策略及缓存清理。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Installed official widget: %1
-Load skipped: %2</source>
+        <source>尚未安装壁纸与组件支持包</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>LinWidget runtime is disabled.</source>
+        <source>安装后即可使用动态壁纸与桌面小组件，您的个人设置和数据会自动保留。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>LinWidget runtime is not available.</source>
+        <source>立即安装</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Failed to launch widget package.</source>
+        <source>离线包安装 (*.zip)...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Official reset failed: %1</source>
+        <source>壁纸与小组件中心</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Reset official widget: %1</source>
+        <source>浏览、导入和设置桌面动态壁纸与小组件</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Select LinWidget development project</source>
+        <source>打开中心</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Add development project failed: %1</source>
+        <source>动态壁纸与桌面小组件总开关</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Added development project: %1</source>
+        <source>开启后可在桌面显示动态壁纸和小组件；关闭后全部暂停并释放电脑内存</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Choose parent folder for new widget project</source>
+        <source>省电与流畅度设置</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Widget Id</source>
+        <source>显卡加速</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Use reverse domain style, for example com.example.weather</source>
+        <source>让动态壁纸播放更流畅；若老旧电脑出现画面闪烁可尝试关闭</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Widget Name</source>
+        <source>全屏游戏或看视频时自动暂停</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Display name</source>
+        <source>全屏玩游戏或全屏使用软件时自动暂停桌面壁纸，不占用电脑性能</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Author</source>
+        <source>使用电池时自动省电</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Description</source>
+        <source>笔记本未插电源时自动降低动态壁纸耗电，延长续航时间</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Short description</source>
+        <source>存储空间管理</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Create project failed: %1</source>
+        <source>临时缓存文件</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Created development project: %1</source>
+        <source>正在计算缓存占用...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export LinWidget Zip</source>
+        <source>清理缓存</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Zip package (*.zip)</source>
+        <source>壁纸与组件支持包</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Export zip failed: %1</source>
+        <source>管理本地支持包，可导入安装包更新或卸载以释放磁盘空间</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exported zip package: %1</source>
+        <source>离线包更新...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Save permission failed: %1</source>
+        <source>状态：运行中 · 浏览、导入与管理桌面动态壁纸和小组件</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Save permission failed: widget record not found.</source>
+        <source>状态：已暂停 · 开启下方总开关后即可打开壁纸与小组件中心</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前共占用 %1 MB · 清理临时缓存不会丢失您的壁纸和小组件设置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前版本 v%1 · 支持导入离线包更新或卸载释放约 85 MB 磁盘空间</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在配置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件运行库正在安装或下载中，请稍候...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>校验组件运行库</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前组件运行库已安装，是否重新下载并修复以确保完整性？</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>重新安装</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>选择组件运行库离线安装包</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>离线组件包 (*.zip);;所有文件 (*.*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>安装成功</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已成功从本地压缩包解压并安装组件运行库！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>安装失败</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>解压离线包失败：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载组件运行库</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载组件运行库将释放约 85 MB 磁盘空间，正在运行的动态壁纸与小组件将立即停止。
+
+您的小组件个性化数据与配置将被安全保留，随时可重新安装激活。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>确认卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载完成</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件运行库已成功卸载，已切换至未安装状态。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载遇到问题</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>未能完全清理文件：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>清理完成</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>运行缓存已清理完毕！</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1633,48 +2057,8 @@ Load skipped: %2</source>
         <translation type="unfinished">%1 visible, %2 hidden for %3.</translation>
     </message>
     <message>
-        <source>Allow this widget to access external network services.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Allow this widget to save local browser state.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Allow this widget to use future privileged desktop APIs.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Allow this widget to use this permission.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install LinWidget</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1 requests the following permissions. Checked permissions will be granted during installation.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>This widget does not request sensitive permissions.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Install</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Cancel</source>
-        <translation type="unfinished">Cancel</translation>
-    </message>
-    <message>
-        <source>No description</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Version</source>
-        <translation type="unfinished"></translation>
+        <translation type="obsolete">Cancel</translation>
     </message>
 </context>
 <context>
@@ -1782,17 +2166,13 @@ Load skipped: %2</source>
         <source>New Timer</source>
         <translation type="vanished">New Timer</translation>
     </message>
+    <message>
+        <source>Live Wallpaper &amp; Studio...</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RuntimeInstaller</name>
-    <message>
-        <source>Failed to completely remove runtime directory: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinWidget runtime successfully uninstalled.</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message>
         <source>Extraction timed out.</source>
         <translation type="unfinished"></translation>
@@ -1806,15 +2186,7 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Extracting...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Extraction failed.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Invalid runtime package: LinWidgetRuntime.dll not found.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1825,12 +2197,32 @@ Load skipped: %2</source>
         <source>LinWidget runtime successfully installed.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>正在解压 CEF 运行支持包...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>无效的 CEF 运行支持包：未找到核心文件 libcef.dll。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在校验 CEF 核心文件并激活运行支持...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件校验完成</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>未检测到本地 CEF 核心库 (libcef.dll)，请通过“离线包安装 (*.zip)”导入 CEF 运行包。</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SettingUI</name>
     <message>
         <source>LinDesk</source>
-        <translation>LinDesk</translation>
+        <translation type="vanished">LinDesk</translation>
     </message>
     <message>
         <source>General</source>
@@ -1966,11 +2358,11 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>Show Settings</source>
-        <translation>Show Settings</translation>
+        <translation type="vanished">Show Settings</translation>
     </message>
     <message>
         <source>Exit</source>
-        <translation>Exit</translation>
+        <translation type="vanished">Exit</translation>
     </message>
     <message>
         <source>Settings Home</source>
@@ -2087,10 +2479,6 @@ Load skipped: %2</source>
     <message>
         <source>Enable real-time DWM background blur for a translucent look.</source>
         <translation type="vanished">Enable real-time DWM background blur for a translucent look.</translation>
-    </message>
-    <message>
-        <source>Settings is still available in the system tray.</source>
-        <translation></translation>
     </message>
     <message>
         <source>Windows11 Menu</source>

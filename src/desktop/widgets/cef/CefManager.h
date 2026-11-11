@@ -18,6 +18,7 @@ public:
 
     bool isInitialized() const { return m_initialized; }
     bool isCefAvailable() const;
+    void doMessageLoopWork();
 
     QString subprocessExecutablePath() const;
     QString resourcesDirectoryPath() const;

@@ -5,6 +5,7 @@
 [![Framework](https://img.shields.io/badge/Framework-Qt%205.15.2-green.svg)](CMakeLists.txt)
 [![Engine](https://img.shields.io/badge/Widget%20Engine-CEF%20OSR%20120%2B-orange.svg)](docs/LinDesk_Architecture_Guide.html)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20x86-lightgrey.svg)](docs/LinDesk_Product_Intro.html)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-8%2F8%20Passed-brightgreen.svg)](tests/)
 
 LinDesk 是一款专为 Windows 平台打造的现代化桌面整理与 HTML 桌面小组件平台。在不替换系统原生 Explorer 桌面的前提下，LinDesk 挂载于 `WorkerW` 之上，提供自绘的高性能图标网格布局、可折叠与映射本地目录的桌面收纳盒（LinBox），以及基于 Chromium Embedded Framework (CEF OSR) 离屏渲染的无原生句柄桌面小组件（LinWidget）体系。
@@ -211,4 +212,4 @@ LinDesk/
 
 所有源文件（`.cpp / .h / .json / .html / .md`）一律遵循 **UTF-8（无 BOM）** 编码。日志必须统一收口于 `LogManager`（基于 `spdlog`），禁止裸写 `std::cout` 或 `printf`。详细规范请参阅 [`agent.md`](agent.md)。
 
-本项目遵循开源软件协议，欢迎贡献代码与提交 Issue！
+本项目采用 **[GNU General Public License v3.0 (GPLv3)](LICENSE)** 开源许可证。欢迎提交 Issue 与 Pull Request 共同建设！

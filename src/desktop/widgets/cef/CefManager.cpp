@@ -92,6 +92,7 @@ public:
         command_line->AppendSwitch("disable-gpu");
         command_line->AppendSwitch("disable-gpu-compositing");
         command_line->AppendSwitch("allow-file-access-from-files");
+        command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
 
         // 统一配置 CEF 崩溃转储目录
         const QString crashDumpsDir = AppPaths::userCrashDumpsDir();
@@ -602,6 +603,15 @@ void CefManager::shutdown()
     emit cefShutdown();
 }
 
+void CefManager::doMessageLoopWork()
+{
+#ifdef LINDESK_HAS_CEF
+    if (m_initialized) {
+        CefDoMessageLoopWork();
+    }
+#endif
+}
+
 void CefManager::scheduleMessagePumpWork(qint64 delayMs)
 {
     Q_UNUSED(delayMs);
@@ -611,13 +621,10 @@ void CefManager::startMessageLoopPump()
 {
     if (!m_pumpWorkTimer) {
         m_pumpWorkTimer = new QTimer(this);
-        m_pumpWorkTimer->setInterval(10); // 100Hz cooperative dispatch
-        connect(m_pumpWorkTimer, &QTimer::timeout, this, []() {
-#ifdef LINDESK_HAS_CEF
-            if (CefManager::instance() && CefManager::instance()->isInitialized()) {
-                CefDoMessageLoopWork();
-            }
-#endif
+        m_pumpWorkTimer->setTimerType(Qt::PreciseTimer);
+        m_pumpWorkTimer->setInterval(8); // 120Hz high-precision cooperative dispatch
+        connect(m_pumpWorkTimer, &QTimer::timeout, this, [this]() {
+            doMessageLoopWork();
         });
     }
     m_pumpWorkTimer->start();

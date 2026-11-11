@@ -716,7 +716,20 @@ void DesktopSettingsPage::initUI()
     hubRowLayout->setContentsMargins(14, 10, 14, 10);
     hubRowLayout->setSpacing(14);
 
-    hubRowLayout->addWidget(createGlyphLabel(glyph(0xEB9F), hubRow, 18, QColor("#0067c0")));
+    QLabel* hubIconBadge = new QLabel(hubRow);
+    hubIconBadge->setFixedSize(28, 28);
+    hubIconBadge->setAlignment(Qt::AlignCenter);
+    hubIconBadge->setStyleSheet(QStringLiteral(
+        "QLabel {"
+        "  background: #eff6fc;"
+        "  border: 1px solid rgba(0, 103, 192, 0.12);"
+        "  border-radius: 6px;"
+        "}"));
+    QPixmap hubPix(":/Assets/hub_icon.png");
+    if (!hubPix.isNull()) {
+        hubIconBadge->setPixmap(hubPix.scaled(18, 18, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+    hubRowLayout->addWidget(hubIconBadge);
 
     QVBoxLayout* hubText = new QVBoxLayout();
     hubText->setContentsMargins(0, 0, 0, 0);

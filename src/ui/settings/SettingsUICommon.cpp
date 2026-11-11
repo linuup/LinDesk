@@ -226,7 +226,7 @@ QWidget* createHomeTile(const QString& icon, const QString& title, const QString
     layout->setContentsMargins(16, 14, 16, 14);
     layout->setSpacing(14);
 
-    QLabel* iconBadge = new QLabel(icon, tile);
+    QLabel* iconBadge = new QLabel(tile);
     iconBadge->setAlignment(Qt::AlignCenter);
     iconBadge->setFixedSize(36, 36);
     iconBadge->setStyleSheet(QStringLiteral(
@@ -237,6 +237,14 @@ QWidget* createHomeTile(const QString& icon, const QString& title, const QString
         "  font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
         "  font-size: 18px;"
         "}"));
+    if (icon.startsWith(QStringLiteral(":/")) || icon.endsWith(QStringLiteral(".png")) || icon.endsWith(QStringLiteral(".svg"))) {
+        QPixmap pix(icon);
+        if (!pix.isNull()) {
+            iconBadge->setPixmap(pix.scaled(22, 22, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    } else {
+        iconBadge->setText(icon);
+    }
     layout->addWidget(iconBadge, 0, Qt::AlignVCenter);
 
     QVBoxLayout* textLayout = new QVBoxLayout();

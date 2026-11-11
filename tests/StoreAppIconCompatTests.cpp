@@ -127,6 +127,23 @@ TEST_F(StoreAppIconCompatTest, GetBlankFileFallbackIcon_GuaranteedValid)
     EXPECT_EQ(pix96.height(), 96);
 }
 
+TEST_F(StoreAppIconCompatTest, CreateDocumentPlateIcon_GuaranteedValidAndHighRes)
+{
+    // 验证文档白板衬底（Plate）合成，确保返回高清有效图层
+    QIcon sampleInner = SysInfoUtil::SysFileIconByDLL(1, 48, QStringLiteral("msiexec.exe"));
+    QIcon plateIcon = SysInfoUtil::CreateDocumentPlateIcon(sampleInner, 256);
+    EXPECT_FALSE(plateIcon.isNull());
+    QPixmap pix256 = plateIcon.pixmap(256, 256);
+    EXPECT_FALSE(pix256.isNull());
+    EXPECT_EQ(pix256.width(), 256);
+    EXPECT_EQ(pix256.height(), 256);
+
+    QPixmap pix48 = plateIcon.pixmap(48, 48);
+    EXPECT_FALSE(pix48.isNull());
+    EXPECT_EQ(pix48.width(), 48);
+    EXPECT_EQ(pix48.height(), 48);
+}
+
 TEST_F(StoreAppIconCompatTest, FolderThumbnail_EmptyVsNonEmpty)
 {
     QString tempRoot = "D:/Temp/lin_diag_test";

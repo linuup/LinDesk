@@ -83,8 +83,9 @@ void GeneralSettingsPage::initUI()
     tileLayout->setHorizontalSpacing(12);
     tileLayout->setVerticalSpacing(12);
 
-    auto addTile = [this, tileGrid, tileLayout](int row, int col, char16_t iconCode, const QString& title, const QString& desc, int targetIndex) {
-        QWidget* tile = createHomeTile(glyph(iconCode), title, desc, tileGrid);
+    auto addTile = [this, tileGrid, tileLayout](int row, int col, char16_t iconCode, const QString& title, const QString& desc, int targetIndex, const QString& customIcon = QString()) {
+        const QString iconKey = customIcon.isEmpty() ? glyph(iconCode) : customIcon;
+        QWidget* tile = createHomeTile(iconKey, title, desc, tileGrid);
         tile->setCursor(Qt::PointingHandCursor);
         for (QWidget* child : tile->findChildren<QWidget*>()) {
             child->setAttribute(Qt::WA_TransparentForMouseEvents, true);
@@ -98,7 +99,7 @@ void GeneralSettingsPage::initUI()
     addTile(0, 0, 0xE7F8, tr("Desktop"), tr("Customize desktop experience and settings."), 1);
     addTile(0, 1, 0xECAA, tr("Context Menu"), tr("Manage right-click menu items and filtering rules."), 2);
     addTile(1, 0, 0xF133, tr("Box"), tr("Adjust Box interface and interaction."), 3);
-    addTile(1, 1, 0xEB9F, tr("壁纸与小组件"), tr("Configure live wallpapers, desktop widgets, and runtime."), 4);
+    addTile(1, 1, 0, tr("壁纸与小组件"), tr("Configure live wallpapers, desktop widgets, and runtime."), 4, QStringLiteral(":/Assets/hub_icon.png"));
 
     tileLayout->setColumnStretch(0, 1);
     tileLayout->setColumnStretch(1, 1);

@@ -91,7 +91,7 @@ public:
         if (!m_apiKey.isEmpty() && m_apiKey != "YOUR_API_KEY_HERE") {
             refreshToken();
         } else {
-            qWarning() << "[OCR_Baidu] OCR is NOT ready. Please fill your keys in:" << iniPath;
+            qDebug() << "[OCR_Baidu] OCR keys not configured. Standing by silently at:" << iniPath;
         }
     }
     void onUnload() override { 

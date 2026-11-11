@@ -191,15 +191,10 @@ QList<DisplayNameOverride> DesktopItemLoader::displayNameOverrides()
 {
     QList<DisplayNameOverride> overrides;
 
-    const QString hardcodedWps = normalizedExistingPath(QStringLiteral("D:/Documents/WPSDrive/NotLoginPage"));
-    if (!hardcodedWps.isEmpty()) {
-        overrides.append({ hardcodedWps, QStringLiteral("WPS云盘"), QStringLiteral("WPS Drive") });
-    }
-
     const QString docPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     if (!docPath.isEmpty()) {
         const QString docWps = normalizedExistingPath(docPath + QStringLiteral("/WPSDrive/NotLoginPage"));
-        if (!docWps.isEmpty() && docWps != hardcodedWps) {
+        if (!docWps.isEmpty()) {
             overrides.append({ docWps, QStringLiteral("WPS云盘"), QStringLiteral("WPS Drive") });
         }
     }

@@ -177,7 +177,7 @@ QString IconCacheManager::diskCacheDirectory() const
 
 QString IconCacheManager::computeDiskKey(const QString& filePath, qint64 mtime, int sizeTier) const
 {
-    const QString raw = QString("%1|%2|%3").arg(QDir::toNativeSeparators(filePath).toLower()).arg(mtime).arg(sizeTier);
+    const QString raw = QString("v6:%1|%2|%3").arg(QDir::toNativeSeparators(filePath).toLower()).arg(mtime).arg(sizeTier);
     return QString::fromUtf8(QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Md5).toHex());
 }
 

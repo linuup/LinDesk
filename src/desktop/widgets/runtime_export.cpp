@@ -628,6 +628,15 @@ LINWIDGET_EXPORT bool linwidget_has_hub_browser() { return false; }
 LINWIDGET_EXPORT QWidget* linwidget_create_hub_web_widget(const char*, QWidget*) { return nullptr; }
 #endif
 
+LINWIDGET_EXPORT void linwidget_do_message_loop_work()
+{
+#ifdef LINDESK_HAS_CEF
+    if (LinCef::CefManager::instance() && LinCef::CefManager::instance()->isInitialized()) {
+        LinCef::CefManager::instance()->doMessageLoopWork();
+    }
+#endif
+}
+
 #endif // LINWIDGET_RUNTIME_EXPORTS
 
 // ==============================================================================
@@ -708,6 +717,7 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
     m_pfnHasHubBrowser = nullptr;
     m_pfnOpenHubWindow = nullptr;
     m_pfnCreateHubWebWidget = nullptr;
+    m_pfnDoMessageLoopWork = nullptr;
 }
 
 bool LinWidgetRuntimeBridge::isLoaded() const
@@ -834,6 +844,7 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     RESOLVE_FN("linwidget_has_hub_browser", m_pfnHasHubBrowser);
     RESOLVE_FN("linwidget_open_hub_window", m_pfnOpenHubWindow);
     RESOLVE_FN("linwidget_create_hub_web_widget", m_pfnCreateHubWebWidget);
+    RESOLVE_FN("linwidget_do_message_loop_work", m_pfnDoMessageLoopWork);
 
     #undef RESOLVE_FN
 #endif
@@ -1264,4 +1275,11 @@ QWidget* LinWidgetRuntimeBridge::createHubWebWidget(const QString& url, QWidget*
         return m_pfnCreateHubWebWidget(utf8.constData(), parent);
     }
     return nullptr;
+}
+
+void LinWidgetRuntimeBridge::doMessageLoopWork()
+{
+    if (m_pfnDoMessageLoopWork) {
+        m_pfnDoMessageLoopWork();
+    }
 }

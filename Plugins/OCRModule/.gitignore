@@ -1,5 +1,11 @@
-# Ignore build artifacts
-.vs/
+# Visual Studio / CMake generated
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
 
 .vscode/
 

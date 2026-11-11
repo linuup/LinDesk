@@ -641,6 +641,61 @@ QString SysInfoUtil::GetAumidFromShortcut(const QString& lnkPath)
     return QString();
 }
 
+QString SysInfoUtil::ResolveShortcutTargetPath(const QString& lnkPath)
+{
+    if (lnkPath.trimmed().isEmpty()) {
+        return QString();
+    }
+    ScopedComInit comInit;
+    const std::wstring nativePath = QDir::toNativeSeparators(lnkPath.trimmed()).toStdWString();
+
+    Microsoft::WRL::ComPtr<IShellLinkW> shellLink;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shellLink));
+    if (FAILED(hr) || !shellLink) {
+        return QString();
+    }
+
+    Microsoft::WRL::ComPtr<IPersistFile> persistFile;
+    if (FAILED(shellLink.As(&persistFile)) || !persistFile) {
+        return QString();
+    }
+
+    if (FAILED(persistFile->Load(nativePath.c_str(), STGM_READ))) {
+        return QString();
+    }
+
+    // 1. 尝试从 PIDL 获取目标路径（对各种 Shell 路径最通用）
+    PIDLIST_ABSOLUTE targetPidl = nullptr;
+    if (SUCCEEDED(shellLink->GetIDList(&targetPidl)) && targetPidl) {
+        PWSTR pszPath = nullptr;
+        if (SUCCEEDED(SHGetNameFromIDList(targetPidl, SIGDN_FILESYSPATH, &pszPath)) && pszPath) {
+            QString res = QString::fromWCharArray(pszPath);
+            CoTaskMemFree(pszPath);
+            ILFree(targetPidl);
+            if (!res.isEmpty()) {
+                return res;
+            }
+        } else if (SUCCEEDED(SHGetNameFromIDList(targetPidl, SIGDN_DESKTOPABSOLUTEPARSING, &pszPath)) && pszPath) {
+            QString res = QString::fromWCharArray(pszPath);
+            CoTaskMemFree(pszPath);
+            ILFree(targetPidl);
+            if (!res.isEmpty()) {
+                return res;
+            }
+        }
+        ILFree(targetPidl);
+    }
+
+    // 2. 尝试从 GetPath 获取直接物理路径
+    WCHAR target[MAX_PATH] = { 0 };
+    WIN32_FIND_DATAW wfd = { 0 };
+    if (SUCCEEDED(shellLink->GetPath(target, MAX_PATH, &wfd, SLGP_RAWPATH)) && target[0] != L'\0') {
+        return QString::fromWCharArray(target);
+    }
+
+    return QString();
+}
+
 QIcon SysInfoUtil::LoadUwpAppIconFromAumid(const QString& aumid, int side)
 {
     if (aumid.trimmed().isEmpty()) {
@@ -844,5 +899,86 @@ QIcon SysInfoUtil::GetBlankFileFallbackIcon(int side)
         p.drawPolygon(foldPoly);
     }
     return QIcon(fallbackPix);
+}
+
+QIcon SysInfoUtil::CreateDocumentPlateIcon(const QIcon& innerIcon, int targetSide)
+{
+    const int side = (targetSide > 0) ? targetSide : 256;
+
+    // 1. 优先获取官方 Windows 现代 256x256 折角文档白板衬底
+    // 在 imageres.dll 中，索引 3（即资源序号 2）为 Windows 官方高分辨率折角空白文档图标
+    QPixmap platePix;
+    QIcon plateIcon = SysFileIconByDLL(3, side, QStringLiteral("imageres.dll"));
+    if (!plateIcon.isNull()) {
+        platePix = plateIcon.pixmap(side, side);
+    }
+
+    // 2. 若系统 DLL 提取失败，采用高精度纯矢量抗锯齿折角白板衬底兜底
+    if (platePix.isNull() || platePix.width() < side / 2) {
+        platePix = QPixmap(side, side);
+        platePix.fill(Qt::transparent);
+        QPainter p(&platePix);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        const qreal pad = side * 0.12;
+        const qreal fold = side * 0.20;
+        const qreal w = side - pad * 2.0;
+        const qreal h = side - pad * 1.8;
+        const qreal left = pad;
+        const qreal top = pad * 0.9;
+        const qreal right = left + w;
+        const qreal bottom = top + h;
+
+        QPolygonF docPoly;
+        docPoly << QPointF(left, top)
+                << QPointF(right - fold, top)
+                << QPointF(right, top + fold)
+                << QPointF(right, bottom)
+                << QPointF(left, bottom);
+
+        // 柔和微投影
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, 22));
+        p.drawPolygon(docPoly.translated(0, side * 0.03));
+
+        // 纯白现代卡片
+        p.setBrush(QColor(255, 255, 255));
+        p.setPen(QPen(QColor(218, 222, 230), qMax(1.0, side * 0.02)));
+        p.drawPolygon(docPoly);
+
+        // 折角阴影与内折
+        QPolygonF foldPoly;
+        foldPoly << QPointF(right - fold, top)
+                 << QPointF(right - fold, top + fold)
+                 << QPointF(right, top + fold);
+        p.setBrush(QColor(238, 240, 245));
+        p.drawPolygon(foldPoly);
+    }
+
+    // 3. 将内部图标按黄金比例居中合成在文档纸张上
+    QPixmap composite(side, side);
+    composite.fill(Qt::transparent);
+    {
+        QPainter p(&composite);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+        // 绘制高清衬底
+        p.drawPixmap(0, 0, platePix);
+
+        if (!innerIcon.isNull()) {
+            const int innerSide = qMax(16, qRound(side * 0.42));
+            QPixmap innerPix = innerIcon.pixmap(innerSide, innerSide);
+            if (!innerPix.isNull()) {
+                const qreal centerX = side * 0.50;
+                const qreal centerY = side * 0.53;
+                const int ix = qRound(centerX - innerPix.width() / 2.0);
+                const int iy = qRound(centerY - innerPix.height() / 2.0);
+                p.drawPixmap(ix, iy, innerPix);
+            }
+        }
+    }
+
+    return QIcon(composite);
 }
 

@@ -7,6 +7,7 @@ and GitHub Releases publication.
 """
 
 import argparse
+import configparser
 import datetime
 import glob
 import hashlib
@@ -25,20 +26,215 @@ from typing import Dict, List, Optional, Tuple
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from update_translations import update_translations, find_tool
 
-REPO_OWNER = "linuup"
-REPO_NAME = "LinDesk_Update"
+CONFIG_FILENAME = "release_config.ini"
+TEMPLATE_FILENAME = "release_config.template.ini"
+
+def get_script_dir() -> str:
+    return os.path.dirname(os.path.abspath(__file__))
+
+def get_config_parser() -> configparser.ConfigParser:
+    """加载 release_config.ini 配置文件。"""
+    parser = configparser.ConfigParser()
+    config_path = os.path.join(get_script_dir(), CONFIG_FILENAME)
+    if os.path.isfile(config_path):
+        try:
+            parser.read(config_path, encoding="utf-8")
+        except Exception as e:
+            print(f"[WARN] 读取配置文件 {config_path} 失败: {e}", file=sys.stderr)
+    return parser
+
+def fail_missing_dependency(tool_name: str, ini_section: str, ini_key: str, env_vars: List[str], desc: str):
+    """统一输出依赖缺失提示并终止运行。"""
+    script_dir = get_script_dir()
+    cfg_file = os.path.join(script_dir, CONFIG_FILENAME)
+    tmpl_file = os.path.join(script_dir, TEMPLATE_FILENAME)
+    env_str = " 或 ".join([f"${v}" for v in env_vars])
+    border = "=" * 70
+    divider = "-" * 70
+    msg = (
+        f"\n{border}\n"
+        f"[FATAL ERROR] 缺少必要外部依赖: 【{tool_name}】\n"
+        f"功能用途: {desc}\n"
+        f"{divider}\n"
+        f"检测规则: 优先读取配置文件，其次读取环境变量。当前两者均未检测到！\n\n"
+        f"请选择以下任一方式进行配置（二选一）：\n"
+        f"  【方式 1】在配置文件中指定路径（推荐）\n"
+        f"      文件路径: {cfg_file}\n"
+        f"      (若文件不存在请执行: copy \"{tmpl_file}\" \"{cfg_file}\")\n"
+        f"      在 [{ini_section}] 节下配置: {ini_key} = <路径或值>\n\n"
+        f"  【方式 2】设置系统环境变量\n"
+        f"      环境变量名称: {env_str}\n"
+        f"{border}\n"
+    )
+    raise RuntimeError(msg)
+
+def resolve_github_token() -> str:
+    """获取 GitHub 发布令牌：优先 release_config.ini [github] token，其次环境变量 GITHUB_TOKEN。"""
+    cfg = get_config_parser()
+    token = ""
+    if cfg.has_section("github") and cfg.has_option("github", "token"):
+        token = cfg.get("github", "token").strip()
+
+    if not token or token == "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN_HERE":
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+
+    if not token or token == "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN_HERE":
+        fail_missing_dependency(
+            tool_name="GitHub Personal Access Token (PAT)",
+            ini_section="github",
+            ini_key="token",
+            env_vars=["GITHUB_TOKEN"],
+            desc="用于向 GitHub Releases 上传安装包与更新元数据"
+        )
+    return token
+
+def resolve_vcpkg_toolchain() -> str:
+    """获取 vcpkg 工具链文件：优先 release_config.ini [tools] vcpkg_root，其次环境变量 VCPKG_ROOT / CMAKE_TOOLCHAIN_FILE。"""
+    cfg = get_config_parser()
+    if cfg.has_section("tools"):
+        if cfg.has_option("tools", "vcpkg_toolchain"):
+            tc = cfg.get("tools", "vcpkg_toolchain").strip()
+            if tc and os.path.isfile(tc):
+                return os.path.abspath(tc)
+        if cfg.has_option("tools", "vcpkg_root"):
+            root = cfg.get("tools", "vcpkg_root").strip()
+            if root:
+                candidate = os.path.join(root, "scripts", "buildsystems", "vcpkg.cmake")
+                if os.path.isfile(candidate):
+                    return os.path.abspath(candidate)
+
+    tc_env = os.environ.get("CMAKE_TOOLCHAIN_FILE", "").strip()
+    if tc_env and os.path.isfile(tc_env):
+        return os.path.abspath(tc_env)
+
+    vcpkg_env = os.environ.get("VCPKG_ROOT", "").strip()
+    if vcpkg_env:
+        candidate = os.path.join(vcpkg_env, "scripts", "buildsystems", "vcpkg.cmake")
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+
+    fail_missing_dependency(
+        tool_name="vcpkg 工具链 (vcpkg.cmake)",
+        ini_section="tools",
+        ini_key="vcpkg_root",
+        env_vars=["VCPKG_ROOT", "CMAKE_TOOLCHAIN_FILE"],
+        desc="CMake 构建 C++ 依赖库所需的工具链文件"
+    )
+
+def resolve_inno_setup() -> str:
+    """获取 Inno Setup 编译器 (ISCC.exe)：优先 release_config.ini [tools] inno_setup_dir，其次环境变量 INNO_SETUP_DIR / PATH。"""
+    cfg = get_config_parser()
+    if cfg.has_section("tools"):
+        if cfg.has_option("tools", "iscc_path"):
+            iscc = cfg.get("tools", "iscc_path").strip()
+            if iscc and os.path.isfile(iscc):
+                return os.path.abspath(iscc)
+        if cfg.has_option("tools", "inno_setup_dir"):
+            dir_path = cfg.get("tools", "inno_setup_dir").strip()
+            if dir_path:
+                candidate = os.path.join(dir_path, "ISCC.exe")
+                if os.path.isfile(candidate):
+                    return os.path.abspath(candidate)
+
+    inno_env = os.environ.get("INNO_SETUP_DIR", "").strip()
+    if inno_env:
+        candidate = os.path.join(inno_env, "ISCC.exe")
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+
+    which_iscc = shutil.which("ISCC.exe") or shutil.which("iscc")
+    if which_iscc and os.path.isfile(which_iscc):
+        return os.path.abspath(which_iscc)
+
+    fail_missing_dependency(
+        tool_name="Inno Setup 编译器 (ISCC.exe)",
+        ini_section="tools",
+        ini_key="inno_setup_dir",
+        env_vars=["INNO_SETUP_DIR", "PATH (将 Inno Setup 安装目录添加到系统 PATH)"],
+        desc="将编译产物打包封装为 LinDesk Setup 安装包程序"
+    )
+
+def resolve_qt_tools(arch: str) -> Tuple[str, str]:
+    """
+    获取对应架构的 Qt 工具路径 (windeployqt_path, qt_bin)。
+    优先 release_config.ini [tools] qt_dir_x64/x86，其次环境变量 QTDIR_X64/X86、QTDIR、PATH。
+    """
+    cfg = get_config_parser()
+    key_name = f"qt_dir_{arch}"
+    env_name = f"QTDIR_{arch.upper()}"
+
+    def check_qt_dir(d: str) -> Optional[Tuple[str, str]]:
+        if not d or not os.path.isdir(d):
+            return None
+        bin_dir = os.path.join(d, "bin") if not d.lower().endswith("bin") else d
+        windeployqt = os.path.join(bin_dir, "windeployqt.exe")
+        if os.path.isfile(windeployqt):
+            return (os.path.abspath(windeployqt), os.path.abspath(bin_dir))
+        return None
+
+    if cfg.has_section("tools") and cfg.has_option("tools", key_name):
+        res = check_qt_dir(cfg.get("tools", key_name).strip())
+        if res:
+            return res
+
+    env_val = os.environ.get(env_name, "").strip()
+    res = check_qt_dir(env_val)
+    if res:
+        return res
+
+    general_qtdir = os.environ.get("QTDIR", "").strip()
+    if general_qtdir:
+        if (arch == "x64" and ("64" in general_qtdir or "x64" in general_qtdir)) or \
+           (arch == "x86" and ("64" not in general_qtdir and "x64" not in general_qtdir)):
+            res = check_qt_dir(general_qtdir)
+            if res:
+                return res
+
+    path_windeploy = shutil.which("windeployqt.exe") or shutil.which("windeployqt")
+    if path_windeploy and os.path.isfile(path_windeploy):
+        bin_dir = os.path.dirname(os.path.abspath(path_windeploy))
+        if (arch == "x64" and "64" in bin_dir) or (arch == "x86" and "64" not in bin_dir):
+            return (os.path.abspath(path_windeploy), bin_dir)
+
+    fail_missing_dependency(
+        tool_name=f"Qt 5.15.2 ({arch}) windeployqt.exe",
+        ini_section="tools",
+        ini_key=key_name,
+        env_vars=[env_name, "QTDIR"],
+        desc=f"用于为 [{arch}] 架构打包 Qt 动态链接库与平台插件"
+    )
+
+def resolve_cmake() -> str:
+    """获取 CMake 路径。优先 release_config.ini [tools] cmake_path，其次 PATH。"""
+    cfg = get_config_parser()
+    if cfg.has_section("tools") and cfg.has_option("tools", "cmake_path"):
+        p = cfg.get("tools", "cmake_path").strip()
+        if p and os.path.isfile(p):
+            return os.path.abspath(p)
+
+    which_cmake = shutil.which("cmake.exe") or shutil.which("cmake")
+    if which_cmake and os.path.isfile(which_cmake):
+        return os.path.abspath(which_cmake)
+
+    fail_missing_dependency(
+        tool_name="CMake (cmake.exe)",
+        ini_section="tools",
+        ini_key="cmake_path",
+        env_vars=["PATH (将 CMake 的 bin 目录添加到系统 PATH)"],
+        desc="执行 C++ 项目配置与构建的 CMake 工具"
+    )
+
+_PARSER = get_config_parser()
+REPO_OWNER = _PARSER.get("github", "repo_owner", fallback="linuup") if _PARSER.has_section("github") else "linuup"
+REPO_NAME = _PARSER.get("github", "repo_name", fallback="LinDesk") if _PARSER.has_section("github") else "LinDesk"
 DEFAULT_CHANNEL = "stable"
 DEFAULT_MIN_VERSION = "1.0.0"
-
-API_TOKEN = "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"
 
 ARCH_CONFIG: Dict[str, Dict] = {
     "x64": {
         "generator_arch": "x64",
         "triplet": "x64-windows",
         "build_dir": os.path.join("build", "build_64"),
-        "windeployqt": r"F:\Qt\5.15.2\msvc2019_64\bin\windeployqt.exe",
-        "qt_bin": r"F:\Qt\5.15.2\msvc2019_64\bin",
         "expected_pe_machine": 0x8664,
         "installer_suffix": "_x64",
         "update_json_name": "update.json",
@@ -47,8 +243,6 @@ ARCH_CONFIG: Dict[str, Dict] = {
         "generator_arch": "Win32",
         "triplet": "x86-windows",
         "build_dir": os.path.join("build", "build_32"),
-        "windeployqt": r"F:\Qt\5.15.2\msvc2019\bin\windeployqt.exe",
-        "qt_bin": r"F:\Qt\5.15.2\msvc2019\bin",
         "expected_pe_machine": 0x14C,
         "installer_suffix": "_x86",
         "update_json_name": "update_x86.json",
@@ -163,10 +357,7 @@ def deploy_qt(release_dir: str, arch: str):
             shutil.rmtree(dp, ignore_errors=True)
 
     # Step 2: Set isolated PATH for windeployqt
-    qt_bin = ARCH_CONFIG[arch]["qt_bin"]
-    windeployqt_path = ARCH_CONFIG[arch]["windeployqt"]
-    if not os.path.isfile(windeployqt_path):
-        raise FileNotFoundError(f"windeployqt not found: {windeployqt_path}")
+    windeployqt_path, qt_bin = resolve_qt_tools(arch)
 
     env = os.environ.copy()
     raw_paths = env.get("PATH", "").split(";")
@@ -202,13 +393,16 @@ def build_release(repo_root: str, arch: str, custom_build_dir: str = "") -> str:
     os.makedirs(abs_build_dir, exist_ok=True)
     sys.stdout.flush()
 
+    cmake_exe = resolve_cmake()
+    vcpkg_toolchain = resolve_vcpkg_toolchain()
+
     print(f"    Configuring CMake ({arch}, BUILD_TESTING=OFF) in {abs_build_dir}...")
     sys.stdout.flush()
     cfg_cmd = [
-        "cmake", "-S", repo_root, "-B", abs_build_dir,
+        cmake_exe, "-S", repo_root, "-B", abs_build_dir,
         "-G", "Visual Studio 17 2022",
         "-A", ARCH_CONFIG[arch]["generator_arch"],
-        "-DCMAKE_TOOLCHAIN_FILE=D:/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        f"-DCMAKE_TOOLCHAIN_FILE={vcpkg_toolchain}",
         f"-DVCPKG_TARGET_TRIPLET={ARCH_CONFIG[arch]['triplet']}",
         "-DBUILD_TESTING=OFF"
     ]
@@ -217,7 +411,7 @@ def build_release(repo_root: str, arch: str, custom_build_dir: str = "") -> str:
         raise RuntimeError(f"CMake configure failed for {arch} with exit code {cfg_res.returncode}")
 
     build_cmd = [
-        "cmake", "--build", abs_build_dir,
+        cmake_exe, "--build", abs_build_dir,
         "--config", "Release",
         "--target", "LinDesk", "LinDeskUpdate", "LinDeskSubprocess", "LinWidgetRuntime",
         "-j", "8"
@@ -247,11 +441,7 @@ def package_installer(repo_root: str, version: str, arch: str, release_dir: str,
     print(f"\n>>> Compiling installer with Inno Setup (version: {version}, arch: {arch})...")
     sys.stdout.flush()
 
-    iscc_exe = find_tool(["ISCC", "ISCC.exe"], extra_dirs=[r"D:\Inno Setup 6"])
-    if not iscc_exe:
-        raise RuntimeError(
-            "ISCC.exe not found! Please install Inno Setup 6 or add it to PATH."
-        )
+    iscc_exe = resolve_inno_setup()
 
     print(f"    Using Inno Setup compiler: {iscc_exe}")
     print(f"    Script path: {iss_path}")
@@ -345,6 +535,8 @@ def api_publish_release(repo_owner: str, repo_name: str, tag: str, version: str,
     installer_items: list of (installer_path, sha256_hash)
     update_json_paths: list of update json file paths
     """
+    token = resolve_github_token()
+
     print(f"\n>>> Publishing Release to GitHub via REST API ({repo_owner}/{repo_name} {tag})...")
     sys.stdout.flush()
 
@@ -364,16 +556,16 @@ def api_publish_release(repo_owner: str, repo_name: str, tag: str, version: str,
         final_notes += "\n\n### Checksum\n" + "\n".join(checksum_lines) + "\n"
 
     # 1) Check if tag already exists
-    release = api_github_request("GET", f"{base}/releases/tags/{tag}", API_TOKEN)
+    release = api_github_request("GET", f"{base}/releases/tags/{tag}", token)
     if release:
         release_id = release["id"]
         print(f"    Release {tag} already exists (id={release_id}). Updating assets...")
         sys.stdout.flush()
         # Delete stale matching assets before re-uploading
-        assets = api_github_request("GET", f"{base}/releases/{release_id}/assets", API_TOKEN) or []
+        assets = api_github_request("GET", f"{base}/releases/{release_id}/assets", token) or []
         for asset in assets:
             if asset.get("name") in asset_names:
-                api_github_request("DELETE", f"{base}/releases/assets/{asset['id']}", API_TOKEN)
+                api_github_request("DELETE", f"{base}/releases/assets/{asset['id']}", token)
                 print(f"    Deleted old asset {asset['name']}")
                 sys.stdout.flush()
     else:
@@ -385,7 +577,7 @@ def api_publish_release(repo_owner: str, repo_name: str, tag: str, version: str,
             "draft": False,
             "prerelease": False,
         }).encode("utf-8")
-        release = api_github_request("POST", f"{base}/releases", API_TOKEN, data=payload)
+        release = api_github_request("POST", f"{base}/releases", token, data=payload)
         if not release:
             raise RuntimeError("GitHub API returned empty body when creating release")
         release_id = release["id"]
@@ -400,7 +592,7 @@ def api_publish_release(repo_owner: str, repo_name: str, tag: str, version: str,
         qname = urllib.parse.quote(name)
         asset = api_github_request(
             "POST", f"{uploads_base}/releases/{release_id}/assets?name={qname}",
-            API_TOKEN, data=body, content_type="application/octet-stream")
+            token, data=body, content_type="application/octet-stream")
         if not asset:
             raise RuntimeError(f"Failed to upload asset {name}")
         print(f"    [OK] Uploaded {name} ({len(body) / (1024 * 1024):.2f} MB)")
@@ -592,6 +784,30 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
 
     return target_version, target_arch, notes, skip_upload, no_build, skip_trans, skip_package
 
+def validate_environment(arch_list: List[str], no_build: bool, skip_package: bool, skip_upload: bool):
+    """
+    统一发版前置依赖预检：
+    按照【优先配置文件 -> 其次环境变量 -> 均无则报警并终止】规则检查当前执行模式所需的所有依赖。
+    若检测失败，将立即输出详细配置指引并终止执行，绝不继续下一步。
+    """
+    print("\n>>> 正在进行发版环境与工具链预检...")
+    sys.stdout.flush()
+
+    if not no_build:
+        resolve_cmake()
+        resolve_vcpkg_toolchain()
+
+    if not skip_package:
+        resolve_inno_setup()
+        for a in arch_list:
+            resolve_qt_tools(a)
+
+    if not skip_upload:
+        resolve_github_token()
+
+    print("    [OK] 工具链与发版凭据预检全部通过！")
+    sys.stdout.flush()
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         try:
@@ -667,6 +883,9 @@ def main():
         skip_package = args.skip_package
 
     arch_list = ["x64", "x86"] if target_arch == "both" else [target_arch]
+
+    # 前置依赖预检 (优先读配置 -> 其次读环境变量 -> 均无则报错终止，不进入下一步)
+    validate_environment(arch_list, no_build=no_build, skip_package=skip_package, skip_upload=skip_upload)
 
     print(f"\n>>> 正在准备启动流水线...")
     print(f"    当前版本 : {current_version}")

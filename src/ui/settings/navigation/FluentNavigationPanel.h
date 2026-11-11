@@ -26,7 +26,7 @@ public:
     explicit FluentNavigationPanel(QWidget* parent = nullptr);
     ~FluentNavigationPanel() override = default;
 
-    void addItem(char16_t iconGlyph, const QString& text);
+    void addItem(char16_t iconGlyph, const QString& text, const QPixmap& iconPixmap = QPixmap());
     void initDefaultItems();
     void updateTranslations();
     int currentIndex() const { return m_currentIndex; }
@@ -47,8 +47,9 @@ private:
     qreal targetPillYForIndex(int index) const;
 
     struct ItemData {
-        char16_t icon;
+        char16_t icon = 0;
         QString text;
+        QPixmap iconPixmap;
         QRect rect;
         bool isHovered = false;
         bool isPressed = false;

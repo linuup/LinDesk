@@ -60,7 +60,7 @@
 6. 打开更新仓库：
 
    ```text
-   https://github.com/linuup/LinDesk_Update
+   https://github.com/linuup/LinDesk
    ```
 
 7. 创建新的 GitHub Release。
@@ -98,7 +98,7 @@
 11. 主程序会请求最新 Release 中的：
 
    ```text
-   https://github.com/linuup/LinDesk_Update/releases/latest/download/update.json
+   https://github.com/linuup/LinDesk/releases/latest/download/update.json
    ```
 
 12. 如果远程版本大于本地版本，设置页会显示新版本和更新说明。
@@ -157,7 +157,7 @@
 {
   "version": "1.0.3",
   "channel": "stable",
-  "url": "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.3/LinDesk_Setup_1.0.3.exe",
+  "url": "https://github.com/linuup/LinDesk/releases/download/v1.0.3/LinDesk_Setup_1.0.3.exe",
   "sha256": "把安装包的 SHA256 填到这里",
   "notes": "更新说明文本",
   "publishedAt": "2026-05-14T00:00:00Z",
@@ -203,7 +203,7 @@ PowerShell 计算出的 SHA256 为：
 {
   "version": "1.0.3",
   "channel": "stable",
-  "url": "https://github.com/linuup/LinDesk_Update/releases/download/v1.0.3/LinDesk_Setup_1.0.3.exe",
+  "url": "https://github.com/linuup/LinDesk/releases/download/v1.0.3/LinDesk_Setup_1.0.3.exe",
   "sha256": "2f6b4b0f6f8e0b1f0d4a7c9e28c0a1b5c7d8e9f00112233445566778899aabbcc",
   "notes": "修复已知问题，优化桌面组件显示效果，提升稳定性。",
   "publishedAt": "2026-05-14T00:00:00Z",

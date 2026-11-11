@@ -93,6 +93,7 @@ LINWIDGET_EXPORT void linwidget_close_hub_browser();
 LINWIDGET_EXPORT bool linwidget_has_hub_browser();
 LINWIDGET_EXPORT bool linwidget_open_hub_window(const char* hubUrl);
 LINWIDGET_EXPORT QWidget* linwidget_create_hub_web_widget(const char* url, QWidget* parent);
+LINWIDGET_EXPORT void linwidget_do_message_loop_work();
 #endif
 
 // 主程序侧持有的动态桥接单例（负责 LoadLibrary、符号解析与判空转发）
@@ -172,6 +173,7 @@ public:
     bool hasHubBrowser();
     bool openHubWindow(const QString& hubUrl = QString());
     QWidget* createHubWebWidget(const QString& url, QWidget* parent = nullptr);
+    void doMessageLoopWork();
 
 private:
     LinWidgetRuntimeBridge();
@@ -243,5 +245,6 @@ private:
     bool (*m_pfnHasHubBrowser)() = nullptr;
     bool (*m_pfnOpenHubWindow)(const char*) = nullptr;
     QWidget* (*m_pfnCreateHubWebWidget)(const char*, QWidget*) = nullptr;
+    void (*m_pfnDoMessageLoopWork)() = nullptr;
     QMap<void*, EnabledListener> m_enabledListeners;
 };

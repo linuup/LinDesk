@@ -1,7 +1,7 @@
 #include "monitor/DirectoryMonitor.h"
-#include "monitor/DirectoryMonitor.h"
 #include <QDebug>
 #include <QDateTime>
+#include <QStandardPaths>
 #include <shlobj.h>
 
 // Static member initialization
@@ -59,7 +59,8 @@ DirectoryMonitor::~DirectoryMonitor() {
 
 // Start Listening
 bool DirectoryMonitor::startListening() {
-    const wchar_t* directoryPath = L"D:\\Desktop";
+    std::wstring desktopStd = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation).toStdWString();
+    const wchar_t* directoryPath = desktopStd.c_str();
     if (!m_hwnd) {
         qDebug() << "Cannot start monitoring: Window not created";
         return false;

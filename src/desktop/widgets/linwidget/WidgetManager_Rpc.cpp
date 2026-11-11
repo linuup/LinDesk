@@ -1,4 +1,6 @@
 #include "desktop/widgets/linwidget/WidgetManager_Internal.h"
+#include "desktop/widgets/linwidget/WinMfVideoEngine.h"
+#include <QThreadPool>
 
 namespace LinWidget {
 
@@ -247,6 +249,21 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                     const QString mfName = mObj.value(QStringLiteral("mediaFile")).toString();
                     wallItem.insert(QStringLiteral("mediaUrl"), QUrl::fromLocalFile(QDir(fi.absoluteFilePath()).filePath(mfName)).toString());
                 }
+
+                // Resolve preview image (preview.png / preview.jpg / preview.webp)
+                QString previewFile = mObj.value(QStringLiteral("preview")).toString();
+                if (previewFile.isEmpty() || !QFileInfo::exists(QDir(fi.absoluteFilePath()).filePath(previewFile))) {
+                    if (QFileInfo::exists(QDir(fi.absoluteFilePath()).filePath(QStringLiteral("preview.png")))) {
+                        previewFile = QStringLiteral("preview.png");
+                    } else if (QFileInfo::exists(QDir(fi.absoluteFilePath()).filePath(QStringLiteral("preview.jpg")))) {
+                        previewFile = QStringLiteral("preview.jpg");
+                    } else if (QFileInfo::exists(QDir(fi.absoluteFilePath()).filePath(QStringLiteral("preview.webp")))) {
+                        previewFile = QStringLiteral("preview.webp");
+                    }
+                }
+                if (!previewFile.isEmpty() && QFileInfo::exists(QDir(fi.absoluteFilePath()).filePath(previewFile))) {
+                    wallItem.insert(QStringLiteral("previewUrl"), QUrl::fromLocalFile(QDir(fi.absoluteFilePath()).filePath(previewFile)).toString());
+                }
                 QSettings wallPropSettings(AppPaths::configFilePath(), QSettings::IniFormat);
                 const QString savedPropsJson = wallPropSettings.value(QStringLiteral("LinWallpapers/%1/Properties").arg(id)).toString();
                 QJsonObject savedPropsObj;
@@ -321,8 +338,43 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                      m_activeWallpaperId.compare(QStringLiteral("wallpaper:") + entry.id, Qt::CaseInsensitive) == 0 ||
                      QDir::cleanPath(m_activeWallpaperPackagePath).compare(QDir::cleanPath(entry.packagePath), Qt::CaseInsensitive) == 0));
                 wallObj.insert(QStringLiteral("running"), isAct);
+
+                QString regPreview = QDir(entry.packagePath).filePath(QStringLiteral("preview.png"));
+                if (!QFileInfo::exists(regPreview)) {
+                    regPreview = QDir(entry.packagePath).filePath(QStringLiteral("preview.jpg"));
+                }
+                if (QFileInfo::exists(regPreview)) {
+                    wallObj.insert(QStringLiteral("previewUrl"), QUrl::fromLocalFile(regPreview).toString());
+                }
+
                 wallpapersArray.append(wallObj);
             }
+        }
+
+        // 3. Load custom wallpapers from custom_wallpapers.json metadata registry
+        const QJsonArray customWalls = loadCustomWallpapersArray();
+        for (const QJsonValue& cv : customWalls) {
+            QJsonObject cObj = cv.toObject();
+            const QString id = cObj.value(QStringLiteral("id")).toString();
+            const QString normId = id.trimmed().toLower();
+            if (id.isEmpty() || seenWallIds.contains(normId)) {
+                continue;
+            }
+            seenWallIds.insert(normId);
+
+            const QString srcPath = cObj.value(QStringLiteral("sourcePath")).toString();
+            const bool fileExists = !srcPath.isEmpty() && QFileInfo::exists(srcPath);
+            cObj.insert(QStringLiteral("isMissing"), !fileExists);
+
+            const QString cleanActiveId = m_activeWallpaperId.startsWith(QStringLiteral("wallpaper:"), Qt::CaseInsensitive)
+                ? m_activeWallpaperId.mid(10).trimmed()
+                : m_activeWallpaperId.trimmed();
+            const bool isRunningWall = (!cleanActiveId.isEmpty() &&
+                (cleanActiveId.compare(id, Qt::CaseInsensitive) == 0 ||
+                 QDir::cleanPath(m_activeWallpaperPackagePath).compare(QDir::cleanPath(srcPath), Qt::CaseInsensitive) == 0));
+            cObj.insert(QStringLiteral("running"), isRunningWall);
+
+            wallpapersArray.append(cObj);
         }
 
         response.insert(QStringLiteral("wallpapers"), wallpapersArray);
@@ -496,143 +548,6 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         return response;
     }
 
-    auto writeCustomWallpaperPackage = [this](const QString& wallDir,
-                                              const QString& generatedId,
-                                              const QString& mediaFileName,
-                                              bool isVideo,
-                                              const QString& title,
-                                              const QString& desc,
-                                              const QJsonObject& cfg) -> bool {
-        const QString scaling = cfg.value(QStringLiteral("scaling")).toString(QStringLiteral("cover"));
-        const int dimming = qBound(0, cfg.value(QStringLiteral("dimming")).toInt(15), 85);
-        const int blur = qBound(0, cfg.value(QStringLiteral("blur")).toInt(0), 30);
-        const int volume = qBound(0, cfg.value(QStringLiteral("volume")).toInt(80), 100);
-        const bool muted = cfg.value(QStringLiteral("muted")).toBool(volume <= 0);
-        const double playbackRate = qBound(0.25, cfg.value(QStringLiteral("playbackRate")).toDouble(1.0), 3.0);
-
-        const QString indexPath = QDir(wallDir).filePath(QStringLiteral("index.html"));
-        QFile htmlFile(indexPath);
-        if (htmlFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            QString htmlContent;
-            if (isVideo) {
-                htmlContent = QStringLiteral(
-                    "<!DOCTYPE html>\n"
-                    "<html lang=\"zh-CN\">\n"
-                    "<head>\n"
-                    "  <meta charset=\"UTF-8\">\n"
-                    "  <style>\n"
-                    "    * { margin: 0; padding: 0; box-sizing: border-box; }\n"
-                    "    html, body { width: 100vw; height: 100vh; overflow: hidden; background: #000; position: relative; }\n"
-                    "    video { width: 100vw; height: 100vh; object-fit: %2; filter: blur(%3px); position: absolute; top: 0; left: 0; pointer-events: none; transition: filter 0.15s ease; }\n"
-                    "    #dimLayer { position: absolute; inset: 0; background: #000; opacity: %4; pointer-events: none; transition: opacity 0.15s ease; }\n"
-                    "  </style>\n"
-                    "</head>\n"
-                    "<body>\n"
-                    "  <video id=\"mediaEl\" src=\"%1\" autoplay loop %5 playsinline></video>\n"
-                    "  <div id=\"dimLayer\"></div>\n"
-                    "  <script>\n"
-                    "    const v = document.getElementById('mediaEl');\n"
-                    "    const dim = document.getElementById('dimLayer');\n"
-                    "    if (v) {\n"
-                    "      v.volume = %6;\n"
-                    "      v.muted = %7;\n"
-                    "      v.playbackRate = %8;\n"
-                    "      v.addEventListener('loadedmetadata', () => { v.playbackRate = %8; });\n"
-                    "    }\n"
-                    "    window.addEventListener('message', function(e) {\n"
-                    "      const data = e.data || {};\n"
-                    "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_property') {\n"
-                    "        const key = data.key || data.property;\n"
-                    "        const val = data.value;\n"
-                    "        if ((key === 'fitMode' || key === 'scaling') && v) { v.style.objectFit = val; }\n"
-                    "        else if (key === 'blur' && v) { v.style.filter = 'blur(' + (parseFloat(val) || 0) + 'px)'; }\n"
-                    "        else if (key === 'dimming' && dim) { const d = parseFloat(val); dim.style.opacity = (d > 1 ? d / 100.0 : d); }\n"
-                    "        else if (key === 'volume' && v) { v.volume = Math.max(0, Math.min(1, parseFloat(val) / 100.0)); v.muted = (v.volume <= 0); }\n"
-                    "        else if (key === 'muted' && v) { v.muted = Boolean(val); }\n"
-                    "        else if (key === 'playbackRate' && v) { v.playbackRate = Math.max(0.25, Math.min(3.0, parseFloat(val) || 1.0)); }\n"
-                    "      }\n"
-                    "    });\n"
-                    "  </script>\n"
-                    "</body>\n"
-                    "</html>\n"
-                )
-                .arg(mediaFileName)
-                .arg(scaling)
-                .arg(blur)
-                .arg(QString::number(dimming / 100.0, 'f', 2))
-                .arg(muted ? QStringLiteral("muted") : QStringLiteral(""))
-                .arg(QString::number(volume / 100.0, 'f', 2))
-                .arg(muted ? QStringLiteral("true") : QStringLiteral("false"))
-                .arg(QString::number(playbackRate, 'f', 2));
-            } else {
-                htmlContent = QStringLiteral(
-                    "<!DOCTYPE html>\n"
-                    "<html lang=\"zh-CN\">\n"
-                    "<head>\n"
-                    "  <meta charset=\"UTF-8\">\n"
-                    "  <style>\n"
-                    "    * { margin: 0; padding: 0; box-sizing: border-box; }\n"
-                    "    html, body { width: 100vw; height: 100vh; overflow: hidden; background: #000; position: relative; }\n"
-                    "    img { width: 100vw; height: 100vh; object-fit: %2; filter: blur(%3px); position: absolute; top: 0; left: 0; pointer-events: none; transition: filter 0.15s ease; }\n"
-                    "    #dimLayer { position: absolute; inset: 0; background: #000; opacity: %4; pointer-events: none; transition: opacity 0.15s ease; }\n"
-                    "  </style>\n"
-                    "</head>\n"
-                    "<body>\n"
-                    "  <img id=\"mediaEl\" src=\"%1\">\n"
-                    "  <div id=\"dimLayer\"></div>\n"
-                    "  <script>\n"
-                    "    const img = document.getElementById('mediaEl');\n"
-                    "    const dim = document.getElementById('dimLayer');\n"
-                    "    window.addEventListener('message', function(e) {\n"
-                    "      const data = e.data || {};\n"
-                    "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_property') {\n"
-                    "        const key = data.key || data.property;\n"
-                    "        const val = data.value;\n"
-                    "        if ((key === 'fitMode' || key === 'scaling') && img) { img.style.objectFit = val; }\n"
-                    "        else if (key === 'blur' && img) { img.style.filter = 'blur(' + (parseFloat(val) || 0) + 'px)'; }\n"
-                    "        else if (key === 'dimming' && dim) { const d = parseFloat(val); dim.style.opacity = (d > 1 ? d / 100.0 : d); }\n"
-                    "      }\n"
-                    "    });\n"
-                    "  </script>\n"
-                    "</body>\n"
-                    "</html>\n"
-                )
-                .arg(mediaFileName)
-                .arg(scaling)
-                .arg(blur)
-                .arg(QString::number(dimming / 100.0, 'f', 2));
-            }
-            htmlFile.write(htmlContent.toUtf8());
-            htmlFile.close();
-        }
-
-        const QString manifestPath = QDir(wallDir).filePath(QStringLiteral("manifest.json"));
-        QJsonObject root;
-        root.insert(QStringLiteral("id"), generatedId);
-        root.insert(QStringLiteral("name"), title);
-        root.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
-        root.insert(QStringLiteral("author"), QStringLiteral("User Custom"));
-        root.insert(QStringLiteral("description"), desc.isEmpty()
-            ? (isVideo ? QStringLiteral("自定义无缝循环视频壁纸") : QStringLiteral("自定义高清静态壁纸"))
-            : desc);
-        root.insert(QStringLiteral("role"), QStringLiteral("wallpaper"));
-        root.insert(QStringLiteral("type"), QStringLiteral("html"));
-        root.insert(QStringLiteral("wallpaperType"), isVideo ? QStringLiteral("video") : QStringLiteral("image"));
-        root.insert(QStringLiteral("isCustom"), true);
-        root.insert(QStringLiteral("mediaFile"), mediaFileName);
-        root.insert(QStringLiteral("entry"), QStringLiteral("index.html"));
-        root.insert(QStringLiteral("preview"), QStringLiteral("preview.png"));
-        root.insert(QStringLiteral("customConfig"), cfg);
-        root.insert(QStringLiteral("properties"), QJsonObject());
-
-        QFile mf(manifestPath);
-        if (mf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            mf.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-            mf.close();
-        }
-        return true;
-    };
-
     if (action == QStringLiteral("stage_wallpaper_media") ||
         action == QStringLiteral("import_wallpaper_media") ||
         action == QStringLiteral("import_external_paths")) {
@@ -666,6 +581,9 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
             candidatePaths.append(chosen);
         }
 
+        QJsonArray customWalls = loadCustomWallpapersArray();
+        QJsonObject lastImportedObj;
+
         for (QString candidate : candidatePaths) {
             QFileInfo fi(candidate);
             if (fi.isSymLink()) {
@@ -688,34 +606,270 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                                   ext == QStringLiteral("gif") || ext == QStringLiteral("bmp") ||
                                   ext == QStringLiteral("svg"));
             if (!isVideo && !isImage) {
-                response.insert(QStringLiteral("action"), QStringLiteral("stage_wallpaper_media"));
-                response.insert(QStringLiteral("ok"), false);
-                response.insert(QStringLiteral("error"), QStringLiteral("不支持的文件格式 (.%1)，请拖入图片 (PNG/JPG/WebP/GIF) 或视频 (MP4/WebM/MOV)").arg(ext));
-                return response;
+                continue;
             }
 
+            const QString wallUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            const QString generatedId = QStringLiteral("custom.") + wallUuid;
+            const QString previewPath = QDir(customWallpapersPreviewsDir()).filePath(generatedId + QStringLiteral(".png"));
+
+            QString finalSourcePath = fi.absoluteFilePath();
+            bool isArchived = false;
+
+            if (isImage) {
+                // 小图片自动归档到 LinWallpapers/images
+                const QString destImage = QDir(customWallpapersImagesDir()).filePath(generatedId + QStringLiteral(".") + ext);
+                if (QFile::copy(finalSourcePath, destImage)) {
+                    finalSourcePath = destImage;
+                    isArchived = true;
+                }
+                QImage img(finalSourcePath);
+                if (!img.isNull()) {
+                    QImage thumb = img.scaled(480, 270, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                    QRect cropRect((thumb.width() - 480) / 2, (thumb.height() - 270) / 2, 480, 270);
+                    thumb.copy(cropRect).save(previewPath, "PNG");
+                }
+            } else {
+                // 大视频默认零拷贝就地引用，秒级返回即时海报，后台异步提取真实代表帧
+                isArchived = false;
+
+                // 1. 瞬时生成并保存高质感暗色占位海报（0ms 阻塞）
+                QImage poster(480, 270, QImage::Format_ARGB32_Premultiplied);
+                poster.fill(QColor(15, 23, 42));
+                QPainter p(&poster);
+                p.setRenderHint(QPainter::Antialiasing);
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(99, 102, 241, 220));
+                p.drawEllipse(QPoint(240, 120), 28, 28);
+                p.setPen(QColor(241, 245, 249));
+                p.drawText(QRect(20, 165, 440, 40), Qt::AlignCenter | Qt::TextWordWrap, fi.completeBaseName());
+                p.end();
+                poster.save(previewPath, "PNG");
+
+                // 2. 线程池后台异步提取视频原画帧，覆盖预览海报，绝不卡死主窗口
+                const QString asyncSrc = finalSourcePath;
+                const QString asyncPreview = previewPath;
+                QThreadPool::globalInstance()->start([asyncSrc, asyncPreview]() {
+                    const QImage realThumb = WinMfVideoEngine::extractThumbnail(asyncSrc, QSize(480, 270));
+                    if (!realThumb.isNull()) {
+                        realThumb.save(asyncPreview, "PNG");
+                    }
+                });
+            }
+
+            QJsonObject defaultCfg;
+            defaultCfg.insert(QStringLiteral("scaling"), QStringLiteral("cover"));
+            defaultCfg.insert(QStringLiteral("dimming"), 15);
+            defaultCfg.insert(QStringLiteral("blur"), 0);
+            defaultCfg.insert(QStringLiteral("volume"), 80);
+            defaultCfg.insert(QStringLiteral("muted"), false);
+            defaultCfg.insert(QStringLiteral("playbackRate"), 1.0);
+            defaultCfg.insert(QStringLiteral("audioDucking"), true);
+
+            QJsonObject wallObj;
+            wallObj.insert(QStringLiteral("id"), generatedId);
+            wallObj.insert(QStringLiteral("name"), fi.completeBaseName());
+            wallObj.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
+            wallObj.insert(QStringLiteral("author"), QStringLiteral("User Custom"));
+            wallObj.insert(QStringLiteral("description"), isVideo ? QStringLiteral("自定义视频壁纸") : QStringLiteral("自定义高清静态壁纸"));
+            wallObj.insert(QStringLiteral("role"), QStringLiteral("wallpaper"));
+            wallObj.insert(QStringLiteral("wallpaperType"), isVideo ? QStringLiteral("video") : QStringLiteral("image"));
+            wallObj.insert(QStringLiteral("isCustom"), true);
+            wallObj.insert(QStringLiteral("sourcePath"), finalSourcePath);
+            wallObj.insert(QStringLiteral("packagePath"), finalSourcePath);
+            wallObj.insert(QStringLiteral("mediaUrl"), QUrl::fromLocalFile(finalSourcePath).toString());
+            wallObj.insert(QStringLiteral("previewUrl"), QUrl::fromLocalFile(previewPath).toString());
+            wallObj.insert(QStringLiteral("isArchived"), isArchived);
+            wallObj.insert(QStringLiteral("fileSizeBytes"), fi.size());
+            wallObj.insert(QStringLiteral("createdAt"), QDateTime::currentMSecsSinceEpoch());
+            wallObj.insert(QStringLiteral("customConfig"), defaultCfg);
+            wallObj.insert(QStringLiteral("running"), false);
+            wallObj.insert(QStringLiteral("isMissing"), false);
+
+            customWalls.prepend(wallObj);
+            lastImportedObj = wallObj;
+        }
+
+        if (!lastImportedObj.isEmpty()) {
+            saveCustomWallpapersArray(customWalls);
             response.insert(QStringLiteral("action"), QStringLiteral("stage_wallpaper_media"));
             response.insert(QStringLiteral("ok"), true);
-            response.insert(QStringLiteral("filePath"), fi.absoluteFilePath());
-            response.insert(QStringLiteral("fileUrl"), QUrl::fromLocalFile(fi.absoluteFilePath()).toString());
-            response.insert(QStringLiteral("name"), fi.completeBaseName());
-            response.insert(QStringLiteral("ext"), ext);
-            response.insert(QStringLiteral("wallpaperType"), isVideo ? QStringLiteral("video") : QStringLiteral("image"));
-            response.insert(QStringLiteral("sizeBytes"), fi.size());
+            response.insert(QStringLiteral("wallpaper"), lastImportedObj);
+            response.insert(QStringLiteral("id"), lastImportedObj.value(QStringLiteral("id")).toString());
+            response.insert(QStringLiteral("name"), lastImportedObj.value(QStringLiteral("name")).toString());
+            response.insert(QStringLiteral("filePath"), lastImportedObj.value(QStringLiteral("sourcePath")).toString());
+            response.insert(QStringLiteral("fileUrl"), lastImportedObj.value(QStringLiteral("mediaUrl")).toString());
+            response.insert(QStringLiteral("wallpaperType"), lastImportedObj.value(QStringLiteral("wallpaperType")).toString());
             return response;
         }
 
         response.insert(QStringLiteral("action"), QStringLiteral("stage_wallpaper_media"));
         response.insert(QStringLiteral("ok"), false);
-        response.insert(QStringLiteral("error"), QStringLiteral("仅支持拖入图片或视频文件作为壁纸"));
+        response.insert(QStringLiteral("error"), QStringLiteral("仅支持拖入图片 (PNG/JPG/WebP/GIF) 或视频 (MP4/WebM/MOV) 文件"));
+        return response;
+    }
+
+    if (action == QStringLiteral("archive_wallpaper_media")) {
+        const QString targetId = request.value(QStringLiteral("id")).toString(
+            request.value(QStringLiteral("widgetId")).toString()).trimmed();
+        QJsonArray customWalls = loadCustomWallpapersArray();
+        bool found = false;
+        QString newPath;
+        for (int i = 0; i < customWalls.size(); ++i) {
+            QJsonObject wObj = customWalls[i].toObject();
+            if (wObj.value(QStringLiteral("id")).toString().compare(targetId, Qt::CaseInsensitive) == 0) {
+                const QString src = wObj.value(QStringLiteral("sourcePath")).toString();
+                if (QFileInfo::exists(src)) {
+                    QFileInfo fi(src);
+                    const QString dest = QDir(customWallpapersVideosDir()).filePath(targetId + QStringLiteral(".") + fi.suffix().toLower());
+                    if (QFile::copy(src, dest) || (src.compare(dest, Qt::CaseInsensitive) == 0)) {
+                        newPath = dest;
+                        wObj.insert(QStringLiteral("sourcePath"), dest);
+                        wObj.insert(QStringLiteral("packagePath"), dest);
+                        wObj.insert(QStringLiteral("mediaUrl"), QUrl::fromLocalFile(dest).toString());
+                        wObj.insert(QStringLiteral("isArchived"), true);
+                        customWalls[i] = wObj;
+                        found = true;
+                        if (m_activeWallpaperId.contains(targetId, Qt::CaseInsensitive)) {
+                            m_activeWallpaperPackagePath = dest;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        if (found) {
+            saveCustomWallpapersArray(customWalls);
+            response.insert(QStringLiteral("action"), QStringLiteral("archive_wallpaper_media"));
+            response.insert(QStringLiteral("ok"), true);
+            response.insert(QStringLiteral("id"), targetId);
+            response.insert(QStringLiteral("isArchived"), true);
+            response.insert(QStringLiteral("sourcePath"), newPath);
+            return response;
+        }
+        response.insert(QStringLiteral("action"), QStringLiteral("archive_wallpaper_media"));
+        response.insert(QStringLiteral("ok"), false);
+        response.insert(QStringLiteral("error"), QStringLiteral("未找到该壁纸或源文件无法复制"));
+        return response;
+    }
+
+    if (action == QStringLiteral("relocate_wallpaper_media")) {
+        const QString targetId = request.value(QStringLiteral("id")).toString(
+            request.value(QStringLiteral("widgetId")).toString()).trimmed();
+        QJsonArray customWalls = loadCustomWallpapersArray();
+        int targetIdx = -1;
+        QJsonObject targetObj;
+        for (int i = 0; i < customWalls.size(); ++i) {
+            const QJsonObject wObj = customWalls[i].toObject();
+            if (wObj.value(QStringLiteral("id")).toString().compare(targetId, Qt::CaseInsensitive) == 0) {
+                targetIdx = i;
+                targetObj = wObj;
+                break;
+            }
+        }
+        if (targetIdx < 0) {
+            response.insert(QStringLiteral("action"), QStringLiteral("relocate_wallpaper_media"));
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("未找到该自定义壁纸"));
+            return response;
+        }
+
+        QString chosenPath = request.value(QStringLiteral("filePath")).toString().trimmed();
+        const QString wallType = targetObj.value(QStringLiteral("wallpaperType")).toString().toLower();
+        const bool isVideo = (wallType == QStringLiteral("video"));
+
+        if (chosenPath.isEmpty()) {
+            QWidget* parentWin = QApplication::activeWindow();
+            const QString filter = isVideo
+                ? QStringLiteral("视频文件 (*.mp4 *.webm *.mov *.avi *.mkv *.flv);;所有文件 (*.*)")
+                : QStringLiteral("图片文件 (*.png *.jpg *.jpeg *.webp *.bmp *.gif);;所有文件 (*.*)");
+            const QString title = isVideo
+                ? QStringLiteral("重新选择视频壁纸源文件")
+                : QStringLiteral("重新选择图片壁纸源文件");
+
+            chosenPath = QFileDialog::getOpenFileName(parentWin, title, QString(), filter);
+        }
+
+        if (chosenPath.isEmpty()) {
+            response.insert(QStringLiteral("action"), QStringLiteral("relocate_wallpaper_media"));
+            response.insert(QStringLiteral("cancelled"), true);
+            return response;
+        }
+
+        if (!QFileInfo::exists(chosenPath)) {
+            response.insert(QStringLiteral("action"), QStringLiteral("relocate_wallpaper_media"));
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("选择的文件不存在"));
+            return response;
+        }
+
+        QFileInfo fi(chosenPath);
+        const QString ext = fi.suffix().toLower();
+        static const QSet<QString> videoExts = { QStringLiteral("mp4"), QStringLiteral("webm"), QStringLiteral("mov"),
+                                                 QStringLiteral("avi"), QStringLiteral("mkv"), QStringLiteral("flv") };
+        static const QSet<QString> imageExts = { QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+                                                 QStringLiteral("webp"), QStringLiteral("bmp"), QStringLiteral("gif") };
+
+        if (isVideo && !videoExts.contains(ext)) {
+            response.insert(QStringLiteral("action"), QStringLiteral("relocate_wallpaper_media"));
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("选择的文件不是有效的视频格式"));
+            return response;
+        }
+        if (!isVideo && !imageExts.contains(ext)) {
+            response.insert(QStringLiteral("action"), QStringLiteral("relocate_wallpaper_media"));
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), QStringLiteral("选择的文件不是有效的图片格式"));
+            return response;
+        }
+
+        const QString nativePath = QDir::toNativeSeparators(fi.absoluteFilePath());
+        targetObj.insert(QStringLiteral("sourcePath"), nativePath);
+        targetObj.insert(QStringLiteral("packagePath"), nativePath);
+        targetObj.insert(QStringLiteral("mediaUrl"), QUrl::fromLocalFile(nativePath).toString());
+        targetObj.insert(QStringLiteral("fileSizeBytes"), static_cast<double>(fi.size()));
+        targetObj.insert(QStringLiteral("isMissing"), false);
+
+        const QString normPath = nativePath.toLower();
+        const QString archiveVideoDir = customWallpapersVideosDir().toLower();
+        const QString archiveImageDir = customWallpapersImagesDir().toLower();
+        const bool isInArchive = normPath.startsWith(archiveVideoDir) || normPath.startsWith(archiveImageDir);
+        targetObj.insert(QStringLiteral("isArchived"), isInArchive);
+
+        if (isVideo) {
+            const QString previewPath = QDir(customWallpapersPreviewsDir()).filePath(targetId + QStringLiteral(".jpg"));
+            const QImage realThumb = WinMfVideoEngine::extractThumbnail(nativePath, QSize(480, 270));
+            if (!realThumb.isNull()) {
+                realThumb.save(previewPath, "JPG", 85);
+                targetObj.insert(QStringLiteral("previewUrl"), QUrl::fromLocalFile(previewPath).toString());
+                targetObj.insert(QStringLiteral("thumbnail"), QUrl::fromLocalFile(previewPath).toString());
+            }
+        } else {
+            targetObj.insert(QStringLiteral("previewUrl"), QUrl::fromLocalFile(nativePath).toString());
+            targetObj.insert(QStringLiteral("thumbnail"), QUrl::fromLocalFile(nativePath).toString());
+        }
+
+        customWalls[targetIdx] = targetObj;
+        saveCustomWallpapersArray(customWalls);
+
+        if (m_activeWallpaperId.contains(targetId, Qt::CaseInsensitive)) {
+            m_activeWallpaperPackagePath = nativePath;
+            startWallpaper(nativePath, false, m_activeWallpaperInteractive, nullptr);
+        }
+
+        response.insert(QStringLiteral("action"), QStringLiteral("relocate_wallpaper_media"));
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("id"), targetId);
+        response.insert(QStringLiteral("sourcePath"), nativePath);
+        response.insert(QStringLiteral("name"), targetObj.value(QStringLiteral("name")).toString());
+        response.insert(QStringLiteral("fileSizeBytes"), static_cast<double>(fi.size()));
+        response.insert(QStringLiteral("previewUrl"), targetObj.value(QStringLiteral("previewUrl")).toString());
         return response;
     }
 
     if (action == QStringLiteral("confirm_wallpaper_import") || action == QStringLiteral("update_wallpaper_config")) {
-        const QString editId = request.value(QStringLiteral("editWallpaperId")).toString().trimmed();
-        const QString existingPkgPath = request.value(QStringLiteral("packagePath")).toString().trimmed();
-        const QString rawFilePath = request.value(QStringLiteral("filePath")).toString().trimmed();
-        const bool applyImmediately = request.value(QStringLiteral("applyImmediately")).toBool(true);
+        const QString targetId = request.value(QStringLiteral("editWallpaperId")).toString(
+            request.value(QStringLiteral("id")).toString(request.value(QStringLiteral("widgetId")).toString())).trimmed();
 
         QJsonObject cfg;
         cfg.insert(QStringLiteral("scaling"), request.value(QStringLiteral("scaling")).toString(QStringLiteral("cover")));
@@ -726,162 +880,96 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         cfg.insert(QStringLiteral("playbackRate"), request.value(QStringLiteral("playbackRate")).toDouble(1.0));
         cfg.insert(QStringLiteral("audioDucking"), request.value(QStringLiteral("audioDucking")).toBool(true));
 
-        // Case A: Editing an existing custom wallpaper package
-        if (!editId.isEmpty() && !existingPkgPath.isEmpty() && QDir(existingPkgPath).exists()) {
-            QFile mf(QDir(existingPkgPath).filePath(QStringLiteral("manifest.json")));
-            QJsonObject oldObj;
-            if (mf.open(QIODevice::ReadOnly)) {
-                oldObj = QJsonDocument::fromJson(mf.readAll()).object();
-                mf.close();
-            }
-            const QString mediaFileName = oldObj.value(QStringLiteral("mediaFile")).toString(QStringLiteral("media.mp4"));
-            const bool isVideo = (oldObj.value(QStringLiteral("wallpaperType")).toString() == QStringLiteral("video"));
-            const QString title = request.value(QStringLiteral("name")).toString(oldObj.value(QStringLiteral("name")).toString()).trimmed();
-            const QString desc = request.value(QStringLiteral("description")).toString(oldObj.value(QStringLiteral("description")).toString()).trimmed();
-
-            writeCustomWallpaperPackage(existingPkgPath, editId, mediaFileName, isVideo, title, desc, cfg);
-
-            const QString cleanActive = m_activeWallpaperId.startsWith(QStringLiteral("wallpaper:"), Qt::CaseInsensitive)
-                ? m_activeWallpaperId.mid(10).trimmed()
-                : m_activeWallpaperId.trimmed();
-            const bool isCurrentlyRunning = (!cleanActive.isEmpty() &&
-                (cleanActive.compare(editId, Qt::CaseInsensitive) == 0 ||
-                 QDir::cleanPath(m_activeWallpaperPackagePath).compare(QDir::cleanPath(existingPkgPath), Qt::CaseInsensitive) == 0));
-
-            if (applyImmediately || isCurrentlyRunning) {
-                if (isCurrentlyRunning) {
-                    stopWallpaper(false);
+        QJsonArray customWalls = loadCustomWallpapersArray();
+        bool found = false;
+        for (int i = 0; i < customWalls.size(); ++i) {
+            QJsonObject wObj = customWalls[i].toObject();
+            if (wObj.value(QStringLiteral("id")).toString().compare(targetId, Qt::CaseInsensitive) == 0) {
+                wObj.insert(QStringLiteral("customConfig"), cfg);
+                if (request.contains(QStringLiteral("name"))) {
+                    const QString n = request.value(QStringLiteral("name")).toString().trimmed();
+                    if (!n.isEmpty()) wObj.insert(QStringLiteral("name"), n);
                 }
-                QString startErr;
-                startWallpaper(existingPkgPath, false, true, &startErr);
+                customWalls[i] = wObj;
+                found = true;
+                break;
             }
-
+        }
+        if (found) {
+            saveCustomWallpapersArray(customWalls);
+            const bool applyImmediately = request.value(QStringLiteral("applyImmediately")).toBool(false);
+            if (applyImmediately) {
+                QString wallErr;
+                startWallpaper(targetId, false, true, &wallErr);
+            } else if (m_activeWallpaperId.contains(targetId, Qt::CaseInsensitive)) {
+                if (m_activeWallpaperType == QStringLiteral("image")) {
+                    m_activeImageConfig.scaling = cfg.value(QStringLiteral("scaling")).toString();
+                    m_activeImageConfig.dimming = cfg.value(QStringLiteral("dimming")).toInt();
+                    m_activeImageConfig.blur = cfg.value(QStringLiteral("blur")).toInt();
+                    renderActiveImageWallpaper();
+                } else if (WinMfVideoEngine::instance().isDesktopVideoRunning()) {
+                    WinMfVideoEngine::instance().updateDesktopProperty(QStringLiteral("scaling"), cfg.value(QStringLiteral("scaling")).toString());
+                    WinMfVideoEngine::instance().updateDesktopProperty(QStringLiteral("dimming"), cfg.value(QStringLiteral("dimming")).toInt());
+                    WinMfVideoEngine::instance().updateDesktopProperty(QStringLiteral("blur"), cfg.value(QStringLiteral("blur")).toInt());
+                    WinMfVideoEngine::instance().updateDesktopProperty(QStringLiteral("volume"), cfg.value(QStringLiteral("volume")).toInt());
+                    WinMfVideoEngine::instance().updateDesktopProperty(QStringLiteral("muted"), cfg.value(QStringLiteral("muted")).toBool());
+                    WinMfVideoEngine::instance().updateDesktopProperty(QStringLiteral("playbackRate"), cfg.value(QStringLiteral("playbackRate")).toDouble());
+                }
+            }
             response.insert(QStringLiteral("action"), QStringLiteral("confirm_wallpaper_import"));
             response.insert(QStringLiteral("ok"), true);
-            response.insert(QStringLiteral("id"), editId);
-            response.insert(QStringLiteral("name"), title);
-            response.insert(QStringLiteral("packagePath"), existingPkgPath);
-            response.insert(QStringLiteral("applied"), applyImmediately || isCurrentlyRunning);
+            response.insert(QStringLiteral("id"), targetId);
+            response.insert(QStringLiteral("applied"), applyImmediately);
             response.insert(QStringLiteral("activeWallpaperId"), m_activeWallpaperId);
             return response;
         }
 
-        // Case B: Creating a new custom wallpaper from a staged media file
-        QFileInfo fi(rawFilePath);
-        if (!fi.exists() || !fi.isFile()) {
-            response.insert(QStringLiteral("action"), QStringLiteral("confirm_wallpaper_import"));
-            response.insert(QStringLiteral("ok"), false);
-            response.insert(QStringLiteral("error"), QStringLiteral("源媒体文件不存在: %1").arg(rawFilePath));
-            return response;
-        }
-
-        const QString ext = fi.suffix().toLower();
-        const bool isVideo = (ext == QStringLiteral("mp4") || ext == QStringLiteral("webm") ||
-                              ext == QStringLiteral("mov") || ext == QStringLiteral("mkv") ||
-                              ext == QStringLiteral("avi"));
-        const QString wallUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        const QString wallDir = QDir(AppPaths::userWallpapersDir()).filePath(wallUuid);
-        if (!QDir().mkpath(wallDir)) {
-            response.insert(QStringLiteral("action"), QStringLiteral("confirm_wallpaper_import"));
-            response.insert(QStringLiteral("ok"), false);
-            response.insert(QStringLiteral("error"), QStringLiteral("无法创建壁纸存储目录"));
-            return response;
-        }
-
-        const QString mediaFileName = QStringLiteral("media.") + ext;
-        const QString destMedia = QDir(wallDir).filePath(mediaFileName);
-        if (!QFile::copy(rawFilePath, destMedia)) {
-            response.insert(QStringLiteral("action"), QStringLiteral("confirm_wallpaper_import"));
-            response.insert(QStringLiteral("ok"), false);
-            response.insert(QStringLiteral("error"), QStringLiteral("复制媒体文件失败"));
-            return response;
-        }
-
-        const QString title = request.value(QStringLiteral("name")).toString(fi.completeBaseName()).trimmed();
-        const QString desc = request.value(QStringLiteral("description")).toString().trimmed();
-
-        const QString previewPath = QDir(wallDir).filePath(QStringLiteral("preview.png"));
-        if (!isVideo) {
-            QImage img(rawFilePath);
-            if (!img.isNull()) {
-                QImage thumb = img.scaled(480, 270, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-                QRect cropRect((thumb.width() - 480) / 2, (thumb.height() - 270) / 2, 480, 270);
-                thumb.copy(cropRect).save(previewPath, "PNG");
-            }
-        } else {
-            QImage poster(480, 270, QImage::Format_ARGB32_Premultiplied);
-            poster.fill(QColor(15, 23, 42));
-            QPainter p(&poster);
-            p.setRenderHint(QPainter::Antialiasing);
-            p.setPen(Qt::NoPen);
-            p.setBrush(QColor(99, 102, 241, 220));
-            p.drawEllipse(QPoint(240, 120), 28, 28);
-            p.setPen(QColor(241, 245, 249));
-            p.drawText(QRect(20, 165, 440, 40), Qt::AlignCenter | Qt::TextWordWrap, title.isEmpty() ? fi.completeBaseName() : title);
-            p.end();
-            poster.save(previewPath, "PNG");
-        }
-
-        const QString generatedId = QStringLiteral("custom.") + wallUuid;
-        writeCustomWallpaperPackage(wallDir, generatedId, mediaFileName, isVideo, title.isEmpty() ? fi.completeBaseName() : title, desc, cfg);
-
-        if (applyImmediately) {
-            QString startErr;
-            startWallpaper(wallDir, false, true, &startErr);
-        }
-
         response.insert(QStringLiteral("action"), QStringLiteral("confirm_wallpaper_import"));
         response.insert(QStringLiteral("ok"), true);
-        response.insert(QStringLiteral("id"), generatedId);
-        response.insert(QStringLiteral("name"), title.isEmpty() ? fi.completeBaseName() : title);
-        response.insert(QStringLiteral("packagePath"), wallDir);
-        response.insert(QStringLiteral("applied"), applyImmediately);
-        response.insert(QStringLiteral("activeWallpaperId"), m_activeWallpaperId);
         return response;
     }
 
     if (action == QStringLiteral("delete_wallpaper")) {
         const QString targetId = request.value(QStringLiteral("widgetId")).toString(
             request.value(QStringLiteral("id")).toString()).trimmed();
-        QString pkgPath = request.value(QStringLiteral("packagePath")).toString().trimmed();
 
-        if (pkgPath.isEmpty() && !targetId.isEmpty()) {
-            const QString cleanId = targetId.startsWith(QStringLiteral("custom."), Qt::CaseInsensitive)
-                ? targetId.mid(7)
-                : targetId;
-            const QString cand = QDir(AppPaths::userWallpapersDir()).filePath(cleanId);
-            if (QDir(cand).exists()) {
-                pkgPath = cand;
+        QJsonArray customWalls = loadCustomWallpapersArray();
+        bool found = false;
+        QJsonArray nextArr;
+        for (int i = 0; i < customWalls.size(); ++i) {
+            const QJsonObject wObj = customWalls[i].toObject();
+            const QString id = wObj.value(QStringLiteral("id")).toString();
+            if (id.compare(targetId, Qt::CaseInsensitive) == 0) {
+                found = true;
+                const bool isArchived = wObj.value(QStringLiteral("isArchived")).toBool();
+                const QString src = wObj.value(QStringLiteral("sourcePath")).toString();
+                if (isArchived && !src.isEmpty() && QFileInfo::exists(src)) {
+                    QFile::remove(src);
+                }
+                const QString previewPath = QDir(customWallpapersPreviewsDir()).filePath(id + QStringLiteral(".png"));
+                if (QFileInfo::exists(previewPath)) {
+                    QFile::remove(previewPath);
+                }
+            } else {
+                nextArr.append(wObj);
             }
         }
 
-        const QString userWallsRoot = QDir::cleanPath(AppPaths::userWallpapersDir());
-        const QString cleanPkgPath = QDir::cleanPath(pkgPath);
-        if (cleanPkgPath.isEmpty() || !cleanPkgPath.startsWith(userWallsRoot, Qt::CaseInsensitive) || cleanPkgPath == userWallsRoot) {
+        if (found) {
+            saveCustomWallpapersArray(nextArr);
+            if (!m_activeWallpaperId.isEmpty() && m_activeWallpaperId.contains(targetId, Qt::CaseInsensitive)) {
+                stopWallpaper(true);
+            }
             response.insert(QStringLiteral("action"), QStringLiteral("delete_wallpaper"));
-            response.insert(QStringLiteral("ok"), false);
-            response.insert(QStringLiteral("error"), QStringLiteral("仅支持删除用户导入的自定义壁纸，官方内置壁纸不可删除"));
+            response.insert(QStringLiteral("ok"), true);
+            response.insert(QStringLiteral("id"), targetId);
+            response.insert(QStringLiteral("activeWallpaperId"), m_activeWallpaperId);
             return response;
         }
 
-        const QString cleanActive = m_activeWallpaperId.startsWith(QStringLiteral("wallpaper:"), Qt::CaseInsensitive)
-            ? m_activeWallpaperId.mid(10).trimmed()
-            : m_activeWallpaperId.trimmed();
-        if (!cleanActive.isEmpty() &&
-            (cleanActive.compare(targetId, Qt::CaseInsensitive) == 0 ||
-             QDir::cleanPath(m_activeWallpaperPackagePath).compare(cleanPkgPath, Qt::CaseInsensitive) == 0)) {
-            stopWallpaper(true);
-        }
-
-        QDir dirToRemove(cleanPkgPath);
-        const bool removed = dirToRemove.removeRecursively();
         response.insert(QStringLiteral("action"), QStringLiteral("delete_wallpaper"));
-        response.insert(QStringLiteral("ok"), removed);
-        response.insert(QStringLiteral("id"), targetId);
-        response.insert(QStringLiteral("activeWallpaperId"), m_activeWallpaperId);
-        if (!removed) {
-            response.insert(QStringLiteral("error"), QStringLiteral("删除壁纸目录失败，文件可能被占用"));
-        }
+        response.insert(QStringLiteral("ok"), false);
+        response.insert(QStringLiteral("error"), QStringLiteral("未找到该自定义壁纸"));
         return response;
     }
 
@@ -951,37 +1039,22 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
             settings.setValue(propSettingKey, QString::fromUtf8(QJsonDocument(savedProps).toJson(QJsonDocument::Compact)));
             settings.sync();
 
-            // 若是用户导入的自定义壁纸，同步更新其包内的 manifest.json 与 index.html，确保预览与重启永久保留
-            QString targetPkgPath = request.value(QStringLiteral("packagePath")).toString().trimmed();
-            if (targetPkgPath.isEmpty() && !m_activeWallpaperPackagePath.isEmpty()) {
-                const QString cleanActive = m_activeWallpaperId.startsWith(QStringLiteral("wallpaper:"), Qt::CaseInsensitive)
-                    ? m_activeWallpaperId.mid(10).trimmed()
-                    : m_activeWallpaperId.trimmed();
-                if (cleanActive.compare(targetWallId, Qt::CaseInsensitive) == 0) {
-                    targetPkgPath = m_activeWallpaperPackagePath;
+            // 若是用户导入的自定义壁纸，同步更新 custom_wallpapers.json
+            QJsonArray customWalls = loadCustomWallpapersArray();
+            bool cFound = false;
+            for (int i = 0; i < customWalls.size(); ++i) {
+                QJsonObject wObj = customWalls[i].toObject();
+                if (wObj.value(QStringLiteral("id")).toString().compare(targetWallId, Qt::CaseInsensitive) == 0) {
+                    QJsonObject cfg = wObj.value(QStringLiteral("customConfig")).toObject();
+                    cfg.insert(key, val);
+                    wObj.insert(QStringLiteral("customConfig"), cfg);
+                    customWalls[i] = wObj;
+                    cFound = true;
+                    break;
                 }
             }
-            if (targetPkgPath.isEmpty() && targetWallId.startsWith(QStringLiteral("custom."), Qt::CaseInsensitive)) {
-                const QString cand = QDir(AppPaths::userWallpapersDir()).filePath(targetWallId.mid(7));
-                if (QDir(cand).exists()) {
-                    targetPkgPath = cand;
-                }
-            }
-            if (!targetPkgPath.isEmpty() && QFileInfo::exists(targetPkgPath + QStringLiteral("/manifest.json"))) {
-                QFile mf(targetPkgPath + QStringLiteral("/manifest.json"));
-                if (mf.open(QIODevice::ReadOnly)) {
-                    const QJsonObject mObj = QJsonDocument::fromJson(mf.readAll()).object();
-                    mf.close();
-                    if (mObj.value(QStringLiteral("isCustom")).toBool(targetWallId.startsWith(QStringLiteral("custom."), Qt::CaseInsensitive))) {
-                        QJsonObject cfg = mObj.value(QStringLiteral("customConfig")).toObject();
-                        cfg.insert(key, val);
-                        const QString mediaFileName = mObj.value(QStringLiteral("mediaFile")).toString(QStringLiteral("media.mp4"));
-                        const bool isVideo = (mObj.value(QStringLiteral("wallpaperType")).toString() == QStringLiteral("video"));
-                        const QString title = mObj.value(QStringLiteral("name")).toString();
-                        const QString desc = mObj.value(QStringLiteral("description")).toString();
-                        writeCustomWallpaperPackage(targetPkgPath, targetWallId, mediaFileName, isVideo, title, desc, cfg);
-                    }
-                }
+            if (cFound) {
+                saveCustomWallpapersArray(customWalls);
             }
         }
 
@@ -990,12 +1063,21 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
             : m_activeWallpaperId.trimmed();
         if (!m_activeWallpaperId.isEmpty() &&
             (targetWallId.isEmpty() || cleanActive.compare(targetWallId, Qt::CaseInsensitive) == 0)) {
-            QJsonObject propMsg;
-            propMsg.insert(QStringLiteral("type"), QStringLiteral("wallpaper_property_change"));
-            propMsg.insert(QStringLiteral("key"), key);
-            propMsg.insert(QStringLiteral("property"), key);
-            propMsg.insert(QStringLiteral("value"), val);
-            sendMessageToWidget(m_activeWallpaperId, propMsg);
+            if (m_activeWallpaperType == QStringLiteral("image")) {
+                if (key == QStringLiteral("scaling") || key == QStringLiteral("fitMode")) m_activeImageConfig.scaling = val.toString();
+                else if (key == QStringLiteral("dimming")) m_activeImageConfig.dimming = val.toInt();
+                else if (key == QStringLiteral("blur")) m_activeImageConfig.blur = val.toInt();
+                renderActiveImageWallpaper();
+            } else if (WinMfVideoEngine::instance().isDesktopVideoRunning()) {
+                WinMfVideoEngine::instance().updateDesktopProperty(key, val.toVariant());
+            } else {
+                QJsonObject propMsg;
+                propMsg.insert(QStringLiteral("type"), QStringLiteral("wallpaper_property_change"));
+                propMsg.insert(QStringLiteral("key"), key);
+                propMsg.insert(QStringLiteral("property"), key);
+                propMsg.insert(QStringLiteral("value"), val);
+                sendMessageToWidget(m_activeWallpaperId, propMsg);
+            }
         }
         response.insert(QStringLiteral("ok"), true);
         return response;
@@ -1385,6 +1467,14 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
 
     if (action == QStringLiteral("apply_wallpaper")) {
         QString wallPath = request.value(QStringLiteral("packagePath")).toString().trimmed();
+        const QString customId = request.value(QStringLiteral("widgetId")).toString(
+            request.value(QStringLiteral("id")).toString()).trimmed();
+        if (!customId.isEmpty()) {
+            const QJsonObject cObj = findCustomWallpaper(customId);
+            if (!cObj.isEmpty()) {
+                wallPath = customId;
+            }
+        }
         if (wallPath.isEmpty()) {
             WidgetRegistryEntry entry = registry.entryById(resolvedId);
             wallPath = entry.packagePath;

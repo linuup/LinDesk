@@ -1,14 +1,45 @@
 {
   "id": "com.lindesk.wallpaper.neon_universe",
-  "name": "Neon Universe 赛博星空",
-  "version": "1.0.0",
+  "name": "Breeze Meadow 清风原野",
+  "version": "2.0.0",
   "author": "LinDesk",
-  "description": "动态互动星空粒子流，具备引力吸引力场与动态星云背景。",
+  "description": "纯代码手绘治愈系自然风动态壁纸：晨曦天青、柔风草浪、丁达尔光束与起舞的蒲公英飞絮，随鼠标拂动荡漾，极度养眼护眼。",
   "type": "html",
   "entry": "index.html",
   "role": "wallpaper",
   "interactive": true,
   "permissions": [
     "audio"
-  ]
+  ],
+  "properties": {
+    "windSpeed": {
+      "type": "slider",
+      "text": "微风律动速率 (Wind Speed)",
+      "min": 1,
+      "max": 10,
+      "step": 1,
+      "value": 4
+    },
+    "dandelionCount": {
+      "type": "slider",
+      "text": "蒲公英飞絮密度 (Dandelions)",
+      "min": 10,
+      "max": 80,
+      "step": 5,
+      "value": 35
+    },
+    "sunbeamIntensity": {
+      "type": "slider",
+      "text": "晨曦光束明度 (Sunbeams)",
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "value": 6
+    },
+    "showClock": {
+      "type": "boolean",
+      "text": "显示极简环境时钟 (Clock)",
+      "value": true
+    }
+  }
 }

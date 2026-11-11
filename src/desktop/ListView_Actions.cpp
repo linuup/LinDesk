@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include "desktop/ListView.h"
+#include "desktop/widgets/runtime_export.h"
 #include "services/IconCacheManager.h"
 #include "desktop/ListViewSelectionHelper.h"
 #include "desktop/ListViewSelectionController.h"
@@ -1367,6 +1368,7 @@ void ListView::onMenuRefresh() {
         bool anyItemChanged = false;
 
         for (auto& state : m_itemStates) {
+            LinWidgetRuntimeBridge::instance().doMessageLoopWork();
             if (state.model.filePath.isEmpty()) {
                 continue;
             }
@@ -1421,6 +1423,8 @@ void ListView::onMenuRefresh() {
             }
         }
 
+        LinWidgetRuntimeBridge::instance().doMessageLoopWork();
+
         // Refresh icons for items in boxes and keep box visibility consistent with desktop icon visibility.
         const QVector<QPointer<LinBox>> allBoxes = BoxManager::instance()->allBoxes();
         for (const auto& box : allBoxes) {
@@ -1437,7 +1441,6 @@ void ListView::onMenuRefresh() {
 
         QTimer::singleShot(0, this, [this]() {
             syncBoxVisibilityWithDesktopIcons();
-            syncLinWidgetLayer();
         });
     });
 }

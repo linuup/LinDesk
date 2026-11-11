@@ -3,6 +3,7 @@
 #include "desktop/widgets/linwidget/LayoutManager.h"
 #include "desktop/widgets/linwidget/PermissionManager.h"
 #include "services/SystemInfo/SystemInfoService.h"
+#include "desktop/widgets/linwidget/WinMfVideoEngine.h"
 
 #include <QHash>
 #include <QObject>
@@ -194,6 +195,10 @@ private:
     bool m_activeWallpaperInteractive = false;
     bool m_wallpaperSuspended = false;
     int m_wallpaperFramerate = 60;
+    QString m_activeWallpaperType;
+    QImage m_activeImageRawFrame;
+    VideoRenderConfig m_activeImageConfig;
+    void renderActiveImageWallpaper();
     ::LinCef::LinWidgetCanvasWidget* m_canvasWidget = nullptr;
     QHash<QString, ::LinCef::CefOsrBrowserInstance*> m_osrBrowsers;
     ::LinCef::CefOsrBrowserInstance* m_defaultOsrBrowser = nullptr;

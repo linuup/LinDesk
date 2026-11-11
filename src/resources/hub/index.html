@@ -3,11 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="./hub_icon.svg" />
+    <link rel="alternate icon" href="./favicon.ico" />
     <title>LinDesk Hub · 动态壁纸与桌面组件管理中心</title>
-    <script type="module" crossorigin src="./assets/index-5QAtzTSE.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DLHH3VoG.css">
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('lindesk_hub_theme') || 'light';
+          document.documentElement.className = t;
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-qJRVLoHI.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D3HXr83i.css">
   </head>
-  <body class="bg-[#f8fafc] text-slate-800 min-h-screen selection:bg-indigo-500 selection:text-white antialiased">
+  <body class="bg-[#f1f3f6] dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white antialiased">
     <div id="root"></div>
   </body>
 </html>

@@ -133,8 +133,12 @@ namespace SysInfoUtil{
     // 微软商店应用 (UWP/MSIX) 与 Shell 项图标兼容加载及空白文件兜底
     QIcon LoadShellItemIcon(const QString& path, int side = 48);
     QString GetAumidFromShortcut(const QString& lnkPath);
+    QString ResolveShortcutTargetPath(const QString& lnkPath);
     QIcon LoadUwpAppIconFromAumid(const QString& aumid, int side = 48);
     QIcon GetBlankFileFallbackIcon(int side = 48);
+
+    // 现代文档白板衬底 (Document Plate) 渲染合成，消除低分辨率安装包/文档图标被粗暴放大导致的模糊
+    QIcon CreateDocumentPlateIcon(const QIcon& innerIcon, int targetSide = 256);
 }
 
 /* General helper functions. */

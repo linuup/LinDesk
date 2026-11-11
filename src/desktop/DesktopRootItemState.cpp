@@ -214,7 +214,23 @@ QPixmap buildCroppedRenderPix(const QIcon& icon, int iconSide, qreal dpr = 1.0)
     bool wasCropped = false;
     const QImage cropped = SysInfoUtil::autoCropImage(pix.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied), &wasCropped);
     if (wasCropped && !cropped.isNull()) pix = QPixmap::fromImage(cropped);
-    if (pix.width() != physicalSide || pix.height() != physicalSide) pix = pix.scaled(physicalSide, physicalSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    if (pix.width() > physicalSide || pix.height() > physicalSide) {
+        pix = pix.scaled(physicalSide, physicalSide, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    } else if (pix.width() < physicalSide || pix.height() < physicalSide) {
+        // 原生真实分辨率低于目标尺寸时：按最大的真实原生分辨率显示，绝不强行放大拉伸导致模糊，水平垂直居中显示
+        QPixmap canvas(physicalSide, physicalSide);
+        canvas.fill(Qt::transparent);
+        {
+            QPainter p(&canvas);
+            p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            const int posX = (physicalSide - pix.width()) / 2;
+            const int posY = (physicalSide - pix.height()) / 2;
+            p.drawPixmap(posX, posY, pix);
+        }
+        pix = canvas;
+    }
+
     if (dpr > 1.0) pix.setDevicePixelRatio(dpr);
     return pix;
 }
@@ -306,10 +322,31 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
         rd.textRect = QRect(model.position.x() + sp(2), textTop, textWidth, qMax(sp(18), itemHeight - (textTop - model.position.y())));
     }
     QPixmap rawPix;
-    // 1. Image preview progressive pipeline
-    if (model.objectType != ObjectType::SpecialFolder && model.fileInfo.isFile() && !model.isShortcut && isPreviewableImageSuffix(model.fileInfo.suffix())) {
-        const QString pKey = QString("image_preview:%1|%2").arg(QDir::toNativeSeparators(model.fileInfo.absoluteFilePath())).arg(physicalIconSide);
-        const QString diskKey = IconCacheManager::instance().computeDiskKey(model.fileInfo.absoluteFilePath(), model.fileInfo.lastModified().toMSecsSinceEpoch(), physicalIconSide);
+    // 1. Image preview progressive pipeline (supports both direct image files and shortcuts pointing to image files)
+    QString previewTargetImgPath;
+    qint64 previewTargetMtime = 0;
+    if (model.objectType != ObjectType::SpecialFolder) {
+        if (model.fileInfo.isFile() && !model.isShortcut && isPreviewableImageSuffix(model.fileInfo.suffix())) {
+            previewTargetImgPath = model.fileInfo.absoluteFilePath();
+            previewTargetMtime = model.fileInfo.lastModified().toMSecsSinceEpoch();
+        } else if (model.isShortcut) {
+            QString targetPath = model.itemData.itemData().shortcutTargetPath;
+            if (targetPath.isEmpty()) {
+                targetPath = SysInfoUtil::ResolveShortcutTargetPath(model.filePath);
+            }
+            if (!targetPath.isEmpty()) {
+                QFileInfo targetFi(targetPath);
+                if (targetFi.isFile() && isPreviewableImageSuffix(targetFi.suffix())) {
+                    previewTargetImgPath = targetFi.absoluteFilePath();
+                    previewTargetMtime = targetFi.lastModified().toMSecsSinceEpoch();
+                }
+            }
+        }
+    }
+
+    if (!previewTargetImgPath.isEmpty()) {
+        const QString pKey = QString("image_preview:%1|%2").arg(QDir::toNativeSeparators(previewTargetImgPath)).arg(physicalIconSide);
+        const QString diskKey = IconCacheManager::instance().computeDiskKey(previewTargetImgPath, previewTargetMtime, physicalIconSide);
         rawPix = IconCacheManager::instance().getPixmap(pKey, nullptr);
         if (rawPix.isNull() && IconCacheManager::instance().hasDiskCache(diskKey)) {
             QImage diskImg = IconCacheManager::instance().loadDiskCache(diskKey);
@@ -322,31 +359,54 @@ DesktopRootItemRenderData buildRenderDataFromModel(const DesktopRootItemModel& m
         if (rawPix.isNull()) {
             rawPix = IconCacheManager::instance().genericFilePlaceholder(physicalIconSide);
             if (dpr > 1.0 && !rawPix.isNull() && rawPix.devicePixelRatio() < dpr) rawPix.setDevicePixelRatio(dpr);
-            const QString absPath = model.fileInfo.absoluteFilePath();
+            const QString absPath = previewTargetImgPath;
             IconCacheManager::instance().requestAsyncPixmap(
                 pKey, diskKey, model.filePath,
                 [absPath, physicalIconSide, dpr]() -> QImage {
                     QImageReader r(absPath);
                     r.setAutoTransform(true);
                     if (!r.canRead()) return QImage();
-                    const QSize origSize = r.size();
-                    const QSize targetThumbSize(physicalIconSide, physicalIconSide);
-                    if (origSize.isValid() && origSize.width() > 0 && origSize.height() > 0) {
-                        const QSize scaledReadSize = origSize.scaled(targetThumbSize, Qt::KeepAspectRatio);
-                        if (scaledReadSize.isValid() && !scaledReadSize.isEmpty()) {
-                            r.setScaledSize(scaledReadSize);
+
+                    const int count = r.imageCount();
+                    if (count > 1) {
+                        int minLargerSide = 999999;
+                        int minLargerIdx = -1;
+                        int maxSmallerSide = 0;
+                        int maxSmallerIdx = 0;
+                        for (int i = 0; i < count; ++i) {
+                            r.jumpToImage(i);
+                            const QSize sz = r.size();
+                            const int s = qMax(sz.width(), sz.height());
+                            if (s >= physicalIconSide && s < minLargerSide) {
+                                minLargerSide = s;
+                                minLargerIdx = i;
+                            }
+                            if (s > maxSmallerSide) {
+                                maxSmallerSide = s;
+                                maxSmallerIdx = i;
+                            }
                         }
+                        const int bestIdx = (minLargerIdx != -1) ? minLargerIdx : maxSmallerIdx;
+                        r.jumpToImage(bestIdx);
                     }
+
                     QImage img = r.read();
                     if (img.isNull()) return QImage();
                     img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-                    const QSize ts(physicalIconSide, physicalIconSide);
-                    const QImage s = img.scaled(ts, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                    QImage res(ts, QImage::Format_ARGB32_Premultiplied);
+
+                    const QSize targetThumbSize(physicalIconSide, physicalIconSide);
+                    QImage res(targetThumbSize, QImage::Format_ARGB32_Premultiplied);
                     res.fill(Qt::transparent);
                     QPainter pp(&res);
                     pp.setRenderHint(QPainter::SmoothPixmapTransform);
-                    pp.drawImage(QPoint((ts.width() - s.width()) / 2, (ts.height() - s.height()) / 2), s);
+
+                    if (img.width() > physicalIconSide || img.height() > physicalIconSide) {
+                        const QImage s = img.scaled(targetThumbSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                        pp.drawImage(QPoint((targetThumbSize.width() - s.width()) / 2, (targetThumbSize.height() - s.height()) / 2), s);
+                    } else {
+                        // 分辨率不够时：按最大原生真实分辨率显示，不强行放大插值，水平垂直居中
+                        pp.drawImage(QPoint((targetThumbSize.width() - img.width()) / 2, (targetThumbSize.height() - img.height()) / 2), img);
+                    }
                     if (dpr > 1.0) res.setDevicePixelRatio(dpr);
                     return res;
                 }

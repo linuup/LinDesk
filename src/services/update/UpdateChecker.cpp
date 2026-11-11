@@ -11,7 +11,7 @@
 #include <QUrl>
 
 namespace {
-constexpr const char* kUpdateJsonUrl = "https://api.github.com/repos/linuup/LinDesk_Update/releases/latest";
+constexpr const char* kUpdateJsonUrl = "https://api.github.com/repos/linuup/LinDesk/releases/latest";
 }
 
 UpdateChecker::UpdateChecker(QObject* parent)

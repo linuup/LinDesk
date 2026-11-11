@@ -3,6 +3,9 @@
         <file>Assets/BoxPreview.png</file>
         <file>Assets/DesktopLivePreview.png</file>
         <file>Assets/icon.png</file>
+        <file>Assets/hub_icon.png</file>
+        <file>Assets/hub_icon.ico</file>
+        <file>Assets/hub_icon.svg</file>
         <file>defaultIcon.png</file>
         <file>Assets/Segoe Fluent Icons.ttf</file>
         <file>Assets/sidebar-general.png</file>
@@ -24,6 +27,7 @@
         <file>Assets/change_Mapped_Folder.svg</file>
         <file>Assets/accessDeny-Cat.svg</file>
         <file>Assets/empty_Cat.svg</file>
+        <file>Assets/brush.svg</file>
         <file>TimeEnd.wav</file>
         <file>qml/QmlTestPage.qml</file>
     </qresource>

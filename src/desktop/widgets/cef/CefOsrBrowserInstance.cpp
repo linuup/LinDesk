@@ -1,6 +1,7 @@
 #include "desktop/widgets/cef/CefOsrBrowserInstance.h"
 #include "desktop/widgets/cef/CefOsrRenderHandler.h"
 #include "desktop/widgets/cef/CefManager.h"
+#include "desktop/widgets/linwidget/WinMfVideoEngine.h"
 
 #include <QDebug>
 #include <QApplication>
@@ -168,6 +169,33 @@ public:
         }
 
         const QString urlStr = QString::fromStdWString(request->GetURL().ToWString());
+
+        // Native Windows Media Foundation video frame streaming endpoint (solves CEF H.264/HEVC MP4 limitation)
+        if (urlStr.contains(QLatin1String("linwidget.bridge/video-frame"), Qt::CaseInsensitive) ||
+            urlStr.contains(QLatin1String("linwidget://video-frame"), Qt::CaseInsensitive)) {
+            const QUrl parsedVideoUrl(urlStr);
+            const QUrlQuery query(parsedVideoUrl);
+            QString rawPath = QUrl::fromPercentEncoding(query.queryItemValue(QStringLiteral("path"), QUrl::FullyEncoded).toUtf8());
+            if (rawPath.startsWith(QLatin1String("file://"), Qt::CaseInsensitive)) {
+                rawPath = QUrl(rawPath).toLocalFile();
+            }
+            const double rate = query.queryItemValue(QStringLiteral("rate")).toDouble();
+            const QByteArray jpegBytes = LinWidget::WinMfVideoEngine::instance().getPreviewFrameJpeg(
+                rawPath, rate > 0.0 ? rate : 1.0);
+            if (!jpegBytes.isEmpty()) {
+                CefRefPtr<CefStreamReader> memStream = CefStreamReader::CreateForData(
+                    const_cast<char*>(jpegBytes.constData()),
+                    static_cast<size_t>(jpegBytes.size()));
+                if (memStream) {
+                    CefResponse::HeaderMap headers;
+                    headers.emplace(L"Access-Control-Allow-Origin", L"*");
+                    headers.emplace(L"Cache-Control", L"no-store, no-cache, must-revalidate, max-age=0");
+                    return new CefStreamResourceHandler(200, "OK", "image/jpeg", headers, memStream);
+                }
+            }
+            return nullptr;
+        }
+
         if (!urlStr.startsWith(QLatin1String("linwidget://"), Qt::CaseInsensitive)) {
             return nullptr;
         }
@@ -304,6 +332,11 @@ public:
                 }
             }
             return RV_CANCEL;
+        }
+
+        // 1b. Allow internal bridge endpoints (e.g., http://linwidget.bridge/video-frame) regardless of network sandbox
+        if (urlW.find(L"linwidget.bridge/") != std::wstring::npos) {
+            return RV_CONTINUE;
         }
 
         // 2. Network permission sandbox: block remote network access if network permission is not granted
@@ -910,10 +943,11 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_config_update' || data.type === 'wallpaper_property') {"
         "        const prop = { key: data.key || data.property, value: data.value };"
         "        if (prop.key === 'blur') {"
-        "          const b = parseFloat(prop.value) || 0;"
+        "          const raw = parseFloat(prop.value) || 0;"
+        "          const b = raw > 0 ? (raw > 20 ? (raw / 100.0) * 20.0 : raw) : 0;"
         "          const targetEl = document.querySelector('canvas, video, img') || document.body;"
         "          if (targetEl && targetEl.style) {"
-        "            targetEl.style.filter = b > 0 ? ('blur(' + b + 'px)') : 'none';"
+        "            targetEl.style.filter = b > 0 ? ('blur(' + b.toFixed(1) + 'px)') : 'none';"
         "            targetEl.style.transform = b > 0 ? 'scale(1.04)' : 'scale(1)';"
         "            targetEl.style.transition = 'filter 0.15s ease, transform 0.15s ease';"
         "          }"

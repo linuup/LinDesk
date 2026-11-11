@@ -532,7 +532,7 @@ void RightMenu::initializeCustomMenu()
     m_customMenu->addAction(m_createBoxAction);
 
     m_wallpaperStudioAction = new QAction(tr("Live Wallpaper & Studio..."), linDeskMenu);
-    m_wallpaperStudioAction->setIcon(QIcon(":/Assets/brush.svg"));
+    m_wallpaperStudioAction->setIcon(QIcon(":/Assets/hub_icon.png"));
     connect(m_wallpaperStudioAction, &QAction::triggered, this, &RightMenu::onWallpaperStudio);
     linDeskMenu->addAction(m_wallpaperStudioAction);
 

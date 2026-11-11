@@ -323,7 +323,20 @@ QWidget* LinWidgetsSettingsPage::createInstalledView(QWidget* parent)
     hubLayout->setContentsMargins(20, 16, 20, 16);
     hubLayout->setSpacing(16);
 
-    hubLayout->addWidget(createFluentRowIcon(0xE771, hubCard, true), 0, Qt::AlignVCenter);
+    QLabel* hubIconBadge = new QLabel(hubCard);
+    hubIconBadge->setFixedSize(36, 36);
+    hubIconBadge->setAlignment(Qt::AlignCenter);
+    hubIconBadge->setStyleSheet(QStringLiteral(
+        "QLabel {"
+        "  background: #eff6fc;"
+        "  border: 1px solid rgba(0, 103, 192, 0.12);"
+        "  border-radius: 8px;"
+        "}"));
+    QPixmap hubPix(":/Assets/hub_icon.png");
+    if (!hubPix.isNull()) {
+        hubIconBadge->setPixmap(hubPix.scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+    hubLayout->addWidget(hubIconBadge, 0, Qt::AlignVCenter);
 
     auto* hubTextLayout = new QVBoxLayout();
     hubTextLayout->setContentsMargins(0, 0, 0, 0);
