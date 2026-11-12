@@ -2525,6 +2525,25 @@ Load skipped: %2</source>
     </message>
 </context>
 <context>
+    <name>ListViewDebugPanel</name>
+    <message>
+        <source>选择 LinWidget 开发工程目录</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>添加工程失败: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已成功导入开发工程: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>恢复默认组件失败: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>PluginsSettingsPage</name>
     <message>
         <source>Plugins</source>
@@ -2573,6 +2592,18 @@ Load skipped: %2</source>
     <message>
         <source>We&apos;re working on more powerful plugins and integrations to enhance your LinDesk experience.</source>
         <translation type="unfinished">我们正在开发更强大的插件和集成，以提升您的 LinDesk 使用体验。</translation>
+    </message>
+    <message>
+        <source>Not Configured</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>提示</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>该插件尚未配置，请点击【设置】完成配置后再开启。</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2821,6 +2852,22 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>下载任务已取消。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Source runtime folder does not exist: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Failed to copy runtime files from %1 to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>LinWidget runtime successfully installed from local build.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local build runtime not found. Please compile the LinWidgetRuntime target first.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
