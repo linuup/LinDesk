@@ -102,13 +102,11 @@ public:
             settings.setValue("Offline/ModelsDir", defaultModelsDir);
             settings.setValue("Offline/NumThreads", 4);
             settings.setValue("Offline/UseCls", false);
-            settings.setValue("Baidu/AppId", "");
             settings.setValue("Baidu/ApiKey", "");
             settings.setValue("Baidu/SecretKey", "");
             settings.sync();
             qDebug() << "[OCR] Template config created at:" << iniPath;
             m_engineType = EngineType::Offline;
-            m_appId.clear();
             m_apiKey.clear();
             m_secretKey.clear();
             m_hotkey = "F4";
@@ -135,7 +133,6 @@ public:
 
             m_useCls = settings.value("Offline/UseCls", false).toBool();
 
-            m_appId = settings.value("Baidu/AppId", "").toString().trimmed();
             m_apiKey = settings.value("Baidu/ApiKey", "").toString().trimmed();
             m_secretKey = settings.value("Baidu/SecretKey", "").toString().trimmed();
             if (m_apiKey == QStringLiteral("YOUR_API_KEY_HERE")) m_apiKey.clear();
@@ -818,7 +815,6 @@ private:
     static constexpr int kNetworkTimeoutMs = 15000;
     
     // User-configured credentials (stored in ocr_config.ini, never hardcoded)
-    QString m_appId = "";
     QString m_apiKey = ""; 
     QString m_secretKey = "";
     QSet<int> m_exhaustedTiers;

@@ -391,18 +391,6 @@ public:
             "font-size: 13px; font-weight: 600; color: #1b1b1b; border: none;"));
         onlineLayout->addWidget(onlineCardTitle);
 
-        QVBoxLayout* appIdLayout = new QVBoxLayout();
-        appIdLayout->setSpacing(4);
-        QLabel* appIdLabel = new QLabel(tr("AppID (可选)"), m_onlineGroup);
-        appIdLabel->setStyleSheet(QStringLiteral(
-            "font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI';"
-            "font-size: 13px; font-weight: 600; color: #1b1b1b;"));
-        m_appIdInput = new FluentInput(m_onlineGroup);
-        m_appIdInput->setPlaceholderText(tr("输入百度智能云 AppID"));
-        appIdLayout->addWidget(appIdLabel);
-        appIdLayout->addWidget(m_appIdInput);
-        onlineLayout->addLayout(appIdLayout);
-
         QVBoxLayout* keyLayout = new QVBoxLayout();
         keyLayout->setSpacing(4);
         QLabel* keyLabel = new QLabel(tr("API Key (Client ID)"), m_onlineGroup);
@@ -557,12 +545,10 @@ public:
         m_threadsInput->setText(QString::number(loadedThreads));
         m_useClsCheckBox->setChecked(settings.value("Offline/UseCls", false).toBool());
 
-        QString currentAppId = settings.value("Baidu/AppId").toString().trimmed();
         QString currentKey = settings.value("Baidu/ApiKey").toString().trimmed();
         QString currentSecret = settings.value("Baidu/SecretKey").toString().trimmed();
         if (currentKey == "YOUR_API_KEY_HERE") currentKey.clear();
         if (currentSecret == "YOUR_SECRET_KEY_HERE") currentSecret.clear();
-        m_appIdInput->setText(currentAppId);
         m_keyInput->setText(currentKey);
         m_secretInput->setText(currentSecret);
 
@@ -606,7 +592,6 @@ public:
             s.setValue("Offline/NumThreads", saveThreads);
             s.setValue("Offline/UseCls", m_useClsCheckBox->isChecked());
 
-            s.setValue("Baidu/AppId", m_appIdInput->text().trimmed());
             s.setValue("Baidu/ApiKey", m_keyInput->text().trimmed());
             s.setValue("Baidu/SecretKey", m_secretInput->text().trimmed());
             s.sync();
@@ -636,7 +621,6 @@ private:
     QLabel* m_offlineStatusLabel = nullptr;
 
     QWidget* m_onlineGroup = nullptr;
-    FluentInput* m_appIdInput = nullptr;
     FluentInput* m_keyInput = nullptr;
     FluentInput* m_secretInput = nullptr;
     FluentButton* m_testOnlineBtn = nullptr;

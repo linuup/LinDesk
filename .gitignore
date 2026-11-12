@@ -3,6 +3,8 @@
 .vscode/
 .idea/
 .agents/
+tools/
+tests/
 
 # Python
 __pycache__/
