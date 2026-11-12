@@ -667,6 +667,9 @@ endif()
 option(LINDESK_BUILD_OCR_PLUGIN "Build OCR plugin project" ON)
 if(LINDESK_BUILD_OCR_PLUGIN AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Plugins/OCRModule/CMakeLists.txt")
     add_subdirectory("Plugins/OCRModule")
+    if(TARGET LinDesk AND TARGET OCR_Plugin)
+        add_dependencies(LinDesk OCR_Plugin)
+    endif()
 endif()
 
 set(TS_FILES

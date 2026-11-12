@@ -352,7 +352,7 @@ def deploy_qt(release_dir: str, arch: str):
             except OSError:
                 pass
 
-    for d in ["plugins", "platforms", "imageformats", "styles", "bearer", "iconengines"]:
+    for d in ["platforms", "imageformats", "styles", "bearer", "iconengines"]:
         dp = os.path.join(release_dir, d)
         if os.path.isdir(dp):
             shutil.rmtree(dp, ignore_errors=True)
@@ -411,13 +411,17 @@ def build_release(repo_root: str, arch: str, custom_build_dir: str = "") -> str:
     if cfg_res.returncode != 0:
         raise RuntimeError(f"CMake configure failed for {arch} with exit code {cfg_res.returncode}")
 
+    targets = ["LinDesk", "LinDeskUpdate", "LinDeskSubprocess"]
+    if arch == "x64":
+        targets.extend(["LinWidgetRuntime", "OCR_Plugin"])
+
     build_cmd = [
         cmake_exe, "--build", abs_build_dir,
         "--config", "Release",
-        "--target", "LinDesk", "LinDeskUpdate", "LinDeskSubprocess", "LinWidgetRuntime",
+        "--target", *targets,
         "-j", "8"
     ]
-    print(f"    Building targets LinDesk, LinDeskUpdate, LinDeskSubprocess, LinWidgetRuntime for {arch}...")
+    print(f"    Building targets {', '.join(targets)} for {arch}...")
     sys.stdout.flush()
     build_res = subprocess.run(build_cmd, cwd=repo_root)
     if build_res.returncode != 0:
@@ -426,7 +430,7 @@ def build_release(repo_root: str, arch: str, custom_build_dir: str = "") -> str:
     release_dir = os.path.join(abs_build_dir, "Release")
     required = ["LinDesk.exe", "LinDeskUpdate.exe", "LinDeskSubprocess.exe", "resources", "translations"]
     if arch == "x64":
-        required.append("LinWidgetRuntime.dll")
+        required.extend(["LinWidgetRuntime.dll", "plugins"])
     missing = [item for item in required if not os.path.exists(os.path.join(release_dir, item))]
     if missing:
         raise RuntimeError(f"Missing required build outputs in {release_dir}: {missing}")

@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "channel": "stable",
   "url": "https://github.com/linuup/LinDesk/releases/download/v2.0.0/LinDesk_Setup_2.0.0_x64.exe",
-  "sha256": "219cc4a80f2e7d4b0380b1e52652350468ddd03db45371e3c2f628511cb9687a",
+  "sha256": "e02e4975bc526efd9b96e6046d858c4344d2ce6288f3c6aa53134ef066f5923d",
   "notes": "## LinDesk 2.0.0 里程碑大版本发布 🎉\n\nLinDesk 迎来了 2.0.0 重大里程碑！本次更新对底层架构、前端控制中心、动态壁纸工坊及离线智能服务进行了全方位的深度革新。\n\n### 🌟 核心更新亮点\n\n#### 1. 纯代码 Canvas 2D 手绘动态壁纸《清风原野 · 晨曦自然》\n- 摒弃厚重的外部媒体，采用纯原生 Canvas 2D 代码绘制自然晨曦原野。\n- 支持晨曦/正午/黄昏/深夜 24 小时昼夜平滑过渡、风力扰动算法带动花草摇曳、微风蒲公英孢子与流星划破夜空。\n- 0 外部资源加载，内存与 GPU 占用极度轻量。\n\n#### 2. 现代 Web 前端调度中心与壁纸工坊 (LinDesk Hub & Wallpaper Studio)\n- 基于 shadcn/ui + React + TailwindCSS 重塑现代桌面中枢。\n- Master-Detail 壁纸工坊：支持本地与网络壁纸的一键导入、16:9 实时物理画板与动态桌面图标模拟预览。\n- 视觉与播放控制升级：提供 0%~100% 连续可调的高级感知多尺度背景模糊度，普通视频与壁纸全面常驻平铺展开。\n- 宿主通用外挂面板：动态解析壁纸作者参数与底座通用调控项。\n\n#### 3. 离线/本地 OCR 智能文字识别引擎\n- 深度集成 ONNXRuntime 与 PP-OCRv6 轻量模型。\n- 支持全离线运行，无需连网，无第三方 API 密钥门槛。\n- 多线程异步识别流水线，毫秒级响应，全面守护用户隐私。\n\n#### 4. 底座架构解耦与能效状态机\n- 完成了对 `ListView`、`WidgetManager`、`LinBox` 等模块的全面解耦重构。\n- 接入 GPLv3 许可证与安全多进程沙箱体系。\n- 智能能效状态机：全屏游戏/3D 窗口自动 0.0% 挂起休眠，交流电/电池自适应动态帧率。",
-  "publishedAt": "2026-11-12T15:42:59Z",
+  "publishedAt": "2026-11-12T16:02:25Z",
   "minSupportedVersion": "1.0.0",
   "runtime": {
     "version": "1.0.0",
