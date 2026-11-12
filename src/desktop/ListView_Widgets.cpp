@@ -353,6 +353,10 @@ void ListView::initializeLinWidgets()
     registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &registryError);
     registry.save(&registryError);
 
+    // 监听运行时就地安装就绪事件，一旦安装完成立即自动热加载恢复组件与壁纸
+    connect(&RuntimeInstaller::instance(), &RuntimeInstaller::runtimeInstalledAndReady,
+            this, &ListView::hotReloadLinWidgetsSubsystem, Qt::UniqueConnection);
+
     // 运行时未安装时保持完全休眠状态，零开销
     if (!RuntimeInstaller::instance().isRuntimeInstalled()) {
         qDebug() << "[LinWidget] Runtime is not installed. Subsystem is in dormant state.";
@@ -416,6 +420,14 @@ void ListView::initializeLinWidgets()
     if (!bridge.restoreFromConfig(QString())) {
         qDebug() << "[LinWidgetAutoLoad] restore from config returned false or empty";
     }
+}
+
+void ListView::hotReloadLinWidgetsSubsystem()
+{
+    qInfo() << "[ListView] Hot-reloading LinWidgets subsystem...";
+    initializeLinWidgets();
+    syncLinWidgetLayer();
+    update();
 }
 
 void ListView::syncLinWidgetLayer()

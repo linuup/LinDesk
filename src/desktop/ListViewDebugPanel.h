@@ -42,7 +42,7 @@ private:
     void reloadLinWidgetsList();
     void updateLinWidgetsButtons();
     void updateLinWidgetDetailsPanel();
-    void updateLinWidgetPermissionControls();
+    void updateLinWidgetRuntimeInfoCard();
     void refreshLinWidgetRunningMaps();
     QString selectedLinWidgetRunningInstanceId() const;
     QString selectedLinWidgetPackagePath() const;
@@ -64,7 +64,6 @@ private:
     QString linWidgetRegistryKey(const QString& id, bool isDevelopment) const;
     QStringList selectedLinWidgetRequestedPermissions() const;
     QStringList selectedLinWidgetGrantedPermissions() const;
-    void setSelectedLinWidgetGrantedPermission(const QString& permission, bool granted);
     QPushButton* createActionButton(const QString& text, bool accent = false, bool destructive = false) const;
     QWidget* createSliderSettingRow(const QString& labelText,
                                     int minValue,
@@ -114,44 +113,29 @@ private:
     QGridLayout* m_linWidgetsContentGrid = nullptr;
     QWidget* m_linWidgetsListsPanel = nullptr;
     QWidget* m_linWidgetsLogPanel = nullptr;
-    QGridLayout* m_linWidgetsCompactSwitchGrid = nullptr;
-    QList<QWidget*> m_linWidgetsCompactSwitchItems;
-    QGridLayout* m_linWidgetsActionGroupsGrid = nullptr;
-    QList<QWidget*> m_linWidgetActionGroups;
 
-    // Toggles
+    // Toggles (Required: m_linWidgetEnabledToggle & m_linWidgetBoundsToggle cannot be removed)
     FluentToggleSwitch* m_embedToggle = nullptr;
     FluentToggleSwitch* m_persistToggle = nullptr;
     FluentToggleSwitch* m_linWidgetEnabledToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBoundsToggle = nullptr;
     FluentToggleSwitch* m_linWidgetBlockedCellsToggle = nullptr;
     FluentToggleSwitch* m_defaultWallpaperToggle = nullptr;
-    QCheckBox* m_linWidgetNetworkPermissionCheck = nullptr;
-    QCheckBox* m_linWidgetStoragePermissionCheck = nullptr;
-    QCheckBox* m_linWidgetDesktopPermissionCheck = nullptr;
     QLabel* m_openGLStatusLabel = nullptr;
     QLabel* m_linWidgetsPageStatusLabel = nullptr;
-    QLabel* m_linWidgetPermissionsLabel = nullptr;
+    QLabel* m_linWidgetRuntimeInfoLabel = nullptr;
+    QLabel* m_linWidgetDetailsLabel = nullptr;
     QPushButton* m_linWidgetsDevToolsButton = nullptr;
     QPushButton* m_linWidgetsRestartButton = nullptr;
     QPushButton* m_linWidgetsSettingsButton = nullptr;
-    QLabel* m_linWidgetDetailsLabel = nullptr;
-    QLabel* m_linWidgetsLogTitleLabel = nullptr;
-    QPlainTextEdit* m_linWidgetsLogView = nullptr;
-    QFileSystemWatcher* m_linWidgetsLogWatcher = nullptr;
-    QTimer* m_linWidgetsLogReloadTimer = nullptr;
-    QString m_currentLinWidgetLogPath;
-    QListWidget* m_installedLinWidgetsList = nullptr;
-    QListWidget* m_developmentLinWidgetsList = nullptr;
-    class QTabBar* m_linWidgetListTabBar = nullptr;
-    class QStackedWidget* m_linWidgetListStack = nullptr;
     QPushButton* m_linWidgetsOpenFolderButton = nullptr;
     QPushButton* m_linWidgetsOpenLogsButton = nullptr;
     QPushButton* m_linWidgetsAddDevButton = nullptr;
-    QPushButton* m_linWidgetsPackageButton = nullptr;
     QPushButton* m_linWidgetsResetBundledButton = nullptr;
-    QPushButton* m_linWidgetsRemoveDevButton = nullptr;
+    QPushButton* m_linWidgetsRuntimeToggleButton = nullptr;
     QPushButton* m_linWidgetsDeleteButton = nullptr;
+    QListWidget* m_linWidgetsList = nullptr;
+    class QTabBar* m_linWidgetFilterTabBar = nullptr;
     QString m_lastLinWidgetInstanceId;
     QHash<QString, QString> m_linWidgetInstancesByPackage;
     QHash<QString, QString> m_linWidgetInstancesById;

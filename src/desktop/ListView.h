@@ -425,6 +425,7 @@ public:
 	void setShowLinWidgetBlockedCells(bool show);
 	bool showLinWidgetBlockedCells() const { return m_showLinWidgetBlockedCells; }
 	void syncLinWidgetLayer();
+	void hotReloadLinWidgetsSubsystem();
 
 	// 调试工具
 	QString dumpAllItemsJson() const;

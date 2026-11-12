@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+#include <QSettings>
 #include "desktop/runtime/RuntimeInstaller.h"
 #include "desktop/widgets/runtime_export.h"
 #include "services/AppPaths.h"
@@ -17,6 +18,12 @@ protected:
             static char* argv[] = { appName, nullptr };
             new QCoreApplication(argc, argv);
         }
+    }
+
+    static void TearDownTestSuite() {
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        s.remove(QStringLiteral("LinWidgets/RuntimeUninstalled"));
+        s.sync();
     }
 };
 
@@ -74,6 +81,45 @@ TEST_F(RuntimeInstallerTest, DataIsolationConstraint)
     QFile::remove(sampleDataFile);
 }
 
+TEST_F(RuntimeInstallerTest, DeleteUserDataWhenExplicitlyRequested)
+{
+    const QString widgetsDir = AppPaths::userLinWidgetsDir();
+    const QString widgetsDataDir = AppPaths::userLinWidgetsDataDir();
+    const QString wallpapersDir = AppPaths::userWallpapersDir();
+
+    QDir().mkpath(widgetsDir);
+    QDir().mkpath(widgetsDataDir);
+    QDir().mkpath(wallpapersDir);
+
+    const QString sampleWidget = QDir(widgetsDir).filePath("test_widget_del.txt");
+    const QString sampleData = QDir(widgetsDataDir).filePath("state_del.json");
+    const QString sampleWallpaper = QDir(wallpapersDir).filePath("test_wp_del.txt");
+
+    {
+        QFile f(sampleWidget);
+        f.open(QIODevice::WriteOnly);
+        f.write("test widget");
+    }
+    {
+        QFile f(sampleData);
+        f.open(QIODevice::WriteOnly);
+        f.write("test state");
+    }
+    {
+        QFile f(sampleWallpaper);
+        f.open(QIODevice::WriteOnly);
+        f.write("test wallpaper");
+    }
+
+    QString error;
+    RuntimeInstaller::instance().uninstallRuntime(true /* deleteUserData */, &error);
+
+    // 显式选择清理个人数据时，组件与壁纸个人目录应被清除
+    EXPECT_FALSE(QFile::exists(sampleWidget));
+    EXPECT_FALSE(QFile::exists(sampleData));
+    EXPECT_FALSE(QFile::exists(sampleWallpaper));
+}
+
 TEST_F(RuntimeInstallerTest, InstallationStatusAndVersionCheck)
 {
     auto& installer = RuntimeInstaller::instance();
@@ -82,11 +128,18 @@ TEST_F(RuntimeInstallerTest, InstallationStatusAndVersionCheck)
     // 验证目录路径结构符合预期
     EXPECT_TRUE(runtimeDir.endsWith("runtime/linwidget") || runtimeDir.endsWith("runtime\\linwidget"));
 
-    // 验证状态一致性：若实际 runtimeDllPath 不存在，则 isRuntimeInstalled 返回 false，否则返回 true
+    // 验证状态一致性：若实际 runtimeDllPath 不存在，则 isRuntimeInstalled 必须返回 false
     const bool dllExists = QFile::exists(installer.runtimeDllPath());
-    EXPECT_EQ(installer.isRuntimeInstalled(), dllExists);
     if (!dllExists) {
+        EXPECT_FALSE(installer.isRuntimeInstalled());
         EXPECT_TRUE(installer.installedVersion().isEmpty());
+    } else {
+        // 若 DLL 存在，必须额外具备有效 CEF 核心库且未被用户标记卸载才算真正安装
+        QSettings s(AppPaths::configFilePath(), QSettings::IniFormat);
+        const bool uninstalled = s.value(QStringLiteral("LinWidgets/RuntimeUninstalled"), false).toBool();
+        if (uninstalled) {
+            EXPECT_FALSE(installer.isRuntimeInstalled());
+        }
     }
 }
 

@@ -37,6 +37,7 @@ public:
     static QString uniquePasteDestinationPath(const QString& sourcePath, const QString& destDir);
     static QString uniqueNewFolderPath(const QString& targetDir, const QString& baseName = QString());
     static QString normalizeNewFolderCasePath(const QString& path);
+    static QString canonicalDiskPath(const QString& path);
     static QString uniqueShortcutPathForTarget(const QString& sourcePath, const QString& targetDir);
     static bool createDirectoryPath(const QString& targetPath);
     static bool copyPathToExactDestination(const QString& sourcePath, const QString& destinationPath);

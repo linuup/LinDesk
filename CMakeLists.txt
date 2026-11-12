@@ -107,7 +107,7 @@ else()
 endif()
 
 # Find Qt5
-find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Qml Quick QuickWidgets Multimedia MultimediaWidgets LinguistTools Concurrent REQUIRED)
+find_package(Qt5 COMPONENTS Widgets WinExtras Core Network OpenGL Svg Multimedia MultimediaWidgets LinguistTools Concurrent REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 
 # 引入 spdlog (通过 vcpkg manifest 模式提供)
@@ -368,9 +368,6 @@ target_link_libraries(LinDesk
         Qt5::WinExtras
         Qt5::OpenGL
         Qt5::Svg
-        Qt5::Qml
-        Qt5::Quick
-        Qt5::QuickWidgets
         Qt5::Concurrent
 )
 
@@ -535,6 +532,7 @@ target_link_libraries(LinDeskRuntimeInstallerTests
         Qt5::Core
         Qt5::Gui
         Qt5::Widgets
+        Qt5::Network
         GTest::gtest
         GTest::gtest_main
 )
@@ -752,7 +750,10 @@ add_custom_command(TARGET LinDesk POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/widgets"
         "$<TARGET_FILE_DIR:LinDesk>/resources/LinWidgets"
-    COMMENT "Copying app resources and widgets to output directory..."
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/wallpapers"
+        "$<TARGET_FILE_DIR:LinDesk>/resources/wallpapers"
+    COMMENT "Copying app resources, widgets, and wallpapers to output directory..."
 )
 
 

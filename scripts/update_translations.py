@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LinDesk Translation Update Tool (Python)
-Extracts translatable strings from C++ and QML sources into Qt Linguist TS files.
+Extracts translatable strings from C++ sources into Qt Linguist TS files.
 """
 
 import argparse
@@ -78,14 +78,13 @@ def update_translations(repo_root: str, open_linguist: bool = False, run_lreleas
     for ts in ts_files:
         os.makedirs(os.path.dirname(ts), exist_ok=True)
 
-    # Explicitly scan only C++ and QML directories to avoid scanning web widget scripts in src/resources/LinWidgets
+    # Explicitly scan only C++ source directories to avoid scanning web widget scripts in src/resources/LinWidgets
     source_candidates = [
         os.path.join(repo_root, "src", "app"),
         os.path.join(repo_root, "src", "desktop"),
         os.path.join(repo_root, "src", "models"),
         os.path.join(repo_root, "src", "services"),
         os.path.join(repo_root, "src", "ui"),
-        os.path.join(repo_root, "src", "resources", "qml"),
     ]
     scan_dirs = [d for d in source_candidates if os.path.isdir(d)]
     if not scan_dirs:
@@ -97,7 +96,7 @@ def update_translations(repo_root: str, open_linguist: bool = False, run_lreleas
         rel = os.path.relpath(d, repo_root)
         print(f"       - {rel}")
 
-    cmd = [lupdate_exe] + scan_dirs + ["-extensions", "cpp,cxx,cc,h,hpp,ui,qml", "-ts"] + ts_files
+    cmd = [lupdate_exe] + scan_dirs + ["-extensions", "cpp,cxx,cc,h,hpp,ui", "-ts"] + ts_files
     print(f"\n[INFO] Running: {' '.join(cmd)}")
     sys.stdout.flush()
 

@@ -10,6 +10,7 @@ interface HeaderProps {
   totalWidgets: number;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  isDebug?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,7 +18,8 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   totalWidgets,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  isDebug = false
 }) => {
   const navRef = useRef<HTMLElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
@@ -62,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
       window.removeEventListener('resize', reportInteractiveRects);
       if (observer) observer.disconnect();
     };
-  }, [reportInteractiveRects, totalWidgets]);
+  }, [reportInteractiveRects, totalWidgets, isDebug]);
 
   const handleMinimize = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -140,18 +142,20 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => onTabChange('desktop')}
-            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'desktop'
-                ? 'bg-indigo-600 text-white shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 font-medium'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>控制台</span>
-          </button>
+          {isDebug && (
+            <button
+              type="button"
+              onClick={() => onTabChange('desktop')}
+              className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'desktop'
+                  ? 'bg-indigo-600 text-white shadow-xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 font-medium'
+              }`}
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              <span>控制台</span>
+            </button>
+          )}
         </nav>
       </div>
 

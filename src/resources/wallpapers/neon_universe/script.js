@@ -18,8 +18,14 @@ let globalTime = 0;
 const config = {
   windSpeed: 4,          // 微风速度 1~10
   dandelionCount: 35,    // 蒲公英飞絮密度 10~80
-  sunbeamIntensity: 6,   // 晨光丁达尔强度 0~10
-  showClock: true        // 是否显示环境时钟
+  sunbeamIntensity: 5,   // 晨光丁达尔强度 0~10
+  showClock: true,       // 是否显示环境时钟
+  clockPosX: 50,         // 水平位置 X% (默认 50 居中)
+  clockPosY: 50,         // 垂直位置 Y% (默认 50 居中)
+  clockScale: 100,       // 缩放大小 % (默认 100)
+  clockBgOpacity: 45,    // 卡片背景透明度 % (默认 45)
+  clockColor: '#1e3a2b', // 文字颜色
+  showDate: true         // 是否显示日期与微标
 };
 
 // 交互微风与鼠标状态
@@ -60,8 +66,8 @@ class DandelionSeed {
     this.wobbleSpeed = 0.02 + Math.random() * 0.03;
     this.angle = (Math.random() - 0.5) * 0.4;
     this.angVel = (Math.random() - 0.5) * 0.01;
-    this.opacity = 0.5 + Math.random() * 0.45;
-    this.rays = 9 + Math.floor(Math.random() * 5); // 伞状冠毛数量
+    this.opacity = 0.65 + Math.random() * 0.35;
+    this.rays = 10 + Math.floor(Math.random() * 5); // 伞状冠毛数量
   }
 
   update(dt, windMultiplier) {
@@ -104,23 +110,27 @@ class DandelionSeed {
     context.scale(this.scale, this.scale);
     context.globalAlpha = this.opacity;
 
-    // 1. 绘制小种子核 (棕褐小椭圆)
-    context.fillStyle = '#4a382a';
+    // 细微环境投影，确保在任何背景亮线下蒲公英轮廓清晰立体
+    context.shadowColor = 'rgba(15, 45, 30, 0.32)';
+    context.shadowBlur = 3;
+
+    // 1. 种子小椭圆 (棕褐色，轮廓清晰)
+    context.fillStyle = '#3a2818';
     context.beginPath();
     context.ellipse(0, 14, 1.4, 3, 0, 0, Math.PI * 2);
     context.fill();
 
-    // 2. 细小银白茎轴
-    context.strokeStyle = 'rgba(235, 245, 240, 0.9)';
-    context.lineWidth = 0.8;
+    // 2. 细小茎轴 (微带浅青银白)
+    context.strokeStyle = 'rgba(245, 255, 250, 0.95)';
+    context.lineWidth = 0.9;
     context.beginPath();
     context.moveTo(0, 13);
     context.lineTo(0, 0);
     context.stroke();
 
-    // 3. 展开的伞状冠毛 (辐射细丝)
-    context.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-    context.lineWidth = 0.6;
+    // 3. 展开的伞状冠毛 (辐射细丝 + 微光绒点)
+    context.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    context.lineWidth = 0.75;
     const crownRadius = 14;
     for (let i = 0; i < this.rays; i++) {
       const spread = (i / (this.rays - 1) - 0.5) * (Math.PI * 0.8);
@@ -132,9 +142,9 @@ class DandelionSeed {
       context.stroke();
 
       // 冠毛尖端微小绒白点
-      context.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      context.fillStyle = '#ffffff';
       context.beginPath();
-      context.arc(rx, ry, 0.75, 0, Math.PI * 2);
+      context.arc(rx, ry, 0.85, 0, Math.PI * 2);
       context.fill();
     }
 
@@ -149,50 +159,44 @@ class GrassBlade {
   constructor(x, baseY, height, width, colorBase, tipColor) {
     this.x = x;
     this.baseY = baseY;
-    this.length = height;
+    this.height = height;
     this.width = width;
     this.colorBase = colorBase;
     this.tipColor = tipColor;
-    this.naturalAngle = (Math.random() - 0.5) * 0.15;
-    this.currentBend = 0;
+    this.bend = 0;
     this.targetBend = 0;
-    this.stiffness = 0.08 + Math.random() * 0.04;
-    this.hasFlower = Math.random() < 0.06; // 偶尔开出一朵淡雅雏菊
-    this.flowerPetalColor = Math.random() > 0.4 ? 'rgba(255,255,255,0.95)' : 'rgba(254,240,138,0.9)';
+    this.swayPhase = Math.random() * Math.PI * 2;
+    this.stiffness = 0.08 + Math.random() * 0.06;
   }
 
   update(time, windSpeed) {
-    // 复合自然风波：基波 + 高频扰动
-    const wave = Math.sin(time * (0.8 + windSpeed * 0.2) + this.x * 0.0035) * 0.22 * (windSpeed / 4);
-    const microJitter = Math.cos(time * 2.2 + this.x * 0.01) * 0.04;
-    this.targetBend = wave + microJitter + this.naturalAngle;
+    // 基础自然正弦草浪
+    const naturalSway = Math.sin(time * 2.2 + this.swayPhase + (this.x * 0.005)) * (this.height * 0.22);
+    const windForce = (windSpeed * 3.5);
+    this.targetBend = naturalSway + windForce;
 
-    // 鼠标经过带来的风浪压弯
+    // 鼠标风暴弯曲影响
     if (mouseWind.active) {
       const dx = this.x - mouseWind.x;
-      const dy = (this.baseY - this.length * 0.7) - mouseWind.y;
+      const dy = this.baseY - mouseWind.y;
       const dist = Math.hypot(dx, dy);
-      if (dist < mouseWind.radius) {
-        const influence = (1 - dist / mouseWind.radius);
-        // 草叶受鼠标滑动方向及扩散推力而倒伏
+      if (dist < mouseWind.radius && dist > 1) {
+        const factor = (1 - dist / mouseWind.radius);
         const pushDir = dx > 0 ? 1 : -1;
-        const pushForce = pushDir * influence * 0.8 + (mouseWind.vx * 0.015);
-        this.targetBend += pushForce;
+        this.targetBend += pushDir * factor * (this.height * 0.7) + (mouseWind.vx * 0.35);
       }
     }
 
     // 弹性平滑逼近
-    this.currentBend += (this.targetBend - this.currentBend) * this.stiffness;
+    this.bend += (this.targetBend - this.bend) * this.stiffness;
   }
 
   draw(context) {
-    context.save();
-    const tipX = this.x + Math.sin(this.currentBend) * this.length;
-    const tipY = this.baseY - Math.cos(this.currentBend) * this.length;
-    const ctrlX = this.x + Math.sin(this.currentBend * 0.5) * (this.length * 0.55);
-    const ctrlY = this.baseY - this.length * 0.5;
+    const tipX = this.x + this.bend;
+    const tipY = this.baseY - this.height;
+    const midX = this.x + this.bend * 0.45;
+    const midY = this.baseY - this.height * 0.55;
 
-    // 渐变草叶：根部深绿到尖端嫩翠黄绿
     const grad = context.createLinearGradient(this.x, this.baseY, tipX, tipY);
     grad.addColorStop(0, this.colorBase);
     grad.addColorStop(1, this.tipColor);
@@ -200,79 +204,59 @@ class GrassBlade {
     context.fillStyle = grad;
     context.beginPath();
     context.moveTo(this.x - this.width * 0.5, this.baseY);
-    context.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
-    context.quadraticCurveTo(ctrlX + this.width * 0.3, ctrlY, this.x + this.width * 0.5, this.baseY);
+    context.quadraticCurveTo(midX - this.width * 0.25, midY, tipX, tipY);
+    context.quadraticCurveTo(midX + this.width * 0.25, midY, this.x + this.width * 0.5, this.baseY);
     context.closePath();
     context.fill();
-
-    // 偶尔点缀的小野花
-    if (this.hasFlower) {
-      context.translate(tipX, tipY);
-      context.rotate(this.currentBend);
-      // 5瓣小雏菊
-      context.fillStyle = this.flowerPetalColor;
-      for (let p = 0; p < 5; p++) {
-        context.beginPath();
-        context.ellipse(0, -4, 1.8, 3.2, (p * Math.PI * 2) / 5, 0, Math.PI * 2);
-        context.fill();
-      }
-      // 花蕊
-      context.fillStyle = '#f59e0b';
-      context.beginPath();
-      context.arc(0, 0, 1.8, 0, Math.PI * 2);
-      context.fill();
-    }
-
-    context.restore();
   }
 }
 
 // ----------------------------------------------------
-// 3. 暖光光斑与轻柔飞瓣 (Sun Bokeh & Blossom Petals)
+// 3. 灵动浮光散景与落樱碎花 (Bokehs & Floating Flora)
 // ----------------------------------------------------
-class FloatingBokeh {
+class AmbientBokeh {
   constructor() {
     this.reset();
   }
 
   reset() {
     this.x = Math.random() * width;
-    this.y = Math.random() * height;
-    this.radius = 16 + Math.random() * 48;
-    this.vx = (0.2 + Math.random() * 0.4);
-    this.vy = -0.15 - Math.random() * 0.3; // 缓缓升腾
-    this.alpha = 0.08 + Math.random() * 0.18;
-    this.phase = Math.random() * Math.PI * 2;
+    this.y = Math.random() * (height * 0.85);
+    this.radius = 12 + Math.random() * 28;
+    this.speedY = -(0.15 + Math.random() * 0.3);
+    this.speedX = 0.2 + Math.random() * 0.4;
+    this.alpha = 0.08 + Math.random() * 0.16;
+    this.pulsePhase = Math.random() * Math.PI * 2;
+    this.pulseSpeed = 0.015 + Math.random() * 0.02;
+    this.hue = Math.random() > 0.4 ? '255, 248, 220' : '230, 255, 240';
   }
 
   update(dt) {
-    this.phase += 0.015;
-    this.x += this.vx * (dt * 60);
-    this.y += this.vy * (dt * 60);
+    this.pulsePhase += this.pulseSpeed;
+    this.y += this.speedY * (dt * 60);
+    this.x += this.speedX * (dt * 60);
 
-    if (this.x > width + 100 || this.y < -100) {
+    if (this.y < -50 || this.x > width + 50) {
       this.reset();
-      this.y = height + 50;
-      this.x = Math.random() * width;
+      this.y = height * 0.85 + Math.random() * 40;
     }
   }
 
   draw(context) {
-    const pulse = 1 + Math.sin(this.phase) * 0.2;
-    const currentAlpha = Math.max(0, this.alpha * (0.8 + Math.sin(this.phase) * 0.3));
+    const pulse = 1 + Math.sin(this.pulsePhase) * 0.2;
+    const a = this.alpha * (0.8 + Math.sin(this.pulsePhase) * 0.2);
 
-    const g = context.createRadialGradient(
-      this.x, this.y, 1,
-      this.x, this.y, this.radius * pulse
-    );
-    g.addColorStop(0, `rgba(255, 252, 230, ${currentAlpha})`);
-    g.addColorStop(0.6, `rgba(220, 245, 215, ${currentAlpha * 0.5})`);
+    context.save();
+    const g = context.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius * pulse);
+    g.addColorStop(0, `rgba(${this.hue}, ${a})`);
+    g.addColorStop(0.6, `rgba(${this.hue}, ${a * 0.4})`);
     g.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
     context.fillStyle = g;
     context.beginPath();
     context.arc(this.x, this.y, this.radius * pulse, 0, Math.PI * 2);
     context.fill();
+    context.restore();
   }
 }
 
@@ -325,9 +309,9 @@ class FloatingPetal {
 let clouds = [];
 function initClouds() {
   clouds = [
-    { x: width * 0.1, y: height * 0.16, scale: 1.2, speed: 0.15, alpha: 0.45 },
-    { x: width * 0.45, y: height * 0.09, scale: 0.85, speed: 0.1, alpha: 0.35 },
-    { x: width * 0.78, y: height * 0.18, scale: 1.1, speed: 0.18, alpha: 0.4 }
+    { x: width * 0.1, y: height * 0.16, scale: 1.1, speed: 0.15, alpha: 0.22 },
+    { x: width * 0.45, y: height * 0.09, scale: 0.8, speed: 0.1, alpha: 0.18 },
+    { x: width * 0.78, y: height * 0.18, scale: 1.0, speed: 0.18, alpha: 0.20 }
   ];
 }
 
@@ -361,34 +345,37 @@ function drawSunbeams(context, time) {
   const sunX = width * 0.12;
   const sunY = height * 0.08;
 
-  // 太阳本体与柔和光晕
-  const sunGlow = context.createRadialGradient(sunX, sunY, 10, sunX, sunY, width * 0.45);
-  sunGlow.addColorStop(0, `rgba(255, 253, 240, ${0.45 * intensity})`);
-  sunGlow.addColorStop(0.3, `rgba(254, 243, 199, ${0.25 * intensity})`);
-  sunGlow.addColorStop(0.7, `rgba(224, 242, 254, ${0.1 * intensity})`);
+  // 太阳本体与柔和光晕（适度收拢光晕范围，避免整块泛白）
+  const sunRadius = Math.min(width, height) * 0.32;
+  const sunGlow = context.createRadialGradient(sunX, sunY, 8, sunX, sunY, sunRadius);
+  sunGlow.addColorStop(0, `rgba(255, 252, 220, ${0.45 * intensity})`);
+  sunGlow.addColorStop(0.25, `rgba(255, 246, 185, ${0.22 * intensity})`);
+  sunGlow.addColorStop(0.65, `rgba(224, 245, 255, ${0.08 * intensity})`);
   sunGlow.addColorStop(1, 'rgba(255, 255, 255, 0)');
   context.fillStyle = sunGlow;
-  context.fillRect(0, 0, width, height);
+  context.beginPath();
+  context.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
+  context.fill();
 
-  // 倾斜光束
+  // 倾斜晨光丁达尔神光（温润通透，不覆盖底层对比）
   context.save();
   const beamAngles = [0.45, 0.58, 0.72, 0.88, 1.05];
   for (let i = 0; i < beamAngles.length; i++) {
     const baseAngle = beamAngles[i];
     const breathe = Math.sin(time * 0.8 + i * 1.5) * 0.05;
     const beamAngle = baseAngle + breathe;
-    const beamWidth = (40 + i * 18);
-    const beamAlpha = (0.08 + Math.sin(time * 0.5 + i) * 0.03 + audioVolume * 0.1) * intensity;
+    const beamWidth = (35 + i * 14);
+    const beamAlpha = (0.05 + Math.sin(time * 0.5 + i) * 0.02 + audioVolume * 0.08) * intensity;
 
-    const len = height * 1.4;
-    const endX1 = sunX + Math.cos(beamAngle - 0.04) * len;
-    const endY1 = sunY + Math.sin(beamAngle - 0.04) * len;
-    const endX2 = sunX + Math.cos(beamAngle + 0.04) * len + beamWidth;
-    const endY2 = sunY + Math.sin(beamAngle + 0.04) * len;
+    const len = height * 1.35;
+    const endX1 = sunX + Math.cos(beamAngle - 0.035) * len;
+    const endY1 = sunY + Math.sin(beamAngle - 0.035) * len;
+    const endX2 = sunX + Math.cos(beamAngle + 0.035) * len + beamWidth;
+    const endY2 = sunY + Math.sin(beamAngle + 0.035) * len;
 
     const beamGrad = context.createLinearGradient(sunX, sunY, (endX1 + endX2) * 0.5, (endY1 + endY2) * 0.5);
-    beamGrad.addColorStop(0, `rgba(255, 255, 245, ${beamAlpha * 1.8})`);
-    beamGrad.addColorStop(0.5, `rgba(254, 249, 195, ${beamAlpha})`);
+    beamGrad.addColorStop(0, `rgba(255, 250, 215, ${beamAlpha * 1.2})`);
+    beamGrad.addColorStop(0.45, `rgba(254, 245, 195, ${beamAlpha * 0.7})`);
     beamGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
     context.fillStyle = beamGrad;
@@ -407,7 +394,7 @@ function drawSunbeams(context, time) {
 // ----------------------------------------------------
 function drawMountains(context, time) {
   // 第 1 层远山：淡天青蓝绿
-  context.fillStyle = 'rgba(176, 208, 206, 0.55)';
+  context.fillStyle = 'rgba(156, 198, 196, 0.65)';
   context.beginPath();
   context.moveTo(0, height * 0.62);
   context.bezierCurveTo(width * 0.25, height * 0.52, width * 0.45, height * 0.64, width * 0.7, height * 0.54);
@@ -417,17 +404,16 @@ function drawMountains(context, time) {
   context.closePath();
   context.fill();
 
-  // 晨雾漫游带
-  const mistShift = Math.sin(time * 0.2) * 40;
+  // 晨雾漫游带（轻盈朦胧，去掉原本高透明度的生硬纯白带）
   const mistGrad = context.createLinearGradient(0, height * 0.55, 0, height * 0.68);
-  mistGrad.addColorStop(0, 'rgba(240, 252, 248, 0)');
-  mistGrad.addColorStop(0.5, 'rgba(240, 252, 248, 0.45)');
-  mistGrad.addColorStop(1, 'rgba(240, 252, 248, 0)');
+  mistGrad.addColorStop(0, 'rgba(230, 248, 242, 0)');
+  mistGrad.addColorStop(0.5, 'rgba(230, 248, 242, 0.16)');
+  mistGrad.addColorStop(1, 'rgba(230, 248, 242, 0)');
   context.fillStyle = mistGrad;
   context.fillRect(0, height * 0.52, width, height * 0.16);
 
   // 第 2 层中远山：苍黛青绿
-  context.fillStyle = 'rgba(125, 172, 154, 0.75)';
+  context.fillStyle = 'rgba(110, 165, 145, 0.82)';
   context.beginPath();
   context.moveTo(0, height * 0.68);
   context.bezierCurveTo(width * 0.2, height * 0.58, width * 0.4, height * 0.72, width * 0.65, height * 0.62);
@@ -439,9 +425,9 @@ function drawMountains(context, time) {
 
   // 第 3 层近景起伏草坡 A (翠绿带柔光)
   const hillGradA = context.createLinearGradient(0, height * 0.65, 0, height);
-  hillGradA.addColorStop(0, '#7bb883');
-  hillGradA.addColorStop(0.5, '#559960');
-  hillGradA.addColorStop(1, '#346b3e');
+  hillGradA.addColorStop(0, '#75b57d');
+  hillGradA.addColorStop(0.5, '#4e9459');
+  hillGradA.addColorStop(1, '#2f6338');
   context.fillStyle = hillGradA;
   context.beginPath();
   context.moveTo(0, height * 0.76);
@@ -453,9 +439,9 @@ function drawMountains(context, time) {
 
   // 第 4 层前景起伏草坡 B (生机苍翠)
   const hillGradB = context.createLinearGradient(0, height * 0.78, 0, height);
-  hillGradB.addColorStop(0, '#5fa868');
-  hillGradB.addColorStop(0.4, '#40824a');
-  hillGradB.addColorStop(1, '#23522c');
+  hillGradB.addColorStop(0, '#58a362');
+  hillGradB.addColorStop(0.4, '#3b7d45');
+  hillGradB.addColorStop(1, '#1e4c27');
   context.fillStyle = hillGradB;
   context.beginPath();
   context.moveTo(0, height * 0.84);
@@ -498,10 +484,12 @@ function initScene() {
     const bladeW = (isFront ? 3.0 : 2.2) + Math.random() * 1.5;
 
     // 色彩梯度：橄榄深青 -> 嫩草黄绿
-    const baseColor = isFront ? '#265430' : '#3d7248';
-    const tipColor = isFront ? '#a7f38d' : '#82d874';
+    const colorBase = isFront ? '#2b5a32' : '#3d6d45';
+    const tipColor = isFront 
+      ? (Math.random() > 0.35 ? '#8cd376' : '#a8e684') 
+      : (Math.random() > 0.4 ? '#68b556' : '#88cb6e');
 
-    grassBlades.push(new GrassBlade(x, baseY, bladeLen, bladeW, baseColor, tipColor));
+    grassBlades.push(new GrassBlade(x, baseY, bladeLen, bladeW, colorBase, tipColor));
   }
 
   // 2. 初始化蒲公英
@@ -510,21 +498,23 @@ function initScene() {
     dandelions.push(new DandelionSeed(true));
   }
 
-  // 3. 暖光光斑
+  // 3. 散景微光球
   bokehs = [];
-  for (let i = 0; i < 20; i++) {
-    bokehs.push(new FloatingBokeh());
+  for (let i = 0; i < 24; i++) {
+    bokehs.push(new AmbientBokeh());
   }
 
-  // 4. 飘飞花瓣
+  // 4. 飘舞落樱小花瓣
   petals = [];
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 14; i++) {
     petals.push(new FloatingPetal());
   }
+
+  applyClockStyles();
 }
 
 // ----------------------------------------------------
-// 7. 主渲染管线循环 (Main Render Loop)
+// 7. 主渲染循环 (60 FPS Native Web Animation)
 // ----------------------------------------------------
 function render(now) {
   if (!isRunning) return;
@@ -536,12 +526,13 @@ function render(now) {
   // 微风强度参数
   const currentWindSpeed = config.windSpeed + (audioVolume * 6);
 
-  // 1. 绘制清爽渐变天际线
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.8);
-  skyGrad.addColorStop(0, '#b8e3f2');    // 清爽蔚蓝
-  skyGrad.addColorStop(0.35, '#d4edf2'); // 柔和天青
-  skyGrad.addColorStop(0.7, '#fef5e4');  // 晨光浅金
-  skyGrad.addColorStop(1, '#d8f0dc');    // 薄荷青草底色
+  // 1. 绘制清爽渐变天际线（层次鲜明，解决原版上部与中部严重过曝纯白问题）
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.85);
+  skyGrad.addColorStop(0, '#4a9cd6');    // 澄澈晨空蔚蓝（提供充足背景对比度）
+  skyGrad.addColorStop(0.32, '#70bfe3'); // 晴朗天青
+  skyGrad.addColorStop(0.62, '#a5dcf0'); // 柔和微风天色
+  skyGrad.addColorStop(0.85, '#d0f0e0'); // 晨光与地平线草浪交织的柔青
+  skyGrad.addColorStop(1, '#92d6a5');    // 原野青葱基底
   ctx.fillStyle = skyGrad;
   ctx.fillRect(0, 0, width, height);
 
@@ -629,6 +620,51 @@ function triggerWindBurst(x, y) {
   }, 400);
 }
 
+// 应用时钟位置与样式动态配置
+function applyClockStyles() {
+  const hud = document.getElementById('hud-overlay');
+  const card = document.getElementById('clock-card');
+  const timeEl = document.getElementById('clock-time');
+  const dateEl = document.getElementById('clock-date');
+  const subEl = document.getElementById('clock-sub');
+  if (!hud) return;
+
+  hud.style.display = config.showClock ? 'block' : 'none';
+  hud.style.left = `${config.clockPosX}%`;
+  hud.style.top = `${config.clockPosY}%`;
+
+  const scale = (config.clockScale || 100) / 100;
+  hud.style.transform = `translate(-50%, -50%) scale(${scale})`;
+
+  if (card) {
+    const bgOpacity = (config.clockBgOpacity !== undefined ? config.clockBgOpacity : 45) / 100;
+    if (bgOpacity <= 0.01) {
+      card.style.background = 'transparent';
+      card.style.backdropFilter = 'none';
+      card.style.webkitBackdropFilter = 'none';
+      card.style.border = 'none';
+      card.style.boxShadow = 'none';
+    } else {
+      card.style.background = `rgba(255, 255, 255, ${bgOpacity})`;
+      card.style.backdropFilter = 'blur(20px) saturate(160%)';
+      card.style.webkitBackdropFilter = 'blur(20px) saturate(160%)';
+      card.style.border = `1px solid rgba(255, 255, 255, ${Math.min(0.9, bgOpacity * 1.5)})`;
+      card.style.boxShadow = `0 16px 36px rgba(25, 60, 45, ${bgOpacity * 0.22}), inset 0 1px 1px rgba(255, 255, 255, 0.9)`;
+    }
+  }
+
+  const textColor = config.clockColor || '#1e3a2b';
+  if (timeEl) {
+    timeEl.style.color = textColor;
+  }
+  if (dateEl) {
+    dateEl.style.color = textColor;
+  }
+  if (subEl) {
+    subEl.style.display = config.showDate ? 'flex' : 'none';
+  }
+}
+
 // 监听 LinDesk 宿主 IPC 消息 (CEF / Hub Bridge)
 window.addEventListener('message', (event) => {
   const msg = event.data;
@@ -682,8 +718,25 @@ window.addEventListener('message', (event) => {
         config.sunbeamIntensity = Math.max(0, Math.min(10, val));
       } else if (prop === 'showClock' && typeof val === 'boolean') {
         config.showClock = val;
-        const hud = document.getElementById('hud-overlay');
-        if (hud) hud.style.display = val ? 'block' : 'none';
+        applyClockStyles();
+      } else if (prop === 'clockPosX' && typeof val === 'number') {
+        config.clockPosX = Math.max(0, Math.min(100, val));
+        applyClockStyles();
+      } else if (prop === 'clockPosY' && typeof val === 'number') {
+        config.clockPosY = Math.max(0, Math.min(100, val));
+        applyClockStyles();
+      } else if (prop === 'clockScale' && typeof val === 'number') {
+        config.clockScale = Math.max(50, Math.min(200, val));
+        applyClockStyles();
+      } else if (prop === 'clockBgOpacity' && typeof val === 'number') {
+        config.clockBgOpacity = Math.max(0, Math.min(100, val));
+        applyClockStyles();
+      } else if (prop === 'clockColor' && typeof val === 'string') {
+        config.clockColor = val;
+        applyClockStyles();
+      } else if (prop === 'showDate' && typeof val === 'boolean') {
+        config.showDate = val;
+        applyClockStyles();
       }
       break;
 

@@ -47,6 +47,7 @@ SettingUI::SettingUI(LinBox* targetBox, const QVector<LinBox*>& allBoxes, QWidge
     setWindowIcon(QIcon(":/Assets/icon.png"));
     setMinimumSize(820, 580);
     resize(960, 660);
+    setResizable(true);
 
     QSettings settings(settingsConfigPath(), QSettings::IniFormat);
     if (settings.contains("SettingUI/Size")) {

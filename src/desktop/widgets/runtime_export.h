@@ -247,4 +247,5 @@ private:
     QWidget* (*m_pfnCreateHubWebWidget)(const char*, QWidget*) = nullptr;
     void (*m_pfnDoMessageLoopWork)() = nullptr;
     QMap<void*, EnabledListener> m_enabledListeners;
+    bool m_unloaded = false;
 };

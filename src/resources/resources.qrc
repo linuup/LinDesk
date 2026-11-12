@@ -29,6 +29,5 @@
         <file>Assets/empty_Cat.svg</file>
         <file>Assets/brush.svg</file>
         <file>TimeEnd.wav</file>
-        <file>qml/QmlTestPage.qml</file>
     </qresource>
 </RCC>

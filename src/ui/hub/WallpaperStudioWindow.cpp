@@ -17,6 +17,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QUrl>
+#include <QTcpSocket>
 #include <QSettings>
 #include <QUuid>
 #include <QMimeData>
@@ -74,6 +75,9 @@ void WallpaperStudioWindow::showStudio(int defaultTab) {
     }
 
     auto* win = instance();
+    if (win) {
+        win->checkAndSwitchHubSourceIfNeeded(false);
+    }
     if (win->isMinimized()) {
         win->showNormal();
     }
@@ -279,6 +283,103 @@ void WallpaperStudioWindow::dropEvent(QDropEvent* event) {
     }
 }
 
+QString WallpaperStudioWindow::determineTargetHubUrl() {
+    QString devUrl = qEnvironmentVariable("LINDESK_HUB_DEV_URL");
+    if (devUrl.isEmpty()) {
+        QTcpSocket socket;
+        socket.connectToHost(QStringLiteral("127.0.0.1"), 5173);
+        if (socket.waitForConnected(250)) {
+            socket.disconnectFromHost();
+            devUrl = QStringLiteral("http://127.0.0.1:5173/?lindesk=1&cef=1&debug=1");
+            qInfo() << "[WallpaperStudio] Vite Dev Server detected at 127.0.0.1:5173! Hot Module Replacement enabled:" << devUrl;
+        } else {
+            QTcpSocket socketLocal;
+            socketLocal.connectToHost(QStringLiteral("localhost"), 5173);
+            if (socketLocal.waitForConnected(250)) {
+                socketLocal.disconnectFromHost();
+                devUrl = QStringLiteral("http://127.0.0.1:5173/?lindesk=1&cef=1&debug=1");
+                qInfo() << "[WallpaperStudio] Vite Dev Server detected at localhost:5173! Hot Module Replacement enabled:" << devUrl;
+            }
+        }
+    }
+
+    if (!devUrl.isEmpty()) {
+        return devUrl;
+    }
+
+    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/hub/index.html"));
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/hub/index.html");
+    }
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
+    }
+    if (!QFileInfo::exists(targetPath)) {
+        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
+    }
+    if (QFileInfo::exists(targetPath)) {
+        QUrl url = QUrl::fromLocalFile(targetPath);
+#if !defined(QT_NO_DEBUG) && !defined(NDEBUG)
+        url.setQuery(QStringLiteral("debug=1"));
+#endif
+        return url.toString();
+    }
+    return QString();
+}
+
+void WallpaperStudioWindow::checkAndSwitchHubSourceIfNeeded(bool forceReload) {
+    const QString targetUrl = determineTargetHubUrl();
+    if (targetUrl.isEmpty()) {
+        return;
+    }
+
+    const bool urlChanged = (m_loadedHubUrl != targetUrl);
+    if (urlChanged || forceReload || m_hubWebWidget == nullptr) {
+        qInfo() << "[WallpaperStudio] Hub URL switch/reload triggered. Target:" << targetUrl 
+                << ", Prev:" << m_loadedHubUrl << ", Changed:" << urlChanged << ", Forced:" << forceReload;
+        if (m_hubWebWidget) {
+            centralLayout()->removeWidget(m_hubWebWidget);
+            m_hubWebWidget->deleteLater();
+            m_hubWebWidget = nullptr;
+        }
+        setupHtmlHub();
+    }
+}
+
+void WallpaperStudioWindow::changeEvent(QEvent* event) {
+    if (event && event->type() == QEvent::ActivationChange && isActiveWindow()) {
+        checkAndSwitchHubSourceIfNeeded(false);
+    }
+    FluentBaseWidget::changeEvent(event);
+}
+
+bool WallpaperStudioWindow::eventFilter(QObject* watched, QEvent* event) {
+    if (watched == m_hubWebWidget && event && event->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_F5 || ((ke->modifiers() & Qt::ControlModifier) && ke->key() == Qt::Key_R)) {
+            qInfo() << "[WallpaperStudio] F5/Ctrl+R caught on Hub Web Widget, forcing probe and reload!";
+            checkAndSwitchHubSourceIfNeeded(true);
+            return true;
+        }
+    }
+    return FluentBaseWidget::eventFilter(watched, event);
+}
+
+void WallpaperStudioWindow::keyPressEvent(QKeyEvent* event) {
+    if (event) {
+        if (event->key() == Qt::Key_Escape) {
+            close();
+            return;
+        }
+        if (event->key() == Qt::Key_F5 || ((event->modifiers() & Qt::ControlModifier) && event->key() == Qt::Key_R)) {
+            qInfo() << "[WallpaperStudio] F5/Ctrl+R caught on Window, forcing probe and reload!";
+            checkAndSwitchHubSourceIfNeeded(true);
+            return;
+        }
+    }
+    FluentBaseWidget::keyPressEvent(event);
+}
+
 void WallpaperStudioWindow::scanWallpapers() {
     m_availableWallpapers.clear();
 
@@ -385,6 +486,33 @@ void WallpaperStudioWindow::paintEvent(QPaintEvent* event) {
     painter.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 12, 12);
 }
 
+bool WallpaperStudioWindow::setupHtmlHub() {
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    if (!bridge.isLoaded()) {
+        bridge.loadRuntime();
+    }
+
+    const QString targetUrl = determineTargetHubUrl();
+    if (!targetUrl.isEmpty()) {
+        m_hubWebWidget = bridge.createHubWebWidget(targetUrl, container());
+        if (m_hubWebWidget) {
+            setProperty("isWebTitleWindow", true);
+            m_hubWebWidget->installEventFilter(this);
+            if (m_btnContainer) {
+                m_btnContainer->hide();
+            }
+            centralLayout()->setContentsMargins(0, 0, 0, 0);
+            centralLayout()->setSpacing(0);
+            centralLayout()->addWidget(m_hubWebWidget, 1);
+            m_loadedHubUrl = targetUrl;
+            qInfo() << "[WallpaperStudio] Successfully loaded HTML Hub page from:" << targetUrl;
+            return true;
+        }
+    }
+    setProperty("isWebTitleWindow", false);
+    return false;
+}
+
 void WallpaperStudioWindow::initUI() {
     setWindowBtnMode(All);
 
@@ -471,41 +599,14 @@ void WallpaperStudioWindow::initUI() {
         container()->setStyleSheet(QStringLiteral(
             "QWidget#fluentBaseContainer, QWidget#hubCentralWidget {"
             "  background-color: #f8fafc;"
-            "  border: none;"
+            "  border: 1px solid #707070;"
             "}"
         ));
     }
 
     // 优先加载基于 shadcn/ui 打造的高质感 React 现代前端工程 (web/hub -> resources/hub/index.html)
-    QString targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/hub/index.html"));
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/hub/index.html");
-    }
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/LinDeskHub/index.html"));
-    }
-    if (!QFileInfo::exists(targetPath)) {
-        targetPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/LinDeskHub/index.html");
-    }
-
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (!bridge.isLoaded()) {
-        bridge.loadRuntime();
-    }
-
-    if (QFileInfo::exists(targetPath)) {
-        const QString targetUrl = QUrl::fromLocalFile(targetPath).toString();
-        m_hubWebWidget = bridge.createHubWebWidget(targetUrl, container());
-        if (m_hubWebWidget) {
-            if (m_btnContainer) {
-                m_btnContainer->hide();
-            }
-            centralLayout()->setContentsMargins(0, 0, 0, 0);
-            centralLayout()->setSpacing(0);
-            centralLayout()->addWidget(m_hubWebWidget, 1);
-            qInfo() << "[WallpaperStudio] Successfully loaded HTML Hub page from:" << targetPath;
-            return;
-        }
+    if (setupHtmlHub()) {
+        return;
     }
 
     // 若 CEF 未就绪，降级到 Qt 原生后备界面

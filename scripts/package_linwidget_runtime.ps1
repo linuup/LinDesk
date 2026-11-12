@@ -14,6 +14,7 @@
 
 param(
     [string]$Version = "1.0.0",
+    [string]$Arch = "x64",
     [string]$OutputDir = "$PSScriptRoot/../dist",
     [string]$BuildDir = "$PSScriptRoot/../build/Release"
 )
@@ -21,7 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host " Packaging LinDesk Widget Runtime v$Version" -ForegroundColor Cyan
+Write-Host " Packaging LinDesk Widget Runtime v$Version ($Arch)" -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 
 $runtimeSourceDir = Join-Path $BuildDir "runtime/linwidget"
@@ -51,9 +52,9 @@ try {
         runtimeVersion = $Version
         protocolVersion = "1.0.0"
         qtVersion = "5.15.2"
-        abi = "msvc2019_x64"
+        abi = "msvc2019_$Arch"
         builtAt = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ssZ")
-        releaseNotes = "LinDesk LinWidget Runtime release v$Version"
+        releaseNotes = "LinDesk LinWidget Runtime release v$Version ($Arch)"
     }
 
     $manifestPath = Join-Path $stagingDir "manifest.json"
@@ -64,7 +65,7 @@ try {
         New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     }
 
-    $zipFileName = "linwidget-runtime-v$Version.zip"
+    $zipFileName = "linwidget-runtime-v$Version-$Arch.zip"
     $zipFilePath = Join-Path $OutputDir $zipFileName
     if (Test-Path $zipFilePath) {
         Remove-Item -Path $zipFilePath -Force

@@ -5,101 +5,161 @@
     <name>AboutSettingsPage</name>
     <message>
         <source>LinDesk</source>
-        <translation type="unfinished">LinDesk</translation>
+        <translation>LinDesk</translation>
     </message>
     <message>
         <source>Version %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Version %1</translation>
     </message>
     <message>
         <source>Online Update</source>
-        <translation type="unfinished">Online Update</translation>
+        <translation>Online Update</translation>
     </message>
     <message>
         <source>Current version: %1</source>
-        <translation type="unfinished">Current version: %1</translation>
+        <translation>Current version: %1</translation>
     </message>
     <message>
         <source>Check for Updates</source>
-        <translation type="unfinished">Check for Updates</translation>
+        <translation>Check for Updates</translation>
     </message>
     <message>
         <source>Already up to date. Current version: %1</source>
-        <translation type="unfinished">Already up to date. Current version: %1</translation>
+        <translation type="vanished">Already up to date. Current version: %1</translation>
     </message>
     <message>
         <source>New version found: %1</source>
-        <translation type="unfinished">New version found: %1</translation>
+        <translation type="vanished">New version found: %1</translation>
     </message>
     <message>
         <source>New Version Available</source>
-        <translation type="unfinished">New Version Available</translation>
+        <translation>New Version Available</translation>
     </message>
     <message>
         <source>Version: %1
 
 %2</source>
-        <translation type="unfinished">
+        <translation>
 %2</translation>
     </message>
     <message>
         <source>Update Now</source>
-        <translation type="unfinished">Update Now</translation>
+        <translation>Update Now</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>Update cancelled.</source>
-        <translation type="unfinished">Update cancelled.</translation>
+        <translation type="vanished">Update cancelled.</translation>
     </message>
     <message>
         <source>Update check failed: %1</source>
-        <translation type="unfinished">Update check failed: %1</translation>
+        <translation>Update check failed: %1</translation>
     </message>
     <message>
         <source>Checking for updates...</source>
-        <translation type="unfinished">Checking for updates...</translation>
+        <translation type="vanished">Checking for updates...</translation>
     </message>
     <message>
         <source>Download complete. Starting installer...</source>
-        <translation type="unfinished">Download complete. Starting installer...</translation>
+        <translation>Download complete. Starting installer...</translation>
     </message>
     <message>
         <source>Download failed: %1</source>
-        <translation type="unfinished">Download failed: %1</translation>
-    </message>
-    <message>
-        <source>Using cached installer: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Download failed: %1</translation>
     </message>
     <message>
         <source>Downloading update to: %1</source>
-        <translation type="unfinished"></translation>
+        <translation type="vanished">Downloading update to: %1</translation>
     </message>
     <message>
         <source>Installer file is missing. Please download again.</source>
-        <translation type="unfinished">Installer file is missing. Please download again.</translation>
+        <translation>Installer file is missing. Please download again.</translation>
     </message>
     <message>
         <source>LinDeskUpdate.exe was not found in the application directory.</source>
-        <translation type="unfinished">LinDeskUpdate.exe was not found in the application directory.</translation>
+        <translation>LinDeskUpdate.exe was not found in the application directory.</translation>
     </message>
     <message>
         <source>Failed to start updater.</source>
-        <translation type="unfinished">Failed to start updater.</translation>
+        <translation>Failed to start updater.</translation>
     </message>
     <message>
         <source>About</source>
-        <translation type="unfinished">About</translation>
+        <translation>About</translation>
     </message>
     <message>
         <source>View application version information and check for online updates.</source>
-        <translation type="unfinished"></translation>
+        <translation>View application version information and check for online updates.</translation>
     </message>
     <message>
         <source>Update Status</source>
+        <translation>Update Status</translation>
+    </message>
+    <message>
+        <source>LinDesk is up to date (Version %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New version available: LinDesk %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What&apos;s new in v%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No release notes provided.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking for online updates...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloaded %1 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading: %1 MB / %2 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verified installer package. Launching...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Retry Download</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verified cached installer package.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer ready: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading LinDesk %1 update package...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connecting to update server...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Again</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -107,118 +167,118 @@
     <name>BoxSettingsPage</name>
     <message>
         <source>Box</source>
-        <translation type="unfinished">Box</translation>
+        <translation>Box</translation>
     </message>
     <message>
         <source>Appearance &amp; Theme</source>
-        <translation type="unfinished"></translation>
+        <translation>Appearance &amp; Theme</translation>
     </message>
     <message>
         <source>Preview and customize the theme color, opacity, and acrylic glass effect of your desktop boxes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Preview and customize the theme color, opacity, and acrylic glass effect of your desktop boxes.</translation>
     </message>
     <message>
         <source>Theme Color</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Accent Color</source>
-        <translation type="unfinished">Accent Color</translation>
+        <translation>Accent Color</translation>
     </message>
     <message>
         <source>Background Opacity</source>
-        <translation type="unfinished">Background Opacity</translation>
+        <translation>Background Opacity</translation>
     </message>
     <message>
         <source>Adjust the transparency of the box background.</source>
-        <translation type="unfinished">Adjust the transparency of the box background.</translation>
+        <translation>Adjust the transparency of the box background.</translation>
     </message>
     <message>
         <source>Acrylic Glass Effect</source>
-        <translation type="unfinished">Acrylic Glass Effect</translation>
+        <translation>Acrylic Glass Effect</translation>
     </message>
     <message>
         <source>Enable real-time DWM background blur for a translucent look.</source>
-        <translation type="unfinished">Enable real-time DWM background blur for a translucent look.</translation>
+        <translation>Enable real-time DWM background blur for a translucent look.</translation>
     </message>
     <message>
         <source>Layered Glass Depth</source>
-        <translation type="unfinished"></translation>
+        <translation>Layered Glass Depth</translation>
     </message>
     <message>
         <source>Render high-specular titlebar and deep frosted body with 3D glass depth.</source>
-        <translation type="unfinished"></translation>
+        <translation>Render high-specular titlebar and deep frosted body with 3D glass depth.</translation>
     </message>
     <message>
         <source>Box Behavior</source>
-        <translation type="unfinished"></translation>
+        <translation>Box Behavior</translation>
     </message>
     <message>
         <source>Configure how boxes interact with mouse hover and collapsing.</source>
-        <translation type="unfinished"></translation>
+        <translation>Configure how boxes interact with mouse hover and collapsing.</translation>
     </message>
     <message>
         <source>Auto-Peek on Hover</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Automatically expand collapsed boxes when hovered, and roll up when the mouse leaves.</source>
-        <translation type="unfinished"></translation>
+        <translation>Automatically expand collapsed boxes when hovered, and roll up when the mouse leaves.</translation>
     </message>
     <message>
         <source>Instant Auto-Peek</source>
-        <translation type="unfinished"></translation>
+        <translation>Instant Auto-Peek</translation>
     </message>
     <message>
         <source>Expand immediately on hover without a 150ms debounce delay.</source>
-        <translation type="unfinished"></translation>
+        <translation>Expand immediately on hover without a 150ms debounce delay.</translation>
     </message>
     <message>
         <source>Active Drop Pulse &amp; Glow</source>
-        <translation type="unfinished"></translation>
+        <translation>Active Drop Pulse &amp; Glow</translation>
     </message>
     <message>
         <source>Display an ambient glowing border and magnetic pulse when dragging files over the box.</source>
-        <translation type="unfinished"></translation>
+        <translation>Display an ambient glowing border and magnetic pulse when dragging files over the box.</translation>
     </message>
     <message>
         <source>LinBox</source>
-        <translation type="unfinished"></translation>
+        <translation>LinBox</translation>
     </message>
     <message>
         <source>Report.docx</source>
-        <translation type="unfinished"></translation>
+        <translation>Report.docx</translation>
     </message>
     <message>
         <source>Project</source>
-        <translation type="unfinished"></translation>
+        <translation>Project</translation>
     </message>
     <message>
         <source>Photo.png</source>
-        <translation type="unfinished"></translation>
+        <translation>Photo.png</translation>
     </message>
     <message>
         <source>Assets.zip</source>
-        <translation type="unfinished"></translation>
+        <translation>Assets.zip</translation>
     </message>
     <message>
         <source>Customize the theme color, acrylic glass appearance, and hover interaction of desktop boxes.</source>
-        <translation type="unfinished"></translation>
+        <translation>Customize the theme color, acrylic glass appearance, and hover interaction of desktop boxes.</translation>
     </message>
 </context>
 <context>
     <name>CefManager</name>
     <message>
         <source>CEF SDK is not integrated in this build.</source>
-        <translation type="unfinished"></translation>
+        <translation>CEF SDK is not integrated in this build.</translation>
     </message>
     <message>
         <source>CefInitialize failed.</source>
-        <translation type="unfinished"></translation>
+        <translation>CefInitialize failed.</translation>
     </message>
     <message>
         <source>Fade Transition on Hide</source>
-        <translation type="vanished">Transition on Hide</translation>
+        <translation type="vanished">Fade Transition on Hide</translation>
     </message>
     <message>
         <source>Play a smooth opacity fade-in/out transition when hiding or showing desktop elements.</source>
@@ -254,182 +314,182 @@
     </message>
     <message>
         <source>CEF runtime required assets missing (icudtl=%1, v8=%2, subprocess=%3, resources=%4, locales=%5).</source>
-        <translation type="unfinished"></translation>
+        <translation>CEF runtime required assets missing (icudtl=%1, v8=%2, subprocess=%3, resources=%4, locales=%5).</translation>
     </message>
     <message>
         <source>CefInitialize crashed with an unhandled exception.</source>
-        <translation type="unfinished"></translation>
+        <translation>CefInitialize crashed with an unhandled exception.</translation>
     </message>
 </context>
 <context>
     <name>ContextMenuSettingsPage</name>
     <message>
         <source>Context Menu</source>
-        <translation type="unfinished">Right Menu</translation>
+        <translation>Right Menu</translation>
     </message>
     <message>
         <source>Enable Context Menu Filtering</source>
-        <translation type="unfinished">Enable Context Menu Filtering</translation>
+        <translation>Enable Context Menu Filtering</translation>
     </message>
     <message>
         <source>Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering.</source>
-        <translation type="unfinished">Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering.</translation>
+        <translation>Filter context menu items using the exclusion rules below. Turn off to bypass menu filtering.</translation>
     </message>
     <message>
         <source>Shell Menu Exclusions</source>
-        <translation type="unfinished">Right Menu Exclusions</translation>
+        <translation>Shell Menu Exclusions</translation>
     </message>
     <message>
         <source>Choose a menu type. LinDesk scans the real menu immediately, then you can hide items from future context menus.</source>
-        <translation type="unfinished">Choose a menu type,then you can hide items from future context menus.</translation>
+        <translation>Choose a menu type, then you can hide items from future context menus.</translation>
     </message>
     <message>
         <source>Add</source>
-        <translation type="unfinished">Add</translation>
+        <translation>Add</translation>
     </message>
     <message>
         <source>Remove</source>
-        <translation type="unfinished">Remove</translation>
+        <translation>Remove</translation>
     </message>
     <message>
         <source>Copy From</source>
-        <translation type="unfinished"></translation>
+        <translation>Copy From</translation>
     </message>
     <message>
         <source>Apply To</source>
-        <translation type="unfinished"></translation>
+        <translation>Apply To</translation>
     </message>
     <message>
         <source>Default Types</source>
-        <translation type="unfinished">Default Types</translation>
+        <translation>Default Types</translation>
     </message>
     <message>
         <source>Custom Extensions</source>
-        <translation type="unfinished">Custom Extensions</translation>
+        <translation>Custom Extensions</translation>
     </message>
     <message>
         <source>Desktop</source>
-        <translation type="unfinished">Desktop</translation>
+        <translation>Desktop</translation>
     </message>
     <message>
         <source>Menu Items</source>
-        <translation type="unfinished">Menu Items</translation>
+        <translation>Menu Items</translation>
     </message>
     <message>
         <source>No menu items were found.</source>
-        <translation type="unfinished">No menu items were found.</translation>
+        <translation>No menu items were found.</translation>
     </message>
     <message>
         <source>Box Background</source>
-        <translation type="unfinished">Box Background</translation>
+        <translation>Box Background</translation>
     </message>
     <message>
         <source>Folder</source>
-        <translation type="unfinished">Folder</translation>
+        <translation>Folder</translation>
     </message>
     <message>
         <source>Shortcut</source>
-        <translation type="unfinished">Shortcut</translation>
+        <translation>Shortcut</translation>
     </message>
     <message>
         <source>No Extension File</source>
-        <translation type="unfinished">No Extension File</translation>
+        <translation>No Extension File</translation>
     </message>
     <message>
         <source>No menu items were found for %1.</source>
-        <translation type="unfinished">No menu items were found for %1.</translation>
+        <translation>No menu items were found for %1.</translation>
     </message>
     <message>
         <source>%1 visible, %2 hidden for %3.</source>
-        <translation type="unfinished">%1 visible, %2 hidden for %3.</translation>
+        <translation>%1 visible, %2 hidden for %3.</translation>
     </message>
     <message>
         <source>Copy Rules</source>
-        <translation type="unfinished"></translation>
+        <translation>Copy Rules</translation>
     </message>
     <message>
         <source>Choose a source type to copy hidden menu rules from.</source>
-        <translation type="unfinished"></translation>
+        <translation>Choose a source type to copy hidden menu rules from.</translation>
     </message>
     <message>
         <source>Copy</source>
-        <translation type="unfinished"></translation>
+        <translation>Copy</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished">Cancel</translation>
+        <translation>Cancel</translation>
     </message>
     <message>
         <source>No hidden rules to copy.</source>
-        <translation type="unfinished"></translation>
+        <translation>No hidden rules to copy.</translation>
     </message>
     <message>
         <source>Copied %1 rules from %2.</source>
-        <translation type="unfinished"></translation>
+        <translation>Copied %1 rules from %2.</translation>
     </message>
     <message>
         <source>Apply Rules</source>
-        <translation type="unfinished"></translation>
+        <translation>Apply Rules</translation>
     </message>
     <message>
         <source>Choose target types to receive the current hidden menu rules.</source>
-        <translation type="unfinished"></translation>
+        <translation>Choose target types to receive the current hidden menu rules.</translation>
     </message>
     <message>
         <source>Apply</source>
-        <translation type="unfinished"></translation>
+        <translation>Apply</translation>
     </message>
     <message>
         <source>No target type selected.</source>
-        <translation type="unfinished"></translation>
+        <translation>No target type selected.</translation>
     </message>
     <message>
         <source>Applied %1 rules to %2 types.</source>
-        <translation type="unfinished"></translation>
+        <translation>Applied %1 rules to %2 types.</translation>
     </message>
     <message>
         <source>File Extension</source>
-        <translation type="unfinished">File Extension</translation>
+        <translation>File Extension</translation>
     </message>
     <message>
         <source>Enter a file extension, for example .txt.</source>
-        <translation type="unfinished">Enter a file extension, for example .txt.</translation>
+        <translation>Enter a file extension, for example .txt.</translation>
     </message>
     <message>
         <source>Extension</source>
-        <translation type="unfinished"></translation>
+        <translation>Extension</translation>
     </message>
     <message>
         <source>Reuse Rules From</source>
-        <translation type="unfinished"></translation>
+        <translation>Reuse Rules From</translation>
     </message>
     <message>
         <source>Do Not Reuse</source>
-        <translation type="unfinished"></translation>
+        <translation>Do Not Reuse</translation>
     </message>
     <message>
         <source>Enter a file extension.</source>
-        <translation type="unfinished"></translation>
+        <translation>Enter a file extension.</translation>
     </message>
     <message>
         <source>Extension type already exists: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Extension type already exists: %1</translation>
     </message>
     <message>
         <source>Added extension type: %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Added extension type: %1</translation>
     </message>
     <message>
         <source>Removed extension type: %1</source>
-        <translation type="unfinished">Removed extension type: %1</translation>
+        <translation>Removed extension type: %1</translation>
     </message>
     <message>
         <source>Removed extension type.</source>
-        <translation type="unfinished">Removed extension type.</translation>
+        <translation>Removed extension type.</translation>
     </message>
     <message>
         <source>Filter right-click context menu items and manage shell menu exclusion rules across file types.</source>
-        <translation type="unfinished"></translation>
+        <translation>Filter right-click context menu items and manage shell menu exclusion rules across file types.</translation>
     </message>
 </context>
 <context>
@@ -440,159 +500,167 @@
     </message>
     <message>
         <source>Selection Rectangle Style</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Preview and customize the color, contrast, and opacity of the desktop drag-selection marquee.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Presets</source>
-        <translation type="unfinished">Presets</translation>
+        <translation>Presets</translation>
     </message>
     <message>
         <source>Selection Rectangle Color</source>
-        <translation type="unfinished">Selection Rectangle Color</translation>
+        <translation>Selection Rectangle Color</translation>
     </message>
     <message>
         <source>Modern Glass Marquee</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Refined translucent optical glass fill with subtle continuous curvature and hairline border.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Selection Count Badge</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Display an Apple-style floating count capsule when selecting multiple desktop items.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Advanced Visual Options</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Fine-tune opacity, contrast, border width, and corner radii.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Fill Opacity</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Border Opacity / Contrast</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Border Width</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Marquee Corner Radius</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Badge Corner Radius</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Desktop Behavior</source>
-        <translation type="unfinished">Desktop Behavior</translation>
+        <translation>Desktop Behavior</translation>
     </message>
     <message>
         <source>Shortcut Arrows</source>
-        <translation type="unfinished">Shortcut Arrows</translation>
+        <translation>Shortcut Arrows</translation>
     </message>
     <message>
         <source>Toggle visibility of the small arrow on desktop shortcut icons.</source>
-        <translation type="unfinished">Toggle visibility of the small arrow on desktop shortcut icons.</translation>
+        <translation>Toggle visibility of the small arrow on desktop shortcut icons.</translation>
     </message>
     <message>
         <source>Double Click to Hide</source>
-        <translation type="unfinished">Double Click to Hide</translation>
+        <translation>Double Click to Hide</translation>
     </message>
     <message>
         <source>Quickly show or hide all desktop icons by double-clicking on empty spaces.</source>
-        <translation type="unfinished">Quickly show or hide all desktop icons by double-clicking on empty spaces.</translation>
+        <translation>Quickly show or hide all desktop icons by double-clicking on empty spaces.</translation>
     </message>
     <message>
         <source>Fade Transition on Hide</source>
-        <translation type="unfinished">Transition on Hide</translation>
+        <translation>Transition on Hide</translation>
     </message>
     <message>
         <source>Play a smooth opacity fade-in/out transition when hiding or showing desktop elements.</source>
-        <translation type="unfinished">Play a smooth transition when hiding or showing desktop elements.</translation>
+        <translation>Play a smooth transition when hiding or showing desktop elements.</translation>
     </message>
     <message>
         <source>Windows11 Menu</source>
-        <translation type="unfinished">Windows 11 Menu</translation>
+        <translation>Windows 11 Menu</translation>
     </message>
     <message>
         <source>This option is available only on Windows 11 in Release builds.</source>
-        <translation type="unfinished">This option is only available on Windows 11</translation>
+        <translation>This option is only available on Windows 11</translation>
     </message>
     <message>
         <source>Windows 11 Style Context Menu</source>
-        <translation type="unfinished">Windows 11 Style Context Menu</translation>
+        <translation>Windows 11 Style Context Menu</translation>
     </message>
     <message>
         <source>Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in ListView.</source>
-        <translation type="unfinished">Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in BackGround.</translation>
+        <translation>Use the LinDesk Windows 11 style desktop context menu when right-clicking empty space in BackGround.</translation>
     </message>
     <message>
         <source>Show New Box Menu</source>
-        <translation type="unfinished">Show New Box Menu</translation>
+        <translation>Show New Box Menu</translation>
     </message>
     <message>
         <source>Show the New Box entry in the desktop context menu.</source>
-        <translation type="unfinished">Show the New Box entry in the desktop context menu.</translation>
+        <translation>Show the New Box entry in the desktop context menu.</translation>
     </message>
     <message>
         <source>Show LinDesk Menu</source>
-        <translation type="unfinished">Show LinDesk Menu</translation>
+        <translation>Show LinDesk Menu</translation>
     </message>
     <message>
         <source>Show the LinDesk submenu and its actions in the desktop context menu.</source>
-        <translation type="unfinished">Show the LinDesk submenu and its actions in the desktop context menu.</translation>
+        <translation>Show the LinDesk submenu and its actions in the desktop context menu.</translation>
     </message>
     <message>
         <source>Show Third Party Shell Menus</source>
-        <translation type="unfinished">Show Third Party Shell Menus</translation>
+        <translation>Show Third Party Shell Menus</translation>
     </message>
     <message>
         <source>Show registered third party Shell menu items in the Windows 11 style context menu.</source>
-        <translation type="unfinished">Show registered third party Shell menu items in the Windows 11 style context menu.</translation>
+        <translation>Show registered third party Shell menu items in the Windows 11 style context menu.</translation>
     </message>
     <message>
         <source>Desktop</source>
-        <translation type="unfinished">Desktop</translation>
+        <translation>Desktop</translation>
     </message>
     <message>
         <source>Customize desktop selection style, icon behavior, live wallpaper studio, and Windows 11 context menu.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Live Wallpaper &amp; Studio (LinDesk Hub)</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Wallpaper Studio &amp; Hub Center</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Open the standalone visual wallpaper gallery, real-time configurator studio, desktop widgets manager, and dev inspector.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Open Studio</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
 </context>
 <context>
     <name>FluentDialog</name>
+    <message>
+        <source>OK</source>
+        <translation type="vanished">OK</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="vanished">Cancel</translation>
+    </message>
     <message>
         <source>确定</source>
         <translation type="unfinished"></translation>
@@ -610,31 +678,35 @@
     <name>FluentNavigationPanel</name>
     <message>
         <source>General</source>
-        <translation type="unfinished">General</translation>
+        <translation>General</translation>
     </message>
     <message>
         <source>Desktop</source>
-        <translation type="unfinished">Desktop</translation>
+        <translation>Desktop</translation>
     </message>
     <message>
         <source>Context Menu</source>
-        <translation type="unfinished">Right Menu</translation>
+        <translation>Right Menu</translation>
     </message>
     <message>
         <source>Box</source>
-        <translation type="unfinished">Box</translation>
+        <translation>Box</translation>
     </message>
     <message>
         <source>Plugins</source>
-        <translation type="unfinished">Plugins</translation>
+        <translation>Plugins</translation>
     </message>
     <message>
         <source>About</source>
-        <translation type="unfinished">About</translation>
+        <translation>About</translation>
     </message>
     <message>
         <source>LinDesk</source>
-        <translation type="unfinished">LinDesk</translation>
+        <translation>LinDesk</translation>
+    </message>
+    <message>
+        <source>Wallpapers &amp; Widgets</source>
+        <translation type="vanished">Wallpapers &amp; Widgets</translation>
     </message>
     <message>
         <source>壁纸与小组件</source>
@@ -649,11 +721,11 @@
     </message>
     <message>
         <source>Manage LinDesk preferences, desktop behavior, and plugins from one place.</source>
-        <translation type="unfinished">Manage LinDesk preferences, desktop behavior, and plugins from one place.</translation>
+        <translation>Manage LinDesk preferences, desktop behavior, and plugins from one place.</translation>
     </message>
     <message>
         <source>General</source>
-        <translation type="unfinished">General</translation>
+        <translation>General</translation>
     </message>
     <message>
         <source>Configure core application behavior and preferences.</source>
@@ -661,19 +733,19 @@
     </message>
     <message>
         <source>Desktop</source>
-        <translation type="unfinished">Desktop</translation>
+        <translation>Desktop</translation>
     </message>
     <message>
         <source>Customize desktop experience and settings.</source>
-        <translation type="unfinished">Customize desktop experience and settings.</translation>
+        <translation>Customize desktop experience and settings.</translation>
     </message>
     <message>
         <source>Box</source>
-        <translation type="unfinished">Box</translation>
+        <translation>Box</translation>
     </message>
     <message>
         <source>Adjust Box interface and interaction.</source>
-        <translation type="unfinished">Adjust Box interface and interaction.</translation>
+        <translation>Adjust Box interface and interaction.</translation>
     </message>
     <message>
         <source>Plugins</source>
@@ -685,99 +757,99 @@
     </message>
     <message>
         <source>System Status</source>
-        <translation type="unfinished">System Status</translation>
+        <translation>System Status</translation>
     </message>
     <message>
         <source>Launch at Login</source>
-        <translation type="unfinished">Launch at Login</translation>
+        <translation>Launch at Login</translation>
     </message>
     <message>
         <source>LinDesk could not update the startup shortcut.</source>
-        <translation type="unfinished">LinDesk could not update the startup shortcut.</translation>
+        <translation>LinDesk could not update the startup shortcut.</translation>
     </message>
     <message>
         <source>Automatically start LinDesk when you sign in to Windows.</source>
-        <translation type="unfinished">Automatically start LinDesk when you sign in to Windows.</translation>
+        <translation>Automatically start LinDesk when you sign in to Windows.</translation>
     </message>
     <message>
         <source>Minimize to Tray</source>
-        <translation type="unfinished">Minimize to Tray</translation>
+        <translation>Minimize to Tray</translation>
     </message>
     <message>
         <source>Keep LinDesk running in the system tray when the window closes.</source>
-        <translation type="unfinished">Keep LinDesk running in the system tray when the window closes.</translation>
+        <translation>Keep LinDesk running in the system tray when the window closes.</translation>
     </message>
     <message>
         <source>Restart Required</source>
-        <translation type="unfinished">Restart Required</translation>
+        <translation>Restart Required</translation>
     </message>
     <message>
         <source>Restart LinDesk to apply the OpenGL rendering change.</source>
-        <translation type="unfinished">Restart LinDesk to apply the OpenGL rendering change.</translation>
+        <translation>Restart LinDesk to apply the OpenGL rendering change.</translation>
     </message>
     <message>
         <source>OpenGL Rendering</source>
-        <translation type="unfinished">OpenGL Rendering</translation>
+        <translation>OpenGL Rendering</translation>
     </message>
     <message>
         <source>Use OpenGL to accelerate rendering.</source>
-        <translation type="unfinished">Use OpenGL to accelerate rendering.</translation>
+        <translation>Use OpenGL to accelerate rendering.</translation>
     </message>
     <message>
         <source>Display Language</source>
-        <translation type="unfinished">Display Language</translation>
+        <translation>Display Language</translation>
     </message>
     <message>
         <source>Choose which language is used in the interface. Restart LinDesk to apply changes.</source>
-        <translation type="unfinished">Choose which language is used in the interface. Restart LinDesk to apply changes.</translation>
+        <translation>Choose which language is used in the interface. Restart LinDesk to apply changes.</translation>
     </message>
     <message>
         <source>English (United States)</source>
-        <translation type="unfinished">English (United States)</translation>
+        <translation>English (United States)</translation>
     </message>
     <message>
         <source>Chinese (Simplified)</source>
-        <translation type="unfinished">Chinese (Simplified)</translation>
+        <translation>Chinese (Simplified)</translation>
     </message>
     <message>
         <source>LinDesk could not save the language setting.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Restart LinDesk to apply the display language change.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Restart Now</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>LinDesk could not restart automatically. Please restart it manually.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Later</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Tip: You can find more settings in each section. Explore the categories above to personalize your LinDesk experience.</source>
-        <translation type="unfinished">Tip: You can find more settings in each section. Explore the categories above to personalize your LinDesk experience.</translation>
+        <translation>Tip: You can find more settings in each section. Explore the categories above to personalize your LinDesk experience.</translation>
     </message>
     <message>
         <source>Context Menu</source>
-        <translation type="unfinished">Right Menu</translation>
+        <translation>Right Menu</translation>
     </message>
     <message>
         <source>Manage right-click menu items and filtering rules.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>壁纸与小组件</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Configure live wallpapers, desktop widgets, and runtime.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
 </context>
 <context>
@@ -939,19 +1011,19 @@
     </message>
     <message>
         <source>Restore Desktop</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Open Settings</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Desktop Settings</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>LinDesk is running in the background. Right-click here to restore or exit.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
 </context>
 <context>
@@ -984,6 +1056,14 @@
 <context>
     <name>LinHub::WallpaperStudioWindow</name>
     <message>
+        <source>LinDesk Hub</source>
+        <translation></translation>
+    </message>
+    <message>
+        <source>LinDesk Living Wallpaper</source>
+        <translation></translation>
+    </message>
+    <message>
         <source>LinDesk Hub · 动态壁纸工坊与桌面组件</source>
         <translation type="unfinished"></translation>
     </message>
@@ -997,10 +1077,6 @@
     </message>
     <message>
         <source>动态引擎 · 极客预设</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinDesk Hub</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1045,10 +1121,6 @@
     </message>
     <message>
         <source>📁 选择本地文件</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>LinDesk Living Wallpaper</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1625,19 +1697,11 @@
     <name>LinWidgetsSettingsPage</name>
     <message>
         <source>Refresh</source>
-        <translation type="obsolete">Refresh</translation>
+        <translation type="vanished">Refresh</translation>
     </message>
     <message>
         <source>Add</source>
-        <translation type="obsolete">Add</translation>
-    </message>
-    <message>
-        <source>卸载</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>取消</source>
-        <translation type="unfinished"></translation>
+        <translation type="vanished">Add</translation>
     </message>
     <message>
         <source>正在配置动态渲染支持组件...</source>
@@ -1750,11 +1814,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>管理本地支持包，可导入安装包更新或卸载以释放磁盘空间</source>
+        <source>离线包更新...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>离线包更新...</source>
+        <source>卸载</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1767,10 +1831,6 @@
     </message>
     <message>
         <source>当前共占用 %1 MB · 清理临时缓存不会丢失您的壁纸和小组件设置</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>当前版本 v%1 · 支持导入离线包更新或卸载释放约 85 MB 磁盘空间</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1794,6 +1854,10 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>取消</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>选择组件运行库离线安装包</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1802,29 +1866,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>安装成功</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>已成功从本地压缩包解压并安装组件运行库！</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>安装失败</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>解压离线包失败：%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>卸载组件运行库</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>卸载组件运行库将释放约 85 MB 磁盘空间，正在运行的动态壁纸与小组件将立即停止。
-
-您的小组件个性化数据与配置将被安全保留，随时可重新安装激活。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1833,10 +1875,6 @@
     </message>
     <message>
         <source>卸载完成</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>组件运行库已成功卸载，已切换至未安装状态。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1853,6 +1891,32 @@
     </message>
     <message>
         <source>运行缓存已清理完毕！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>管理本地支持包，可导入安装包更新或卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前版本 v%1 · 支持导入离线包更新或卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载组件运行库后，正在运行的动态壁纸与小组件将立即停止。
+
+默认安全保留您的自定义壁纸、便签备忘与组件配置，重新下载后可无缝自动恢复。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>同时清理个人壁纸、便签等组件数据（不可恢复）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件运行库及个人壁纸与组件资料已彻底清理。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件运行库已成功卸载。您的个人壁纸与组件资料已妥善保留，重装后即可自动恢复。</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -1991,51 +2055,51 @@
     <name>PluginsSettingsPage</name>
     <message>
         <source>Plugins</source>
-        <translation type="unfinished">Plugins</translation>
+        <translation>Plugins</translation>
     </message>
     <message>
         <source>Extend LinDesk with powerful plugins and integrations.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Installed Plugins</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>No Installed Plugins</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Install plugin packages to extend LinDesk capabilities.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Installed</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Enabled</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Disabled</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Settings</source>
-        <translation type="unfinished">Settings</translation>
+        <translation>Settings</translation>
     </message>
     <message>
         <source>Available Plugins</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>More Plugins Coming Soon</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>We&apos;re working on more powerful plugins and integrations to enhance your LinDesk experience.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
 </context>
 <context>
@@ -2054,22 +2118,11 @@
     </message>
     <message>
         <source>%1 visible, %2 hidden for %3.</source>
-        <translation type="unfinished">%1 visible, %2 hidden for %3.</translation>
+        <translation>%1 visible, %2 hidden for %3.</translation>
     </message>
     <message>
         <source>Cancel</source>
         <translation type="obsolete">Cancel</translation>
-    </message>
-</context>
-<context>
-    <name>QmlTestWindow</name>
-    <message>
-        <source>QML Test</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Qt Quick Test Page</source>
-        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -2168,53 +2221,93 @@
     </message>
     <message>
         <source>Live Wallpaper &amp; Studio...</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
 </context>
 <context>
     <name>RuntimeInstaller</name>
     <message>
-        <source>Extraction timed out.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Unsupported platform</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Zip file does not exist: %1</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Extraction failed.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Failed to move extracted runtime to destination: %1</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>LinWidget runtime successfully installed.</source>
+        <translation></translation>
+    </message>
+    <message>
+        <source>解压支持包超时或失败</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>正在解压 CEF 运行支持包...</source>
+        <source>正在解压组件支持包...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>无效的 CEF 运行支持包：未找到核心文件 libcef.dll。</source>
+        <source>无效的支持包：缺少核心运行文件 (libcef.dll 或 icudtl.dat)。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>正在校验 CEF 核心文件并激活运行支持...</source>
+        <source>准备下载组件支持包...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>组件校验完成</source>
+        <source>正在获取最新组件支持包信息...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>未检测到本地 CEF 核心库 (libcef.dll)，请通过“离线包安装 (*.zip)”导入 CEF 运行包。</source>
+        <source>无法创建临时下载文件：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在下载组件支持包：%1 MB / %2 MB (%3%)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在下载组件支持包：%1 MB...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已取消下载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载组件运行库失败：%1 (HTTP %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载的组件包体积异常（%1 KB），请检查网络连接后重试。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在校验文件完整性...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>文件完整性校验未通过，请重新下载。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载完成，正在解压与配置组件运行环境...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>解压配置组件运行库失败：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载任务已取消。</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2720,22 +2813,22 @@
     </message>
     <message>
         <source>Draft release cannot be used for update.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Release asset for current architecture is missing.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
 </context>
 <context>
     <name>WidgetSettingsDialog</name>
     <message>
         <source>This widget does not provide a settings page.</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>Settings page is missing: %1</source>
-        <translation type="unfinished"></translation>
+        <translation></translation>
     </message>
     <message>
         <source>%1 - 组件设置</source>

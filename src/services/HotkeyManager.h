@@ -18,6 +18,9 @@ public:
     // vk: VK_A, VK_F1, etc.
     bool registerHotkey(UINT modifiers, UINT vk, const QString& actionId);
     
+    // Unregister hotkey for a specific action
+    bool unregisterHotkey(const QString& actionId);
+
     // Unregister all
     void unregisterAll();
 

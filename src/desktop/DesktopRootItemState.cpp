@@ -158,8 +158,13 @@ QString buildDisplayName(const ListItemData& data, const QFileInfo& fileInfo, Ob
         return normalizeDisplayNameTitleCase(shortcutName.isEmpty() ? data.fullName() : shortcutName);
     }
     if (fileInfo.isFile() || fileInfo.isDir()) {
-        const QString name = fileInfo.fileName();
-        return normalizeDisplayNameTitleCase(name.isEmpty() ? data.fullName() : name);
+        const QString shellName = data.fullName().trimmed();
+        const QString fileName = fileInfo.fileName();
+        if (!shellName.isEmpty() && shellName.compare(fileName, Qt::CaseInsensitive) == 0) {
+            return normalizeDisplayNameTitleCase(shellName);
+        }
+        const QString name = !fileName.isEmpty() ? fileName : shellName;
+        return normalizeDisplayNameTitleCase(name);
     }
     return normalizeDisplayNameTitleCase(data.fullName());
 }

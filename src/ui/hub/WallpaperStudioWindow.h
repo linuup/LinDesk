@@ -26,6 +26,7 @@
 #include <QList>
 #include "ui/Fluent/FluentBaseWidget.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
+#include <QTcpSocket>
 
 namespace LinHub {
 
@@ -105,6 +106,9 @@ protected:
     void dragMoveEvent(QDragMoveEvent* event) override;
     void dragLeaveEvent(QDragLeaveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
+    void changeEvent(QEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     void initUI();
@@ -113,6 +117,9 @@ private:
     QWidget* createWallpaperHubPage(); // Master-Detail 二合一核心页面 (58% 画廊瀑布流 + 42% 16:9 画板与调参)
     QWidget* createWidgetsPage();
     QWidget* createDevAdminPage();
+    void checkAndSwitchHubSourceIfNeeded(bool forceReload = false);
+    QString determineTargetHubUrl();
+    bool setupHtmlHub();
 
     // Wallpaper Logic
     void scanWallpapers();
@@ -136,6 +143,7 @@ private:
     static QPointer<WallpaperStudioWindow> s_instance;
 
     QWidget* m_hubWebWidget = nullptr;
+    QString m_loadedHubUrl;
     QStackedWidget* m_stack = nullptr;
     QPushButton* m_tabWallpaperHubBtn = nullptr;
     QPushButton* m_tabWidgetsBtn = nullptr;

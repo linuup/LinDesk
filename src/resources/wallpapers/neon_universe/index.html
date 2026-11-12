@@ -10,13 +10,13 @@
   <!-- 纯代码手绘全屏自然画卷 -->
   <canvas id="wallpaper-canvas"></canvas>
   
-  <!-- 极简清新磨砂环境时钟 (可通过属性随时开关) -->
+  <!-- 极简清新磨砂环境时钟 (可通过属性随时开关与调整XY坐标、样式、色彩) -->
   <div id="hud-overlay">
-    <div class="clock-card">
+    <div class="clock-card" id="clock-card">
       <div id="clock-time">00:00</div>
-      <div class="clock-sub">
+      <div class="clock-sub" id="clock-sub">
         <span id="clock-date">LOADING</span>
-        <span class="sub-badge">NATURAL BREEZE</span>
+        <span class="sub-badge" id="clock-badge">NATURAL BREEZE</span>
       </div>
     </div>
   </div>

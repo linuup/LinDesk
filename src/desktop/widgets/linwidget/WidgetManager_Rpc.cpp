@@ -164,6 +164,10 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
     };
 
     if (action == QStringLiteral("list")) {
+        // 在列出组件时，同步当前组件目录（确保开发调试模式下即时呈现最新小组件）
+        QString syncErr;
+        registry.syncFromFolder(AppPaths::userLinWidgetsDir(), &syncErr);
+
         QJsonArray widgetsArray;
         QSet<QString> seenIds;
         for (const WidgetRegistryEntry& entry : registry.entries()) {
@@ -385,6 +389,11 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         response.insert(QStringLiteral("activeWallpaperInteractive"), m_activeWallpaperInteractive);
         response.insert(QStringLiteral("userWidgetsDir"), AppPaths::userLinWidgetsDir());
         response.insert(QStringLiteral("logDir"), AppPaths::userLogsDir());
+#if defined(QT_NO_DEBUG) || defined(NDEBUG)
+        response.insert(QStringLiteral("isDebug"), false);
+#else
+        response.insert(QStringLiteral("isDebug"), true);
+#endif
         return response;
     }
 
@@ -1544,19 +1553,77 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
     }
 
     if (action == QStringLiteral("uninstall") || action == QStringLiteral("delete")) {
-        for (const WidgetLayoutState& state : m_layout.states()) {
-            if (stateRegistryId(state) == resolvedId) {
-                stopWidget(state.instanceId);
+        const QString reqPkgPath = request.value(QStringLiteral("packagePath")).toString().trimmed();
+        WidgetRegistryEntry entry = registry.entryById(resolvedId);
+
+        QString pkgPath = reqPkgPath;
+        if (pkgPath.isEmpty()) {
+            pkgPath = entry.packagePath;
+        }
+        if (pkgPath.isEmpty()) {
+            const QString cand = QDir(AppPaths::userLinWidgetsDir()).filePath(resolvedId);
+            if (QDir(cand).exists()) {
+                pkgPath = cand;
             }
         }
-        WidgetRegistryEntry entry = registry.entryById(resolvedId);
+
+        // 1. 关闭该组件在桌面的所有运行实例并从布局配置中持久化移除
+        QStringList instancesToRemove;
+        for (const WidgetLayoutState& state : m_layout.states()) {
+            if (stateRegistryId(state) == resolvedId ||
+                (!pkgPath.isEmpty() && QDir::cleanPath(state.packagePath).compare(QDir::cleanPath(pkgPath), Qt::CaseInsensitive) == 0)) {
+                instancesToRemove.append(state.instanceId);
+            }
+        }
+        for (const QString& instId : instancesToRemove) {
+            stopWidget(instId);
+            m_layout.remove(instId);
+        }
+        if (!instancesToRemove.isEmpty()) {
+            ConfigManager::saveLayout(ConfigManager::defaultConfigPath(), deduplicatedLayoutStates(filterWallpapers(m_layout.states())), nullptr);
+        }
+
+        // 2. 物理彻底删除磁盘上的组件目录
+        bool deleteFailed = false;
+        QString deleteError;
+        if (!pkgPath.isEmpty() && QDir(pkgPath).exists()) {
+            QDir dir(pkgPath);
+            if (!dir.removeRecursively()) {
+                deleteFailed = true;
+                deleteError = QStringLiteral("无法清理组件磁盘目录：%1").arg(pkgPath);
+                qWarning() << "[LinWidget] Uninstall: failed to recursively remove:" << pkgPath;
+            } else {
+                qInfo() << "[LinWidget] Successfully uninstalled and deleted widget directory:" << pkgPath;
+            }
+        }
+
+        // 3. 清理该组件的本地存储数据 (dataDir)
+        const QString safeId = safeStorageSegment(resolvedId);
+        const QString dataDir = QDir(AppPaths::linWidgetDataDir()).filePath(QStringLiteral("installed/") + safeId);
+        if (QDir(dataDir).exists()) {
+            QDir(dataDir).removeRecursively();
+        }
+        const QString devDataDir = QDir(AppPaths::linWidgetDataDir()).filePath(QStringLiteral("dev/") + safeId);
+        if (QDir(devDataDir).exists()) {
+            QDir(devDataDir).removeRecursively();
+        }
+
+        // 4. 从注册表中注销并保存
         if (entry.isDevelopment) {
             registry.removeDevelopmentProject(resolvedId);
         } else {
             registry.removeById(resolvedId);
         }
         registry.save();
+
+        if (deleteFailed) {
+            response.insert(QStringLiteral("ok"), false);
+            response.insert(QStringLiteral("error"), deleteError);
+            return response;
+        }
+
         response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("widgetId"), rawTargetId);
         return response;
     }
 

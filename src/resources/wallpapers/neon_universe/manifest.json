@@ -1,7 +1,7 @@
 {
   "id": "com.lindesk.wallpaper.neon_universe",
   "name": "Breeze Meadow 清风原野",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": "LinDesk",
   "description": "纯代码手绘治愈系自然风动态壁纸：晨曦天青、柔风草浪、丁达尔光束与起舞的蒲公英飞絮，随鼠标拂动荡漾，极度养眼护眼。",
   "type": "html",
@@ -34,11 +34,53 @@
       "min": 0,
       "max": 10,
       "step": 1,
-      "value": 6
+      "value": 5
     },
     "showClock": {
       "type": "boolean",
-      "text": "显示极简环境时钟 (Clock)",
+      "text": "显示极简环境时钟 (Show Clock)",
+      "value": true
+    },
+    "clockPosX": {
+      "type": "slider",
+      "text": "时钟水平位置 X% (Clock X)",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "value": 50
+    },
+    "clockPosY": {
+      "type": "slider",
+      "text": "时钟垂直位置 Y% (Clock Y)",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "value": 50
+    },
+    "clockScale": {
+      "type": "slider",
+      "text": "时钟大小比例 % (Clock Size)",
+      "min": 60,
+      "max": 160,
+      "step": 5,
+      "value": 100
+    },
+    "clockBgOpacity": {
+      "type": "slider",
+      "text": "时钟卡片磨砂透明度 % (Card Opacity)",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "value": 45
+    },
+    "clockColor": {
+      "type": "color",
+      "text": "时钟文字颜色 (Text Color)",
+      "value": "#1e3a2b"
+    },
+    "showDate": {
+      "type": "boolean",
+      "text": "显示日期与微标 (Show Date & Badge)",
       "value": true
     }
   }

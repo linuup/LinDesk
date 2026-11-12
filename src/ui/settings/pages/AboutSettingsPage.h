@@ -20,6 +20,7 @@ private:
     void initUI();
     void startUpdateCheck();
     void startUpdateDownload();
+    void cancelUpdateDownload();
     void installDownloadedUpdate();
 
 private:
@@ -30,9 +31,22 @@ private:
     QLabel* m_updateSectionTitle = nullptr;
     QLabel* m_updateRowTitle = nullptr;
     QLabel* m_updateStatusLabel = nullptr;
-    QLabel* m_updateNotesLabel = nullptr;
-    QProgressBar* m_updateProgressBar = nullptr;
     QPushButton* m_checkUpdateButton = nullptr;
+
+    // Release Notes preview card
+    QWidget* m_notesContainer = nullptr;
+    QLabel* m_notesHeaderLabel = nullptr;
+    QLabel* m_updateNotesLabel = nullptr;
+
+    // Progress bar and detailed statistics
+    QWidget* m_progressContainer = nullptr;
+    QProgressBar* m_updateProgressBar = nullptr;
+    QLabel* m_progressStatsLabel = nullptr;
+    QLabel* m_progressPercentLabel = nullptr;
+
+    // Action buttons
+    QPushButton* m_updateActionBtn = nullptr;
+    QPushButton* m_cancelDownloadBtn = nullptr;
 
     UpdateChecker* m_updateChecker = nullptr;
     UpdateDownloader* m_updateDownloader = nullptr;

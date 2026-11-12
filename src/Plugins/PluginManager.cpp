@@ -100,8 +100,12 @@ void PluginManager::loadPlugins() {
                 m_loaders.append(loader);
                 basePlugin->onInit();
 
-                // Register global hotkey
-                registerPluginHotkey(basePlugin);
+                // Register global hotkey if enabled and configured
+                if (isPluginEnabled(basePlugin->pluginId()) && basePlugin->isConfigured()) {
+                    registerPluginHotkey(basePlugin);
+                } else {
+                    qDebug() << "[PluginManager] Skipping hotkey registration for unconfigured/disabled plugin:" << basePlugin->pluginId();
+                }
 
                 qDebug() << "[PluginManager] Successfully loaded plugin:" << basePlugin->pluginName() << "(ID:" << basePlugin->pluginId() << ")";
 
@@ -158,55 +162,120 @@ ILinPlugin* PluginManager::getPlugin(const QString& id) const {
 
 #include <QDateTime>
 
-void PluginManager::triggerPlugin(const QString& id) {
-    if (!isPluginEnabled(id)) {
-        qWarning() << "[PluginManager] Skip trigger: Plugin is disabled:" << id;
-        return;
-    }
+static bool parseHotkeyCombination(const QString& hk, UINT& outMods, UINT& outVk) {
+    outMods = 0;
+    outVk = 0;
+    if (hk.trimmed().isEmpty()) return false;
 
-    ILinPlugin* plugin = getPlugin(id);
-    if (plugin) {
-        QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
-        qDebug() << "[" << timestamp << "][PluginManager] Triggering plugin:" << plugin->pluginName();
-        plugin->onTrigger();
-    } else {
-        qWarning() << "[PluginManager] Failed to trigger: Plugin ID not found:" << id;
-    }
-}
-
-bool PluginManager::isPluginEnabled(const QString& id) const {
-    return m_enabledMap.value(id, true); // Default to enabled
-}
-
-void PluginManager::setPluginEnabled(const QString& id, bool enabled) {
-    m_enabledMap[id] = enabled;
-    qDebug() << "[PluginManager] Plugin" << id << "set to" << (enabled ? "Enabled" : "Disabled");
-}
-
-void PluginManager::registerPluginHotkey(ILinPlugin* plugin) {
-    if (!plugin || !isPluginEnabled(plugin->pluginId())) return;
-
-    QString hk = plugin->customHotkey();
-    if (hk.isEmpty()) return;
-
-    UINT mods = 0;
-    UINT vk = 0;
     QStringList parts = hk.split('+', QString::SkipEmptyParts);
     for (const QString& p : parts) {
         QString p_up = p.trimmed().toUpper();
-        if (p_up == "ALT") mods |= MOD_ALT;
-        else if (p_up == "CTRL") mods |= MOD_CONTROL;
-        else if (p_up == "SHIFT") mods |= MOD_SHIFT;
-        else if (p_up == "WIN") mods |= MOD_WIN;
-        else if (p_up.length() == 1) vk = (UINT)p_up[0].toLatin1();
+        if (p_up == "ALT") outMods |= MOD_ALT;
+        else if (p_up == "CTRL") outMods |= MOD_CONTROL;
+        else if (p_up == "SHIFT") outMods |= MOD_SHIFT;
+        else if (p_up == "WIN") outMods |= MOD_WIN;
+        else if (p_up.length() == 1) outVk = (UINT)p_up[0].toLatin1();
         else if (p_up.startsWith("F") && p_up.length() > 1) {
-            vk = VK_F1 + (p_up.mid(1).toInt() - 1);
+            outVk = VK_F1 + (p_up.mid(1).toInt() - 1);
         }
     }
+    return (outVk > 0);
+}
 
-    if (vk > 0) {
-        // HotkeyManager will automatically unregister the old ID if it exists and replace it
-        HotkeyManager::instance()->registerHotkey(mods, vk, plugin->pluginId());
-        qDebug() << "[PluginManager] Registered hotkey for" << plugin->pluginId() << ":" << hk;
+void PluginManager::triggerPlugin(const QString& id) {
+    QString pluginId = id;
+    QString subAction = QStringLiteral("default");
+    const int colonIdx = id.indexOf(':');
+    if (colonIdx > 0) {
+        pluginId = id.left(colonIdx);
+        subAction = id.mid(colonIdx + 1);
+    }
+
+    if (!isPluginEnabled(pluginId)) {
+        qWarning() << "[PluginManager] Skip trigger: Plugin is disabled:" << pluginId;
+        return;
+    }
+
+    ILinPlugin* plugin = getPlugin(pluginId);
+    if (!plugin) {
+        qWarning() << "[PluginManager] Failed to trigger: Plugin ID not found:" << pluginId;
+        return;
+    }
+
+    if (!plugin->isConfigured()) {
+        qWarning() << "[PluginManager] Skip trigger: Plugin is not configured:" << pluginId;
+        return;
+    }
+
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+    qDebug() << "[" << timestamp << "][PluginManager] Triggering plugin:" << plugin->pluginName() << "Action:" << subAction;
+    plugin->onTriggerAction(subAction);
+}
+
+bool PluginManager::isPluginEnabled(const QString& id) const {
+    ILinPlugin* plugin = getPlugin(id);
+    if (plugin && !plugin->isConfigured()) {
+        return false;
+    }
+    return m_enabledMap.value(id, true); // Default to enabled for configured plugins
+}
+
+void PluginManager::setPluginEnabled(const QString& id, bool enabled) {
+    ILinPlugin* plugin = getPlugin(id);
+    if (enabled && plugin && !plugin->isConfigured()) {
+        qWarning() << "[PluginManager] Cannot enable plugin without configuration:" << id;
+        m_enabledMap[id] = false;
+        HotkeyManager::instance()->unregisterHotkey(id);
+        HotkeyManager::instance()->unregisterHotkey(id + QStringLiteral(":ocr"));
+        HotkeyManager::instance()->unregisterHotkey(id + QStringLiteral(":screenshot"));
+        return;
+    }
+
+    m_enabledMap[id] = enabled;
+    qDebug() << "[PluginManager] Plugin" << id << "set to" << (enabled ? "Enabled" : "Disabled");
+
+    if (plugin) {
+        if (enabled && plugin->isConfigured()) {
+            registerPluginHotkey(plugin);
+        } else {
+            HotkeyManager::instance()->unregisterHotkey(id);
+            HotkeyManager::instance()->unregisterHotkey(id + QStringLiteral(":ocr"));
+            HotkeyManager::instance()->unregisterHotkey(id + QStringLiteral(":screenshot"));
+        }
+    }
+}
+
+void PluginManager::registerPluginHotkey(ILinPlugin* plugin) {
+    if (!plugin) return;
+
+    const QString baseId = plugin->pluginId();
+    const QString ocrActionId = baseId + QStringLiteral(":ocr");
+    const QString screenshotActionId = baseId + QStringLiteral(":screenshot");
+
+    if (!isPluginEnabled(baseId) || !plugin->isConfigured()) {
+        HotkeyManager::instance()->unregisterHotkey(baseId);
+        HotkeyManager::instance()->unregisterHotkey(ocrActionId);
+        HotkeyManager::instance()->unregisterHotkey(screenshotActionId);
+        return;
+    }
+
+    // 1. Primary hotkey (OCR)
+    QString primaryHk = plugin->customHotkey();
+    UINT pMods = 0, pVk = 0;
+    if (parseHotkeyCombination(primaryHk, pMods, pVk)) {
+        HotkeyManager::instance()->registerHotkey(pMods, pVk, ocrActionId);
+        qDebug() << "[PluginManager] Registered primary hotkey for" << ocrActionId << ":" << primaryHk;
+    } else {
+        HotkeyManager::instance()->unregisterHotkey(ocrActionId);
+    }
+
+    // 2. Secondary hotkey (Screenshot Only)
+    QString secondaryHk = plugin->customSecondaryHotkey();
+    UINT sMods = 0, sVk = 0;
+    if (parseHotkeyCombination(secondaryHk, sMods, sVk)) {
+        HotkeyManager::instance()->registerHotkey(sMods, sVk, screenshotActionId);
+        qDebug() << "[PluginManager] Registered secondary hotkey for" << screenshotActionId << ":" << secondaryHk;
+    } else {
+        HotkeyManager::instance()->unregisterHotkey(screenshotActionId);
     }
 }

@@ -28,12 +28,7 @@ bool HotkeyManager::registerHotkey(UINT modifiers, UINT vk, const QString& actio
     m_registeredHwnd = hwnd;
 
     // Fix: Unregister old hotkey for the same actionId if it exists
-    QList<int> oldIds = m_hotkeyActions.keys(actionId);
-    for (int oldId : oldIds) {
-        UnregisterHotKey(m_registeredHwnd, oldId);
-        m_hotkeyActions.remove(oldId);
-        qDebug() << "[HotkeyManager] Unregistered old hotkey ID:" << oldId << "for action:" << actionId;
-    }
+    unregisterHotkey(actionId);
 
     int id = m_nextHotkeyId++;
 
@@ -45,6 +40,25 @@ bool HotkeyManager::registerHotkey(UINT modifiers, UINT vk, const QString& actio
         qWarning() << "[HotkeyManager] Failed to register hotkey for action:" << actionId << "Error:" << GetLastError();
         return false;
     }
+}
+
+bool HotkeyManager::unregisterHotkey(const QString& actionId) {
+    if (actionId.isEmpty()) return false;
+
+    ListView* lv = ListView::instance();
+    HWND hwnd = m_registeredHwnd ? m_registeredHwnd : (lv ? (HWND)lv->winId() : nullptr);
+
+    QList<int> oldIds = m_hotkeyActions.keys(actionId);
+    if (oldIds.isEmpty()) return false;
+
+    for (int oldId : oldIds) {
+        if (hwnd && IsWindow(hwnd)) {
+            UnregisterHotKey(hwnd, oldId);
+        }
+        m_hotkeyActions.remove(oldId);
+        qDebug() << "[HotkeyManager] Unregistered hotkey ID:" << oldId << "for action:" << actionId;
+    }
+    return true;
 }
 
 void HotkeyManager::unregisterAll() {

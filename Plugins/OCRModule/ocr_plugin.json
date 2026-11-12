@@ -2,6 +2,6 @@
     "Keys": [
         "Desk_OCR_Baidu"
     ],
-    "Version": "1.0.0",
-    "Description": "Baidu OCR plugin for LinDesk."
+    "Version": "1.2.0",
+    "Description": "智能截图与端侧文字识别插件"
 }

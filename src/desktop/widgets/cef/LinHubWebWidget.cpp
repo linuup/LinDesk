@@ -93,6 +93,13 @@ LinHubWebWidget::LinHubWebWidget(const QString& url, QWidget* parent)
                         } else {
                             win->showMaximized();
                         }
+                        QJsonObject msg;
+                        msg.insert(QStringLiteral("action"), QStringLiteral("window_state_changed"));
+                        msg.insert(QStringLiteral("isMaximized"), win->isMaximized());
+                        if (m_browser) {
+                            m_browser->sendMessageToWeb(msg);
+                        }
+                        update();
                     }
                     return;
                 }
@@ -195,6 +202,17 @@ bool LinHubWebWidget::eventFilter(QObject* watched, QEvent* event)
             return true;
         }
         break;
+    case QEvent::WindowStateChange:
+        if (QWidget* win = this->window()) {
+            QJsonObject msg;
+            msg.insert(QStringLiteral("action"), QStringLiteral("window_state_changed"));
+            msg.insert(QStringLiteral("isMaximized"), win->isMaximized());
+            if (m_browser) {
+                m_browser->sendMessageToWeb(msg);
+            }
+            update();
+        }
+        break;
     default:
         break;
     }
@@ -239,6 +257,14 @@ void LinHubWebWidget::paintEvent(QPaintEvent* event)
         painter.fillRect(rect(), QColor(248, 250, 252));
         painter.setPen(QColor(100, 116, 139));
         painter.drawText(rect(), Qt::AlignCenter, QStringLiteral("Loading LinDesk Hub..."));
+    }
+
+    // Windows 10 标准窗体边框 (1px #707070，最大化时隐藏，解决白色窗体混淆问题)
+    if (QWidget* win = this->window()) {
+        if (!win->isMaximized()) {
+            painter.setPen(QPen(QColor(112, 112, 112), 1));
+            painter.drawRect(rect().adjusted(0, 0, -1, -1));
+        }
     }
 }
 

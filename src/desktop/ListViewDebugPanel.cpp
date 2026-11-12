@@ -1,4 +1,5 @@
 #include "desktop/ListViewDebugPanel.h"
+#include "app/Version.h"
 #include "app/AppFonts.h"
 #include "desktop/LinDesktop.h"
 #include "desktop/ListView.h"
@@ -7,7 +8,6 @@
 #include "desktop/widgets/linwidget/ConfigManager.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
-#include "ui/QmlTestWindow.h"
 #include "ui/Fluent/FluentToggleSwitch.h"
 #include "ui/Fluent/FluentCard.h"
 #include "services/AppPaths.h"
@@ -809,19 +809,6 @@ void ListViewDebugPanel::updateAdaptiveLayout()
             m_linWidgetsContentGrid->setColumnStretch(1, 5);
         }
     }
-
-    if (m_linWidgetsCompactSwitchGrid) {
-        const int columnCount = width() < 680 ? 1 : 3;
-        for (QWidget* item : m_linWidgetsCompactSwitchItems) {
-            m_linWidgetsCompactSwitchGrid->removeWidget(item);
-        }
-        for (int i = 0; i < m_linWidgetsCompactSwitchItems.size(); ++i) {
-            m_linWidgetsCompactSwitchGrid->addWidget(m_linWidgetsCompactSwitchItems.at(i), i / columnCount, i % columnCount);
-        }
-        for (int column = 0; column < 3; ++column) {
-            m_linWidgetsCompactSwitchGrid->setColumnStretch(column, column < columnCount ? 1 : 0);
-        }
-    }
 }
 
 QPushButton* ListViewDebugPanel::createActionButton(const QString& text, bool accent, bool destructive) const
@@ -1083,14 +1070,7 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
     // Section 4: Diagnostics & Tests
     {
         GeneralSection s4;
-        s4.header = createSectionHeaderWidget(QString::fromUtf8(u8"\uE943"), QStringLiteral("Diagnostics & Crash Testing"), QStringLiteral("Qt Quick verification and minidump generation"));
-
-        QPushButton* qmlTestBtn = createActionButton("Verify", false, false);
-        connect(qmlTestBtn, &QPushButton::clicked, this, []() {
-            auto* w = new QmlTestWindow();
-            w->show(); w->raise(); w->activateWindow();
-        });
-        s4.cards.append(registerCard(new FluentCard(u8"\uE943", "QML Test", "Verify Qt Quick engine availability", qmlTestBtn)));
+        s4.header = createSectionHeaderWidget(QString::fromUtf8(u8"\uE943"), QStringLiteral("Diagnostics & Crash Testing"), QStringLiteral("Minidump generation and crash testing"));
 
         QPushButton* crashBtn = createActionButton("Trigger Crash", false, true);
         connect(crashBtn, &QPushButton::clicked, this, []() {
@@ -1111,13 +1091,12 @@ QWidget* ListViewDebugPanel::createGeneralPage() {
 
 void ListViewDebugPanel::reloadLinWidgetsList()
 {
-    if (!m_installedLinWidgetsList || !m_developmentLinWidgetsList) {
+    if (!m_linWidgetsList) {
         return;
     }
 
     ensureDefaultLinWidgetsInstalled();
-    m_installedLinWidgetsList->clear();
-    m_developmentLinWidgetsList->clear();
+    m_linWidgetsList->clear();
 
     auto& registry = LinWidget::WidgetRegistryManager::instance();
     QString registryError;
@@ -1131,6 +1110,7 @@ void ListViewDebugPanel::reloadLinWidgetsList()
     }
 
     int visibleCount = 0;
+    int runningCount = 0;
     for (const LinWidget::WidgetRegistryEntry& entry : registry.entries()) {
         if (!entry.enabled || !QFileInfo::exists(entry.packagePath)) {
             continue;
@@ -1158,24 +1138,44 @@ void ListViewDebugPanel::reloadLinWidgetsList()
         item->setData(LinWidgetRequestedPermissionsRole, manifest.permissions);
         item->setData(LinWidgetManifestValidRole, manifestOk);
         item->setData(LinWidgetManifestErrorRole, manifestError);
-        updateLinWidgetItemText(item);
-        if (entry.isDevelopment) {
-            m_developmentLinWidgetsList->addItem(item);
-            m_developmentLinWidgetsList->setItemWidget(item, createLinWidgetItemWidget(item));
-        } else {
-            m_installedLinWidgetsList->addItem(item);
-            m_installedLinWidgetsList->setItemWidget(item, createLinWidgetItemWidget(item));
+
+        const QString registryKey = linWidgetRegistryKey(entry.id, entry.isDevelopment);
+        const bool running = m_linWidgetInstancesById.contains(registryKey) ||
+            m_linWidgetInstancesByPackage.contains(linWidgetPackageKey(entry.packagePath));
+        if (running) {
+            ++runningCount;
         }
+
+        updateLinWidgetItemText(item);
+        m_linWidgetsList->addItem(item);
+        m_linWidgetsList->setItemWidget(item, createLinWidgetItemWidget(item));
         ++visibleCount;
     }
 
-    if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText(registryError.isEmpty()
-            ? QStringLiteral("Found %1 registered widget package(s).").arg(visibleCount)
-            : QStringLiteral("Found %1 registered widget package(s). Manifest errors:\n%2").arg(visibleCount).arg(registryError));
+    // 应用当前筛选过滤标签
+    if (m_linWidgetFilterTabBar) {
+        const int filterIdx = m_linWidgetFilterTabBar->currentIndex();
+        for (int i = 0; i < m_linWidgetsList->count(); ++i) {
+            QListWidgetItem* item = m_linWidgetsList->item(i);
+            const bool isDev = item->data(LinWidgetDevelopmentRole).toBool();
+            if (filterIdx == 1) {
+                item->setHidden(isDev); // 仅官方
+            } else if (filterIdx == 2) {
+                item->setHidden(!isDev); // 仅开发工程
+            } else {
+                item->setHidden(false); // 全部
+            }
+        }
     }
+
+    if (m_linWidgetsPageStatusLabel) {
+        const QString statusText = registryError.isEmpty()
+            ? QStringLiteral("已载入 %1 个小组件 (%2 个运行中) · 多进程沙箱正常").arg(visibleCount).arg(runningCount)
+            : QStringLiteral("载入 %1 个小组件 (%2 个运行中) · 配置异常: %3").arg(visibleCount).arg(runningCount).arg(registryError);
+        m_linWidgetsPageStatusLabel->setText(statusText);
+    }
+
     updateLinWidgetsButtons();
-    updateLinWidgetPermissionControls();
     updateLinWidgetDetailsPanel();
 }
 
@@ -1186,64 +1186,136 @@ void ListViewDebugPanel::updateLinWidgetsButtons()
     const QString packagePath = selectedLinWidgetPackagePath();
     const bool hasSelection = !packagePath.isEmpty();
     const bool running = hasSelection && selectedLinWidgetIsRunning();
-    const bool isDevelopment = selectedLinWidgetIsDevelopment();
     const bool runtimeEnabled = LinWidgetRuntimeBridge::instance().isEnabled();
+
     if (m_linWidgetsOpenFolderButton) {
         m_linWidgetsOpenFolderButton->setEnabled(hasSelection);
     }
     if (m_linWidgetsOpenLogsButton) {
         m_linWidgetsOpenLogsButton->setEnabled(true);
     }
-    if (m_linWidgetsPackageButton) {
-        m_linWidgetsPackageButton->setEnabled(hasSelection && isDevelopment && !running);
+    if (m_linWidgetsDevToolsButton) {
+        m_linWidgetsDevToolsButton->setEnabled(runtimeEnabled && running);
+    }
+    if (m_linWidgetsRestartButton) {
+        m_linWidgetsRestartButton->setEnabled(runtimeEnabled && running);
+    }
+    if (m_linWidgetsSettingsButton) {
+        m_linWidgetsSettingsButton->setEnabled(hasSelection);
+    }
+    if (m_linWidgetsDeleteButton) {
+        m_linWidgetsDeleteButton->setEnabled(hasSelection && !running);
     }
     if (m_linWidgetsResetBundledButton) {
         m_linWidgetsResetBundledButton->setEnabled(QDir(bundledLinWidgetsDir()).exists());
     }
-    if (m_linWidgetsRemoveDevButton) {
-        m_linWidgetsRemoveDevButton->setEnabled(hasSelection && isDevelopment && !running);
+
+    if (m_linWidgetsRuntimeToggleButton) {
+        const bool isInstalled = RuntimeInstaller::instance().isRuntimeInstalled();
+        if (isInstalled) {
+            m_linWidgetsRuntimeToggleButton->setText(QStringLiteral("卸载组件包"));
+            m_linWidgetsRuntimeToggleButton->setToolTip(QStringLiteral("卸载 AppData 中的组件运行环境，模拟全新系统以测试远程下载与安装流程"));
+            m_linWidgetsRuntimeToggleButton->setStyleSheet(QStringLiteral(
+                "QPushButton {"
+                "  background: #fee2e2; border: 1px solid #fca5a5; color: #b91c1c;"
+                "  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;"
+                "}"
+                "QPushButton:hover { background: #fecaca; border-color: #f87171; }"
+                "QPushButton:pressed { background: #fca5a5; }"
+            ));
+        } else {
+            m_linWidgetsRuntimeToggleButton->setText(QStringLiteral("安装组件包"));
+            m_linWidgetsRuntimeToggleButton->setToolTip(QStringLiteral("一键从本地构建目录 (runtime/linwidget) 复制安装运行环境至 AppData，无需远程下载"));
+            m_linWidgetsRuntimeToggleButton->setStyleSheet(QStringLiteral(
+                "QPushButton {"
+                "  background: #0067c0; border: 1px solid #005fb8; color: #ffffff;"
+                "  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;"
+                "}"
+                "QPushButton:hover { background: #1975c5; border-color: #1975c5; }"
+                "QPushButton:pressed { background: #005299; }"
+            ));
+        }
+        m_linWidgetsRuntimeToggleButton->setEnabled(true);
     }
-    if (m_linWidgetsDeleteButton) {
-        m_linWidgetsDeleteButton->setEnabled(hasSelection && !isDevelopment && !running);
-    }
+    updateLinWidgetRuntimeInfoCard();
 }
 
-void ListViewDebugPanel::updateLinWidgetPermissionControls()
+void ListViewDebugPanel::updateLinWidgetRuntimeInfoCard()
 {
-    QListWidget* list = activeLinWidgetList();
-    QListWidgetItem* item = list ? list->currentItem() : nullptr;
-    const bool hasSelection = item != nullptr;
-    const bool isDevelopment = selectedLinWidgetIsDevelopment();
-    const QStringList requested = selectedLinWidgetRequestedPermissions();
-    const QStringList granted = selectedLinWidgetGrantedPermissions();
-    auto updateCheck = [&](QCheckBox* check, const QString& permission) {
-        if (!check) {
-            return;
-        }
-        const QSignalBlocker blocker(check);
-        check->setChecked(isDevelopment || granted.contains(permission));
-        check->setEnabled(hasSelection && !isDevelopment);
-    };
-    updateCheck(m_linWidgetNetworkPermissionCheck, QStringLiteral("network"));
-    updateCheck(m_linWidgetStoragePermissionCheck, QStringLiteral("storage"));
-    updateCheck(m_linWidgetDesktopPermissionCheck, QStringLiteral("desktop"));
-    if (!m_linWidgetPermissionsLabel) {
+    if (!m_linWidgetRuntimeInfoLabel) {
         return;
     }
-    QStringList missing;
-    for (const QString& permission : requested) {
-        if (!granted.contains(permission)) {
-            missing.append(permission);
+
+    auto& installer = RuntimeInstaller::instance();
+    auto& bridge = LinWidgetRuntimeBridge::instance();
+    const bool isInstalled = installer.isRuntimeInstalled();
+    const bool isLoaded = bridge.isLoaded();
+    const bool isEnabled = bridge.isEnabled();
+
+    const QString runtimeDir = installer.runtimeDirectory();
+    bool isLocalDev = false;
+    const QString localBuild = installer.localBuildRuntimeDir();
+    if (isInstalled && !localBuild.isEmpty() && QDir(runtimeDir) == QDir(localBuild)) {
+        isLocalDev = true;
+    }
+
+    int runningCount = 0;
+    if (isLoaded) {
+        QJsonObject req;
+        req.insert(QStringLiteral("action"), QStringLiteral("list"));
+        const QJsonObject resp = bridge.queryWidgetManager(req);
+        const QJsonArray widgets = resp.value(QStringLiteral("widgets")).toArray();
+        for (const QJsonValue& val : widgets) {
+            runningCount += val.toObject().value(QStringLiteral("runningInstanceIds")).toArray().size();
         }
     }
-    m_linWidgetPermissionsLabel->setText(QStringLiteral("requested: %1\ngranted: %2\nmissing: %3")
-        .arg(requested.isEmpty() ? QStringLiteral("none") : requested.join(QStringLiteral(", ")))
-        .arg(isDevelopment ? QStringLiteral("network, storage, desktop") : (granted.isEmpty() ? QStringLiteral("none") : granted.join(QStringLiteral(", "))))
-        .arg(isDevelopment || missing.isEmpty() ? QStringLiteral("none") : missing.join(QStringLiteral(", "))));
+
+    QString html;
+    QTextStream ts(&html);
+    ts << QStringLiteral("<div style='line-height: 1.6; font-size: 12px; color: #334155;'>");
+    ts << QStringLiteral("<table style='width: 100%; border-collapse: collapse; font-size: 12px;'>");
+
+    // 状态行
+    ts << QStringLiteral("<tr><td style='width: 80px; font-weight: 600; color: #64748b; padding: 2px 0;'>底座状态:</td><td>");
+    if (isLoaded && isEnabled) {
+        ts << QStringLiteral("<span style='background: #dcfce7; color: #15803d; font-weight: 600; padding: 1px 8px; border-radius: 4px;'>● 运行中 (Active)</span>");
+    } else if (isInstalled) {
+        ts << QStringLiteral("<span style='background: #eff6ff; color: #1e40af; font-weight: 600; padding: 1px 8px; border-radius: 4px;'>● 已安装 (就绪待命)</span>");
+    } else {
+        ts << QStringLiteral("<span style='background: #fef3c7; color: #b45309; font-weight: 600; padding: 1px 8px; border-radius: 4px;'>○ 未安装 (休眠)</span>");
+    }
+    ts << QStringLiteral(" &nbsp;<span style='color: #64748b;'>活跃实例: <b>%1</b></span></td></tr>").arg(runningCount);
+
+    // 运行路径行
+    ts << QStringLiteral("<tr><td style='font-weight: 600; color: #64748b; padding: 2px 0;'>运行目录:</td><td style='word-break: break-all; color: #0f172a;'>");
+    if (isInstalled) {
+        ts << QStringLiteral("<code style='font-family: Consolas, monospace; font-size: 11px;'>%1</code>").arg(runtimeDir);
+        if (isLocalDev) {
+            ts << QStringLiteral(" <span style='background: #ede9fe; color: #7c3aed; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;'>本地开发构建</span>");
+        }
+    } else {
+        ts << QStringLiteral("<span style='color: #94a3b8;'>未挂载运行环境 (可点击上方「安装组件包」快速装配)</span>");
+    }
+    ts << QStringLiteral("</td></tr>");
+
+    // 版本与硬件加速行
+    ts << QStringLiteral("<tr><td style='font-weight: 600; color: #64748b; padding: 2px 0;'>版本/加速:</td><td>");
+    ts << QStringLiteral("CEF OSR %1 · 硬件图形加速: ").arg(installer.installedVersion().isEmpty() ? QStringLiteral("1.0.0") : installer.installedVersion());
+    if (bridge.isCefOsrEnabled()) {
+        ts << QStringLiteral("<b style='color: #15803d;'>已开启</b>");
+    } else {
+        ts << QStringLiteral("<span style='color: #64748b;'>已关闭</span>");
+    }
+    ts << QStringLiteral("</td></tr>");
+
+    ts << QStringLiteral("</table></div>");
+    m_linWidgetRuntimeInfoLabel->setText(html);
 }
 
 void ListViewDebugPanel::updateLinWidgetDetailsPanel()
 {
+    updateLinWidgetRuntimeInfoCard();
+
     const QString packagePath = selectedLinWidgetPackagePath();
     const QString registryId = selectedLinWidgetRegistryId();
     const bool isDevelopment = selectedLinWidgetIsDevelopment();
@@ -1256,51 +1328,65 @@ void ListViewDebugPanel::updateLinWidgetDetailsPanel()
 
     if (packagePath.isEmpty()) {
         m_linWidgetDetailsLabel->setText(QStringLiteral(
-            "<div style='color: #64748b; padding: 12px; font-size: 13px;'>"
-            "No widget selected. Select a widget from the left list to view details and debug actions."
+            "<div style='color: #94a3b8; padding: 8px 0; font-size: 12px;'>"
+            "未选择组件。请从左侧列表中点击选择组件，以查看沙箱属性并进行调测。"
             "</div>"));
         if (m_linWidgetsDevToolsButton) m_linWidgetsDevToolsButton->setEnabled(false);
         if (m_linWidgetsRestartButton) m_linWidgetsRestartButton->setEnabled(false);
         if (m_linWidgetsSettingsButton) m_linWidgetsSettingsButton->setEnabled(false);
+        if (m_linWidgetsOpenFolderButton) m_linWidgetsOpenFolderButton->setEnabled(false);
+        if (m_linWidgetsDeleteButton) m_linWidgetsDeleteButton->setEnabled(false);
         return;
     }
 
     LinWidget::WidgetManifest manifest;
     LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, nullptr);
-    QString name = manifest.name.isEmpty() ? registryId : manifest.name;
-    QString version = manifest.version.isEmpty() ? QStringLiteral("1.0.0") : manifest.version;
-    QString author = manifest.author.isEmpty() ? QStringLiteral("LinDesk") : manifest.author;
-    QString entry = manifest.entry.isEmpty() ? QStringLiteral("index.html") : manifest.entry;
+    const QString name = manifest.name.isEmpty() ? registryId : manifest.name;
+    const QString version = manifest.version.isEmpty() ? QStringLiteral("1.0.0") : manifest.version;
+    const QString author = manifest.author.isEmpty() ? QStringLiteral("LinDesk") : manifest.author;
+    const QString entry = manifest.entry.isEmpty() ? QStringLiteral("index.html") : manifest.entry;
 
     QString statusBadge;
     if (isRunning) {
-        QRect geom = LinWidgetRuntimeBridge::instance().widgetGeometry(instanceId);
+        const QRect geom = LinWidgetRuntimeBridge::instance().widgetGeometry(instanceId);
         statusBadge = QStringLiteral(
             "<span style='background: #dcfce7; color: #15803d; font-weight: 600; padding: 2px 8px; border-radius: 4px;'>"
-            "● Running</span> &nbsp; <span style='color: #475569;'>Geometry: %1,%2 %3x%4</span>")
+            "● 运行中</span> &nbsp; <span style='color: #475569;'>坐标: %1,%2 &nbsp;尺寸: %3×%4 px</span>")
             .arg(geom.x()).arg(geom.y()).arg(geom.width()).arg(geom.height());
     } else {
         statusBadge = QStringLiteral(
             "<span style='background: #f1f5f9; color: #64748b; font-weight: 600; padding: 2px 8px; border-radius: 4px;'>"
-            "○ Stopped</span>");
+            "○ 已停止</span>");
     }
 
-    QString detailsHtml = QStringLiteral(
+    QString permBadges;
+    if (manifest.permissions.isEmpty()) {
+        permBadges = QStringLiteral("<span style='color: #94a3b8;'>无特殊权限</span>");
+    } else {
+        for (const QString& perm : manifest.permissions) {
+            permBadges += QStringLiteral(
+                "<span style='background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-right: 4px;'>%1</span>"
+            ).arg(perm);
+        }
+    }
+
+    const QString detailsHtml = QStringLiteral(
         "<div style='line-height: 1.6; font-size: 12px; color: #1e293b;'>"
-        "  <div style='font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px;'>%1 "
-        "    <span style='font-size: 12px; font-weight: normal; color: #64748b;'>v%2 by %3</span>"
+        "  <div style='font-size: 14px; font-weight: 700; color: #0f172a; margin-bottom: 2px;'>%1 "
+        "    <span style='font-size: 11px; font-weight: 500; color: #64748b;'>v%2 由 %3 开发</span>"
         "  </div>"
-        "  <div style='margin-bottom: 8px;'>%4</div>"
-        "  <table style='width: 100%; font-size: 11px; color: #475569;'>"
-        "    <tr><td style='width: 100px; font-weight: 600;'>Widget ID:</td><td><code>%5</code></td></tr>"
-        "    <tr><td style='font-weight: 600;'>Project Mode:</td><td>%6</td></tr>"
-        "    <tr><td style='font-weight: 600;'>Entry File:</td><td>%7</td></tr>"
-        "    <tr><td style='font-weight: 600;'>Package Path:</td><td style='word-break: break-all;'>%8</td></tr>"
+        "  <div style='margin-bottom: 6px;'>%4</div>"
+        "  <table style='width: 100%; font-size: 11px; color: #475569; border-collapse: collapse;'>"
+        "    <tr><td style='width: 80px; font-weight: 600;'>组件 ID:</td><td><code>%5</code></td></tr>"
+        "    <tr><td style='font-weight: 600;'>工程类型:</td><td>%6</td></tr>"
+        "    <tr><td style='font-weight: 600;'>入口文件:</td><td><code>%7</code></td></tr>"
+        "    <tr><td style='font-weight: 600;'>已声明权限:</td><td>%8</td></tr>"
+        "    <tr><td style='font-weight: 600;'>所在路径:</td><td style='word-break: break-all; color: #64748b;'>%9</td></tr>"
         "  </table>"
         "</div>"
     ).arg(name, version, author, statusBadge, registryId,
-         isDevelopment ? QStringLiteral("<b style='color: #0284c7;'>Development (Live Reload)</b>") : QStringLiteral("Installed Package"),
-         entry, packagePath);
+         isDevelopment ? QStringLiteral("<b style='color: #7c3aed;'>开发工程 (实时热重载)</b>") : QStringLiteral("<b style='color: #0284c7;'>官方内置组件</b>"),
+         entry, permBadges, packagePath);
 
     m_linWidgetDetailsLabel->setText(detailsHtml);
 
@@ -1312,6 +1398,12 @@ void ListViewDebugPanel::updateLinWidgetDetailsPanel()
     }
     if (m_linWidgetsSettingsButton) {
         m_linWidgetsSettingsButton->setEnabled(true);
+    }
+    if (m_linWidgetsOpenFolderButton) {
+        m_linWidgetsOpenFolderButton->setEnabled(true);
+    }
+    if (m_linWidgetsDeleteButton) {
+        m_linWidgetsDeleteButton->setEnabled(!isRunning);
     }
 }
 
@@ -1528,21 +1620,17 @@ void ListViewDebugPanel::updateSelectedLinWidgetItemText()
 
 void ListViewDebugPanel::updateAllLinWidgetItemWidgets()
 {
-    auto updateList = [this](QListWidget* list) {
-        if (!list) {
-            return;
+    if (!m_linWidgetsList) {
+        return;
+    }
+    for (int i = 0; i < m_linWidgetsList->count(); ++i) {
+        QListWidgetItem* item = m_linWidgetsList->item(i);
+        updateLinWidgetItemText(item);
+        if (QWidget* oldWidget = m_linWidgetsList->itemWidget(item)) {
+            oldWidget->deleteLater();
         }
-        for (int i = 0; i < list->count(); ++i) {
-            QListWidgetItem* item = list->item(i);
-            updateLinWidgetItemText(item);
-            if (QWidget* oldWidget = list->itemWidget(item)) {
-                oldWidget->deleteLater();
-            }
-            list->setItemWidget(item, createLinWidgetItemWidget(item));
-        }
-    };
-    updateList(m_installedLinWidgetsList);
-    updateList(m_developmentLinWidgetsList);
+        m_linWidgetsList->setItemWidget(item, createLinWidgetItemWidget(item));
+    }
 }
 
 bool ListViewDebugPanel::loadSelectedLinWidget()
@@ -1688,21 +1776,18 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     }
 
     // 2. Capture runtime diagnostic state
-    QString logs = m_linWidgetsLogView ? m_linWidgetsLogView->toPlainText() : QString();
-    if (logs.isEmpty()) {
-        const QString logFile = linWidgetLogFilePathForInstance(instanceId.isEmpty() ? registryId : instanceId);
-        if (!logFile.isEmpty() && QFile::exists(logFile)) {
-            QFile f(logFile);
-            if (f.open(QIODevice::ReadOnly)) {
-                logs = QString::fromUtf8(f.readAll());
-                f.close();
-            }
+    QString logs;
+    const QString logFile = linWidgetLogFilePathForInstance(instanceId.isEmpty() ? registryId : instanceId);
+    if (!logFile.isEmpty() && QFile::exists(logFile)) {
+        QFile f(logFile);
+        if (f.open(QIODevice::ReadOnly)) {
+            logs = QString::fromUtf8(f.readAll());
+            f.close();
         }
     }
     if (logs.isEmpty()) {
         logs = QStringLiteral("[No recent log output captured]");
     } else {
-        // Keep the last 200 lines if the log is too long
         const QStringList lines = logs.split(QLatin1Char('\n'));
         if (lines.size() > 200) {
             logs = lines.mid(lines.size() - 200).join(QLatin1Char('\n'));
@@ -1734,9 +1819,9 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     QTextStream ts(&report);
     ts << QStringLiteral("# LinWidget Diagnostic Package\n\n");
     ts << QStringLiteral("- Exported At: %1 UTC\n").arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-    ts << QStringLiteral("- LinDesk Host Version: 1.0.0 (Qt 5.15.2, CEF OSR Dynamic Runtime)\n");
+    ts << QStringLiteral("- LinDesk Host Version: %1\n").arg(QString::fromLatin1(LINDESK_VERSION_STRING));
     ts << QStringLiteral("- Target Widget ID: `%1`\n").arg(registryId);
-    ts << QStringLiteral("- Project Mode: %1\n").arg(isDev ? QStringLiteral("Development Project (Dev)") : QStringLiteral("Installed Widget"));
+    ts << QStringLiteral("- Project Mode: %1\n").arg(isDev ? QStringLiteral("Development Project (Dev)") : QStringLiteral("Official / Installed Widget"));
     ts << QStringLiteral("- Runtime Status: %1\n").arg(isRunning ? QStringLiteral("Running") : QStringLiteral("Stopped"));
     if (!instanceId.isEmpty()) {
         ts << QStringLiteral("- Active Instance ID: `%1`\n").arg(instanceId);
@@ -1750,12 +1835,6 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     ts << QStringLiteral("## 2. Recent Runtime & Diagnostic Logs\n```log\n");
     ts << logs.trimmed() << QStringLiteral("\n```\n\n");
 
-    ts << QStringLiteral("## 3. AI Diagnostic & Troubleshooting Guidance\n");
-    ts << QStringLiteral("Please inspect the manifest settings, runtime permissions, and diagnostic report:\n");
-    ts << QStringLiteral("1. Analyze the root cause of any widget crash or malfunction;\n");
-    ts << QStringLiteral("2. Provide targeted fixes or code patches for the identified issue;\n");
-    ts << QStringLiteral("3. Verify that the requested permissions match the used APIs.\n");
-
     // 5. Copy to system clipboard
     QClipboard* clipboard = QGuiApplication::clipboard();
     if (clipboard) {
@@ -1763,7 +1842,7 @@ void ListViewDebugPanel::exportLinWidgetDiagnostics()
     }
 
     if (m_linWidgetsPageStatusLabel) {
-        m_linWidgetsPageStatusLabel->setText(QStringLiteral("Diagnostic package copied to clipboard! You can paste it into an AI chat for troubleshooting."));
+        m_linWidgetsPageStatusLabel->setText(QStringLiteral("诊断报告已成功复制到剪贴板！"));
     }
 }
 
@@ -1788,7 +1867,7 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
     const bool isValid = item && item->data(LinWidgetManifestValidRole).toBool();
     const QString manifestError = item ? item->data(LinWidgetManifestErrorRole).toString() : QString();
 
-    // Top row: Name + Version chip + Status pill + Action buttons
+    // Top row: Name + Version chip + Type chip + Status pill + Action buttons
     auto* topRow = new QHBoxLayout();
     topRow->setContentsMargins(0, 0, 0, 0);
     topRow->setSpacing(8);
@@ -1809,29 +1888,36 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
     }
 
     if (isDevelopment) {
-        auto* devBadge = new QLabel(QStringLiteral("DEV"), row);
+        auto* devBadge = new QLabel(QStringLiteral("开发"), row);
         devBadge->setStyleSheet(QStringLiteral(
             "font-family: %1; font-size: 10px; font-weight: 700; color: #7c3aed;"
             "background: #ede9fe; border-radius: 4px; padding: 1px 6px;"
         ).arg(AppFonts::uiCssFamily()));
         topRow->addWidget(devBadge);
+    } else {
+        auto* offBadge = new QLabel(QStringLiteral("官方"), row);
+        offBadge->setStyleSheet(QStringLiteral(
+            "font-family: %1; font-size: 10px; font-weight: 700; color: #0284c7;"
+            "background: #e0f2fe; border-radius: 4px; padding: 1px 6px;"
+        ).arg(AppFonts::uiCssFamily()));
+        topRow->addWidget(offBadge);
     }
 
     auto* statusBadge = new QLabel(row);
     if (!isValid) {
-        statusBadge->setText(QStringLiteral("⚠️ Invalid"));
+        statusBadge->setText(QStringLiteral("⚠️ 无效配置"));
         statusBadge->setStyleSheet(QStringLiteral(
             "font-family: %1; font-size: 11px; font-weight: 600; color: #dc2626;"
             "background: #fee2e2; border-radius: 4px; padding: 1px 6px;"
         ).arg(AppFonts::uiCssFamily()));
     } else if (running) {
-        statusBadge->setText(QStringLiteral("● Running"));
+        statusBadge->setText(QStringLiteral("● 运行中"));
         statusBadge->setStyleSheet(QStringLiteral(
             "font-family: %1; font-size: 11px; font-weight: 600; color: #15803d;"
             "background: #dcfce7; border-radius: 4px; padding: 1px 6px;"
         ).arg(AppFonts::uiCssFamily()));
     } else {
-        statusBadge->setText(QStringLiteral("○ Stopped"));
+        statusBadge->setText(QStringLiteral("○ 已停止"));
         statusBadge->setStyleSheet(QStringLiteral(
             "font-family: %1; font-size: 11px; font-weight: 500; color: #64748b;"
             "background: #f1f5f9; border-radius: 4px; padding: 1px 6px;"
@@ -1846,31 +1932,31 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
     actionButton->setObjectName(QStringLiteral("linWidgetItemAction"));
     actionButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     actionButton->setCursor(Qt::PointingHandCursor);
-    actionButton->setText(running ? QStringLiteral("Unload") : QStringLiteral("Load"));
+    actionButton->setText(running ? QStringLiteral("停止") : QStringLiteral("运行"));
     actionButton->setStyleSheet(QStringLiteral(
         "QToolButton {"
-        "  min-width: 60px; height: 26px; padding: 0 10px; border-radius: 6px;"
+        "  min-width: 50px; height: 26px; padding: 0 8px; border-radius: 6px;"
         "  font-family: %1; font-size: 11px; font-weight: 700;"
         "  background: %2; color: %3; border: 1px solid %4;"
         "}"
         "QToolButton:hover { background: %5; }"
         "QToolButton:disabled { background: #f1f5f9; color: #94a3b8; border-color: rgba(15, 23, 42, 0.08); }")
         .arg(AppFonts::uiCssFamily(),
-             running ? QStringLiteral("#f8fafc") : QStringLiteral("#0f6cbd"),
+             running ? QStringLiteral("#f8fafc") : QStringLiteral("#0067c0"),
              running ? QStringLiteral("#475569") : QStringLiteral("#ffffff"),
-             running ? QStringLiteral("rgba(15, 23, 42, 0.14)") : QStringLiteral("#0f6cbd"),
-             running ? QStringLiteral("#f1f5f9") : QStringLiteral("#115ea3")));
+             running ? QStringLiteral("rgba(15, 23, 42, 0.14)") : QStringLiteral("#005fb8"),
+             running ? QStringLiteral("#f1f5f9") : QStringLiteral("#1975c5")));
     topRow->addWidget(actionButton);
 
     auto* reloadButton = new QToolButton(row);
     reloadButton->setObjectName(QStringLiteral("linWidgetItemReload"));
     reloadButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     reloadButton->setCursor(Qt::PointingHandCursor);
-    reloadButton->setText(QStringLiteral("Reload"));
+    reloadButton->setText(QStringLiteral("重启"));
     reloadButton->setEnabled(running);
     reloadButton->setStyleSheet(QStringLiteral(
         "QToolButton {"
-        "  min-width: 52px; height: 26px; padding: 0 8px; border-radius: 6px;"
+        "  min-width: 48px; height: 26px; padding: 0 6px; border-radius: 6px;"
         "  font-family: %1; font-size: 11px; font-weight: 600;"
         "  background: #ffffff; color: #1e293b; border: 1px solid rgba(15, 23, 42, 0.14);"
         "}"
@@ -1883,30 +1969,30 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
     settingsButton->setObjectName(QStringLiteral("linWidgetItemSettings"));
     settingsButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
     settingsButton->setCursor(Qt::PointingHandCursor);
-    settingsButton->setText(QStringLiteral("Settings"));
+    settingsButton->setText(QStringLiteral("设置"));
     const QString settingsPath = item ? item->data(LinWidgetSettingsRole).toString().trimmed() : QString();
     const bool hasSettings = item && !settingsPath.isEmpty() && QFileInfo::exists(QDir(packagePath).filePath(settingsPath));
     settingsButton->setVisible(!settingsPath.isEmpty());
     settingsButton->setEnabled(hasSettings);
-    settingsButton->setToolTip(hasSettings ? QStringLiteral("Open widget settings") : QStringLiteral("Settings page is missing"));
+    settingsButton->setToolTip(hasSettings ? QStringLiteral("打开组件专属设置") : QStringLiteral("未配置设置页面"));
     settingsButton->setStyleSheet(reloadButton->styleSheet());
     topRow->addWidget(settingsButton);
 
     layout->addLayout(topRow);
 
-    // Bottom row: ID · Runtime · Grid Size · Path
+    // Bottom row: ID · Runtime · Grid Size
     auto* bottomRow = new QHBoxLayout();
     bottomRow->setContentsMargins(0, 0, 0, 0);
     bottomRow->setSpacing(6);
 
     auto* metaLabel = new QLabel(row);
     if (!isValid) {
-        metaLabel->setText(QStringLiteral("Error: %1").arg(manifestError));
+        metaLabel->setText(QStringLiteral("配置异常: %1").arg(manifestError));
         metaLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #dc2626; font-weight: 500;"));
     } else {
         QString sizeStr = (defaultSize.width() > 0 && defaultSize.height() > 0)
-            ? QStringLiteral("%1x%2").arg(defaultSize.width()).arg(defaultSize.height())
-            : QStringLiteral("adaptive");
+            ? QStringLiteral("%1×%2 单元格").arg(defaultSize.width()).arg(defaultSize.height())
+            : QStringLiteral("自适应尺寸");
         metaLabel->setText(QStringLiteral("%1  ·  %2  ·  %3")
             .arg(id)
             .arg(runtimeType.isEmpty() ? QStringLiteral("CEF OSR") : runtimeType.toUpper())
@@ -1918,21 +2004,10 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
     layout->addLayout(bottomRow);
 
     auto selectItem = [this, item]() {
-        if (!item) {
+        if (!item || !m_linWidgetsList) {
             return false;
         }
-        QListWidget* list = item->listWidget();
-        if (!list) {
-            return false;
-        }
-        list->setCurrentItem(item);
-        if (m_installedLinWidgetsList && list == m_installedLinWidgetsList && m_developmentLinWidgetsList) {
-            m_developmentLinWidgetsList->clearSelection();
-            m_developmentLinWidgetsList->setCurrentItem(nullptr);
-        } else if (m_developmentLinWidgetsList && list == m_developmentLinWidgetsList && m_installedLinWidgetsList) {
-            m_installedLinWidgetsList->clearSelection();
-            m_installedLinWidgetsList->setCurrentItem(nullptr);
-        }
+        m_linWidgetsList->setCurrentItem(item);
         return true;
     };
 
@@ -1942,7 +2017,7 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         }
         if (item && !item->data(LinWidgetManifestValidRole).toBool()) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText(QStringLiteral("Load blocked: %1")
+                m_linWidgetsPageStatusLabel->setText(QStringLiteral("禁止加载: %1")
                     .arg(item->data(LinWidgetManifestErrorRole).toString()));
             }
             updateLinWidgetsButtons();
@@ -1967,12 +2042,12 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         auto& bridge = LinWidgetRuntimeBridge::instance();
         if (!bridge.isLoaded() || !bridge.restartWidget(instanceId)) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText("Reload Widget failed: " + instanceId);
+                m_linWidgetsPageStatusLabel->setText("重启组件失败: " + instanceId);
             }
             return;
         }
         if (m_linWidgetsPageStatusLabel) {
-            m_linWidgetsPageStatusLabel->setText("Reloaded widget iframe: " + instanceId);
+            m_linWidgetsPageStatusLabel->setText("已重启小组件: " + instanceId);
         }
         updateLinWidgetDetailsPanel();
         updateLinWidgetsButtons();
@@ -1986,13 +2061,13 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
         QString errorMessage;
         if (!LinWidget::WidgetPackage::loadManifest(packagePath, &manifest, &errorMessage)) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText("Open widget settings failed: " + errorMessage);
+                m_linWidgetsPageStatusLabel->setText("打开设置失败: " + errorMessage);
             }
             return;
         }
         if (!LinWidgetRuntimeBridge::instance().openWidgetSettings(packagePath, selectedLinWidgetInstanceIdForLog())) {
             if (m_linWidgetsPageStatusLabel) {
-                m_linWidgetsPageStatusLabel->setText("Failed to open widget settings (runtime not loaded).");
+                m_linWidgetsPageStatusLabel->setText("打开设置失败 (运行环境未就绪)");
             }
         }
     });
@@ -2006,13 +2081,7 @@ QWidget* ListViewDebugPanel::createLinWidgetItemWidget(QListWidgetItem* item)
 
 QListWidget* ListViewDebugPanel::activeLinWidgetList() const
 {
-    if (m_developmentLinWidgetsList && m_developmentLinWidgetsList->currentItem()) {
-        return m_developmentLinWidgetsList;
-    }
-    if (m_installedLinWidgetsList && m_installedLinWidgetsList->currentItem()) {
-        return m_installedLinWidgetsList;
-    }
-    return nullptr;
+    return m_linWidgetsList;
 }
 
 QString ListViewDebugPanel::linWidgetPackageKey(const QString& packagePath) const
@@ -2060,41 +2129,6 @@ QStringList ListViewDebugPanel::selectedLinWidgetGrantedPermissions() const
     return permissions;
 }
 
-void ListViewDebugPanel::setSelectedLinWidgetGrantedPermission(const QString& permission, bool granted)
-{
-    QListWidget* list = activeLinWidgetList();
-    QListWidgetItem* item = list ? list->currentItem() : nullptr;
-    if (!item || selectedLinWidgetIsDevelopment()) {
-        updateLinWidgetPermissionControls();
-        return;
-    }
-
-    QStringList permissions = selectedLinWidgetGrantedPermissions();
-    const QString normalized = permission.trimmed().toLower();
-    if (granted && !permissions.contains(normalized)) {
-        permissions.append(normalized);
-    } else if (!granted) {
-        permissions.removeAll(normalized);
-    }
-    permissions.sort();
-
-    auto& registry = LinWidget::WidgetRegistryManager::instance();
-    registry.load();
-    registry.setPermissionsGranted(selectedLinWidgetRegistryId(), selectedLinWidgetIsDevelopment(), permissions);
-    registry.save();
-
-    item->setData(LinWidgetPermissionsRole, permissions.isEmpty() ? QStringLiteral("none") : permissions.join(QStringLiteral(", ")));
-    updateSelectedLinWidgetItemText();
-    updateLinWidgetPermissionControls();
-    const QString instanceId = selectedLinWidgetRunningInstanceId();
-    if (!instanceId.isEmpty()) {
-        auto& bridge = LinWidgetRuntimeBridge::instance();
-        if (bridge.isLoaded()) {
-            bridge.restartWidget(instanceId);
-        }
-    }
-}
-
 QWidget* ListViewDebugPanel::createLinWidgetsPage()
 {
     auto* page = new QWidget();
@@ -2102,8 +2136,8 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
     layout->setContentsMargins(28, 24, 28, 28);
     layout->setSpacing(16);
 
-    layout->addWidget(createPageTitleLabel("壁纸与组件底层诊断"));
-    layout->addWidget(createPageSubtitleLabel("多进程隔离运行时健康诊断、沙箱安全通信流与开发工程热重载调测。"));
+    layout->addWidget(createPageTitleLabel(QStringLiteral("壁纸与组件底层诊断")));
+    layout->addWidget(createPageSubtitleLabel(QStringLiteral("多进程沙箱隔离底座、CEF OSR 离屏渲染管道与桌面组件实例调测。")));
 
     m_linWidgetsPageStatusLabel = new QLabel(page);
     m_linWidgetsPageStatusLabel->setWordWrap(true);
@@ -2133,7 +2167,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         "}"));
     auto* controlBarLayout = new QHBoxLayout(controlBar);
     controlBarLayout->setContentsMargins(14, 10, 14, 10);
-    controlBarLayout->setSpacing(18);
+    controlBarLayout->setSpacing(14);
 
     auto addToggleRow = [controlBar](const QString& name, const QString& tooltip, FluentToggleSwitch* toggle) -> QWidget* {
         auto* item = new QWidget(controlBar);
@@ -2153,6 +2187,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         return item;
     };
 
+    // 1. 组件系统底座开关 (必须保留)
     m_linWidgetEnabledToggle = new FluentToggleSwitch(page);
     auto& bridge = LinWidgetRuntimeBridge::instance();
     bool cefOsrInit = bridge.isLoaded() ? bridge.isCefOsrEnabled() : settings.value("LinWidgets/CefOsrEnabled", true).toBool();
@@ -2172,16 +2207,11 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             }
             b.setCefOsrEnabled(checked);
             if (m_linWidgetsPageStatusLabel) {
-                if (checked) {
-                    m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("壁纸与小组件运行支持已启用 · 沙箱多进程已就绪。"));
-                } else {
-                    m_linWidgetsPageStatusLabel->setText(
-                        QStringLiteral("壁纸与小组件运行支持已停用，已退回原生桌面图标模式。"));
-                }
+                m_linWidgetsPageStatusLabel->setText(checked
+                    ? QStringLiteral("壁纸与小组件运行支持已启用 · 沙箱多进程已就绪。")
+                    : QStringLiteral("壁纸与小组件运行支持已停用，已退回原生桌面图标模式。"));
             }
         }
-
         refreshLinWidgetRunningMaps();
         updateSelectedLinWidgetItemText();
         updateLinWidgetsButtons();
@@ -2191,6 +2221,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
     });
 
+    // 2. 显示组件边框 (必须保留)
     m_linWidgetBoundsToggle = new FluentToggleSwitch(page);
     m_linWidgetBoundsToggle->setChecked(settings.value("LinWidgets/ShowWidgetBounds", false).toBool(), false);
     connect(m_linWidgetBoundsToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
@@ -2209,6 +2240,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
     });
 
+    // 3. 桌面网格占用高亮
     m_linWidgetBlockedCellsToggle = new FluentToggleSwitch(page);
     m_linWidgetBlockedCellsToggle->setChecked(settings.value("LinWidgets/ShowBlockedCells", false).toBool(), false);
     connect(m_linWidgetBlockedCellsToggle, &FluentToggleSwitch::toggled, this, [this](bool checked) {
@@ -2220,37 +2252,96 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         }
         if (m_linWidgetsPageStatusLabel) {
             m_linWidgetsPageStatusLabel->setText(checked
-                ? QStringLiteral("Desktop occupied grid highlighting enabled.")
-                : QStringLiteral("Desktop occupied grid highlighting disabled."));
+                ? QStringLiteral("桌面被小组件占用的单元格已高亮标出。")
+                : QStringLiteral("桌面单元格占用高亮已关闭。"));
         }
     });
 
     auto* hubButton = createActionButton(QStringLiteral("管理中心 (Hub)"), true, false);
     connect(hubButton, &QPushButton::clicked, []() { LinHub::WallpaperStudioWindow::showStudio(); });
+
+    m_linWidgetsRuntimeToggleButton = createActionButton(QStringLiteral("安装组件包"), true, false);
+    connect(m_linWidgetsRuntimeToggleButton, &QPushButton::clicked, this, [this]() {
+        auto& installer = RuntimeInstaller::instance();
+        if (installer.isRuntimeInstalled()) {
+            QString err;
+            if (installer.uninstallRuntime(false, &err)) {
+                if (m_linWidgetsPageStatusLabel) {
+                    m_linWidgetsPageStatusLabel->setText(
+                        QStringLiteral("组件运行环境已卸载，当前处于未安装状态，可前往设置中心测试远程下载与安装。"));
+                }
+            } else {
+                if (m_linWidgetsPageStatusLabel) {
+                    m_linWidgetsPageStatusLabel->setText(QStringLiteral("卸载失败: %1").arg(err));
+                }
+            }
+        } else {
+            QString err;
+            if (installer.installRuntimeFromLocalBuild(&err)) {
+                if (m_linWidgetsPageStatusLabel) {
+                    m_linWidgetsPageStatusLabel->setText(
+                        QStringLiteral("已从本地构建目录一键安装组件运行底座，多进程沙箱隔离已就绪！"));
+                }
+            } else {
+                if (m_linWidgetsPageStatusLabel) {
+                    m_linWidgetsPageStatusLabel->setText(QStringLiteral("本地安装失败: %1").arg(err));
+                }
+            }
+        }
+        updateLinWidgetsButtons();
+        reloadLinWidgetsList();
+    });
+
+    connect(&RuntimeInstaller::instance(), &RuntimeInstaller::statusChanged, this, [this](RuntimeInstaller::Status) {
+        updateLinWidgetsButtons();
+        updateLinWidgetRuntimeInfoCard();
+        reloadLinWidgetsList();
+    });
+    connect(&RuntimeInstaller::instance(), &RuntimeInstaller::runtimeInstalledAndReady, this, [this]() {
+        updateLinWidgetsButtons();
+        updateLinWidgetRuntimeInfoCard();
+        reloadLinWidgetsList();
+    });
+
+    auto* refreshButton = createActionButton(QStringLiteral("刷新"), false, false);
+    m_linWidgetsAddDevButton = createActionButton(QStringLiteral("+ 导入工程"), false, false);
+    m_linWidgetsResetBundledButton = createActionButton(QStringLiteral("重置默认组件"), false, false);
+    m_linWidgetsOpenLogsButton = createActionButton(QStringLiteral("查看日志"), false, false);
+
     controlBarLayout->addWidget(hubButton);
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("运行底座"), QStringLiteral("开关壁纸与小组件底层运行时"), m_linWidgetEnabledToggle));
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Show Bounds"), QStringLiteral("Draw widget bounding boxes"), m_linWidgetBoundsToggle));
-    controlBarLayout->addWidget(addToggleRow(QStringLiteral("Occupied Cells"), QStringLiteral("Highlight grid cells blocked by widgets"), m_linWidgetBlockedCellsToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("运行底座"), QStringLiteral("开关壁纸与小组件底层运行时 (CEF OSR)"), m_linWidgetEnabledToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("组件边框"), QStringLiteral("绘制组件外框与像素视口矩形辅助边界"), m_linWidgetBoundsToggle));
+    controlBarLayout->addWidget(addToggleRow(QStringLiteral("网格高亮"), QStringLiteral("高亮桌面被组件占用的排布单元格"), m_linWidgetBlockedCellsToggle));
     controlBarLayout->addStretch(1);
-
-    auto* refreshButton = createActionButton(QStringLiteral("Refresh"), false, false);
-    m_linWidgetsAddDevButton = createActionButton(QStringLiteral("+ Add Dev"), true, false);
-    m_linWidgetsOpenFolderButton = createActionButton(QStringLiteral("Folder"), false, false);
-    m_linWidgetsOpenLogsButton = createActionButton(QStringLiteral("Logs"), false, false);
-    m_linWidgetsPackageButton = createActionButton(QStringLiteral("Package"), false, false);
-    m_linWidgetsResetBundledButton = createActionButton(QStringLiteral("Reset Defaults"), false, false);
-    m_linWidgetsRemoveDevButton = createActionButton(QStringLiteral("Remove Dev"), false, true);
-    m_linWidgetsDeleteButton = createActionButton(QStringLiteral("Delete"), false, true);
-
+    controlBarLayout->addWidget(m_linWidgetsRuntimeToggleButton);
     controlBarLayout->addWidget(m_linWidgetsAddDevButton);
     controlBarLayout->addWidget(refreshButton);
     controlBarLayout->addWidget(m_linWidgetsResetBundledButton);
-    controlBarLayout->addWidget(m_linWidgetsOpenFolderButton);
     controlBarLayout->addWidget(m_linWidgetsOpenLogsButton);
 
     layout->addWidget(controlBar);
 
     // Two-Column Split Content
+    m_linWidgetsContentGrid = new QGridLayout();
+    m_linWidgetsContentGrid->setContentsMargins(0, 0, 0, 0);
+    m_linWidgetsContentGrid->setHorizontalSpacing(16);
+    m_linWidgetsContentGrid->setVerticalSpacing(16);
+
+    // Left Column: Unified Widgets List
+    m_linWidgetsListsPanel = new QWidget(page);
+    auto* listsLayout = new QVBoxLayout(m_linWidgetsListsPanel);
+    listsLayout->setContentsMargins(0, 0, 0, 0);
+    listsLayout->setSpacing(8);
+
+    m_linWidgetFilterTabBar = new QTabBar(m_linWidgetsListsPanel);
+    m_linWidgetFilterTabBar->setObjectName(QStringLiteral("linWidgetFilterTabBar"));
+    m_linWidgetFilterTabBar->addTab(QStringLiteral("全部组件"));
+    m_linWidgetFilterTabBar->addTab(QStringLiteral("官方随包"));
+    m_linWidgetFilterTabBar->addTab(QStringLiteral("开发工程"));
+    m_linWidgetFilterTabBar->setDrawBase(false);
+    m_linWidgetFilterTabBar->setExpanding(false);
+    listsLayout->addWidget(m_linWidgetFilterTabBar, 0, Qt::AlignLeft);
+
     const QString listStyle = QStringLiteral(
         "QListWidget {"
         "  background: #ffffff;"
@@ -2261,7 +2352,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         "  color: #0f172a;"
         "}"
         "QListWidget::item {"
-        "  min-height: 68px;"
+        "  min-height: 64px;"
         "  margin: 2px 0px;"
         "  border-radius: 8px;"
         "  background: #f8fafc;"
@@ -2271,48 +2362,28 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         "QListWidget::item:selected { background: #eff6ff; border: 1px solid #bfdbfe; }")
         .arg(AppFonts::uiCssFamily());
 
-    m_linWidgetsContentGrid = new QGridLayout();
-    m_linWidgetsContentGrid->setContentsMargins(0, 0, 0, 0);
-    m_linWidgetsContentGrid->setHorizontalSpacing(16);
-    m_linWidgetsContentGrid->setVerticalSpacing(16);
+    m_linWidgetsList = new QListWidget(m_linWidgetsListsPanel);
+    m_linWidgetsList->setMinimumHeight(440);
+    m_linWidgetsList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_linWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_linWidgetsList->setMouseTracking(true);
+    m_linWidgetsList->setStyleSheet(listStyle);
+    listsLayout->addWidget(m_linWidgetsList, 1);
 
-    // Left Column: Widget Lists Panel
-    m_linWidgetsListsPanel = new QWidget(page);
-    auto* listsLayout = new QVBoxLayout(m_linWidgetsListsPanel);
-    listsLayout->setContentsMargins(0, 0, 0, 0);
-    listsLayout->setSpacing(8);
+    connect(m_linWidgetFilterTabBar, &QTabBar::currentChanged, this, [this](int index) {
+        if (!m_linWidgetsList) return;
+        for (int i = 0; i < m_linWidgetsList->count(); ++i) {
+            QListWidgetItem* item = m_linWidgetsList->item(i);
+            const bool isDev = item->data(LinWidgetDevelopmentRole).toBool();
+            if (index == 1) item->setHidden(isDev);
+            else if (index == 2) item->setHidden(!isDev);
+            else item->setHidden(false);
+        }
+        updateLinWidgetsButtons();
+        updateLinWidgetDetailsPanel();
+    });
 
-    m_linWidgetListTabBar = new QTabBar(m_linWidgetsListsPanel);
-    m_linWidgetListTabBar->setObjectName(QStringLiteral("linWidgetSubTabBar"));
-    m_linWidgetListTabBar->addTab(QString::fromUtf8(u8"\uE74C  Installed"));
-    m_linWidgetListTabBar->addTab(QString::fromUtf8(u8"\uE7B5  Development"));
-    m_linWidgetListTabBar->setDrawBase(false);
-    m_linWidgetListTabBar->setExpanding(false);
-    listsLayout->addWidget(m_linWidgetListTabBar, 0, Qt::AlignLeft);
-
-    m_linWidgetListStack = new QStackedWidget(m_linWidgetsListsPanel);
-
-    m_installedLinWidgetsList = new QListWidget(m_linWidgetListStack);
-    m_installedLinWidgetsList->setMinimumHeight(440);
-    m_installedLinWidgetsList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_installedLinWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_installedLinWidgetsList->setMouseTracking(true);
-    m_installedLinWidgetsList->setStyleSheet(listStyle);
-    m_linWidgetListStack->addWidget(m_installedLinWidgetsList);
-
-    m_developmentLinWidgetsList = new QListWidget(m_linWidgetListStack);
-    m_developmentLinWidgetsList->setMinimumHeight(440);
-    m_developmentLinWidgetsList->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_developmentLinWidgetsList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_developmentLinWidgetsList->setMouseTracking(true);
-    m_developmentLinWidgetsList->setStyleSheet(listStyle);
-    m_linWidgetListStack->addWidget(m_developmentLinWidgetsList);
-
-    listsLayout->addWidget(m_linWidgetListStack, 1);
-
-    connect(m_linWidgetListTabBar, &QTabBar::currentChanged, m_linWidgetListStack, &QStackedWidget::setCurrentIndex);
-
-    // Right Column: Inspector & Developer Live Controller
+    // Right Column: Diagnostic Workstation & Controls
     m_linWidgetsLogPanel = new QWidget(page);
     auto* rightColLayout = new QVBoxLayout(m_linWidgetsLogPanel);
     rightColLayout->setContentsMargins(0, 0, 0, 0);
@@ -2325,82 +2396,66 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         "  border-radius: 10px;"
         "}");
 
-    // Card 1: Widget Details & Metadata Inspector
+    // Card 1: Runtime Base Diagnostics & Health (全新升级)
+    auto* runtimeCard = new QWidget(m_linWidgetsLogPanel);
+    runtimeCard->setStyleSheet(cardStyle);
+    auto* runtimeLayout = new QVBoxLayout(runtimeCard);
+    runtimeLayout->setContentsMargins(16, 14, 16, 14);
+    runtimeLayout->setSpacing(8);
+
+    auto* runtimeHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7F4"), QStringLiteral("运行时健康诊断"), QStringLiteral("多进程隔离底座状态、物理挂载路径与硬件加速"));
+    runtimeLayout->addWidget(runtimeHeader);
+
+    m_linWidgetRuntimeInfoLabel = new QLabel(runtimeCard);
+    m_linWidgetRuntimeInfoLabel->setTextFormat(Qt::RichText);
+    m_linWidgetRuntimeInfoLabel->setWordWrap(true);
+    m_linWidgetRuntimeInfoLabel->setStyleSheet(QStringLiteral("font-family: %1; background: transparent; border: none;").arg(AppFonts::uiCssFamily()));
+    runtimeLayout->addWidget(m_linWidgetRuntimeInfoLabel);
+    rightColLayout->addWidget(runtimeCard);
+
+    // Card 2: Widget Inspector
     auto* detailsCard = new QWidget(m_linWidgetsLogPanel);
     detailsCard->setStyleSheet(cardStyle);
     auto* detailsLayout = new QVBoxLayout(detailsCard);
     detailsLayout->setContentsMargins(16, 14, 16, 14);
-    detailsLayout->setSpacing(10);
+    detailsLayout->setSpacing(8);
 
-    auto* detailsHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7B5"), QStringLiteral("Widget Inspector"), QStringLiteral("Live metadata, geometry, and instance state"));
+    auto* detailsHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7B5"), QStringLiteral("组件属性与沙箱检查"), QStringLiteral("实时窗口坐标、Manifest 配置与已声明权限"));
     detailsLayout->addWidget(detailsHeader);
 
     m_linWidgetDetailsLabel = new QLabel(detailsCard);
     m_linWidgetDetailsLabel->setTextFormat(Qt::RichText);
     m_linWidgetDetailsLabel->setWordWrap(true);
-    m_linWidgetDetailsLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; background: transparent; border: none; padding: 4px 0px;"
-    ).arg(AppFonts::uiCssFamily()));
+    m_linWidgetDetailsLabel->setStyleSheet(QStringLiteral("font-family: %1; background: transparent; border: none;").arg(AppFonts::uiCssFamily()));
     detailsLayout->addWidget(m_linWidgetDetailsLabel);
     rightColLayout->addWidget(detailsCard);
 
-    // Card 2: Permissions Configuration
-    auto* permissionCard = new QWidget(m_linWidgetsLogPanel);
-    permissionCard->setStyleSheet(cardStyle);
-    auto* permLayout = new QVBoxLayout(permissionCard);
-    permLayout->setContentsMargins(16, 14, 16, 14);
-    permLayout->setSpacing(10);
-
-    auto* permHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE72E"), QStringLiteral("Sandbox & Permissions"), QStringLiteral("Dynamic sandbox permission controls"));
-    permLayout->addWidget(permHeader);
-
-    m_linWidgetPermissionsLabel = new QLabel(permissionCard);
-    m_linWidgetPermissionsLabel->setWordWrap(true);
-    m_linWidgetPermissionsLabel->setStyleSheet(QStringLiteral(
-        "font-family: %1; font-size: 11px; color: #475569; background: transparent; border: none;"
-    ).arg(AppFonts::uiCssFamily()));
-    permLayout->addWidget(m_linWidgetPermissionsLabel);
-
-    auto* permissionRow = new QHBoxLayout();
-    permissionRow->setContentsMargins(0, 0, 0, 0);
-    permissionRow->setSpacing(14);
-    m_linWidgetNetworkPermissionCheck = new QCheckBox(QStringLiteral("Network (network)"), permissionCard);
-    m_linWidgetStoragePermissionCheck = new QCheckBox(QStringLiteral("Storage (storage)"), permissionCard);
-    m_linWidgetDesktopPermissionCheck = new QCheckBox(QStringLiteral("Desktop API (desktop)"), permissionCard);
-    permissionRow->addWidget(m_linWidgetNetworkPermissionCheck);
-    permissionRow->addWidget(m_linWidgetStoragePermissionCheck);
-    permissionRow->addWidget(m_linWidgetDesktopPermissionCheck);
-    permissionRow->addStretch(1);
-    permLayout->addLayout(permissionRow);
-    rightColLayout->addWidget(permissionCard);
-
-    // Card 3: Developer Live Actions & Tools
+    // Card 3: Developer Tools & Actions
     auto* actionsCard = new QWidget(m_linWidgetsLogPanel);
     actionsCard->setStyleSheet(cardStyle);
     auto* actionsLayout = new QVBoxLayout(actionsCard);
     actionsLayout->setContentsMargins(16, 14, 16, 14);
-    actionsLayout->setSpacing(12);
+    actionsLayout->setSpacing(10);
 
-    auto* actionsHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7BE"), QStringLiteral("Developer Tools & Actions"), QStringLiteral("Inspection, configuration, and maintenance"));
+    auto* actionsHeader = createSectionHeaderWidget(QString::fromUtf8(u8"\uE7BE"), QStringLiteral("调试与维护工具"), QStringLiteral("沙箱热调测、配置窗口与诊断报告"));
     actionsLayout->addWidget(actionsHeader);
 
-    // Row 1: Primary Debug Actions
-    auto* primaryActionRow = new QHBoxLayout();
-    primaryActionRow->setContentsMargins(0, 0, 0, 0);
-    primaryActionRow->setSpacing(10);
+    auto* row1 = new QHBoxLayout();
+    row1->setContentsMargins(0, 0, 0, 0);
+    row1->setSpacing(10);
 
-    m_linWidgetsDevToolsButton = createActionButton(QStringLiteral("Open DevTools (F12)"), true, false);
+    m_linWidgetsDevToolsButton = createActionButton(QStringLiteral("打开 DevTools (F12)"), true, false);
     m_linWidgetsDevToolsButton->setMinimumHeight(32);
-    m_linWidgetsDevToolsButton->setToolTip(QStringLiteral("Open Chromium DevTools for this widget (Console, Elements, Network)"));
+    m_linWidgetsDevToolsButton->setToolTip(QStringLiteral("打开选中组件的独立 Chromium 开发者控制台 (Console / Elements / Network)"));
     connect(m_linWidgetsDevToolsButton, &QPushButton::clicked, this, [this]() {
         const QString instanceId = selectedLinWidgetRunningInstanceId();
         if (!instanceId.isEmpty()) {
             LinWidgetRuntimeBridge::instance().showDevTools(instanceId);
         }
     });
-    primaryActionRow->addWidget(m_linWidgetsDevToolsButton);
+    row1->addWidget(m_linWidgetsDevToolsButton);
 
-    m_linWidgetsSettingsButton = createActionButton(QStringLiteral("Settings"), false, false);
+    m_linWidgetsSettingsButton = createActionButton(QStringLiteral("组件设置"), false, false);
     m_linWidgetsSettingsButton->setMinimumHeight(32);
     connect(m_linWidgetsSettingsButton, &QPushButton::clicked, this, [this]() {
         const QString packagePath = selectedLinWidgetPackagePath();
@@ -2409,9 +2464,9 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             LinWidgetRuntimeBridge::instance().openWidgetSettings(packagePath, instanceId);
         }
     });
-    primaryActionRow->addWidget(m_linWidgetsSettingsButton);
+    row1->addWidget(m_linWidgetsSettingsButton);
 
-    m_linWidgetsRestartButton = createActionButton(QStringLiteral("Restart"), false, false);
+    m_linWidgetsRestartButton = createActionButton(QStringLiteral("重启组件"), false, false);
     m_linWidgetsRestartButton->setMinimumHeight(32);
     connect(m_linWidgetsRestartButton, &QPushButton::clicked, this, [this]() {
         const QString instanceId = selectedLinWidgetRunningInstanceId();
@@ -2420,104 +2475,69 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             updateLinWidgetDetailsPanel();
         }
     });
-    primaryActionRow->addWidget(m_linWidgetsRestartButton);
-    actionsLayout->addLayout(primaryActionRow);
+    row1->addWidget(m_linWidgetsRestartButton);
+    actionsLayout->addLayout(row1);
 
-    // Row 2: Secondary Project Actions
-    auto* secondaryActionRow = new QHBoxLayout();
-    secondaryActionRow->setContentsMargins(0, 0, 0, 0);
-    secondaryActionRow->setSpacing(10);
+    auto* row2 = new QHBoxLayout();
+    row2->setContentsMargins(0, 0, 0, 0);
+    row2->setSpacing(10);
 
-    secondaryActionRow->addWidget(m_linWidgetsOpenFolderButton);
-    secondaryActionRow->addWidget(m_linWidgetsPackageButton);
-
-    auto* exportDiagBtn = createActionButton(QStringLiteral("Export Diag"), false, false);
-    exportDiagBtn->setMinimumHeight(28);
-    connect(exportDiagBtn, &QPushButton::clicked, this, &ListViewDebugPanel::exportLinWidgetDiagnostics);
-    secondaryActionRow->addWidget(exportDiagBtn);
-
-    secondaryActionRow->addWidget(m_linWidgetsRemoveDevButton);
-    secondaryActionRow->addWidget(m_linWidgetsDeleteButton);
-    secondaryActionRow->addStretch(1);
-    actionsLayout->addLayout(secondaryActionRow);
-
-    rightColLayout->addWidget(actionsCard);
-    rightColLayout->addStretch(1);
-
-    layout->addLayout(m_linWidgetsContentGrid, 1);
-
-    connect(m_linWidgetNetworkPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
-        setSelectedLinWidgetGrantedPermission(QStringLiteral("network"), checked);
-    });
-    connect(m_linWidgetStoragePermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
-        setSelectedLinWidgetGrantedPermission(QStringLiteral("storage"), checked);
-    });
-    connect(m_linWidgetDesktopPermissionCheck, &QCheckBox::toggled, this, [this](bool checked) {
-        setSelectedLinWidgetGrantedPermission(QStringLiteral("desktop"), checked);
-    });
-
-    connect(refreshButton, &QPushButton::clicked, this, &ListViewDebugPanel::reloadLinWidgetsList);
-    connect(m_installedLinWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* current) {
-        if (current && m_developmentLinWidgetsList) {
-            m_developmentLinWidgetsList->clearSelection();
-            m_developmentLinWidgetsList->setCurrentItem(nullptr);
-        }
-        updateLinWidgetsButtons();
-        updateLinWidgetPermissionControls();
-        updateLinWidgetDetailsPanel();
-    });
-    connect(m_developmentLinWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* current) {
-        if (current && m_installedLinWidgetsList) {
-            m_installedLinWidgetsList->clearSelection();
-            m_installedLinWidgetsList->setCurrentItem(nullptr);
-        }
-        updateLinWidgetsButtons();
-        updateLinWidgetPermissionControls();
-        updateLinWidgetDetailsPanel();
-    });
-    connect(m_linWidgetsAddDevButton, &QPushButton::clicked, this, [this]() {
-        const QString dir = QFileDialog::getExistingDirectory(this, "Select LinWidget development project");
-        if (dir.isEmpty()) {
-            return;
-        }
-        auto& registry = LinWidget::WidgetRegistryManager::instance();
-        QString errorMessage;
-        registry.load();
-        if (!registry.addDevelopmentProject(dir, &errorMessage)) {
-            m_linWidgetsPageStatusLabel->setText("Add dev project failed: " + errorMessage);
-            return;
-        }
-        registry.save();
-        m_linWidgetsPageStatusLabel->setText("Development project added.");
-        reloadLinWidgetsList();
-    });
+    m_linWidgetsOpenFolderButton = createActionButton(QStringLiteral("打开源码目录"), false, false);
+    m_linWidgetsOpenFolderButton->setMinimumHeight(32);
     connect(m_linWidgetsOpenFolderButton, &QPushButton::clicked, this, [this]() {
         const QString packagePath = selectedLinWidgetPackagePath();
         if (!packagePath.isEmpty()) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(packagePath));
         }
     });
-    connect(m_linWidgetsOpenLogsButton, &QPushButton::clicked, this, []() {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::linWidgetLogsDir()));
+    row2->addWidget(m_linWidgetsOpenFolderButton);
+
+    auto* exportDiagBtn = createActionButton(QStringLiteral("复制诊断报告"), false, false);
+    exportDiagBtn->setMinimumHeight(32);
+    exportDiagBtn->setToolTip(QStringLiteral("将组件 Manifest、坐标状态与诊断日志打包复制到剪贴板"));
+    connect(exportDiagBtn, &QPushButton::clicked, this, &ListViewDebugPanel::exportLinWidgetDiagnostics);
+    row2->addWidget(exportDiagBtn);
+
+    m_linWidgetsDeleteButton = createActionButton(QStringLiteral("删除组件"), false, true);
+    m_linWidgetsDeleteButton->setMinimumHeight(32);
+    row2->addWidget(m_linWidgetsDeleteButton);
+    actionsLayout->addLayout(row2);
+
+    rightColLayout->addWidget(actionsCard);
+    rightColLayout->addStretch(1);
+
+    layout->addLayout(m_linWidgetsContentGrid, 1);
+
+    connect(refreshButton, &QPushButton::clicked, this, &ListViewDebugPanel::reloadLinWidgetsList);
+    connect(m_linWidgetsList, &QListWidget::currentItemChanged, this, [this](QListWidgetItem*) {
+        updateLinWidgetsButtons();
+        updateLinWidgetDetailsPanel();
     });
-    connect(m_linWidgetsPackageButton, &QPushButton::clicked, this, [this]() {
+
+    connect(m_linWidgetsAddDevButton, &QPushButton::clicked, this, [this]() {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("选择 LinWidget 开发工程目录"));
+        if (dir.isEmpty()) return;
         auto& registry = LinWidget::WidgetRegistryManager::instance();
-        QString installedPath;
         QString errorMessage;
         registry.load();
-        if (!registry.installDevelopmentProject(selectedLinWidgetRegistryId(), &installedPath, &errorMessage)) {
-            m_linWidgetsPageStatusLabel->setText("Package to Roaming failed: " + errorMessage);
+        if (!registry.addDevelopmentProject(dir, &errorMessage)) {
+            m_linWidgetsPageStatusLabel->setText(tr("添加工程失败: %1").arg(errorMessage));
             return;
         }
         registry.save();
-        m_linWidgetsPageStatusLabel->setText("Packaged widget to Roaming: " + installedPath);
+        m_linWidgetsPageStatusLabel->setText(tr("已成功导入开发工程: %1").arg(dir));
         reloadLinWidgetsList();
     });
+
+    connect(m_linWidgetsOpenLogsButton, &QPushButton::clicked, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(AppPaths::linWidgetLogsDir()));
+    });
+
     connect(m_linWidgetsResetBundledButton, &QPushButton::clicked, this, [this]() {
         QString errorMessage;
         const QStringList resetFolders = resetAllBundledLinWidgets(&errorMessage);
         if (resetFolders.isEmpty() && !errorMessage.isEmpty()) {
-            m_linWidgetsPageStatusLabel->setText("Reset bundled widget failed: " + errorMessage);
+            m_linWidgetsPageStatusLabel->setText(tr("恢复默认组件失败: %1").arg(errorMessage));
             return;
         }
         auto& registry = LinWidget::WidgetRegistryManager::instance();
@@ -2526,17 +2546,10 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             registry.upsertFromPackage(QDir(userLinWidgetsDir()).filePath(folderName), &errorMessage);
         }
         registry.save();
-        m_linWidgetsPageStatusLabel->setText(QStringLiteral("Reset %1 bundled widget(s) from runtime resources.").arg(resetFolders.size()));
+        m_linWidgetsPageStatusLabel->setText(QStringLiteral("已从安装包资源恢复 %1 个默认官方小组件。").arg(resetFolders.size()));
         reloadLinWidgetsList();
     });
-    connect(m_linWidgetsRemoveDevButton, &QPushButton::clicked, this, [this]() {
-        auto& registry = LinWidget::WidgetRegistryManager::instance();
-        registry.load();
-        registry.removeDevelopmentProject(selectedLinWidgetRegistryId());
-        registry.save();
-        m_linWidgetsPageStatusLabel->setText("Removed development project from registry.");
-        reloadLinWidgetsList();
-    });
+
     connect(m_linWidgetsDeleteButton, &QPushButton::clicked, this, [this]() {
         const QString packagePath = selectedLinWidgetPackagePath();
         const QString registryId = selectedLinWidgetRegistryId();
@@ -2546,14 +2559,14 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             return;
         }
 
-        const QString modeText = isDevelopment ? QStringLiteral("development project") : QStringLiteral("installed widget");
+        const QString modeText = isDevelopment ? QStringLiteral("开发工程") : QStringLiteral("已安装组件");
         if (!FluentDialog::confirm(
                 this,
-                QStringLiteral("Delete LinWidget"),
-                QStringLiteral("Delete this %1?\n\n%2\n\nThis removes the registry record, saved layout state, and the widget folder.")
+                QStringLiteral("删除组件"),
+                QStringLiteral("确认要从系统中移除该 %1 吗？\n\n%2\n\n这将会清理注册表记录及磁盘文件。")
                     .arg(modeText, packagePath),
-                QStringLiteral("Delete"),
-                QStringLiteral("Cancel"),
+                QStringLiteral("删除"),
+                QStringLiteral("取消"),
                 true)) {
             return;
         }
@@ -2562,7 +2575,7 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
             registryKey,
             m_linWidgetInstancesByPackage.value(linWidgetPackageKey(packagePath)));
         if (!runningInstanceId.isEmpty()) {
-            m_linWidgetsPageStatusLabel->setText("Unload the widget before deleting it.");
+            m_linWidgetsPageStatusLabel->setText(QStringLiteral("请先停止 (Unload) 正在运行的组件，然后再执行删除。"));
             updateLinWidgetsButtons();
             return;
         }
@@ -2579,12 +2592,12 @@ QWidget* ListViewDebugPanel::createLinWidgetsPage()
         registry.save();
 
         if (!removeLinWidgetDirectory(packagePath, &errorMessage)) {
-            m_linWidgetsPageStatusLabel->setText("Deleted registry record, but folder delete failed: " + errorMessage);
+            m_linWidgetsPageStatusLabel->setText(QStringLiteral("注册表已移除，但磁盘目录删除失败: %1").arg(errorMessage));
             reloadLinWidgetsList();
             return;
         }
 
-        m_linWidgetsPageStatusLabel->setText("Deleted widget: " + registryId + ". Folder: " + packagePath);
+        m_linWidgetsPageStatusLabel->setText(QStringLiteral("已成功删除组件: %1").arg(registryId));
         reloadLinWidgetsList();
     });
 

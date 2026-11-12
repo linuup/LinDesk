@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QProgressBar>
+#include <QCheckBox>
 #include <QStackedWidget>
 #include "ui/Fluent/FluentDialog.h"
 #include <QFileDialog>
@@ -142,6 +143,9 @@ LinWidgetsSettingsPage::LinWidgetsSettingsPage(QWidget* parent)
         if (status == RuntimeInstaller::Status::NotInstalled) {
             LinHub::WallpaperStudioWindow::hideIfOpen();
         }
+        updateRuntimeStatusView();
+    });
+    connect(&installer, &RuntimeInstaller::runtimeInstalledAndReady, this, [this]() {
         updateRuntimeStatusView();
     });
     connect(&installer, &RuntimeInstaller::installProgress, this, [this](qint64 received, qint64 total, const QString& stage) {
@@ -518,7 +522,7 @@ QWidget* LinWidgetsSettingsPage::createInstalledView(QWidget* parent)
     runtimeTitle->setStyleSheet(QStringLiteral(
         "QLabel { background: transparent; color: #1b1b1b; font-size: 14px; font-weight: 500; }"));
 
-    m_runtimeStatusSubtitle = new QLabel(tr("管理本地支持包，可导入安装包更新或卸载以释放磁盘空间"), runtimeCard);
+    m_runtimeStatusSubtitle = new QLabel(tr("管理本地支持包，可导入安装包更新或卸载"), runtimeCard);
     m_runtimeStatusSubtitle->setWordWrap(true);
     m_runtimeStatusSubtitle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_runtimeStatusSubtitle->setStyleSheet(QStringLiteral(
@@ -602,7 +606,7 @@ void LinWidgetsSettingsPage::updateRuntimeStatusView()
 
     if (m_runtimeStatusSubtitle) {
         m_runtimeStatusSubtitle->setText(
-            tr("当前版本 v%1 · 支持导入离线包更新或卸载释放约 85 MB 磁盘空间").arg(version));
+            tr("当前版本 v%1 · 支持导入离线包更新或卸载").arg(version));
     }
 }
 
@@ -644,33 +648,50 @@ void LinWidgetsSettingsPage::onInstallFromZipClicked()
     if (zipFile.isEmpty()) return;
 
     QString error;
-    if (RuntimeInstaller::instance().installFromLocalZip(zipFile, &error)) {
-        updateRuntimeStatusView();
-        FluentDialog::showInfo(this, tr("安装成功"), tr("已成功从本地压缩包解压并安装组件运行库！"));
-    } else {
-        FluentDialog::showWarning(this, tr("安装失败"), tr("解压离线包失败：%1").arg(error));
-    }
+    RuntimeInstaller::instance().installFromLocalZip(zipFile, &error);
 }
 
 void LinWidgetsSettingsPage::onUninstallRuntimeClicked()
 {
-    if (!FluentDialog::confirm(
-            this,
-            tr("卸载组件运行库"),
-            tr("卸载组件运行库将释放约 85 MB 磁盘空间，正在运行的动态壁纸与小组件将立即停止。\n\n"
-               "您的小组件个性化数据与配置将被安全保留，随时可重新安装激活。"),
-            tr("确认卸载"),
-            tr("取消"),
-            true)) {
+    FluentDialog dialog(this);
+    dialog.setDialogTitle(tr("卸载组件运行库"));
+    dialog.setMessage(tr("卸载组件运行库后，正在运行的动态壁纸与小组件将立即停止。\n\n"
+                         "默认安全保留您的自定义壁纸、便签备忘与组件配置，重新下载后可无缝自动恢复。"));
+
+    auto* deleteDataCheck = new QCheckBox(tr("同时清理个人壁纸、便签等组件数据（不可恢复）"), &dialog);
+    deleteDataCheck->setChecked(false);
+    deleteDataCheck->setStyleSheet(QStringLiteral(
+        "QCheckBox { font-size: 13px; color: #5c5c5c; margin-top: 8px; margin-bottom: 4px; spacing: 8px; }"
+        "QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: 1px solid #c8c8c8; background: #ffffff; }"
+        "QCheckBox::indicator:hover { border-color: #0067c0; background: #f9f9f9; }"
+        "QCheckBox::indicator:checked { border-color: #0067c0; background: #0067c0; image: url(:/icons/check.svg); }"
+    ));
+    dialog.contentLayout()->addWidget(deleteDataCheck);
+
+    bool confirmed = false;
+    dialog.addActionButton(tr("确认卸载"), FluentDialog::ActionType::Destructive, [&]() {
+        confirmed = true;
+    });
+    dialog.addActionButton(tr("取消"), FluentDialog::ActionType::Close);
+
+    dialog.exec();
+    if (!confirmed) {
         return;
     }
 
+    const bool deleteUserData = deleteDataCheck->isChecked();
     LinHub::WallpaperStudioWindow::hideIfOpen();
 
     QString error;
-    if (RuntimeInstaller::instance().uninstallRuntime(&error)) {
+    if (RuntimeInstaller::instance().uninstallRuntime(deleteUserData, &error)) {
         updateRuntimeStatusView();
-        FluentDialog::showInfo(this, tr("卸载完成"), tr("组件运行库已成功卸载，已切换至未安装状态。"));
+        FluentDialog::showInfo(
+            this,
+            tr("卸载完成"),
+            deleteUserData
+                ? tr("组件运行库及个人壁纸与组件资料已彻底清理。")
+                : tr("组件运行库已成功卸载。您的个人壁纸与组件资料已妥善保留，重装后即可自动恢复。")
+        );
     } else {
         FluentDialog::showWarning(this, tr("卸载遇到问题"), tr("未能完全清理文件：%1").arg(error));
     }

@@ -445,16 +445,16 @@ protected:
             GetWindowRect(hwnd, &nativeRect);
             const UINT dpi = GetDpiForWindow(hwnd);
             const qreal scale = dpi > 0 ? static_cast<qreal>(dpi) / 96.0 : qMax<qreal>(1.0, devicePixelRatioF());
-            const bool customWebTitle = m_btnContainer && m_btnContainer->isHidden();
-            const int nativeBorder = qMax(1, qRound((customWebTitle ? 6 : 15) * scale));
+            const bool customWebTitle = property("isWebTitleWindow").toBool();
+            const int nativeBorder = qMax(4, qRound((customWebTitle ? 6 : 8) * scale));
             const QPoint pos(qRound((nativeX - nativeRect.left) / scale),
                              qRound((nativeY - nativeRect.top) / scale));
 
             if (m_resizable && !isMaximized()) {
                 const bool left = nativeX >= nativeRect.left && nativeX < nativeRect.left + nativeBorder;
-                const bool right = nativeX <= nativeRect.right && nativeX > nativeRect.right - nativeBorder;
+                const bool right = nativeX <= nativeRect.right && nativeX >= nativeRect.right - nativeBorder;
                 const bool top = nativeY >= nativeRect.top && nativeY < nativeRect.top + nativeBorder;
-                const bool bottom = nativeY <= nativeRect.bottom && nativeY > nativeRect.bottom - nativeBorder;
+                const bool bottom = nativeY <= nativeRect.bottom && nativeY >= nativeRect.bottom - nativeBorder;
 
                 if (left && top) { *result = HTTOPLEFT; return true; }
                 if (right && top) { *result = HTTOPRIGHT; return true; }

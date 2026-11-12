@@ -248,16 +248,67 @@ class IPCService {
             type: 'boolean',
             text: '显示极简环境时钟 (Clock)',
             value: true
+          },
+          clockPosX: {
+            type: 'slider',
+            text: '时钟水平位置 X% (Clock X)',
+            min: 0,
+            max: 100,
+            step: 1,
+            value: 50
+          },
+          clockPosY: {
+            type: 'slider',
+            text: '时钟垂直位置 Y% (Clock Y)',
+            min: 0,
+            max: 100,
+            step: 1,
+            value: 50
+          },
+          clockScale: {
+            type: 'slider',
+            text: '时钟大小比例 % (Clock Size)',
+            min: 60,
+            max: 160,
+            step: 5,
+            value: 100
+          },
+          clockBgOpacity: {
+            type: 'slider',
+            text: '时钟卡片磨砂透明度 % (Card Opacity)',
+            min: 0,
+            max: 100,
+            step: 5,
+            value: 45
+          },
+          clockColor: {
+            type: 'color',
+            text: '时钟文字颜色 (Text Color)',
+            value: '#1e3a2b'
+          },
+          showDate: {
+            type: 'boolean',
+            text: '显示日期与微标 (Show Date & Badge)',
+            value: true
           }
         }
       }
     ]
   };
 
+  private originalWidgets: WidgetInfo[] = [];
+  private originalWallpapers: any[] = [];
+  private mockMode: 'rich' | 'empty' | 'wallpapers_only' | 'widgets_only' = 'rich';
+
   constructor() {
+    this.originalWidgets = JSON.parse(JSON.stringify(this.mockState.widgets));
+    this.originalWallpapers = JSON.parse(JSON.stringify(this.mockState.wallpapers));
+
     this.isCEF = typeof window !== 'undefined' && 
       (window.location.protocol === 'file:' || 
        window.location.protocol === 'linwidget:' || 
+       window.location.search.includes('lindesk=1') ||
+       window.location.search.includes('cef=1') ||
        (window as any).__linwidget_bridge_injected === true ||
        window.navigator.userAgent.includes('LinDesk'));
 
@@ -273,6 +324,48 @@ class IPCService {
         }
       });
     }
+  }
+
+  public getMockMode(): 'rich' | 'empty' | 'wallpapers_only' | 'widgets_only' {
+    return this.mockMode;
+  }
+
+  public setMockMode(mode: 'rich' | 'empty' | 'wallpapers_only' | 'widgets_only') {
+    this.mockMode = mode;
+    if (mode === 'rich') {
+      this.mockState.widgets = JSON.parse(JSON.stringify(this.originalWidgets));
+      this.mockState.wallpapers = JSON.parse(JSON.stringify(this.originalWallpapers));
+      this.mockState.activeWallpaperId = 'lindesk.wallpaper';
+    } else if (mode === 'empty') {
+      this.mockState.widgets = [];
+      this.mockState.wallpapers = [];
+      this.mockState.activeWallpaperId = '';
+    } else if (mode === 'wallpapers_only') {
+      this.mockState.widgets = [];
+      this.mockState.wallpapers = JSON.parse(JSON.stringify(this.originalWallpapers));
+      this.mockState.activeWallpaperId = 'lindesk.wallpaper';
+    } else if (mode === 'widgets_only') {
+      this.mockState.widgets = JSON.parse(JSON.stringify(this.originalWidgets));
+      this.mockState.wallpapers = [];
+      this.mockState.activeWallpaperId = '';
+    }
+    this.send('list');
+  }
+
+  public simulateDragWallpaper(name: string = '示例动态壁纸', fileUrl: string = 'https://assets.mixkit.co/videos/preview/mixkit-tree-branches-in-the-breeze-1188-large.mp4') {
+    this.notifyListeners({
+      action: 'stage_wallpaper_media',
+      ok: true,
+      name,
+      fileUrl,
+      filePath: 'C:\\Users\\User\\Videos\\sample_wallpaper.mp4',
+      wallpaper: {
+        id: `mock.custom.${Date.now()}`,
+        name,
+        mediaUrl: fileUrl,
+        sourcePath: 'C:\\Users\\User\\Videos\\sample_wallpaper.mp4'
+      }
+    });
   }
 
   public getIsCEF(): boolean {
@@ -364,6 +457,7 @@ class IPCService {
           activeWallpaperInteractive: this.mockState.activeWallpaperInteractive,
           userWidgetsDir: this.mockState.userWidgetsDir,
           logDir: this.mockState.logDir,
+          isDebug: Boolean(import.meta.env.DEV),
           widgets: [...this.mockState.widgets],
           wallpapers: [...this.mockState.wallpapers]
         };

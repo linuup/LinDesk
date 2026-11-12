@@ -7,6 +7,7 @@
 #include <QImageWriter>
 #include <QPainter>
 #include <QPointer>
+#include <cmath>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -323,7 +324,7 @@ static bool seekReaderTo100ns(IMFSourceReader* reader, LONGLONG pos100ns)
 static QImage composeVideoFrameForViewport(const QImage& rawFrame,
                                            const QSize& targetSize,
                                            const QString& scaling,
-                                           int blurRadius,
+                                           int blurPercent,
                                            int dimmingPercent)
 {
     if (rawFrame.isNull() || !targetSize.isValid() || targetSize.width() <= 0 || targetSize.height() <= 0) {
@@ -331,12 +332,30 @@ static QImage composeVideoFrameForViewport(const QImage& rawFrame,
     }
 
     QImage working = rawFrame;
-    // Fast multi-scale blur approximation when blurRadius > 0
-    if (blurRadius > 0) {
-        const int factor = qBound(2, 1 + blurRadius / 2, 16);
+    // Fast multi-scale perceptual blur approximation when blurPercent > 0
+    if (blurPercent > 0) {
+        const qreal t = qBound(0, blurPercent, 100) / 100.0;
+        // Non-linear perceptual curve (power of 1.8) matching the UI slider:
+        // subtle at 10~20%, balanced frosted glass at 40~60%, deep blur at 80~100%
+        const qreal curved = std::pow(t, 1.8);
+        const int factor = qBound(2, qRound(2.0 + curved * 10.0), 12);
         const QSize smallSize(qMax(16, working.width() / factor), qMax(9, working.height() / factor));
-        working = working.scaled(smallSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-                         .scaled(working.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        QImage blurred = working.scaled(smallSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                                .scaled(working.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+        // Alpha blend between crisp original and blurred image for buttery-smooth transition at low percentages
+        const qreal blurAlpha = qBound(0.0, curved * 1.6, 1.0);
+        if (blurAlpha < 0.99) {
+            if (working.format() != QImage::Format_ARGB32_Premultiplied) {
+                working = working.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            }
+            QPainter blendPainter(&working);
+            blendPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            blendPainter.setOpacity(blurAlpha);
+            blendPainter.drawImage(0, 0, blurred);
+        } else {
+            working = blurred;
+        }
     }
 
     QImage canvas(targetSize, QImage::Format_ARGB32_Premultiplied);
@@ -843,7 +862,7 @@ void WinMfVideoEngine::startDesktopVideo(const QString& instanceId,
         m_desktopViewport = viewportRect;
         m_desktopScaling = initialConfig.scaling;
         m_desktopDimming.store(qBound(0, initialConfig.dimming, 85));
-        m_desktopBlur.store(qBound(0, initialConfig.blur, 30));
+        m_desktopBlur.store(qBound(0, initialConfig.blur, 100));
         m_desktopVolume.store(qBound(0, initialConfig.volume, 100));
         m_desktopMuted.store(initialConfig.muted);
         m_desktopPlaybackRate.store(qBound(0.25, initialConfig.playbackRate, 3.0));
@@ -1046,7 +1065,7 @@ void WinMfVideoEngine::updateDesktopProperty(const QString& key, const QVariant&
     } else if (k == QStringLiteral("dimming")) {
         m_desktopDimming.store(qBound(0, value.toInt(), 85));
     } else if (k == QStringLiteral("blur")) {
-        m_desktopBlur.store(qBound(0, value.toInt(), 30));
+        m_desktopBlur.store(qBound(0, value.toInt(), 100));
     } else if (k == QStringLiteral("volume")) {
         const int vol = qBound(0, value.toInt(), 100);
         m_desktopVolume.store(vol);
@@ -1347,7 +1366,6 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool isDevelopmen
         // 继承能效状态机当前的帧率与休眠状态，避免切换壁纸后绕过电源策略
         osr->setFramerate(m_wallpaperFramerate);
         osr->setVisible(!m_wallpaperSuspended);
-
         connect(osr, &LinCef::CefOsrBrowserInstance::frameReady, this,
                 [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
                     if (m_canvasWidget) {

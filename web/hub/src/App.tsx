@@ -12,15 +12,37 @@ import { WallpaperImportModal } from './components/WallpaperImportModal';
 import { DevConsole } from './components/DevConsole';
 import { CreateWidgetModal } from './components/CreateWidgetModal';
 import { Toast, ToastMessage } from './components/Toast';
+import { DevPreviewBanner } from './components/DevPreviewBanner';
 
 export const App: React.FC = () => {
+  const [isDebug, setIsDebug] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('debug') === '1' || params.get('debug') === 'true') return true;
+      if (params.get('release') === '1' || params.get('debug') === '0') return false;
+    }
+    return Boolean(import.meta.env.DEV);
+  });
+
   const [activeTab, setActiveTab] = useState<MainTabType>(() => {
     const saved = localStorage.getItem('lindesk_hub_active_tab') as MainTabType;
-    if (saved && ['overview', 'studio', 'widgets', 'desktop'].includes(saved)) {
+    if (saved && ['overview', 'studio', 'widgets'].includes(saved)) {
       return saved;
+    }
+    if (saved === 'desktop') {
+      const isDevEnv = typeof window !== 'undefined' && 
+        (new URLSearchParams(window.location.search).get('debug') === '1' || Boolean(import.meta.env.DEV));
+      if (isDevEnv) return 'desktop';
     }
     return 'overview';
   });
+
+  useEffect(() => {
+    if (!isDebug && activeTab === 'desktop') {
+      setActiveTab('overview');
+      localStorage.setItem('lindesk_hub_active_tab', 'overview');
+    }
+  }, [isDebug, activeTab]);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('lindesk_hub_theme');
@@ -57,6 +79,17 @@ export const App: React.FC = () => {
   // Staged wallpaper media for import / custom parameter editing modal
   const [stagedMedia, setStagedMedia] = useState<StagedWallpaperMedia | null>(null);
   const [isExternalDragging, setIsExternalDragging] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    const checkMaximized = () => {
+      const isMax = window.innerWidth >= (window.screen.availWidth - 4) && window.innerHeight >= (window.screen.availHeight - 4);
+      setIsMaximized(isMax);
+    };
+    checkMaximized();
+    window.addEventListener('resize', checkMaximized);
+    return () => window.removeEventListener('resize', checkMaximized);
+  }, []);
 
   const addToast = useCallback((type: 'success' | 'error' | 'info', title: string, message?: string) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -84,7 +117,9 @@ export const App: React.FC = () => {
 
       const action = data.action || data.type;
 
-      if (action === 'drag_state_changed') {
+      if (action === 'window_state_changed') {
+        setIsMaximized(Boolean(data.isMaximized));
+      } else if (action === 'drag_state_changed') {
         setIsExternalDragging(Boolean(data.dragging));
       } else if (action === 'stage_wallpaper_media') {
         setIsExternalDragging(false);
@@ -164,6 +199,9 @@ export const App: React.FC = () => {
         }
         refreshState();
       } else if (action === 'list') {
+        if (typeof data.isDebug === 'boolean') {
+          setIsDebug(data.isDebug);
+        }
         if (Array.isArray(data.widgets)) {
           setWidgets(data.widgets.filter((w: WidgetInfo) => w.role !== 'wallpaper'));
         }
@@ -230,8 +268,10 @@ export const App: React.FC = () => {
         }
       } else if (action === 'uninstall') {
         if (data.ok) {
-          addToast('info', '组件已移除');
+          addToast('info', '组件已成功删除');
           refreshState();
+        } else {
+          addToast('error', '删除失败', data.error || '无法删除组件目录');
         }
       } else if (action === 'import_wallpaper_media') {
         if (data.cancelled) return;
@@ -336,8 +376,8 @@ export const App: React.FC = () => {
     ipc.send('show_devtools', { widgetId: id });
   };
 
-  const handleUninstall = (id: string) => {
-    ipc.send('uninstall', { widgetId: id });
+  const handleUninstall = (id: string, packagePath?: string, name?: string) => {
+    ipc.send('uninstall', { widgetId: id, packagePath, name });
   };
 
   const handleCreateWidget = (data: CreateWidgetData) => {
@@ -457,6 +497,11 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#f1f3f6] dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 flex flex-col font-sans select-none antialiased transition-colors">
+      {/* Windows 10 标准 1px 窗体描边 (最大化时隐藏，彻底解决白色窗体混淆问题) */}
+      {!isMaximized && (
+        <div className="fixed inset-0 pointer-events-none z-[9999] border border-[#707070] dark:border-slate-700" />
+      )}
+
       {/* 1. Full-width Custom Frameless Title Bar */}
       <Header
         activeTab={activeTab}
@@ -464,6 +509,7 @@ export const App: React.FC = () => {
         totalWidgets={widgets.length}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        isDebug={isDebug}
       />
 
       {/* 2. Workspace View */}
@@ -482,6 +528,7 @@ export const App: React.FC = () => {
               onImportMedia={() => handleImportMedia()}
               onLaunchWidget={handleLaunch}
               onStopWidget={handleStop}
+              onCreateWidget={() => setCreateModalOpen(true)}
             />
           )}
 
@@ -523,7 +570,7 @@ export const App: React.FC = () => {
             />
           )}
 
-          {activeTab === 'desktop' && (
+          {activeTab === 'desktop' && isDebug && (
             <DevConsole
               logs={logs}
               systemPaths={systemPaths}
@@ -548,6 +595,7 @@ export const App: React.FC = () => {
       />
 
       <Toast toasts={toasts} onDismiss={dismissToast} />
+      <DevPreviewBanner />
     </div>
   );
 };

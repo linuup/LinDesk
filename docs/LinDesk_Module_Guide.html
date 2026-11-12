@@ -116,7 +116,7 @@
   <p>工程要点：</p>
   <ul>
     <li>版本号单一来源：<code>CMakeLists.txt</code> 中 <code>LINDESK_VERSION_*</code> 定义，通过 <code>configure_file</code> 生成 <code>src/app/Version.h</code>、<code>LinDesk.rc</code> 与安装脚本。</li>
-    <li>依赖管理：vcpkg（<code>vcpkg.json</code>），Qt5 组件包括 Widgets、WinExtras、Core、Network、OpenGL、Svg、Qml、Quick、QuickWidgets、Multimedia、LinguistTools。</li>
+    <li>依赖管理：vcpkg（<code>vcpkg.json</code>），Qt5 组件包括 Widgets、WinExtras、Core、Network、OpenGL、Svg、Multimedia、LinguistTools、Concurrent。</li>
     <li>CEF（Chromium Embedded Framework）为可选集成：<code>3rdparty/cef</code> 存在时启用 <code>LINDESK_HAS_CEF</code> 并构建 OSR 子进程；WebView2 同样按目录探测启用。</li>
     <li>多语言：<code>translations/</code> 下维护 <code>lindesk_zh_CN.ts</code>、<code>lindesk_en_US.ts</code>，构建时经 Qt Linguist 编译为 .qm 并拷贝到输出目录。</li>
   </ul>
@@ -311,7 +311,6 @@
     <tr><td><code>Fluent/</code></td><td>Fluent 风格控件库：<code>FluentBaseWidget</code>、<code>FluentBaseDialog</code>、<code>FluentDialog</code>、<code>FluentButton</code>、<code>FluentCard</code>、<code>FluentCheckBox</code>、<code>FluentColorWheel</code>、<code>FluentComboBox</code>、<code>FluentDragTip</code>、<code>FluentInfoTip</code>、<code>FluentInput</code>、<code>FluentResultView</code>、<code>FluentToggleSwitch</code>、<code>FluentWidget</code></td></tr>
     <tr><td><code>SettingUI</code></td><td>设置主界面：常规设置、盒子/组件配置、更新检查与下载等入口</td></tr>
     <tr><td><code>SoftDesktopTextRenderer</code></td><td>桌面文字渲染与描边/发光效果</td></tr>
-    <tr><td><code>QmlTestWindow</code></td><td>QML 测试窗口</td></tr>
   </table>
   </div>
 

@@ -1548,18 +1548,19 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
         const QString effectivePath = (eventInfo.eventType == FileSystemEvent::DirectoryCreated)
             ? ListViewFileOpsHelper::normalizeNewFolderCasePath(eventInfo.newPath)
             : eventInfo.newPath;
-        const QString resolvedNewPath = normalizeDesktopPath(effectivePath);
+        const QString actualDiskPath = ListViewFileOpsHelper::canonicalDiskPath(effectivePath);
+        const QString resolvedNewPath = normalizeDesktopPath(actualDiskPath);
         if (resolvedNewPath.isEmpty()) break;
         if (findAnyItemStateByPath(resolvedNewPath)) break;
         
-        qDebug() << "[onFileSystemChanged] Creating item:" << resolvedNewPath;
+        qDebug() << "[onFileSystemChanged] Creating item:" << actualDiskPath;
         QPointer<LinBox> pendingTargetBox = m_pendingCreatedItemBoxes.value(resolvedNewPath);
         if (pendingTargetBox.isNull()) {
             pendingTargetBox = m_pendingShellNewTargetBox;
         }
         if (pendingTargetBox) {
             if (pendingTargetBox->isFolderMapped()) {
-                handlePendingShellCreatedItem(effectivePath);
+                handlePendingShellCreatedItem(actualDiskPath);
             } else {
                 auto boxIt = m_pendingCreatedItemBoxes.find(resolvedNewPath);
                 const int insertIndex = (boxIt != m_pendingCreatedItemBoxes.end() && m_pendingCreatedItemInsertIndices.contains(resolvedNewPath))
@@ -1569,7 +1570,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 }
                 clearPendingShellNewTargetBox();
 
-                const ListItemData data = DesktopItemLoader().loadItem(resolvedNewPath);
+                const ListItemData data = DesktopItemLoader().loadItem(actualDiskPath);
                 DesktopRootItemState state;
                 initDesktopRootItemModel(state.model, data, currentDesktopItemInitContext());
                 state.model.layoutMode = DesktopLayoutMode::IconMode;
@@ -1590,7 +1591,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
                 update();
             }
         } else {
-            addDesktopModelItemFromPath(resolvedNewPath, true);
+            addDesktopModelItemFromPath(actualDiskPath, true);
         }
         
         requestSaveBoxes();
@@ -2288,7 +2289,7 @@ bool ListView::createNewFolderInHost(LinBox* targetBox)
 
     const QString targetDirectory = createInMappedFolder
         ? normalizeMappedFolderPathForLookup(targetBox->mappedFolderPath())
-        : normalizeDesktopPath(m_desktopDir);
+        : QDir::toNativeSeparators(m_desktopDir);
     if (targetDirectory.isEmpty()) {
         return false;
     }
@@ -2344,7 +2345,7 @@ bool ListView::createNewTextDocumentInHost()
         return false;
     }
 
-    const QString targetDirectory = normalizeDesktopPath(m_desktopDir);
+    const QString targetDirectory = QDir::toNativeSeparators(m_desktopDir);
     if (targetDirectory.isEmpty()) {
         return false;
     }

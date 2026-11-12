@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -478,7 +479,61 @@ def compute_sha256(file_path: str) -> str:
             hasher.update(chunk)
     return hasher.hexdigest().lower()
 
-def generate_update_json(installer_path: str, version: str, sha256_hash: str, notes: str, output_path: str):
+def package_widget_runtime(repo_root: str, version: str, arch: str, release_dir: str, output_dir: str) -> Optional[Tuple[str, str]]:
+    """
+    检查并打包 CEF 运行时独立支持包 (linwidget-runtime-v{version}-{arch}.zip)。
+    若检测到 libcef.dll，则执行 scripts/package_linwidget_runtime.ps1，返回 (zip_path, sha256_hash)。
+    """
+    script_path = os.path.join(repo_root, "scripts", "package_linwidget_runtime.ps1")
+    if not os.path.isfile(script_path):
+        return None
+
+    cef_candidates = [
+        os.path.join(release_dir, "libcef.dll"),
+        os.path.join(release_dir, "runtime", "linwidget", "libcef.dll"),
+        os.path.join(repo_root, "3rdparty", "cef", "Release", "libcef.dll")
+    ]
+    has_cef = any(os.path.isfile(c) for c in cef_candidates)
+    if not has_cef:
+        print(f"    [INFO] 未检测到 CEF 运行时核心库 (libcef.dll)，跳过本架构 ({arch}) 运行时独立包生成。")
+        return None
+
+    print(f"\n>>> 打包 CEF 运行时独立支持包 ({arch})...")
+    sys.stdout.flush()
+
+    cmd = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", script_path,
+        "-Version", version,
+        "-Arch", arch,
+        "-BuildDir", release_dir,
+        "-OutputDir", output_dir
+    ]
+
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"    [WARNING] 打包 CEF 运行时包失败 (code {res.returncode}):\n{res.stderr}\n{res.stdout}")
+        return None
+
+    zip_name = f"linwidget-runtime-v{version}-{arch}.zip"
+    zip_path = os.path.join(output_dir, zip_name)
+    if not os.path.isfile(zip_path):
+        legacy_name = f"linwidget-runtime-v{version}.zip"
+        legacy_path = os.path.join(output_dir, legacy_name)
+        if os.path.isfile(legacy_path):
+            zip_path = legacy_path
+
+    if os.path.isfile(zip_path):
+        h = compute_sha256(zip_path)
+        print(f"    [OK] CEF 运行时支持包生成成功: {zip_path}")
+        print(f"         SHA-256: {h}")
+        return (zip_path, h)
+    return None
+
+def generate_update_json(installer_path: str, version: str, sha256_hash: str, notes: str, output_path: str,
+                         runtime_info: Optional[Dict[str, str]] = None):
     print(f"\n>>> Generating update metadata: {os.path.basename(output_path)}...")
     sys.stdout.flush()
 
@@ -497,6 +552,9 @@ def generate_update_json(installer_path: str, version: str, sha256_hash: str, no
         "minSupportedVersion": DEFAULT_MIN_VERSION
     }
 
+    if runtime_info:
+        metadata["runtime"] = runtime_info
+
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
@@ -504,8 +562,33 @@ def generate_update_json(installer_path: str, version: str, sha256_hash: str, no
     print(f"    [OK] Saved to: {output_path}")
     print(f"         SHA-256 : {sha256_hash}")
     print(f"         URL     : {download_url}")
+    if runtime_info:
+        print(f"         Runtime : {runtime_info.get('url')} ({runtime_info.get('sha256')})")
     sys.stdout.flush()
     return metadata
+
+def get_ssl_context():
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+DEFAULT_RUNTIME_CONFIG = {
+    "x64": {
+        "version": "1.0.0",
+        "url": f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/v1.0.0/linwidget-runtime-v1.0.0-x64.zip",
+        "sha256": "afbe261b6d4909fec8f902fdb4171e65c4b1618af8ab493234f35bc9d6813f1f"
+    },
+    "x86": {
+        "version": "1.0.0",
+        "url": f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/v1.0.0/linwidget-runtime-v1.0.0-x86.zip",
+        "sha256": "165e1692b584cd7f0d085551297a06af05365a259633ef2c3238b846929e8fa2"
+    }
+}
 
 def api_github_request(method: str, url: str, token: str,
                        data: Optional[bytes] = None,
@@ -519,7 +602,7 @@ def api_github_request(method: str, url: str, token: str,
         headers["Content-Type"] = content_type
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, context=get_ssl_context()) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
@@ -640,7 +723,7 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
     print("  [1] 正式发布到 GitHub (构建 + 打包 + 更新 update.json + GitHub 发布)")
     print("  [2] 仅本地构建与打包 (构建 + Inno Setup 打包 + update.json，不上传)")
     print("  [3] 仅打包现有产物   (跳过编译，直接使用已有的 Release 产物制作安装包)")
-    print("  [4] 仅更新国际化翻译 (提取并编译 C++/QML 翻译 .ts -> .qm)")
+    print("  [4] 仅更新国际化翻译 (提取并编译 C++ 翻译 .ts -> .qm)")
     print("  [5] 仅推送已有安装包 (跳过编译与打包，直接上传 installer/ 下的现成包)")
     print("  [0] 退出")
     print("-" * 68)
@@ -688,15 +771,7 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
         skip_trans = True
         print("\n【Release Notes / 更新日志】")
         user_notes = input("请输入本次更新说明 (直接回车将使用默认说明): ").strip()
-        if user_notes:
-            notes = user_notes
-        else:
-            rn_file = os.path.join(repo_root, "docs", "release-notes.md")
-            if os.path.isfile(rn_file):
-                with open(rn_file, "r", encoding="utf-8") as f:
-                    notes = f.read().strip()
-            if not notes:
-                notes = f"LinDesk {target_version} update."
+        notes = user_notes if user_notes else f"LinDesk {target_version} update."
     else:
         # 模式 1, 2, 3 的版本号配置
         next_patch_ver = f"{curr_major}.{curr_minor}.{curr_patch + 1}"
@@ -734,15 +809,7 @@ def interactive_wizard(repo_root: str, current_version: str, curr_major: int, cu
         if choice == "1":
             print("\n【Release Notes / 更新日志】")
             user_notes = input("请输入本次更新说明 (直接回车将使用默认说明): ").strip()
-            if user_notes:
-                notes = user_notes
-            else:
-                rn_file = os.path.join(repo_root, "docs", "release-notes.md")
-                if os.path.isfile(rn_file):
-                    with open(rn_file, "r", encoding="utf-8") as f:
-                        notes = f.read().strip()
-                if not notes:
-                    notes = f"LinDesk {target_version} update."
+            notes = user_notes if user_notes else f"LinDesk {target_version} update."
         else:
             notes = f"LinDesk {target_version} local package."
 
@@ -832,6 +899,7 @@ def main():
     parser.add_argument("--notes-file", default="", help="File containing release notes")
     parser.add_argument("--skip-upload", action="store_true", help="Build and generate metadata without uploading to GitHub")
     parser.add_argument("--skip-package", action="store_true", help="Skip build & packaging, push existing packages from installer/ folder")
+    parser.add_argument("--package-runtime", action="store_true", help="显式重新打包并上传独立组件运行时 (平常发版默认跳过)")
     parser.add_argument("--build-dir", default="", help="Custom CMake build directory override (used when single arch)")
     parser.add_argument("--interactive", "-i", action="store_true", help="Force interactive wizard")
 
@@ -870,11 +938,6 @@ def main():
             with open(args.notes_file, "r", encoding="utf-8") as f:
                 notes = f.read().strip()
         if not notes:
-            rn_file = os.path.join(repo_root, "docs", "release-notes.md")
-            if os.path.isfile(rn_file):
-                with open(rn_file, "r", encoding="utf-8") as f:
-                    notes = f.read().strip()
-        if not notes:
             notes = f"LinDesk {target_version} update."
 
         skip_upload = args.skip_upload
@@ -901,7 +964,7 @@ def main():
         write_version(cmake_path, parts[0], parts[1], parts[2])
         print("    [OK] CMakeLists.txt 已更新。")
 
-    # Step 2: Update translations (clean C++/QML extraction, once for all archs)
+    # Step 2: Update translations (clean C++ extraction, once for all archs)
     if not skip_trans and not no_build:
         update_translations(repo_root, open_linguist=args.open_linguist)
     else:
@@ -909,6 +972,7 @@ def main():
 
     # Step 3 & 4: Build, Deploy & Package for each target architecture
     installer_dir = os.path.join(repo_root, "installer")
+    dist_dir = os.path.join(repo_root, "dist")
     iss_path = os.path.join(installer_dir, "package.iss")
     
     installer_items: List[Tuple[str, str]] = []  # list of (installer_path, sha256_hash)
@@ -921,8 +985,22 @@ def main():
             inst_path = existing_map[arch]
             sha256_hash = compute_sha256(inst_path)
             installer_items.append((inst_path, sha256_hash))
+
+            # 独立运行时元数据（默认固定指向永久静态底座 v1.0.0，平常发版不重复打包与上传 188MB 运行时）
+            runtime_info = DEFAULT_RUNTIME_CONFIG.get(arch)
+            if getattr(args, "package_runtime", False):
+                cr = os.path.join(dist_dir, f"linwidget-runtime-v1.0.0-{arch}.zip")
+                if os.path.isfile(cr):
+                    r_hash = compute_sha256(cr)
+                    installer_items.append((cr, r_hash))
+                    runtime_info = {
+                        "version": "1.0.0",
+                        "url": f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/v1.0.0/{os.path.basename(cr)}",
+                        "sha256": r_hash
+                    }
+
             uj_path = os.path.join(installer_dir, ARCH_CONFIG[arch]["update_json_name"])
-            generate_update_json(inst_path, target_version, sha256_hash, notes, uj_path)
+            generate_update_json(inst_path, target_version, sha256_hash, notes, uj_path, runtime_info=runtime_info)
             update_json_paths.append(uj_path)
     else:
         for arch in arch_list:
@@ -945,9 +1023,22 @@ def main():
             sha256_hash = compute_sha256(installer_path)
             installer_items.append((installer_path, sha256_hash))
 
+            # 独立运行时元数据（默认固定指向永久静态底座 v1.0.0，平常发版不重复打包与上传 188MB 运行时）
+            runtime_info = DEFAULT_RUNTIME_CONFIG.get(arch)
+            if getattr(args, "package_runtime", False):
+                runtime_tuple = package_widget_runtime(repo_root, "1.0.0", arch, release_dir, dist_dir)
+                if runtime_tuple:
+                    r_path, r_hash = runtime_tuple
+                    installer_items.append((r_path, r_hash))
+                    runtime_info = {
+                        "version": "1.0.0",
+                        "url": f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/v1.0.0/{os.path.basename(r_path)}",
+                        "sha256": r_hash
+                    }
+
             # Update JSON generation
             update_json_path = os.path.join(installer_dir, ARCH_CONFIG[arch]["update_json_name"])
-            generate_update_json(installer_path, target_version, sha256_hash, notes, update_json_path)
+            generate_update_json(installer_path, target_version, sha256_hash, notes, update_json_path, runtime_info=runtime_info)
             update_json_paths.append(update_json_path)
 
     # Step 6: Publish release to GitHub (REST API)

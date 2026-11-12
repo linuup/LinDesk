@@ -67,8 +67,41 @@ inline QString userCrashDumpsDir()
     return dirPath;
 }
 
+inline bool isDebugOrDevMode()
+{
+    // 单元测试执行时不切换为本地程序目录，保持测试环境独立
+    if (QCoreApplication::applicationName().contains(QStringLiteral("Test"), Qt::CaseInsensitive)) {
+        return false;
+    }
+
+#if defined(QT_DEBUG) || !defined(NDEBUG) || defined(_DEBUG)
+    return true;
+#else
+    if (qEnvironmentVariableIsSet("LINDESK_DEV_MODE")) {
+        return true;
+    }
+    const QString appDir = QDir::cleanPath(QCoreApplication::applicationDirPath());
+    if (appDir.contains(QStringLiteral("build/"), Qt::CaseInsensitive) ||
+        appDir.contains(QStringLiteral("build\\"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    return false;
+#endif
+}
+
 inline QString userLinWidgetsDir()
 {
+    if (isDebugOrDevMode()) {
+        const QString appResourcesWidgets = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets"));
+        if (QDir(appResourcesWidgets).exists()) {
+            return appResourcesWidgets;
+        }
+        const QString appWidgets = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("LinWidgets"));
+        if (QDir(appWidgets).exists()) {
+            return appWidgets;
+        }
+    }
+
     const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("LinWidgets"));
     QDir().mkpath(dirPath);
     return dirPath;
@@ -81,6 +114,17 @@ inline QString linWidgetRegistryFilePath()
 
 inline QString userWallpapersDir()
 {
+    if (isDebugOrDevMode()) {
+        const QString appResourcesWallpapers = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/wallpapers"));
+        if (QDir(appResourcesWallpapers).exists()) {
+            return appResourcesWallpapers;
+        }
+        const QString appWallpapers = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("wallpapers"));
+        if (QDir(appWallpapers).exists()) {
+            return appWallpapers;
+        }
+    }
+
     const QString dirPath = QDir(userConfigDir()).filePath(QStringLiteral("LinWallpapers"));
     QDir().mkpath(dirPath);
     return dirPath;

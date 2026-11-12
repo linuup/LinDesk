@@ -15,6 +15,7 @@ public:
 
 private:
     void initUI();
+    void rebuildInstalledList();
 
 private:
     QLabel* m_pluginsPageTitle = nullptr;
@@ -26,4 +27,6 @@ private:
     QLabel* m_comingTitle = nullptr;
     QLabel* m_comingSubtitle = nullptr;
     QVBoxLayout* m_mainLayout = nullptr;
+    QWidget* m_installedContainer = nullptr;
+    QVBoxLayout* m_installedLayout = nullptr;
 };

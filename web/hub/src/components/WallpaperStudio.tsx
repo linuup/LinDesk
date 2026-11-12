@@ -139,11 +139,14 @@ const ThumbnailView: React.FC<{ wall: WallpaperInfo; isHovered?: boolean }> = ({
   );
 };
 
-// 模糊百分比 (0% ~ 100%) 换算为 CSS 高斯模糊像素 (0px ~ 20px)
+// 模糊百分比 (0% ~ 100%) 换算为 CSS 高斯模糊像素 (0px ~ 16px)
+// 使用平滑 1.8 次方人眼感知曲线，彻底解决“稍微拉一点点就很模糊，10%和100%无区别”的问题
 const blurPercentToPx = (percent: number): number => {
   if (!percent || percent <= 0) return 0;
-  const p = percent > 20 ? (percent / 100) * 20 : percent;
-  return Math.min(20, Math.max(0, p));
+  const t = Math.min(100, Math.max(0, percent)) / 100;
+  // 5% -> 0.1px, 10% -> 0.3px, 20% -> 0.9px, 35% -> 2.4px, 50% -> 4.6px, 75% -> 9.5px, 100% -> 16.0px
+  const px = Math.pow(t, 1.8) * 16.0;
+  return Math.round(px * 10) / 10;
 };
 
 export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
@@ -853,7 +856,7 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
                         style={{
                           objectFit: universal.scaling === 'contain' ? 'contain' : universal.scaling === 'fill' ? 'fill' : 'cover',
                           filter: blurPercentToPx(universal.blur) > 0 ? `blur(${blurPercentToPx(universal.blur).toFixed(1)}px)` : 'none',
-                          transform: blurPercentToPx(universal.blur) > 0 ? 'scale(1.04)' : 'scale(1)'
+                          transform: blurPercentToPx(universal.blur) > 0 ? `scale(${(1 + Math.min(0.04, blurPercentToPx(universal.blur) * 0.0025)).toFixed(3)})` : 'scale(1)'
                         }}
                       />
                     </div>
@@ -869,7 +872,7 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
                         className="w-full h-full"
                         style={{
                           filter: blurPercentToPx(universal.blur) > 0 ? `blur(${blurPercentToPx(universal.blur).toFixed(1)}px)` : 'none',
-                          transform: blurPercentToPx(universal.blur) > 0 ? 'scale(1.04)' : 'scale(1)'
+                          transform: blurPercentToPx(universal.blur) > 0 ? `scale(${(1 + Math.min(0.04, blurPercentToPx(universal.blur) * 0.0025)).toFixed(3)})` : 'scale(1)'
                         }}
                       />
                     </div>

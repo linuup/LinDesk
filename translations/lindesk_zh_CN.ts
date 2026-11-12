@@ -5,102 +5,166 @@
     <name>AboutSettingsPage</name>
     <message>
         <source>LinDesk</source>
-        <translation type="unfinished">LinDesk</translation>
+        <translation>LinDesk</translation>
     </message>
     <message>
         <source>Version %1</source>
-        <translation type="unfinished">版本 %1</translation>
+        <translation>版本 %1</translation>
     </message>
     <message>
         <source>Online Update</source>
-        <translation type="unfinished">在线更新</translation>
+        <translation>在线更新</translation>
     </message>
     <message>
         <source>Current version: %1</source>
-        <translation type="unfinished">当前版本: %1</translation>
+        <translation>当前版本: %1</translation>
     </message>
     <message>
         <source>Check for Updates</source>
-        <translation type="unfinished">检查更新</translation>
+        <translation>检查更新</translation>
     </message>
     <message>
         <source>Already up to date. Current version: %1</source>
-        <translation type="unfinished">已是最新版本。当前版本: %1</translation>
+        <translation type="vanished">已是最新版本。当前版本: %1</translation>
     </message>
     <message>
         <source>New version found: %1</source>
-        <translation type="unfinished">发现新版本: %1</translation>
+        <translation type="vanished">发现新版本: %1</translation>
     </message>
     <message>
         <source>New Version Available</source>
-        <translation type="unfinished">有新版本可用</translation>
+        <translation>有新版本可用</translation>
     </message>
     <message>
         <source>Version: %1
 
 %2</source>
-        <translation type="unfinished">版本: %1
+        <translation>版本: %1
 
 %2</translation>
     </message>
     <message>
         <source>Update Now</source>
-        <translation type="unfinished">立即更新</translation>
+        <translation>立即更新</translation>
     </message>
     <message>
         <source>Cancel</source>
-        <translation type="unfinished">取消</translation>
+        <translation>取消</translation>
     </message>
     <message>
         <source>Update cancelled.</source>
-        <translation type="unfinished">更新已取消。</translation>
+        <translation type="vanished">更新已取消。</translation>
     </message>
     <message>
         <source>Update check failed: %1</source>
-        <translation type="unfinished">更新检查失败: %1</translation>
+        <translation>更新检查失败: %1</translation>
     </message>
     <message>
         <source>Checking for updates...</source>
-        <translation type="unfinished">正在检查更新...</translation>
+        <translation type="vanished">正在检查更新...</translation>
     </message>
     <message>
         <source>Download complete. Starting installer...</source>
-        <translation type="unfinished">下载完成。正在启动安装程序...</translation>
+        <translation>下载完成。正在启动安装程序...</translation>
     </message>
     <message>
         <source>Download failed: %1</source>
-        <translation type="unfinished">下载失败: %1</translation>
+        <translation>下载失败: %1</translation>
     </message>
     <message>
         <source>Using cached installer: %1</source>
-        <translation type="unfinished">使用了缓存的安装程序: %1</translation>
+        <translation type="vanished">使用了缓存的安装程序: %1</translation>
     </message>
     <message>
         <source>Downloading update to: %1</source>
-        <translation type="unfinished">正在下载更新到: %1</translation>
+        <translation type="vanished">正在下载更新到: %1</translation>
     </message>
     <message>
         <source>Installer file is missing. Please download again.</source>
-        <translation type="unfinished">安装程序文件丢失。请重新下载。</translation>
+        <translation>安装程序文件丢失。请重新下载。</translation>
     </message>
     <message>
         <source>LinDeskUpdate.exe was not found in the application directory.</source>
-        <translation type="unfinished">在应用程序目录中未找到 LinDeskUpdate.exe。</translation>
+        <translation>在应用程序目录中未找到 LinDeskUpdate.exe。</translation>
     </message>
     <message>
         <source>Failed to start updater.</source>
-        <translation type="unfinished">启动更新程序失败。</translation>
+        <translation>启动更新程序失败。</translation>
     </message>
     <message>
         <source>About</source>
-        <translation type="unfinished">关于</translation>
+        <translation>关于</translation>
     </message>
     <message>
         <source>View application version information and check for online updates.</source>
-        <translation type="unfinished"></translation>
+        <translation>查看应用程序版本信息并检查在线更新。</translation>
     </message>
     <message>
         <source>Update Status</source>
+        <translation>更新状态</translation>
+    </message>
+    <message>
+        <source>LinDesk is up to date (Version %1).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New version available: LinDesk %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>What&apos;s new in v%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No release notes provided.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking for online updates...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloaded %1 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading: %1 MB / %2 MB</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verified installer package. Launching...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Retry Download</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Verified cached installer package.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Installer ready: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Downloading LinDesk %1 update package...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Connecting to update server...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download cancelled.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Download Again</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -108,79 +172,79 @@
     <name>BoxSettingsPage</name>
     <message>
         <source>Box</source>
-        <translation type="unfinished">盒子</translation>
+        <translation>盒子</translation>
     </message>
     <message>
         <source>Appearance &amp; Theme</source>
-        <translation type="unfinished"></translation>
+        <translation>外观与主题</translation>
     </message>
     <message>
         <source>Preview and customize the theme color, opacity, and acrylic glass effect of your desktop boxes.</source>
-        <translation type="unfinished"></translation>
+        <translation>预览并自定义桌面盒子的主题颜色、不透明度和亚克力玻璃效果。</translation>
     </message>
     <message>
         <source>Theme Color</source>
-        <translation type="unfinished"></translation>
+        <translation>主题颜色</translation>
     </message>
     <message>
         <source>Accent Color</source>
-        <translation type="unfinished">主题颜色</translation>
+        <translation>强调颜色</translation>
     </message>
     <message>
         <source>Background Opacity</source>
-        <translation type="unfinished">背景透明度</translation>
+        <translation>背景透明度</translation>
     </message>
     <message>
         <source>Adjust the transparency of the box background.</source>
-        <translation type="unfinished">调整框背景的透明度。</translation>
+        <translation>调整框背景的透明度。</translation>
     </message>
     <message>
         <source>Acrylic Glass Effect</source>
-        <translation type="unfinished">亚克力玻璃效果</translation>
+        <translation>亚克力玻璃效果</translation>
     </message>
     <message>
         <source>Enable real-time DWM background blur for a translucent look.</source>
-        <translation type="unfinished">启用实时 DWM 背景模糊以获得半透明外观。</translation>
+        <translation>启用实时 DWM 背景模糊以获得半透明外观。</translation>
     </message>
     <message>
         <source>Layered Glass Depth</source>
-        <translation type="unfinished"></translation>
+        <translation>分层玻璃深度</translation>
     </message>
     <message>
         <source>Render high-specular titlebar and deep frosted body with 3D glass depth.</source>
-        <translation type="unfinished"></translation>
+        <translation>渲染高镜面反射的标题栏和深霜冻的主体，具有 3D 玻璃深度。</translation>
     </message>
     <message>
         <source>Box Behavior</source>
-        <translation type="unfinished"></translation>
+        <translation>盒子行为</translation>
     </message>
     <message>
         <source>Configure how boxes interact with mouse hover and collapsing.</source>
-        <translation type="unfinished"></translation>
+        <translation>配置盒子如何与鼠标悬停和折叠进行交互。</translation>
     </message>
     <message>
         <source>Auto-Peek on Hover</source>
-        <translation type="unfinished"></translation>
+        <translation>悬停时自动展开</translation>
     </message>
     <message>
         <source>Automatically expand collapsed boxes when hovered, and roll up when the mouse leaves.</source>
-        <translation type="unfinished"></translation>
+        <translation>当鼠标悬停时自动展开折叠的盒子，当鼠标离开时卷起。</translation>
     </message>
     <message>
         <source>Instant Auto-Peek</source>
-        <translation type="unfinished"></translation>
+        <translation>即时自动展开</translation>
     </message>
     <message>
         <source>Expand immediately on hover without a 150ms debounce delay.</source>
-        <translation type="unfinished"></translation>
+        <translation>在悬停时立即展开，无需 150ms 的去抖延迟。</translation>
     </message>
     <message>
         <source>Active Drop Pulse &amp; Glow</source>
-        <translation type="unfinished"></translation>
+        <translation>活动拖拽脉冲与辉光</translation>
     </message>
     <message>
         <source>Display an ambient glowing border and magnetic pulse when dragging files over the box.</source>
-        <translation type="unfinished"></translation>
+        <translation>在将文件拖拽到盒子上时显示环境发光边框和磁性脉冲。</translation>
     </message>
     <message>
         <source>LinBox</source>
@@ -2231,10 +2295,6 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>管理本地支持包，可导入安装包更新或卸载以释放磁盘空间</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>离线包更新...</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2248,10 +2308,6 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>当前共占用 %1 MB · 清理临时缓存不会丢失您的壁纸和小组件设置</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>当前版本 v%1 · 支持导入离线包更新或卸载释放约 85 MB 磁盘空间</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2283,29 +2339,7 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>安装成功</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>已成功从本地压缩包解压并安装组件运行库！</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>安装失败</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>解压离线包失败：%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>卸载组件运行库</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>卸载组件运行库将释放约 85 MB 磁盘空间，正在运行的动态壁纸与小组件将立即停止。
-
-您的小组件个性化数据与配置将被安全保留，随时可重新安装激活。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2314,10 +2348,6 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>卸载完成</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>组件运行库已成功卸载，已切换至未安装状态。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -2334,6 +2364,32 @@ Load skipped: %2</source>
     </message>
     <message>
         <source>运行缓存已清理完毕！</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>管理本地支持包，可导入安装包更新或卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>当前版本 v%1 · 支持导入离线包更新或卸载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>卸载组件运行库后，正在运行的动态壁纸与小组件将立即停止。
+
+默认安全保留您的自定义壁纸、便签备忘与组件配置，重新下载后可无缝自动恢复。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>同时清理个人壁纸、便签等组件数据（不可恢复）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件运行库及个人壁纸与组件资料已彻底清理。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>组件运行库已成功卸载。您的个人壁纸与组件资料已妥善保留，重装后即可自动恢复。</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2583,17 +2639,6 @@ Load skipped: %2</source>
     </message>
 </context>
 <context>
-    <name>QmlTestWindow</name>
-    <message>
-        <source>QML Test</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Qt Quick Test Page</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
     <name>RightMenu</name>
     <message>
         <source>Sort by</source>
@@ -2695,10 +2740,6 @@ Load skipped: %2</source>
 <context>
     <name>RuntimeInstaller</name>
     <message>
-        <source>Extraction timed out.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Unsupported platform</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2719,23 +2760,67 @@ Load skipped: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>正在解压 CEF 运行支持包...</source>
+        <source>解压支持包超时或失败</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>无效的 CEF 运行支持包：未找到核心文件 libcef.dll。</source>
+        <source>正在解压组件支持包...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>正在校验 CEF 核心文件并激活运行支持...</source>
+        <source>无效的支持包：缺少核心运行文件 (libcef.dll 或 icudtl.dat)。</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>组件校验完成</source>
+        <source>准备下载组件支持包...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>未检测到本地 CEF 核心库 (libcef.dll)，请通过“离线包安装 (*.zip)”导入 CEF 运行包。</source>
+        <source>正在获取最新组件支持包信息...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>无法创建临时下载文件：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在下载组件支持包：%1 MB / %2 MB (%3%)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在下载组件支持包：%1 MB...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已取消下载</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载组件运行库失败：%1 (HTTP %2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载的组件包体积异常（%1 KB），请检查网络连接后重试。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正在校验文件完整性...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>文件完整性校验未通过，请重新下载。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载完成，正在解压与配置组件运行环境...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>解压配置组件运行库失败：%1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>下载任务已取消。</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

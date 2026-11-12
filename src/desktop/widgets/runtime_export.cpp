@@ -722,7 +722,7 @@ void LinWidgetRuntimeBridge::resetFunctionPointers()
 
 bool LinWidgetRuntimeBridge::isLoaded() const
 {
-    return m_hModule != nullptr && m_pfnIsLoaded != nullptr && m_pfnIsLoaded();
+    return m_hModule != nullptr && !m_unloaded && m_pfnIsLoaded != nullptr && m_pfnIsLoaded();
 }
 
 bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
@@ -730,6 +730,12 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
     if (isLoaded()) {
         return true;
     }
+    if (m_hModule && m_unloaded) {
+        m_unloaded = false;
+        setEnabled(true);
+        return true;
+    }
+    m_unloaded = false;
 
     QString targetPath = dllPath;
     const QString appDir = QCoreApplication::applicationDirPath();
@@ -762,8 +768,10 @@ bool LinWidgetRuntimeBridge::loadRuntime(const QString& dllPath)
 
 #ifdef Q_OS_WIN
     // 查找实际存放 libcef.dll 的目录并注入 DLL 搜索路径，使随包安装的 LinWidgetRuntime.dll 能自动定位按需安装的 CEF 核心库
-    QString cefSearchDir = QFileInfo(targetPath).absolutePath();
+    const QString targetDir = QFileInfo(targetPath).absolutePath();
+    QString cefSearchDir = targetDir;
     const QStringList cefDirCandidates = {
+        targetDir,
         userCefDir,
         QDir(appDir).filePath(QStringLiteral("runtime/linwidget")),
         appDir
@@ -858,6 +866,7 @@ bool LinWidgetRuntimeBridge::unloadRuntime()
     if (!m_hModule) {
         return false;
     }
+    m_unloaded = true;
     // 停止所有正在运行的桌面小组件、动态壁纸及 Hub 视图，
     // 但不在进程运行期间执行 CefShutdown() 与 FreeLibrary()，
     // 彻底避免 CEF 异步 Browser 引用计数 FATAL 断言崩溃与 Qt deleteLater 野虚表崩溃。

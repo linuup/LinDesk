@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
-  Play, Check, Sliders, Sparkles, Film, Compass, 
+  Play, Check, Sliders, Sparkles, Film, 
   Search, ArrowRight, Monitor, Power, Plus, ChevronLeft, ChevronRight,
-  Layers, Eye
+  Layers, Eye, StickyNote, UploadCloud, Zap, HelpCircle
 } from 'lucide-react';
 import { WallpaperInfo, WidgetInfo } from '../types';
 import { VirtualWallpaperViewport } from './VirtualWallpaperViewport';
@@ -20,6 +20,7 @@ interface OverviewProps {
   onImportMedia: () => void;
   onLaunchWidget: (id: string, packagePath: string) => void;
   onStopWidget: (id: string) => void;
+  onCreateWidget?: () => void;
 }
 
 type CategoryType = 'all' | 'video' | 'interactive' | 'cyberpunk' | 'nature' | 'minimal';
@@ -158,6 +159,270 @@ const OverviewWidgetIcon: React.FC<{ widget: WidgetInfo }> = ({ widget }) => {
   );
 };
 
+interface EmptyOverviewGuideProps {
+  onImportMedia: () => void;
+  onGoToStudio: () => void;
+  onGoToWidgets: () => void;
+  onCreateWidget?: () => void;
+}
+
+const EmptyOverviewGuide: React.FC<EmptyOverviewGuideProps> = ({
+  onImportMedia,
+  onGoToStudio,
+  onGoToWidgets,
+  onCreateWidget
+}) => {
+  return (
+    <div className="space-y-8 pb-12 animate-fade-in select-none">
+      {/* 1. 顶部沉浸欢迎卡片 (Hero Welcome Banner) */}
+      <section className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 text-white p-8 md:p-12 border border-indigo-500/20 shadow-xl dark:shadow-2xl">
+        {/* 背景微光氛围装饰 */}
+        <div className="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-1/4 -bottom-24 w-80 h-80 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-indigo-200 text-xs font-medium mb-4">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-300 animate-pulse" />
+            <span>开启你的个性化桌面体验</span>
+          </div>
+
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
+            欢迎使用桌面工坊
+          </h1>
+
+          <p className="mt-3 text-sm sm:text-base text-slate-300 leading-relaxed">
+            目前桌面还没有添加任何壁纸和小工具。只需简单两步，就能把喜欢的动态视频设为桌面背景，摆放轻量桌面小工具。
+          </p>
+
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onImportMedia}
+              className="px-5 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/30 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>添加第一张壁纸</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onGoToStudio}
+              className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold border border-white/20 backdrop-blur-md flex items-center gap-2 transition-all duration-200 cursor-pointer"
+            >
+              <Sliders className="w-4 h-4 text-indigo-300" />
+              <span>进入壁纸工坊</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onGoToWidgets}
+              className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 hover:text-white text-xs sm:text-sm font-medium border border-white/10 transition-all duration-200 cursor-pointer"
+            >
+              <Layers className="w-4 h-4 text-slate-300" />
+              <span>浏览桌面小工具</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. 引导核心卡片 (Step by Step Guide) */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* 指引 1：壁纸 */}
+        <div className="bg-white/95 dark:bg-[#131927]/90 rounded-2xl p-6 border border-slate-200/90 dark:border-slate-800/90 shadow-xs dark:shadow-md flex flex-col justify-between transition-colors">
+          <div>
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center mb-4 shadow-2xs">
+              <Film className="w-6 h-6" />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-indigo-100/70 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+                第一步
+              </span>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                添置动态壁纸
+              </h3>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              支持把喜欢的 MP4 视频、风景照片或 GIF 动图一键设为桌面壁纸。画面在桌面上平滑循环，工作和放松时更加赏心悦目。
+            </p>
+
+            {/* 小贴士 */}
+            <div className="mt-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800/60 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
+              <span className="text-amber-500">💡</span>
+              <span>可以直接把电脑里的视频或图片文件拖进这个窗口，松开鼠标即可自动添加。</span>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onImportMedia}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>选择视频或照片</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onGoToStudio}
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-1 cursor-pointer"
+            >
+              <span>去壁纸工坊</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
+        {/* 指引 2：小工具 */}
+        <div className="bg-white/95 dark:bg-[#131927]/90 rounded-2xl p-6 border border-slate-200/90 dark:border-slate-800/90 shadow-xs dark:shadow-md flex flex-col justify-between transition-colors">
+          <div>
+            <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/50 flex items-center justify-center mb-4 shadow-2xs">
+              <StickyNote className="w-6 h-6" />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100/70 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                第二步
+              </span>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                摆上桌面小工具
+              </h3>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              丰富实用的桌面小工具摆在桌面上随手可用，不用每次打开应用，桌面就是你的高效工作台。
+            </p>
+
+            {/* 小贴士 */}
+            <div className="mt-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800/60 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
+              <span className="text-amber-500">💡</span>
+              <span>小工具摆到桌面上之后，鼠标按住就能自由拖动位置，想摆哪就摆哪。</span>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onGoToWidgets}
+              className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>进入小工具中心</span>
+            </button>
+
+            {onCreateWidget && (
+              <button
+                type="button"
+                onClick={onCreateWidget}
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-1 cursor-pointer"
+              >
+                <span>添加第一个小工具</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 3. 拖拽快速添加热区 (Drop Target Zone) */}
+      <section
+        onClick={onImportMedia}
+        className="group rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 hover:border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/20 hover:bg-indigo-50/80 dark:hover:bg-indigo-950/40 p-8 text-center transition-all duration-200 cursor-pointer"
+      >
+        <div className="w-12 h-12 rounded-full bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+          <UploadCloud className="w-6 h-6" />
+        </div>
+        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+          点击选择或将视频、图片直接拖到这里
+        </h4>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          支持常见 MP4 视频、PNG、JPG 或 GIF 动图，立即生成桌面壁纸
+        </p>
+      </section>
+
+      {/* 4. 特色保障与贴心常识 (3 Features Strip) */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white/95 dark:bg-[#131927]/90 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800/80 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <Zap className="w-4 h-4" />
+          </div>
+          <div>
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100">全屏游戏自动暂停</h5>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              玩全屏游戏或打开全屏软件时，动态画面会自动静默，电脑完全不卡顿。
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white/95 dark:bg-[#131927]/90 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800/80 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <Monitor className="w-4 h-4" />
+          </div>
+          <div>
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100">不遮挡桌面文件</h5>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              桌面图标与快捷方式始终正常点击使用，小工具可以随意调整摆放。
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white/95 dark:bg-[#131927]/90 rounded-xl p-4 border border-slate-200/80 dark:border-slate-800/80 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+            <Power className="w-4 h-4" />
+          </div>
+          <div>
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100">随时一键恢复</h5>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+              想换回原来的系统桌面，只需点击关闭壁纸，瞬间还原原本模样。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 5. 常见疑问解答 (FAQ) */}
+      <section className="bg-white/95 dark:bg-[#131927]/90 rounded-2xl p-6 border border-slate-200/90 dark:border-slate-800/90 shadow-xs dark:shadow-md">
+        <div className="flex items-center gap-2 mb-4">
+          <HelpCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+            新手贴心问答
+          </h4>
+        </div>
+
+        <div className="space-y-3">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60">
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-200 flex items-center gap-1.5">
+              <span>Q：添加动态壁纸会很耗电或导致电脑变卡吗？</span>
+            </h5>
+            <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed pl-5">
+              不会。LinDesk 内置了智能节能技术：当你打开全屏游戏、全屏播放视频或遮挡桌面时，动态壁纸会自动暂停运行，达到 0 额外负担；笔记本使用电池时也会自动降低耗电。
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60">
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-200 flex items-center gap-1.5">
+              <span>Q：小工具摆在桌面上怎么移动和关闭？</span>
+            </h5>
+            <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed pl-5">
+              在桌面上直接用鼠标左键拖拽小工具的标题栏即可移动位置，拖动边角即可缩放大小。如果你想收起某个小工具，在“桌面小工具”页面点击“停止”即可随收随开。
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60">
+            <h5 className="text-xs font-bold text-slate-900 dark:text-slate-200 flex items-center gap-1.5">
+              <span>Q：如何添加更多我喜欢的视频或照片？</span>
+            </h5>
+            <p className="mt-1.5 text-xs text-slate-600 dark:text-slate-400 leading-relaxed pl-5">
+              点击上方的“添加第一张壁纸”按钮，或者把任何你喜欢的 MP4 视频、高品质动漫短片或生活照片直接拖进这个窗口，就会自动导入并即刻在桌面上播放。
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
 export const Overview: React.FC<OverviewProps> = ({
   wallpapers,
   widgets,
@@ -168,8 +433,20 @@ export const Overview: React.FC<OverviewProps> = ({
   onGoToWidgets,
   onImportMedia,
   onLaunchWidget,
-  onStopWidget
+  onStopWidget,
+  onCreateWidget
 }) => {
+  if (wallpapers.length === 0 && widgets.length === 0) {
+    return (
+      <EmptyOverviewGuide
+        onImportMedia={onImportMedia}
+        onGoToStudio={() => onGoToStudio()}
+        onGoToWidgets={onGoToWidgets}
+        onCreateWidget={onCreateWidget}
+      />
+    );
+  }
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
   const [currentHeroIndex, setCurrentHeroIndex] = useState(0);
@@ -405,20 +682,31 @@ export const Overview: React.FC<OverviewProps> = ({
             )}
           </div>
         ) : (
-          <div className="h-[280px] flex flex-col items-center justify-center text-center p-6 text-slate-400">
-            <Compass className="w-12 h-12 text-slate-600 mb-3 animate-pulse" />
-            <h3 className="text-base font-semibold text-slate-200">欢迎来到 LinDesk 壁纸与灵感探索</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-md">
-              尚未发现壁纸。您可以直接将 MP4 视频或高清图片拖拽至此，或点击导入。
+          <div className="h-[280px] flex flex-col items-center justify-center text-center p-6 text-slate-300">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/20 text-indigo-400 flex items-center justify-center mb-3 shadow-lg">
+              <Film className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-white">添加你的第一张动态壁纸</h3>
+            <p className="text-xs text-slate-300 mt-1.5 max-w-md leading-relaxed">
+              支持把喜欢的 MP4 视频、GIF 动图或高清照片设为桌面背景。可以直接将文件拖拽到此窗口，或者点击下方按钮。
             </p>
-            <button
-              type="button"
-              onClick={onImportMedia}
-              className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>导入第一张壁纸</span>
-            </button>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={onImportMedia}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-md transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>选择视频或照片</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onGoToStudio()}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-xl border border-white/15 transition cursor-pointer"
+              >
+                <span>前往壁纸工坊</span>
+              </button>
+            </div>
           </div>
         )}
       </section>
@@ -636,7 +924,7 @@ export const Overview: React.FC<OverviewProps> = ({
 
                 {/* Card Meta Info */}
                 <div className="p-3 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title={wall.name}>
                       {wall.name}
                     </h4>
@@ -644,15 +932,6 @@ export const Overview: React.FC<OverviewProps> = ({
                       {wall.author || 'LinDesk'}
                     </p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onGoToStudio(wall.id)}
-                    className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0 cursor-pointer"
-                    title="在壁纸工坊中查看与配置"
-                  >
-                    <Sliders className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
             );
@@ -705,14 +984,16 @@ export const Overview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onGoToWidgets}
-            className="self-start sm:self-center px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-white/90 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 border border-slate-200 dark:border-white/15 backdrop-blur-xs flex items-center gap-1.5 transition cursor-pointer hover:text-slate-900 dark:hover:text-white"
-          >
-            <span>管理全部组件</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          {widgets.length > 0 && (
+            <button
+              type="button"
+              onClick={onGoToWidgets}
+              className="self-start sm:self-center px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-white/90 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 border border-slate-200 dark:border-white/15 backdrop-blur-xs flex items-center gap-1.5 transition cursor-pointer hover:text-slate-900 dark:hover:text-white"
+            >
+              <span>管理全部组件</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Horizontal Widget Tiles */}
@@ -756,8 +1037,32 @@ export const Overview: React.FC<OverviewProps> = ({
           ))}
 
           {widgets.length === 0 && (
-            <div className="col-span-full py-4 text-center text-xs text-slate-500 dark:text-slate-400">
-              暂未检测到已安装的小组件，可进入桌面组件中心快速创建或导入
+            <div className="col-span-full py-6 text-center bg-slate-50/50 dark:bg-white/5 rounded-xl border border-dashed border-slate-200 dark:border-white/10 p-4">
+              <Layers className="w-6 h-6 text-indigo-500 mx-auto mb-2 opacity-80" />
+              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                尚未添加桌面小工具
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                添加桌面专属小工具，让桌面成为高效便捷的控制台
+              </p>
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={onGoToWidgets}
+                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg shadow-xs transition cursor-pointer"
+                >
+                  去小工具中心挑选
+                </button>
+                {onCreateWidget && (
+                  <button
+                    type="button"
+                    onClick={onCreateWidget}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/20 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-lg border border-slate-200 dark:border-white/10 transition cursor-pointer"
+                  >
+                    + 新建小工具
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
