@@ -26,6 +26,8 @@
 AppId={{7F9D8C2A-5F9C-4C8C-9E41-2A33B6D0A001}
 AppName={#AppName}
 AppVersion={#AppVersion}
+AppVerName={#AppName}
+UninstallDisplayName={#AppName}
 AppPublisher=Max
 AppPublisherURL=https://github.com/linuup
 UninstallDisplayIcon={app}\{#AppExeName}
