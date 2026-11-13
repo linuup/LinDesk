@@ -54,6 +54,14 @@ public:
     static void markMenuShowing(bool showing);
     static void purgePendingMouseMessages();
 
+    class MenuScopeGuard {
+    public:
+        MenuScopeGuard() { RightMenu::markMenuShowing(true); }
+        ~MenuScopeGuard() { RightMenu::purgePendingMouseMessages(); }
+        MenuScopeGuard(const MenuScopeGuard&) = delete;
+        MenuScopeGuard& operator=(const MenuScopeGuard&) = delete;
+    };
+
     static std::vector<ShellContextMenu::CustomMenuItem> convertQActionsToCustomItems(const QList<QAction*>& actions, std::vector<HBITMAP>& tempBitmaps);
     static std::vector<ShellContextMenu::CustomMenuItem> exportCustomMenuItems(
         const QMenu* menu,

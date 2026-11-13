@@ -1,4 +1,5 @@
 #include "box/LinBox_Internal.h"
+#include "desktop/RightMenu.h"
 
 // ============================================================================
 // LinBox Core Lifecycle, Layout & Window State Implementation
@@ -1140,6 +1141,7 @@ void LinBox::setCollapsed(bool collapsed, bool animated, bool isAutoPeek) {
 
 
 void LinBox::showCustomContextMenu(const QPoint& globalPos, bool extendedVerbs) {
+    RightMenu::MenuScopeGuard menuGuard;
     if (ListView* lv = ListView::instance()) {
         lv->armPendingShellNewTargetBox(this);
         lv->setLastRightClickPos(lv->mapFromGlobal(globalPos));

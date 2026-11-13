@@ -1231,6 +1231,7 @@ void RightMenu::handleWindows11MenuCommand(const QString& commandId, const QPoin
 
 void RightMenu::showDefaultDesktopShellMenu(const QPoint& pos) const
 {
+    MenuScopeGuard menuGuard;
     m_lastMenuGlobalPos = pos;
     ShellContextMenu scm;
     logRightMenuDpiTrace("defaultDesktopShellMenu", this->hwnd, pos);
@@ -1277,17 +1278,6 @@ void RightMenu::purgePendingMouseMessages()
         // Discard mouse messages that occurred during menu interaction
     }
 #endif
-}
-
-namespace {
-struct MenuScopeGuard {
-    MenuScopeGuard() {
-        RightMenu::markMenuShowing(true);
-    }
-    ~MenuScopeGuard() {
-        RightMenu::purgePendingMouseMessages();
-    }
-};
 }
 
 bool RightMenu::showWindows11DesktopMenu(const QPoint& pos) const

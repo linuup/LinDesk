@@ -1,4 +1,5 @@
 #include "box/LinBox_Internal.h"
+#include "desktop/RightMenu.h"
 
 // ============================================================================
 // LinBox Mouse, Focus, Keyboard & Selection Event Implementation
@@ -93,6 +94,21 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
     }
 
     if (watched == m_titleBar || watched == m_contentArea) {
+        if (event->type() == QEvent::MouseButtonPress ||
+            event->type() == QEvent::MouseButtonRelease ||
+            event->type() == QEvent::MouseButtonDblClick) {
+            if (RightMenu::isMenuShowing() || RightMenu::isMenuRecentlyClosed(400)) {
+                if (event->type() == QEvent::MouseButtonRelease) {
+                    m_pressedItemPath.clear();
+                    m_isMoving = false;
+                    m_isResizing = false;
+                    if (m_isSelectingItems) {
+                        finishItemSelection();
+                    }
+                }
+                return true;
+            }
+        }
         if (event->type() == QEvent::MouseButtonPress) {
             QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
             if (m_titleEdit->isVisible()) {
@@ -146,15 +162,6 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                     return true;
                 }
             } else if (mouseEvent->button() == Qt::RightButton) {
-                const QWidget* sourceWidget = qobject_cast<QWidget*>(watched);
-                const QPoint mappedPos = watched == this
-                    ? mouseEvent->pos()
-                    : sourceWidget->mapTo(this, mouseEvent->pos());
-                if (watched == m_contentArea && handleItemContextMenu(mouseEvent->globalPos(), mappedPos)) {
-                    return true;
-                }
-                const bool extendedVerbs = (mouseEvent->modifiers() & Qt::ShiftModifier) != 0;
-                showCustomContextMenu(mouseEvent->globalPos(), extendedVerbs);
                 return true;
             }
         } else if (event->type() == QEvent::MouseMove) {
@@ -217,6 +224,10 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void LinBox::mousePressEvent(QMouseEvent* event) {
+    if (RightMenu::isMenuShowing() || RightMenu::isMenuRecentlyClosed(400)) {
+        event->accept();
+        return;
+    }
     if (m_hoverExpandTimer && m_hoverExpandTimer->isActive()) m_hoverExpandTimer->stop();
     if (m_hoverCollapseTimer && m_hoverCollapseTimer->isActive()) m_hoverCollapseTimer->stop();
 
@@ -261,16 +272,38 @@ void LinBox::mousePressEvent(QMouseEvent* event) {
             return;
         }
     } else if (event->button() == Qt::RightButton) {
+        event->accept();
+        return;
+    }
+}
+
+void LinBox::contextMenuEvent(QContextMenuEvent* event)
+{
+    if (RightMenu::isMenuShowing()) {
+        event->accept();
+        return;
+    }
+
+    if (event->reason() == QContextMenuEvent::Mouse) {
         if (handleItemContextMenu(event->globalPos(), event->pos())) {
             event->accept();
             return;
         }
         QWidget* child = childAt(event->pos());
-        if (m_titleBar->geometry().contains(event->pos()) || !child || child == m_contentArea || child == this) {
+        if (m_titleBar->geometry().contains(event->pos()) ||
+            !child ||
+            child == m_contentArea ||
+            child == m_scrollArea ||
+            (m_scrollArea && child == m_scrollArea->viewport()) ||
+            child == this) {
             const bool extendedVerbs = (event->modifiers() & Qt::ShiftModifier) != 0;
             showCustomContextMenu(event->globalPos(), extendedVerbs);
+            event->accept();
+            return;
         }
     }
+
+    event->accept();
 }
 
 void LinBox::activateForKeyboardFocus()
@@ -407,6 +440,16 @@ void LinBox::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void LinBox::mouseReleaseEvent(QMouseEvent* event) {
+    if (RightMenu::isMenuShowing() || RightMenu::isMenuRecentlyClosed(400)) {
+        m_pressedItemPath.clear();
+        m_isMoving = false;
+        m_isResizing = false;
+        if (m_isSelectingItems) {
+            finishItemSelection();
+        }
+        event->accept();
+        return;
+    }
     if (handleItemMouseRelease(event, event->pos())) {
         event->accept();
         return;

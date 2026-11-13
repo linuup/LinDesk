@@ -71,6 +71,10 @@ ListView::~ListView() {
 
 void ListView::contextMenuEvent(QContextMenuEvent* event)
 {
+    if (RightMenu::isMenuShowing()) {
+        event->accept();
+        return;
+    }
 #ifdef Q_OS_WIN
     logListViewDpiTrace("contextMenu", this, event->pos(), event->globalPos());
 #endif
@@ -429,7 +433,9 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     }
 
     // 2. 桌面图标响应 hover
-    updateHoveredDesktopItem(event->pos());
+    if (!RightMenu::isMenuShowing() && !RightMenu::isMenuRecentlyClosed(400)) {
+        updateHoveredDesktopItem(event->pos());
+    }
 
     // 3. 动态壁纸粒子跟随 (非互斥广播，60fps 节流)
     if (bridge.isLoaded() && bridge.hasActiveWallpaper() && bridge.isWallpaperInteractive()) {
