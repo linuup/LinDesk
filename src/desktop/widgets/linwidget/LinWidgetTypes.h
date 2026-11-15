@@ -39,6 +39,9 @@ struct WidgetManifest {
     QString name;
     QString version;
     QString author;
+    QString authorUrl;
+    QString source;
+    QString sourceUrl;
     QString description;
     RuntimeType type = RuntimeType::Html;
     QString role = QStringLiteral("widget");

@@ -28,6 +28,24 @@ export const WallpaperDeleteModal: React.FC<WallpaperDeleteModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [wallpaper, onClose]);
 
+  // 锁定底座背景滚动，防止鼠标滚轮穿透滚动 Hub 页面
+  useEffect(() => {
+    if (!wallpaper) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevDocOverflow = document.documentElement.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevDocOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [wallpaper]);
+
   if (!wallpaper) return null;
 
   const isVideo = wallpaper.wallpaperType === 'video';
@@ -41,12 +59,14 @@ export const WallpaperDeleteModal: React.FC<WallpaperDeleteModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none overscroll-contain"
       onClick={onClose}
+      onWheel={(e) => e.stopPropagation()}
     >
       <div
-        className="bg-white dark:bg-[#131927] rounded-2xl border border-slate-200 dark:border-slate-800/90 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col"
+        className="bg-white dark:bg-[#131927] rounded-2xl border border-slate-200 dark:border-slate-800/90 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col overscroll-contain"
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/70 dark:bg-[#0f1422]/60">

@@ -53,6 +53,7 @@ public:
     void close();
 
     void loadUrl(const QString& url);
+    void reload(bool ignoreCache = true);
     void resize(int width, int height);
 
     // Input event routing

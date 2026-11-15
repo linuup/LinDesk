@@ -1,4 +1,5 @@
 #include "desktop/ListView_Internal.h"
+#include "ui/hub/WallpaperStudioWindow.h"
 
 // ============================================================================
 // ListView LinWidgets Host Integration & Blocked Cells Overlay Implementation
@@ -132,80 +133,8 @@ void* ListView::linWidgetManager()
 
 void ListView::openLinWidgetSettings(const QString& instanceId)
 {
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (!bridge.isLoaded() || instanceId.trimmed().isEmpty()) {
-        return;
-    }
-    bridge.openWidgetSettings(QString(), instanceId);
-}
-
-void ListView::showWidgetContextMenu(const QString& instanceId, const QPoint& globalPos)
-{
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (!bridge.isLoaded() || instanceId.trimmed().isEmpty()) {
-        return;
-    }
-
-    const QRect curGeom = bridge.widgetGeometry(instanceId);
-    QMenu menu(this);
-    menu.setAttribute(Qt::WA_DeleteOnClose);
-    menu.setStyleSheet(
-        "QMenu { background: rgba(32, 34, 38, 245); border: 1px solid rgba(255, 255, 255, 38); border-radius: 8px; padding: 5px; color: #f0f0f0; font-size: 13px; }"
-        "QMenu::item { padding: 6px 24px 6px 14px; border-radius: 4px; margin: 1px 2px; }"
-        "QMenu::item:selected { background: rgba(255, 255, 255, 30); color: #ffffff; }"
-        "QMenu::separator { height: 1px; background: rgba(255, 255, 255, 25); margin: 4px 6px; }"
-    );
-
-    QMenu* sizeSubMenu = menu.addMenu(QString::fromUtf8("尺寸规格 (Size)"));
-    sizeSubMenu->setStyleSheet(menu.styleSheet());
-
-    auto addSizeAction = [&](const QString& label, int w, int h) {
-        QAction* act = sizeSubMenu->addAction(label);
-        if (curGeom.width() == w && curGeom.height() == h) {
-            act->setCheckable(true);
-            act->setChecked(true);
-        }
-        connect(act, &QAction::triggered, this, [instanceId, w, h, curGeom]() {
-            LinWidgetRuntimeBridge::instance().setWidgetGeometry(instanceId, QRect(curGeom.topLeft(), QSize(w, h)));
-            if (ListView::instance()) {
-                ListView::instance()->update();
-            }
-        });
-    };
-
-    addSizeAction(QString::fromUtf8("小卡片 (200 × 200)"), 200, 200);
-    addSizeAction(QString::fromUtf8("标准条状 (360 × 200)"), 360, 200);
-    addSizeAction(QString::fromUtf8("大卡片 (400 × 300)"), 400, 300);
-    addSizeAction(QString::fromUtf8("全宽展板 (540 × 320)"), 540, 320);
-
-    menu.addSeparator();
-
-    QAction* actReload = menu.addAction(QString::fromUtf8("重新加载小组件"));
-    connect(actReload, &QAction::triggered, this, [instanceId]() {
-        LinWidgetRuntimeBridge::instance().restartWidget(instanceId);
-    });
-
-    QAction* actDevTools = menu.addAction(QString::fromUtf8("开发者调试工具 (F12)"));
-    connect(actDevTools, &QAction::triggered, this, [instanceId]() {
-        LinWidgetRuntimeBridge::instance().showDevTools(instanceId);
-    });
-
-    QAction* actSettings = menu.addAction(QString::fromUtf8("小组件设置..."));
-    connect(actSettings, &QAction::triggered, this, [this, instanceId]() {
-        openLinWidgetSettings(instanceId);
-    });
-
-    menu.addSeparator();
-
-    QAction* actClose = menu.addAction(QString::fromUtf8("关闭并移除组件"));
-    connect(actClose, &QAction::triggered, this, [this, instanceId]() {
-        LinWidgetRuntimeBridge::instance().stopWidget(instanceId);
-        update();
-    });
-
-    RightMenu::markMenuShowing(true);
-    menu.exec(globalPos);
-    RightMenu::purgePendingMouseMessages();
+    Q_UNUSED(instanceId);
+    LinHub::WallpaperStudioWindow::showStudio(2);
 }
 
 int ListView::widgetResizeEdgeAt(const QPoint& clientPos, const QRect& widgetGeom, int hitMargin) const
@@ -283,30 +212,27 @@ int ListView::refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld)
         return ResizeEdgeNone;
     }
 
-    const QRect geom = bridge.widgetGeometry(wid);
-    const int edge = widgetResizeEdgeAt(pos, geom, 8);
-    const bool inHeader = (pos.y() >= geom.top() && pos.y() <= geom.top() + 24);
-
-    if (edge != ResizeEdgeNone) {
-        setCursor(cursorForResizeEdge(edge));
-    } else if (ctrlHeld || inHeader) {
-        setCursor(Qt::SizeAllCursor);
-    } else {
-        unsetCursor();
-    }
-
-    const bool showHint = ctrlHeld || edge != ResizeEdgeNone || inHeader || m_resizingWidget || m_draggingWidget;
-    if (showHint) {
-        if (m_resizeHintWidgetId != wid) {
-            m_resizeHintWidgetId = wid;
-            update();
-        }
-    } else {
-        if (!m_resizeHintWidgetId.isEmpty() && !m_resizingWidget && !m_draggingWidget) {
+    if (!ctrlHeld && !m_resizingWidget && !m_draggingWidget) {
+        if (!m_resizeHintWidgetId.isEmpty()) {
             m_resizeHintWidgetId.clear();
             unsetCursor();
             update();
         }
+        return ResizeEdgeNone;
+    }
+
+    const QRect geom = bridge.widgetGeometry(wid);
+    const int edge = widgetResizeEdgeAt(pos, geom, 8);
+
+    if (edge != ResizeEdgeNone) {
+        setCursor(cursorForResizeEdge(edge));
+    } else {
+        setCursor(Qt::SizeAllCursor);
+    }
+
+    if (m_resizeHintWidgetId != wid) {
+        m_resizeHintWidgetId = wid;
+        update();
     }
 
     return edge;

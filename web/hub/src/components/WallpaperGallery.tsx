@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Square, Sliders, Sparkles, Check, ImageOff } from 'lucide-react';
+import { Play, Square, Sliders, Sparkles, Check, ImageOff, User, ExternalLink } from 'lucide-react';
 import { WallpaperInfo } from '../types';
+import { ipc } from '../services/ipc';
 
 interface WallpaperGalleryProps {
   wallpapers: WallpaperInfo[];
@@ -264,6 +265,53 @@ export const WallpaperGallery: React.FC<WallpaperGalleryProps> = ({
                       <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
                         {preset.description || '支持动态交互与微粒跟随渲染。'}
                       </p>
+
+                      {/* Author & Source Tagging */}
+                      <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {preset.author && (
+                          preset.authorUrl ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                ipc.send('open_url', { url: preset.authorUrl });
+                              }}
+                              className="inline-flex items-center gap-1 hover:text-indigo-600 dark:hover:text-indigo-400 truncate cursor-pointer transition-colors"
+                              title={`作者: ${preset.author}`}
+                            >
+                              <User className="w-3 h-3 shrink-0" />
+                              <span className="truncate">{preset.author}</span>
+                              <ExternalLink className="w-2.5 h-2.5 opacity-60 shrink-0" />
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 truncate">
+                              <User className="w-3 h-3 shrink-0 text-slate-400" />
+                              <span className="truncate">{preset.author}</span>
+                            </span>
+                          )
+                        )}
+                        {preset.source && (
+                          <>
+                            <span className="text-slate-300 dark:text-slate-700">·</span>
+                            {preset.sourceUrl ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  ipc.send('open_url', { url: preset.sourceUrl });
+                                }}
+                                className="inline-flex items-center gap-0.5 hover:text-indigo-600 dark:hover:text-indigo-400 truncate cursor-pointer transition-colors"
+                                title={`来源: ${preset.source}`}
+                              >
+                                <span className="truncate">{preset.source}</span>
+                                <ExternalLink className="w-2.5 h-2.5 opacity-60 shrink-0" />
+                              </button>
+                            ) : (
+                              <span className="truncate">{preset.source}</span>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 

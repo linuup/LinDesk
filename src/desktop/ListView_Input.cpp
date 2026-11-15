@@ -105,13 +105,10 @@ void ListView::contextMenuEvent(QContextMenuEvent* event)
 
         auto& bridge = LinWidgetRuntimeBridge::instance();
         if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && bridge.isWidgetAt(event->pos())) {
-            const QString wid = bridge.widgetAt(event->pos());
-            if (!wid.isEmpty()) {
-                clearCheckedItem();
-                showWidgetContextMenu(wid, mapToGlobal(event->pos()));
-                event->accept();
-                return;
-            }
+            // 普通右键完全让渡给小组件自身（由 CEF 内部处理复制粘贴或自定义交互），宿主不强行弹窗
+            clearCheckedItem();
+            event->accept();
+            return;
         }
 
         auto rightClickPoint = mapToGlobal(event->pos());
@@ -140,12 +137,11 @@ void ListView::mousePressEvent(QMouseEvent* event)
     const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
     if (bridge.isLoaded()) {
         if (bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-            const QString wid = bridge.widgetAt(event->pos());
-            const QRect geom = bridge.widgetGeometry(wid);
-            const int edge = widgetResizeEdgeAt(event->pos(), geom, 8);
-            const bool inHeader = (event->pos().y() >= geom.top() && event->pos().y() <= geom.top() + 24);
+            if (event->button() == Qt::LeftButton && ctrlHeld) {
+                const QString wid = bridge.widgetAt(event->pos());
+                const QRect geom = bridge.widgetGeometry(wid);
+                const int edge = widgetResizeEdgeAt(event->pos(), geom, 8);
 
-            if (event->button() == Qt::LeftButton && (ctrlHeld || edge != ResizeEdgeNone || inHeader)) {
                 clearSelectionState();
                 if (edge != ResizeEdgeNone) {
                     m_resizingWidget = true;
@@ -410,16 +406,11 @@ void ListView::mouseMoveEvent(QMouseEvent* event)
     }
 
     // 正常移动状态：
-    // 1. 如果光标位于小组件上方，判断是否在边缘缩放区、顶部抓手区或按住 Ctrl
+    // 1. 仅在按住 Ctrl 时进入小组件移动/缩放提示态，平时鼠标移动直接透传给组件
     const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
     if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-        const QString wid = bridge.widgetAt(event->pos());
-        const QRect geom = bridge.widgetGeometry(wid);
-        const int edge = widgetResizeEdgeAt(event->pos(), geom, 8);
-        const bool inHeader = (event->pos().y() >= geom.top() && event->pos().y() <= geom.top() + 24);
-
-        if (ctrlHeld || edge != ResizeEdgeNone || inHeader) {
-            refreshWidgetResizeHint(event->pos(), ctrlHeld);
+        if (ctrlHeld) {
+            refreshWidgetResizeHint(event->pos(), true);
         } else {
             if (!m_resizeHintWidgetId.isEmpty()) {
                 refreshWidgetResizeHint(event->pos(), false);
@@ -735,44 +726,10 @@ void ListView::wheelEvent(QWheelEvent* event)
     auto& bridge = LinWidgetRuntimeBridge::instance();
     const bool ctrlHeld = (event->modifiers() & Qt::ControlModifier) != 0 || (GetAsyncKeyState(VK_CONTROL) & 0x8000);
 
-    if (bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
-        if (ctrlHeld) {
-            const QString wid = bridge.widgetAt(event->pos());
-            if (!wid.isEmpty()) {
-                const QRect curGeom = bridge.widgetGeometry(wid);
-                if (curGeom.isValid() && curGeom.width() > 0 && curGeom.height() > 0) {
-                    const int deltaY = event->angleDelta().y();
-                    if (deltaY != 0) {
-                        const qreal factor = (deltaY > 0) ? 1.08 : 0.92;
-                        const int newW = qRound(curGeom.width() * factor);
-                        const int newH = qRound(curGeom.height() * factor);
-
-                        const QPoint mousePos = event->pos();
-                        qreal rx = (qreal)(mousePos.x() - curGeom.left()) / curGeom.width();
-                        qreal ry = (qreal)(mousePos.y() - curGeom.top()) / curGeom.height();
-                        rx = qBound(0.0, rx, 1.0);
-                        ry = qBound(0.0, ry, 1.0);
-
-                        int newLeft = mousePos.x() - qRound(newW * rx);
-                        int newTop = mousePos.y() - qRound(newH * ry);
-
-                        newLeft = qBound(0, newLeft, qMax(0, width() - newW));
-                        newTop = qBound(0, newTop, qMax(0, height() - newH));
-
-                        QRect newGeom(newLeft, newTop, newW, newH);
-                        bridge.setWidgetGeometry(wid, newGeom);
-                        m_resizeHintWidgetId = wid;
-                        update();
-                        event->accept();
-                        return;
-                    }
-                }
-            }
-        } else {
-            if (bridge.forwardWheelEvent(event)) {
-                event->accept();
-                return;
-            }
+    if (!ctrlHeld && bridge.isLoaded() && bridge.isWidgetLayerEmbedded() && !findDesktopStateAt(event->pos()) && bridge.isWidgetAt(event->pos())) {
+        if (bridge.forwardWheelEvent(event)) {
+            event->accept();
+            return;
         }
     }
 
@@ -805,6 +762,20 @@ void ListView::keyPressEvent(QKeyEvent* event)
     const bool hasDesktopSelection = !m_selectedDesktopPaths.isEmpty() || !m_focusedDesktopPath.isEmpty() ||
                                      !selectedBoxPaths().isEmpty() || !focusedItemPath().isEmpty();
     auto& bridge = LinWidgetRuntimeBridge::instance();
+    // 键盘快捷键：如果光标在小组件上方且按下了 F5 或 Ctrl+R，直接由组件系统重新加载该组件
+    const bool isReloadShortcut = (event->key() == Qt::Key_F5) ||
+                                  (((event->modifiers() & Qt::ControlModifier) || ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0)) && (event->key() == Qt::Key_R));
+    if (isReloadShortcut && bridge.isLoaded() && bridge.isWidgetLayerEmbedded()) {
+        const QPoint mousePos = mapFromGlobal(QCursor::pos());
+        const QString widAtCursor = bridge.widgetAt(mousePos);
+        if (!widAtCursor.isEmpty()) {
+            bridge.restartWidget(widAtCursor);
+            event->accept();
+            qDebug() << "[LinWidget] Reload triggered by shortcut for widget:" << widAtCursor;
+            return;
+        }
+    }
+
     if (hasDesktopSelection) {
         if (bridge.isLoaded()) {
             bridge.clearWidgetFocus();

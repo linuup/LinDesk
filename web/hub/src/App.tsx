@@ -13,6 +13,7 @@ import { DevConsole } from './components/DevConsole';
 import { CreateWidgetModal } from './components/CreateWidgetModal';
 import { Toast, ToastMessage } from './components/Toast';
 import { DevPreviewBanner } from './components/DevPreviewBanner';
+import { UnifiedWidgetSettingsModal } from './components/UnifiedWidgetSettingsModal';
 
 export const App: React.FC = () => {
   const [isDebug, setIsDebug] = useState<boolean>(() => {
@@ -66,10 +67,13 @@ export const App: React.FC = () => {
   };
 
   const [selectedStudioWallpaperId, setSelectedStudioWallpaperId] = useState<string>('');
+  const [activeSettingsWidgetId, setActiveSettingsWidgetId] = useState<string | null>(null);
+  const [isStudioModalOpen, setIsStudioModalOpen] = useState(false);
 
   const [widgets, setWidgets] = useState<WidgetInfo[]>([]);
   const [wallpapers, setWallpapers] = useState<WallpaperInfo[]>([]);
   const [runtimeEnabled, setRuntimeEnabled] = useState(true);
+  const [hotReloadEnabled, setHotReloadEnabled] = useState(false);
   const [activeWallpaperId, setActiveWallpaperId] = useState('');
   const [systemPaths, setSystemPaths] = useState<SystemPaths | null>(null);
   const [logs, setLogs] = useState<IPCMessageLog[]>(() => ipc.getLogs());
@@ -211,6 +215,9 @@ export const App: React.FC = () => {
         if (typeof data.runtimeEnabled === 'boolean') {
           setRuntimeEnabled(data.runtimeEnabled);
         }
+        if (typeof data.hotReloadEnabled === 'boolean') {
+          setHotReloadEnabled(data.hotReloadEnabled);
+        }
         if (typeof data.activeWallpaperId === 'string') {
           setActiveWallpaperId(data.activeWallpaperId);
         }
@@ -219,6 +226,26 @@ export const App: React.FC = () => {
             userWidgetsDir: data.userWidgetsDir || '',
             userLogsDir: data.logDir || ''
           });
+        }
+        if (typeof data.openSettingsWidgetId === 'string' && data.openSettingsWidgetId) {
+          setActiveTab('widgets');
+          localStorage.setItem('lindesk_hub_active_tab', 'widgets');
+          setActiveSettingsWidgetId(data.openSettingsWidgetId);
+        }
+      } else if (action === 'open_widget_settings_in_hub') {
+        const targetWid = data.widgetId || data.instanceId;
+        if (typeof targetWid === 'string' && targetWid) {
+          setActiveTab('widgets');
+          localStorage.setItem('lindesk_hub_active_tab', 'widgets');
+          setActiveSettingsWidgetId(targetWid);
+          refreshState();
+        }
+      } else if (action === 'hot_reload_triggered') {
+        addToast('info', '代码已更新', '检测到小组件代码修改，已实时热重载');
+        refreshState();
+      } else if (action === 'set_hot_reload_enabled') {
+        if (typeof data.hotReloadEnabled === 'boolean') {
+          setHotReloadEnabled(data.hotReloadEnabled);
         }
       } else if (action === 'launch' || action === 'start') {
         if (data.ok) {
@@ -388,6 +415,12 @@ export const App: React.FC = () => {
     ipc.send('import_dev_project');
   };
 
+  const handleToggleHotReload = (enabled: boolean) => {
+    setHotReloadEnabled(enabled);
+    ipc.send('set_hot_reload_enabled', { enabled });
+    addToast('info', enabled ? '开发热更新已开启' : '开发热更新已关闭', enabled ? '保存组件代码时将自动重载桌面 UI' : '已停止监听组件代码变动');
+  };
+
   const handleSaveWidgetSettings = (widgetId: string, settings: Record<string, any>) => {
     ipc.send('save_widget_settings', { widgetId, settings });
     addToast('success', '组件配置已保存');
@@ -458,6 +491,10 @@ export const App: React.FC = () => {
     filePath: string;
     name: string;
     description: string;
+    author?: string;
+    authorUrl?: string;
+    source?: string;
+    sourceUrl?: string;
     scaling: 'cover' | 'contain' | 'fill';
     dimming: number;
     blur: number;
@@ -495,6 +532,24 @@ export const App: React.FC = () => {
     handleTabChange('widgets');
   };
 
+  const activeSettingsWidget = React.useMemo(() => {
+    if (!activeSettingsWidgetId) return null;
+    const normTarget = activeSettingsWidgetId.toLowerCase();
+    return (
+      widgets.find(w => {
+        const wid = (w.id || '').toLowerCase();
+        return wid === normTarget || normTarget.includes(wid) || wid.includes(normTarget);
+      }) || null
+    );
+  }, [widgets, activeSettingsWidgetId]);
+
+  const isAnyModalOpen = Boolean(
+    activeSettingsWidgetId || 
+    stagedMedia || 
+    createModalOpen || 
+    isStudioModalOpen
+  );
+
   return (
     <div className="min-h-screen bg-[#f1f3f6] dark:bg-[#0b0f19] text-slate-800 dark:text-slate-100 flex flex-col font-sans select-none antialiased transition-colors">
       {/* Windows 10 标准 1px 窗体描边 (最大化时隐藏，彻底解决白色窗体混淆问题) */}
@@ -510,10 +565,11 @@ export const App: React.FC = () => {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         isDebug={isDebug}
+        hasModalOpen={isAnyModalOpen}
       />
 
       {/* 2. Workspace View */}
-      <div className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1 flex flex-col">
+      <div className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 w-full max-w-[1760px] 2xl:max-w-[1960px] mx-auto flex-1 flex flex-col transition-all">
         {/* Tab Views */}
         <main className="flex-1">
           {activeTab === 'overview' && (
@@ -547,6 +603,7 @@ export const App: React.FC = () => {
               onDeleteWallpaper={handleDeleteWallpaper}
               onOpenFolder={handleOpenFolder}
               selectedWallpaperId={selectedStudioWallpaperId}
+              onModalStateChange={(isOpen) => setIsStudioModalOpen(isOpen)}
             />
           )}
 
@@ -554,7 +611,9 @@ export const App: React.FC = () => {
             <WidgetCenter
               widgets={widgets}
               runtimeEnabled={runtimeEnabled}
+              hotReloadEnabled={hotReloadEnabled}
               onToggleMaster={handleToggleMaster}
+              onToggleHotReload={handleToggleHotReload}
               onLaunch={handleLaunch}
               onStop={handleStop}
               onRestart={handleRestart}
@@ -564,9 +623,11 @@ export const App: React.FC = () => {
               onOpenWidgetsDir={handleOpenWidgetsDir}
               onShowDevTools={handleShowDevTools}
               onUninstall={handleUninstall}
-              onSaveSettings={handleSaveWidgetSettings}
               onOpenCreateModal={() => setCreateModalOpen(true)}
               onImportDevProject={handleImportDevProject}
+              activeSettingsWidgetId={activeSettingsWidgetId}
+              onOpenSettingsModal={(id) => setActiveSettingsWidgetId(id)}
+              onCloseSettingsModal={() => setActiveSettingsWidgetId(null)}
             />
           )}
 
@@ -592,6 +653,16 @@ export const App: React.FC = () => {
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreate={handleCreateWidget}
+      />
+
+      {/* 统一组件配置模态二级页面 */}
+      <UnifiedWidgetSettingsModal
+        widget={activeSettingsWidget}
+        isOpen={Boolean(activeSettingsWidgetId)}
+        onClose={() => setActiveSettingsWidgetId(null)}
+        onSaveSettings={handleSaveWidgetSettings}
+        onRestart={handleRestart}
+        onOpenFolder={handleOpenFolder}
       />
 
       <Toast toasts={toasts} onDismiss={dismissToast} />

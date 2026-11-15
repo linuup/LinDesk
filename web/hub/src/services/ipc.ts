@@ -201,6 +201,9 @@ class IPCService {
         name: 'LinDesk Living Wallpaper 流体极光',
         version: '1.1.0',
         author: 'LinDesk',
+        authorUrl: 'https://github.com/LinDesk',
+        source: 'LinDesk 官方',
+        sourceUrl: 'https://github.com/LinDesk',
         description: '官方交互式动态壁纸：流体极光、宇宙引力奇点与量子网格，支持桌面鼠标物理波动。',
         packagePath: 'resources/wallpapers/living_wallpaper',
         role: 'wallpaper',
@@ -212,7 +215,10 @@ class IPCService {
         id: 'com.lindesk.wallpaper.neon_universe',
         name: 'Breeze Meadow 清风原野',
         version: '2.0.0',
-        author: 'LinDesk',
+        author: 'LinDesk & Community',
+        authorUrl: 'https://github.com/LinDesk',
+        source: 'LinDesk 原创工坊',
+        sourceUrl: 'https://github.com/LinDesk',
         description: '纯代码手绘治愈系自然动态壁纸：晨曦天青、柔风草浪、丁达尔晨光与起舞蒲公英，随鼠标拂动荡漾，极度养眼护眼。',
         packagePath: 'resources/wallpapers/neon_universe',
         role: 'wallpaper',
@@ -559,6 +565,22 @@ class IPCService {
       case 'window_close':
       case 'window_drag': {
         resp = { action, requestId, ok: true };
+        break;
+      }
+      case 'open_folder': {
+        resp = { action: 'open_folder', requestId, ok: true };
+        break;
+      }
+      case 'open_url': {
+        const targetUrl = payload.url || '';
+        if (targetUrl) {
+          try {
+            window.open(targetUrl, '_blank', 'noopener,noreferrer');
+          } catch {
+            // ignore
+          }
+        }
+        resp = { action: 'open_url', requestId, ok: true, url: targetUrl };
         break;
       }
       case 'create_project': {

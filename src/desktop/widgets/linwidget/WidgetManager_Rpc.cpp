@@ -103,11 +103,18 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         item.insert(QStringLiteral("name"), entry.name.isEmpty() ? (manifestLoaded ? manifest.name : entry.id) : entry.name);
         item.insert(QStringLiteral("version"), entry.version.isEmpty() ? (manifestLoaded ? manifest.version : QStringLiteral("1.0.0")) : entry.version);
         item.insert(QStringLiteral("author"), entry.author.isEmpty() ? manifest.author : entry.author);
+        if (manifestLoaded && !manifest.authorUrl.isEmpty()) {
+            item.insert(QStringLiteral("authorUrl"), manifest.authorUrl);
+        }
+        if (manifestLoaded && !manifest.sourceUrl.isEmpty()) {
+            item.insert(QStringLiteral("sourceUrl"), manifest.sourceUrl);
+        }
         item.insert(QStringLiteral("description"), entry.description.isEmpty() ? manifest.description : entry.description);
         item.insert(QStringLiteral("role"), entry.role.isEmpty() ? manifest.role : entry.role);
         item.insert(QStringLiteral("packagePath"), entry.packagePath);
-        item.insert(QStringLiteral("source"), sourceLabel);
+        item.insert(QStringLiteral("source"), manifestLoaded && !manifest.source.isEmpty() ? manifest.source : sourceLabel);
         item.insert(QStringLiteral("isDevelopment"), entry.isDevelopment);
+        item.insert(QStringLiteral("autoReload"), entry.autoReload || m_hotReloadEnabled);
         item.insert(QStringLiteral("trusted"), entry.trusted);
         item.insert(QStringLiteral("enabled"), entry.enabled);
         item.insert(QStringLiteral("running"), isRunning);
@@ -118,13 +125,36 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         item.insert(QStringLiteral("storageQuotaBytes"), kWidgetStorageQuotaBytes);
         item.insert(QStringLiteral("declaredPermissions"), declaredPerms);
         item.insert(QStringLiteral("grantedPermissions"), grantedPerms);
-        item.insert(QStringLiteral("hasSettings"), manifestLoaded && (!manifest.settings.isEmpty() || !manifest.settingsSchema.isEmpty()));
+        const QString settingsFileRel = manifestLoaded ? manifest.settings.trimmed() : QString();
+        const bool hasCustomSettingsFile = !settingsFileRel.isEmpty() &&
+            !entry.packagePath.isEmpty() &&
+            QFileInfo::exists(QDir(entry.packagePath).filePath(settingsFileRel));
+        item.insert(QStringLiteral("hasSettings"), manifestLoaded && (hasCustomSettingsFile || !manifest.settingsSchema.isEmpty()));
+        if (hasCustomSettingsFile) {
+            item.insert(QStringLiteral("settingsFile"), settingsFileRel);
+            const QString modeSeg = entry.isDevelopment ? QStringLiteral("dev") : QStringLiteral("installed");
+            const QString primaryInstId = !runningInstanceIds.isEmpty()
+                ? runningInstanceIds.first().toString()
+                : QStringLiteral("%1:%2").arg(modeSeg, entry.id);
+            const QString hexPkgPath = QString::fromLatin1(entry.packagePath.toUtf8().toHex());
+            const QString settingsUrl = QStringLiteral("linwidget://%1/__pkg__/%2/%3?widgetId=%4")
+                .arg(modeSeg,
+                     hexPkgPath,
+                     settingsFileRel,
+                     QString::fromLatin1(QUrl::toPercentEncoding(primaryInstId)));
+            item.insert(QStringLiteral("settingsUrl"), settingsUrl);
+        }
         if (manifestLoaded && !manifest.settingsSchema.isEmpty()) {
-            QJsonObject schemaObj;
+            QJsonArray schemaArr;
             for (const WidgetSettingField& field : manifest.settingsSchema) {
                 QJsonObject fieldObj;
+                fieldObj.insert(QStringLiteral("key"), field.key);
                 fieldObj.insert(QStringLiteral("type"), field.type);
+                fieldObj.insert(QStringLiteral("title"), field.title.isEmpty() ? field.key : field.title);
                 fieldObj.insert(QStringLiteral("label"), field.title.isEmpty() ? field.key : field.title);
+                if (!field.description.isEmpty()) {
+                    fieldObj.insert(QStringLiteral("description"), field.description);
+                }
                 fieldObj.insert(QStringLiteral("default"), field.defaultValue);
                 if (field.hasMin) fieldObj.insert(QStringLiteral("min"), field.minimum);
                 if (field.hasMax) fieldObj.insert(QStringLiteral("max"), field.maximum);
@@ -138,9 +168,9 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                     }
                     fieldObj.insert(QStringLiteral("options"), optsArr);
                 }
-                schemaObj.insert(field.key, fieldObj);
+                schemaArr.append(fieldObj);
             }
-            item.insert(QStringLiteral("settingsSchema"), schemaObj);
+            item.insert(QStringLiteral("settingsSchema"), schemaArr);
         }
         {
             QJsonObject savedSettings;
@@ -241,6 +271,15 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                 wallItem.insert(QStringLiteral("name"), mObj.value(QStringLiteral("name")).toString(fi.fileName()));
                 wallItem.insert(QStringLiteral("version"), mObj.value(QStringLiteral("version")).toString(QStringLiteral("1.0.0")));
                 wallItem.insert(QStringLiteral("author"), mObj.value(QStringLiteral("author")).toString(QStringLiteral("LinDesk")));
+                if (mObj.contains(QStringLiteral("authorUrl"))) {
+                    wallItem.insert(QStringLiteral("authorUrl"), mObj.value(QStringLiteral("authorUrl")).toString());
+                }
+                if (mObj.contains(QStringLiteral("source"))) {
+                    wallItem.insert(QStringLiteral("source"), mObj.value(QStringLiteral("source")).toString());
+                }
+                if (mObj.contains(QStringLiteral("sourceUrl"))) {
+                    wallItem.insert(QStringLiteral("sourceUrl"), mObj.value(QStringLiteral("sourceUrl")).toString());
+                }
                 wallItem.insert(QStringLiteral("description"), mObj.value(QStringLiteral("description")).toString());
                 wallItem.insert(QStringLiteral("packagePath"), fi.absoluteFilePath());
                 wallItem.insert(QStringLiteral("role"), QStringLiteral("wallpaper"));
@@ -389,6 +428,11 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         response.insert(QStringLiteral("activeWallpaperInteractive"), m_activeWallpaperInteractive);
         response.insert(QStringLiteral("userWidgetsDir"), AppPaths::userLinWidgetsDir());
         response.insert(QStringLiteral("logDir"), AppPaths::userLogsDir());
+        response.insert(QStringLiteral("hotReloadEnabled"), m_hotReloadEnabled);
+        if (!m_pendingOpenSettingsWidgetId.isEmpty()) {
+            response.insert(QStringLiteral("openSettingsWidgetId"), m_pendingOpenSettingsWidgetId);
+            m_pendingOpenSettingsWidgetId.clear();
+        }
 #if defined(QT_NO_DEBUG) || defined(NDEBUG)
         response.insert(QStringLiteral("isDebug"), false);
 #else
@@ -469,6 +513,14 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         setShowWidgetBounds(showBounds);
         response.insert(QStringLiteral("ok"), true);
         response.insert(QStringLiteral("showBounds"), showBounds);
+        return response;
+    }
+
+    if (action == QStringLiteral("set_hot_reload_enabled") || action == QStringLiteral("set_hot_reload")) {
+        const bool enabled = request.value(QStringLiteral("enabled")).toBool();
+        setHotReloadEnabled(enabled);
+        response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("hotReloadEnabled"), m_hotReloadEnabled);
         return response;
     }
 
@@ -679,7 +731,16 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
             wallObj.insert(QStringLiteral("id"), generatedId);
             wallObj.insert(QStringLiteral("name"), fi.completeBaseName());
             wallObj.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
-            wallObj.insert(QStringLiteral("author"), QStringLiteral("User Custom"));
+            wallObj.insert(QStringLiteral("author"), request.value(QStringLiteral("author")).toString(QStringLiteral("User Custom")));
+            if (request.contains(QStringLiteral("authorUrl"))) {
+                wallObj.insert(QStringLiteral("authorUrl"), request.value(QStringLiteral("authorUrl")).toString());
+            }
+            if (request.contains(QStringLiteral("source"))) {
+                wallObj.insert(QStringLiteral("source"), request.value(QStringLiteral("source")).toString());
+            }
+            if (request.contains(QStringLiteral("sourceUrl"))) {
+                wallObj.insert(QStringLiteral("sourceUrl"), request.value(QStringLiteral("sourceUrl")).toString());
+            }
             wallObj.insert(QStringLiteral("description"), isVideo ? QStringLiteral("自定义视频壁纸") : QStringLiteral("自定义高清静态壁纸"));
             wallObj.insert(QStringLiteral("role"), QStringLiteral("wallpaper"));
             wallObj.insert(QStringLiteral("wallpaperType"), isVideo ? QStringLiteral("video") : QStringLiteral("image"));
@@ -898,6 +959,22 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                 if (request.contains(QStringLiteral("name"))) {
                     const QString n = request.value(QStringLiteral("name")).toString().trimmed();
                     if (!n.isEmpty()) wObj.insert(QStringLiteral("name"), n);
+                }
+                if (request.contains(QStringLiteral("description"))) {
+                    wObj.insert(QStringLiteral("description"), request.value(QStringLiteral("description")).toString().trimmed());
+                }
+                if (request.contains(QStringLiteral("author"))) {
+                    const QString a = request.value(QStringLiteral("author")).toString().trimmed();
+                    if (!a.isEmpty()) wObj.insert(QStringLiteral("author"), a);
+                }
+                if (request.contains(QStringLiteral("authorUrl"))) {
+                    wObj.insert(QStringLiteral("authorUrl"), request.value(QStringLiteral("authorUrl")).toString().trimmed());
+                }
+                if (request.contains(QStringLiteral("source"))) {
+                    wObj.insert(QStringLiteral("source"), request.value(QStringLiteral("source")).toString().trimmed());
+                }
+                if (request.contains(QStringLiteral("sourceUrl"))) {
+                    wObj.insert(QStringLiteral("sourceUrl"), request.value(QStringLiteral("sourceUrl")).toString().trimmed());
                 }
                 customWalls[i] = wObj;
                 found = true;
@@ -1455,7 +1532,13 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                 }
             }
         }
+        m_pendingOpenSettingsWidgetId = resolvedId;
         emit widgetSettingsRequested(targetInst.isEmpty() ? resolvedId : targetInst);
+        QJsonObject hubOpenMsg;
+        hubOpenMsg.insert(QStringLiteral("action"), QStringLiteral("open_widget_settings_in_hub"));
+        hubOpenMsg.insert(QStringLiteral("widgetId"), resolvedId);
+        hubOpenMsg.insert(QStringLiteral("instanceId"), targetInst.isEmpty() ? resolvedId : targetInst);
+        emit widgetMessageDispatched(resolvedId, hubOpenMsg);
         response.insert(QStringLiteral("ok"), true);
         return response;
     }
@@ -1471,6 +1554,22 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         }
         QDesktopServices::openUrl(QUrl::fromLocalFile(folderPath));
         response.insert(QStringLiteral("ok"), true);
+        return response;
+    }
+
+    if (action == QStringLiteral("open_url")) {
+        const QString urlStr = request.value(QStringLiteral("url")).toString().trimmed();
+        if (!urlStr.isEmpty()) {
+            const QUrl url(urlStr);
+            if (url.isValid() && (url.scheme().compare(QStringLiteral("http"), Qt::CaseInsensitive) == 0 ||
+                                  url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0)) {
+                QDesktopServices::openUrl(url);
+                response.insert(QStringLiteral("ok"), true);
+                return response;
+            }
+        }
+        response.insert(QStringLiteral("ok"), false);
+        response.insert(QStringLiteral("error"), QStringLiteral("Invalid or unsupported URL scheme"));
         return response;
     }
 
@@ -1541,6 +1640,10 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         QJsonObject notifyMsg = makeWidgetMessage(QStringLiteral("settings_updated"), resolvedId);
         notifyMsg.insert(QStringLiteral("settings"), existing);
         broadcastToWidgetInstances(resolvedId, notifyMsg);
+
+        QJsonObject changedMsg = makeWidgetMessage(QStringLiteral("settings_changed"), resolvedId);
+        changedMsg.insert(QStringLiteral("settings"), existing);
+        broadcastToWidgetInstances(resolvedId, changedMsg);
 
         response.insert(QStringLiteral("ok"), true);
         response.insert(QStringLiteral("settings"), existing);
@@ -1679,8 +1782,27 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         return;
     }
     if (type == QString::fromLatin1(WidgetMessageType::OpenWidgetSettings)) {
-        if (!effectiveInstanceId.isEmpty() && m_instances.contains(effectiveInstanceId)) {
+        if (!effectiveInstanceId.isEmpty()) {
+            const QString regId = resolveWidgetId(effectiveInstanceId);
+            if (!regId.isEmpty()) {
+                m_pendingOpenSettingsWidgetId = regId;
+            }
             emit widgetSettingsRequested(effectiveInstanceId);
+            QJsonObject hubOpenMsg;
+            hubOpenMsg.insert(QStringLiteral("action"), QStringLiteral("open_widget_settings_in_hub"));
+            hubOpenMsg.insert(QStringLiteral("widgetId"), regId.isEmpty() ? effectiveInstanceId : regId);
+            hubOpenMsg.insert(QStringLiteral("instanceId"), effectiveInstanceId);
+            emit widgetMessageDispatched(effectiveInstanceId, hubOpenMsg);
+        }
+        return;
+    }
+    if (type == QStringLiteral("linwidget_settings_changed_request")) {
+        const QString regId = resolveWidgetId(effectiveInstanceId);
+        if (!regId.isEmpty()) {
+            QJsonObject notifyMessage;
+            notifyMessage.insert(QStringLiteral("type"), QStringLiteral("linwidget_appearance_changed_notification"));
+            broadcastToWidgetInstances(regId, notifyMessage);
+            emit widgetMessageDispatched(effectiveInstanceId, notifyMessage);
         }
         return;
     }
@@ -1698,8 +1820,10 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         handleStorageRequest(message);
         return;
     }
-    if (type == QString::fromLatin1(WidgetMessageType::CreateWidgetInstanceRequest)) {
+    if (type == QString::fromLatin1(WidgetMessageType::CreateWidgetInstanceRequest) ||
+        type == QStringLiteral("linwidget_create_instance_request")) {
         const QString sourceInstanceId = effectiveInstanceId;
+        const QString resolvedRegId = resolveWidgetId(sourceInstanceId);
         QRect requestedGeometry;
         const QJsonObject geometry = message.value(QStringLiteral("geometry")).toObject();
         if (!geometry.isEmpty()) {
@@ -1710,7 +1834,19 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         }
         QString newInstanceId;
         QString errorMessage;
-        const bool ok = createWidgetInstance(sourceInstanceId, requestedGeometry, &newInstanceId, &errorMessage);
+        bool ok = false;
+        if (m_instances.contains(sourceInstanceId) && m_runningWidgets.contains(sourceInstanceId)) {
+            ok = createWidgetInstance(sourceInstanceId, requestedGeometry, &newInstanceId, &errorMessage);
+        } else if (!resolvedRegId.isEmpty()) {
+            const WidgetRegistryEntry entry = WidgetRegistryManager::instance().entryById(resolvedRegId);
+            if (!entry.packagePath.isEmpty()) {
+                ok = createWidgetInstanceFromPackage(entry.packagePath, entry.isDevelopment, false, requestedGeometry, &newInstanceId, &errorMessage);
+            } else {
+                errorMessage = QStringLiteral("Widget package not found for %1.").arg(resolvedRegId);
+            }
+        } else {
+            ok = createWidgetInstance(sourceInstanceId, requestedGeometry, &newInstanceId, &errorMessage);
+        }
         QJsonObject response = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::CreateWidgetInstanceResponse), sourceInstanceId);
         response.insert(QStringLiteral("targetInstanceId"), sourceInstanceId);
         response.insert(QStringLiteral("requestId"), message.value(QStringLiteral("requestId")).toString());
@@ -1720,17 +1856,22 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         sendMessageToWidget(sourceInstanceId, response);
         return;
     }
-    if (type == QString::fromLatin1(WidgetMessageType::ListWidgetInstancesRequest)) {
+    if (type == QString::fromLatin1(WidgetMessageType::ListWidgetInstancesRequest) ||
+        type == QStringLiteral("linwidget_list_instances_request")) {
         const QString sourceInstanceId = effectiveInstanceId;
+        const QString resolvedRegId = resolveWidgetId(sourceInstanceId);
         const QString requestId = message.value(QStringLiteral("requestId")).toString();
         QJsonObject response = makeWidgetMessage(QString::fromLatin1(WidgetMessageType::ListWidgetInstancesResponse), sourceInstanceId);
         response.insert(QStringLiteral("targetInstanceId"), sourceInstanceId);
         response.insert(QStringLiteral("requestId"), requestId);
         QJsonArray instances;
         const WidgetInstance source = m_instances.value(sourceInstanceId);
-        if (!source.instanceId.isEmpty()) {
+        if (!source.instanceId.isEmpty() || !resolvedRegId.isEmpty()) {
             for (const WidgetLayoutState& state : m_layout.states()) {
-                if (!sameWidgetFamily(source, state)) {
+                const bool match = !source.instanceId.isEmpty()
+                    ? sameWidgetFamily(source, state)
+                    : (stateRegistryId(state) == resolvedRegId);
+                if (!match) {
                     continue;
                 }
                 QJsonObject item;
@@ -1757,8 +1898,10 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         sendMessageToWidget(sourceInstanceId, response);
         return;
     }
-    if (type == QString::fromLatin1(WidgetMessageType::CloseWidgetInstanceRequest)) {
+    if (type == QString::fromLatin1(WidgetMessageType::CloseWidgetInstanceRequest) ||
+        type == QStringLiteral("linwidget_close_instance_request")) {
         const QString sourceInstanceId = effectiveInstanceId;
+        const QString resolvedRegId = resolveWidgetId(sourceInstanceId);
         QString targetInstanceId = message.value(QStringLiteral("targetInstanceId")).toString().trimmed();
         if (targetInstanceId.isEmpty()) {
             targetInstanceId = sourceInstanceId;
@@ -1766,7 +1909,8 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         const QString requestId = message.value(QStringLiteral("requestId")).toString();
         const WidgetInstance source = m_instances.value(sourceInstanceId);
         const WidgetLayoutState targetState = m_layout.state(targetInstanceId);
-        const bool allowed = sameWidgetFamily(source, targetState);
+        const bool allowed = (!source.instanceId.isEmpty() && sameWidgetFamily(source, targetState)) ||
+                             (!resolvedRegId.isEmpty() && stateRegistryId(targetState) == resolvedRegId);
         if (allowed && m_runningWidgets.contains(targetInstanceId)) {
             stopWidget(targetInstanceId);
         }
@@ -1781,8 +1925,10 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         sendMessageToWidget(sourceInstanceId, response);
         return;
     }
-    if (type == QString::fromLatin1(WidgetMessageType::RemoveWidgetInstanceRequest)) {
+    if (type == QStringLiteral("load_widget_instance_request") ||
+        type == QStringLiteral("linwidget_load_instance_request")) {
         const QString sourceInstanceId = effectiveInstanceId;
+        const QString resolvedRegId = resolveWidgetId(sourceInstanceId);
         QString targetInstanceId = message.value(QStringLiteral("targetInstanceId")).toString().trimmed();
         if (targetInstanceId.isEmpty()) {
             targetInstanceId = sourceInstanceId;
@@ -1790,7 +1936,36 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         const QString requestId = message.value(QStringLiteral("requestId")).toString();
         const WidgetInstance source = m_instances.value(sourceInstanceId);
         const WidgetLayoutState targetState = m_layout.state(targetInstanceId);
-        const bool allowed = sameWidgetFamily(source, targetState);
+        const bool allowed = (!source.instanceId.isEmpty() && sameWidgetFamily(source, targetState)) ||
+                             (!resolvedRegId.isEmpty() && stateRegistryId(targetState) == resolvedRegId);
+        bool ok = false;
+        if (allowed) {
+            ok = restartWidget(targetInstanceId);
+        }
+        QJsonObject response = makeWidgetMessage(QStringLiteral("load_widget_instance_response"), sourceInstanceId);
+        response.insert(QStringLiteral("targetInstanceId"), sourceInstanceId);
+        response.insert(QStringLiteral("requestId"), requestId);
+        response.insert(QStringLiteral("ok"), ok);
+        response.insert(QStringLiteral("instanceId"), targetInstanceId);
+        if (!allowed) {
+            response.insert(QStringLiteral("error"), QStringLiteral("Target widget instance is outside the caller scope."));
+        }
+        sendMessageToWidget(sourceInstanceId, response);
+        return;
+    }
+    if (type == QString::fromLatin1(WidgetMessageType::RemoveWidgetInstanceRequest) ||
+        type == QStringLiteral("linwidget_remove_instance_request")) {
+        const QString sourceInstanceId = effectiveInstanceId;
+        const QString resolvedRegId = resolveWidgetId(sourceInstanceId);
+        QString targetInstanceId = message.value(QStringLiteral("targetInstanceId")).toString().trimmed();
+        if (targetInstanceId.isEmpty()) {
+            targetInstanceId = sourceInstanceId;
+        }
+        const QString requestId = message.value(QStringLiteral("requestId")).toString();
+        const WidgetInstance source = m_instances.value(sourceInstanceId);
+        const WidgetLayoutState targetState = m_layout.state(targetInstanceId);
+        const bool allowed = (!source.instanceId.isEmpty() && sameWidgetFamily(source, targetState)) ||
+                             (!resolvedRegId.isEmpty() && stateRegistryId(targetState) == resolvedRegId);
         if (allowed && (m_layout.contains(targetInstanceId) || m_runningWidgets.contains(targetInstanceId))) {
             removeWidgetState(targetInstanceId);
         }
@@ -1944,12 +2119,11 @@ bool WidgetManager::sendMessageToWidget(const QString& instanceId, const QJsonOb
     if (instanceId.isEmpty()) {
         return false;
     }
+    emit widgetMessageDispatched(instanceId, message);
     if (auto* osr = m_osrBrowsers.value(instanceId)) {
         osr->sendMessageToWeb(message);
         return true;
     }
-    qWarning() << "[LinWidget][WidgetManager] sendMessageToWidget dropped: no OSR browser for" << instanceId
-               << "type:" << message.value(QStringLiteral("type")).toString();
     return false;
 }
 

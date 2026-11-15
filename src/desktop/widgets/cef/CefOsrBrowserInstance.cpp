@@ -200,11 +200,6 @@ public:
             return nullptr;
         }
 
-        const QString pkgPath = m_owner->packagePath();
-        if (pkgPath.isEmpty()) {
-            return nullptr;
-        }
-
         const QUrl parsedUrl(urlStr);
         QString relativePath = parsedUrl.path();
         if (relativePath.startsWith(QLatin1Char('/'))) {
@@ -233,6 +228,24 @@ public:
                     }
                 }
             }
+        }
+
+        QString pkgPath = m_owner->packagePath();
+        if (relativePath.startsWith(QLatin1String("__pkg__/"))) {
+            const QString afterPrefix = relativePath.mid(8);
+            const int slashIdx = afterPrefix.indexOf(QLatin1Char('/'));
+            if (slashIdx > 0) {
+                const QString hexPkg = afterPrefix.left(slashIdx);
+                const QString decodedPkg = QString::fromUtf8(QByteArray::fromHex(hexPkg.toLatin1()));
+                if (!decodedPkg.isEmpty()) {
+                    pkgPath = decodedPkg;
+                    relativePath = afterPrefix.mid(slashIdx + 1);
+                }
+            }
+        }
+
+        if (pkgPath.isEmpty()) {
+            return nullptr;
         }
 
         if (relativePath.isEmpty()) {
@@ -632,6 +645,21 @@ void CefOsrBrowserInstance::loadUrl(const QString& url)
 #endif
 }
 
+void CefOsrBrowserInstance::reload(bool ignoreCache)
+{
+#ifdef LINDESK_HAS_CEF
+    if (m_browser) {
+        if (ignoreCache) {
+            m_browser->ReloadIgnoreCache();
+        } else {
+            m_browser->Reload();
+        }
+    }
+#else
+    Q_UNUSED(ignoreCache);
+#endif
+}
+
 void CefOsrBrowserInstance::resize(int width, int height)
 {
     m_geometry.setSize(QSize(qMax(1, width), qMax(1, height)));
@@ -865,7 +893,17 @@ void CefOsrBrowserInstance::sendMessageToWeb(const QJsonObject& message)
         "})();"
     ).arg(encoded);
 
-    m_browser->GetMainFrame()->ExecuteJavaScript(jsCode.toStdWString(), m_browser->GetMainFrame()->GetURL(), 0);
+    std::vector<CefString> frameIds;
+    m_browser->GetFrameIdentifiers(frameIds);
+    if (frameIds.empty()) {
+        m_browser->GetMainFrame()->ExecuteJavaScript(jsCode.toStdWString(), m_browser->GetMainFrame()->GetURL(), 0);
+    } else {
+        for (const CefString& fid : frameIds) {
+            if (CefRefPtr<CefFrame> frame = m_browser->GetFrameByIdentifier(fid)) {
+                frame->ExecuteJavaScript(jsCode.toStdWString(), frame->GetURL(), 0);
+            }
+        }
+    }
 #else
     Q_UNUSED(message);
 #endif
@@ -883,7 +921,19 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         return;
     }
 
-    const QString escapedWidgetId = QString(m_widgetId)
+    QString effectiveWidgetId = m_widgetId;
+    const QString frameUrlStr = QString::fromStdWString(frame->GetURL().ToWString());
+    if (!frameUrlStr.isEmpty()) {
+        const QUrl parsedFrameUrl(frameUrlStr);
+        const QUrlQuery query(parsedFrameUrl);
+        const QString queryWidgetId = QUrl::fromPercentEncoding(
+            query.queryItemValue(QStringLiteral("widgetId"), QUrl::FullyEncoded).toUtf8()).trimmed();
+        if (!queryWidgetId.isEmpty()) {
+            effectiveWidgetId = queryWidgetId;
+        }
+    }
+
+    const QString escapedWidgetId = QString(effectiveWidgetId)
         .replace(QLatin1Char('\\'), QLatin1String("\\\\"))
         .replace(QLatin1Char('\''), QLatin1String("\\'"));
 
@@ -1088,6 +1138,9 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "    },"
         "    close: function(targetId) {"
         "      return sendRequest('close_widget_instance_request', { targetInstanceId: targetId || widgetId });"
+        "    },"
+        "    load: function(targetId) {"
+        "      return sendRequest('load_widget_instance_request', { targetInstanceId: targetId || widgetId });"
         "    },"
         "    remove: function(targetId) {"
         "      return sendRequest('remove_widget_instance_request', { targetInstanceId: targetId || widgetId });"

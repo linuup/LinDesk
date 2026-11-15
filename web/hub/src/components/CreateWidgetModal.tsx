@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, Code2, Layers, Cpu } from 'lucide-react';
 import { CreateWidgetData } from '../types';
 
@@ -20,6 +20,24 @@ export const CreateWidgetModal: React.FC<CreateWidgetModalProps> = ({
   const [template, setTemplate] = useState<'vanilla' | 'react' | 'webgl'>('vanilla');
   const [width, setWidth] = useState(320);
   const [height, setHeight] = useState(240);
+
+  // 锁定底座背景滚动，防止鼠标滚轮穿透滚动 Hub 页面
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevDocOverflow = document.documentElement.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevDocOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -50,10 +68,14 @@ export const CreateWidgetModal: React.FC<CreateWidgetModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-md animate-in fade-in duration-150">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-md animate-in fade-in duration-150 overscroll-contain"
+      onWheel={(e) => e.stopPropagation()}
+    >
       <div 
-        className="relative w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131927] p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in zoom-in-95 duration-150"
+        className="relative w-[92vw] max-w-lg md:max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131927] p-6 shadow-2xl text-slate-800 dark:text-slate-100 animate-in zoom-in-95 duration-150 overscroll-contain transition-all"
         onClick={e => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 dark:border-slate-800">

@@ -21,6 +21,7 @@ WidgetManager::WidgetManager(QObject* parent)
 
     QSettings cefSettings(AppPaths::configFilePath(), QSettings::IniFormat);
     m_cefOsrEnabled = cefSettings.value("LinWidgets/CefOsrEnabled", true).toBool();
+    m_hotReloadEnabled = cefSettings.value("LinWidgets/HotReloadEnabled", false).toBool();
 
     m_runtimeHealthTimer.setInterval(kRuntimeHealthCheckIntervalMs);
     connect(&m_runtimeHealthTimer, &QTimer::timeout, this, &WidgetManager::checkRuntimeHealth);
@@ -368,7 +369,6 @@ bool WidgetManager::launchWidgetInstance(const WidgetInstance& instance,
         const QString entryUrl = QStringLiteral("linwidget://%1/%2").arg(instance.instanceId, entryFile);
         osr->create(entryUrl, layoutState.geometry);
         m_osrBrowsers.insert(instance.instanceId, osr);
-        updateDefaultCefPage();
     } else {
         if (errorMessage) {
             *errorMessage = QStringLiteral("CEF OSR runtime is not available.");
@@ -537,8 +537,7 @@ bool WidgetManager::setWidgetGeometry(const QString& instanceId, const QRect& ge
     if (!m_enabled || instanceId.isEmpty() || !geometry.isValid()) {
         return false;
     }
-    if (instanceId.startsWith(QStringLiteral("wallpaper:")) ||
-        instanceId == QStringLiteral("__default_page__")) {
+    if (instanceId.startsWith(QStringLiteral("wallpaper:"))) {
         qDebug() << "[LinWidget][WidgetManager] Rejecting setWidgetGeometry on non-draggable target:" << instanceId;
         return false;
     }
@@ -613,8 +612,7 @@ bool WidgetManager::moveWidget(const QString& instanceId, const QPoint& pos)
     if (!m_enabled || instanceId.isEmpty()) {
         return false;
     }
-    if (instanceId.startsWith(QStringLiteral("wallpaper:")) ||
-        instanceId == QStringLiteral("__default_page__")) {
+    if (instanceId.startsWith(QStringLiteral("wallpaper:"))) {
         qDebug() << "[LinWidget][WidgetManager] Rejecting moveWidget on non-draggable target:" << instanceId;
         return false;
     }
@@ -638,8 +636,7 @@ bool WidgetManager::resizeWidget(const QString& instanceId, const QSize& size)
     if (!m_enabled || instanceId.isEmpty() || !size.isValid()) {
         return false;
     }
-    if (instanceId.startsWith(QStringLiteral("wallpaper:")) ||
-        instanceId == QStringLiteral("__default_page__")) {
+    if (instanceId.startsWith(QStringLiteral("wallpaper:"))) {
         return false;
     }
 
@@ -779,7 +776,6 @@ void WidgetManager::setCanvasWidget(::LinCef::LinWidgetCanvasWidget* canvas)
     m_canvasWidget = canvas;
     if (m_canvasWidget) {
         m_canvasWidget->setShowBounds(m_showWidgetBounds);
-        updateDefaultCefPage();
     }
 }
 
@@ -845,7 +841,6 @@ void WidgetManager::setCefOsrEnabled(bool enabled)
                 osr->create(entryUrl, state.geometry);
                 m_osrBrowsers.insert(id, osr);
             }
-            updateDefaultCefPage();
         }
     } else {
         // 禁用并卸载全部 CEF OSR 浏览器
@@ -856,7 +851,6 @@ void WidgetManager::setCefOsrEnabled(bool enabled)
             }
         }
         m_osrBrowsers.clear();
-        updateDefaultCefPage();
 
         if (m_canvasWidget) {
             m_canvasWidget->clearAllFrames();
@@ -916,20 +910,13 @@ bool WidgetManager::forwardMouseEvent(QMouseEvent* event)
     }
 
     auto* osr = m_osrBrowsers.value(wid, nullptr);
-    if (!osr && wid == QStringLiteral("__default_page__")) {
-        osr = m_defaultOsrBrowser;
-    }
 
     if (osr) {
         const QPoint localPos = event->pos() - osr->geometry().topLeft();
         if (event->type() == QEvent::MouseMove) {
             osr->sendMouseMove(localPos.x(), localPos.y());
         } else if (event->type() == QEvent::MouseButtonPress) {
-            if (wid != QStringLiteral("__default_page__")) {
-                setFocusedWidget(wid);
-            } else {
-                clearWidgetFocus();
-            }
+            setFocusedWidget(wid);
             osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), false, 1);
         } else if (event->type() == QEvent::MouseButtonRelease) {
             osr->sendMouseClick(localPos.x(), localPos.y(), event->button(), true, 1);
@@ -952,9 +939,6 @@ bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
     }
 
     auto* osr = m_osrBrowsers.value(wid, nullptr);
-    if (!osr && wid == QStringLiteral("__default_page__")) {
-        osr = m_defaultOsrBrowser;
-    }
 
     if (osr) {
         const QPoint localPos = event->pos() - osr->geometry().topLeft();
@@ -968,12 +952,6 @@ bool WidgetManager::forwardWheelEvent(QWheelEvent* event)
 
 void WidgetManager::setFocusedWidget(const QString& instanceId)
 {
-    if (instanceId == QStringLiteral("__default_page__")) {
-        if (!m_focusedInstanceId.isEmpty()) {
-            clearWidgetFocus();
-        }
-        return;
-    }
     if (m_focusedInstanceId == instanceId) {
         return;
     }
@@ -983,15 +961,11 @@ void WidgetManager::setFocusedWidget(const QString& instanceId)
     if (!oldId.isEmpty()) {
         if (auto* oldBrowser = m_osrBrowsers.value(oldId, nullptr)) {
             oldBrowser->setFocus(false);
-        } else if (oldId == QStringLiteral("__default_page__") && m_defaultOsrBrowser) {
-            m_defaultOsrBrowser->setFocus(false);
         }
     }
     if (!m_focusedInstanceId.isEmpty()) {
         if (auto* newBrowser = m_osrBrowsers.value(m_focusedInstanceId, nullptr)) {
             newBrowser->setFocus(true);
-        } else if (m_focusedInstanceId == QStringLiteral("__default_page__") && m_defaultOsrBrowser) {
-            m_defaultOsrBrowser->setFocus(true);
         }
     }
     emit focusedWidgetChanged(m_focusedInstanceId);
@@ -1004,13 +978,10 @@ void WidgetManager::clearWidgetFocus()
 
 bool WidgetManager::forwardKeyEvent(QKeyEvent* event)
 {
-    if (!event || m_focusedInstanceId.isEmpty() || m_focusedInstanceId == QStringLiteral("__default_page__")) {
+    if (!event || m_focusedInstanceId.isEmpty()) {
         return false;
     }
     auto* osr = m_osrBrowsers.value(m_focusedInstanceId, nullptr);
-    if (!osr && m_focusedInstanceId == QStringLiteral("__default_page__")) {
-        osr = m_defaultOsrBrowser;
-    }
     if (osr) {
         osr->sendKeyEvent(event);
         return true;
@@ -1024,9 +995,6 @@ bool WidgetManager::forwardInputMethodEvent(QInputMethodEvent* event)
         return false;
     }
     auto* osr = m_osrBrowsers.value(m_focusedInstanceId, nullptr);
-    if (!osr && m_focusedInstanceId == QStringLiteral("__default_page__")) {
-        osr = m_defaultOsrBrowser;
-    }
     if (osr) {
         osr->sendInputMethodEvent(event);
         return true;
@@ -1078,106 +1046,6 @@ void WidgetManager::handleBrowserCrashed(const QString& widgetId, int status, in
     }
 }
 
-QString WidgetManager::defaultCefPagePath() const
-{
-    const QString relativePath = QStringLiteral("resources/LinWidgetRuntime/default_page.html");
-    const QString appDir = QCoreApplication::applicationDirPath();
-    const QString entryPath = QDir::cleanPath(QDir(appDir).filePath(relativePath));
-    if (QFileInfo::exists(entryPath)) {
-        return entryPath;
-    }
-#ifdef LINDESK_SOURCE_DIR
-    const QString srcPath = QDir::cleanPath(QDir(QStringLiteral(LINDESK_SOURCE_DIR)).filePath(QStringLiteral("src/") + relativePath));
-    if (QFileInfo::exists(srcPath)) {
-        return srcPath;
-    }
-#endif
-    return entryPath;
-}
-
-void WidgetManager::updateDefaultCefPage()
-{
-    qDebug() << "[LinWidget][WidgetManager] updateDefaultCefPage called. enabled=" << m_enabled
-             << "cefOsrEnabled=" << m_cefOsrEnabled
-             << "runningWidgetsCount=" << m_runningWidgets.size()
-             << "osrBrowsersCount=" << m_osrBrowsers.size();
-
-    if (!m_cefOsrEnabled || !m_enabled) {
-        if (m_defaultOsrBrowser) {
-            qDebug() << "[LinWidget][WidgetManager] Closing default OSR browser...";
-            m_defaultOsrBrowser->close();
-            m_defaultOsrBrowser->deleteLater();
-            m_defaultOsrBrowser = nullptr;
-        }
-        if (m_canvasWidget) {
-            m_canvasWidget->removeWidgetFrame(QStringLiteral("__default_page__"));
-        }
-        return;
-    }
-
-    // 检查是否有真实用户小组件正在运行
-    const bool hasUserWidgets = !m_osrBrowsers.isEmpty();
-    if (hasUserWidgets) {
-        if (m_defaultOsrBrowser) {
-            qDebug() << "[LinWidget][WidgetManager] User widget running, removing default page.";
-            m_defaultOsrBrowser->close();
-            m_defaultOsrBrowser->deleteLater();
-            m_defaultOsrBrowser = nullptr;
-            if (m_canvasWidget) {
-                m_canvasWidget->removeWidgetFrame(QStringLiteral("__default_page__"));
-            }
-        }
-        return;
-    }
-
-    // 无任何组件：启动并加载默认居中页面
-    if (!LinCef::CefManager::instance()->isCefAvailable()) {
-        qWarning() << "[LinWidget][WidgetManager] CEF is not available!";
-        return;
-    }
-    if (!LinCef::CefManager::instance()->initialize()) {
-        qWarning() << "[LinWidget][WidgetManager] Failed to initialize CEF!";
-        return;
-    }
-
-    QRect canvasRect;
-    if (LinCef::LinWidgetCanvasWidget::hostWidget() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().isValid() && LinCef::LinWidgetCanvasWidget::hostWidget()->rect().width() > 100) {
-        canvasRect = LinCef::LinWidgetCanvasWidget::hostWidget()->rect();
-    } else if (m_canvasWidget && m_canvasWidget->rect().isValid() && m_canvasWidget->rect().width() > 100) {
-        canvasRect = m_canvasWidget->rect();
-    } else if (QGuiApplication::primaryScreen()) {
-        canvasRect = QGuiApplication::primaryScreen()->geometry();
-        canvasRect.moveTo(0, 0);
-    } else {
-        canvasRect = QRect(0, 0, 1920, 1080);
-    }
-
-    if (m_defaultOsrBrowser) {
-        if (m_defaultOsrBrowser->geometry() != canvasRect) {
-            m_defaultOsrBrowser->setGeometry(canvasRect);
-            if (m_canvasWidget) {
-                m_canvasWidget->updateWidgetGeometry(QStringLiteral("__default_page__"), canvasRect);
-            }
-        }
-        return;
-    }
-
-    const QString defaultId = QStringLiteral("__default_page__");
-    m_defaultOsrBrowser = new LinCef::CefOsrBrowserInstance(defaultId, this);
-    connect(m_defaultOsrBrowser, &LinCef::CefOsrBrowserInstance::frameReady, this,
-            [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
-                if (m_canvasWidget) {
-                    m_canvasWidget->updateWidgetFrame(wid, geom, img, dirty);
-                }
-            });
-
-    const QString path = defaultCefPagePath();
-    const bool exists = QFileInfo::exists(path);
-    const QString url = QUrl::fromLocalFile(path).toString();
-    qDebug() << "[LinWidget][WidgetManager] Loading default page. path=" << path << "exists=" << exists << "url=" << url << "geom=" << canvasRect;
-    m_defaultOsrBrowser->create(url, canvasRect);
-}
-
 void WidgetManager::setWidgetLayerEmbedded(bool embedded)
 {
     if (m_widgetLayerEmbedded != embedded) {
@@ -1199,9 +1067,6 @@ void WidgetManager::syncWidgetWindowLayer(const QString& instanceId)
 void WidgetManager::syncAllWidgetWindowLayers()
 {
     syncWallpaperWindowLayer();
-    if (m_cefOsrEnabled && m_defaultOsrBrowser) {
-        updateDefaultCefPage();
-    }
 }
 
 QString WidgetManager::resolveWidgetId(const QString& rawId) const
@@ -1287,14 +1152,35 @@ void WidgetManager::stopWidget(const QString& instanceId)
         saveToDefaultConfig();
     }
     emit widgetStopped(instanceId);
-    if (!m_stoppingAll) {
-        updateDefaultCefPage();
+}
+
+void WidgetManager::setHotReloadEnabled(bool enabled)
+{
+    if (m_hotReloadEnabled == enabled) {
+        return;
     }
+    m_hotReloadEnabled = enabled;
+    qInfo() << "[LinWidget] Hot reload (development live-reload) set to:" << enabled;
+
+    QSettings settings(AppPaths::configFilePath(), QSettings::IniFormat);
+    settings.setValue("LinWidgets/HotReloadEnabled", m_hotReloadEnabled);
+
+    for (const QString& id : m_runningWidgets) {
+        if (!m_instances.contains(id)) continue;
+        const WidgetInstance& inst = m_instances.value(id);
+        if (enabled) {
+            configureDevelopmentWatcher(inst);
+        } else if (!inst.isDevelopment || !inst.autoReload) {
+            clearDevelopmentWatcher(id);
+        }
+    }
+    scheduleSaveToConfig();
 }
 
 void WidgetManager::configureDevelopmentWatcher(const WidgetInstance& instance)
 {
-    if (!instance.isDevelopment || !instance.autoReload) {
+    const bool shouldWatch = m_hotReloadEnabled || (instance.isDevelopment && instance.autoReload);
+    if (!shouldWatch) {
         return;
     }
 
@@ -1314,7 +1200,7 @@ void WidgetManager::configureDevelopmentWatcher(const WidgetInstance& instance)
     }
     auto* timer = new QTimer(this);
     timer->setSingleShot(true);
-    timer->setInterval(500);
+    timer->setInterval(300);
     connect(watcher, &QFileSystemWatcher::fileChanged, this, [this, id = instance.instanceId](const QString& path) {
         if (QFileInfo::exists(path)) {
             QFileSystemWatcher* watcher = m_developmentWatchers.value(id, nullptr);
@@ -1350,7 +1236,18 @@ void WidgetManager::configureDevelopmentWatcher(const WidgetInstance& instance)
         }
     });
     connect(timer, &QTimer::timeout, this, [this, id = instance.instanceId]() {
-        restartWidget(id);
+        qInfo() << "[LinWidget] Hot reload triggered for instance:" << id;
+        auto* osr = m_osrBrowsers.value(id, nullptr);
+        if (osr) {
+            osr->reload(true);
+            QJsonObject notify;
+            notify.insert(QStringLiteral("action"), QStringLiteral("hot_reload_triggered"));
+            notify.insert(QStringLiteral("instanceId"), id);
+            notify.insert(QStringLiteral("widgetId"), resolveWidgetId(id));
+            emit widgetMessageDispatched(id, notify);
+        } else {
+            restartWidget(id);
+        }
     });
     m_developmentWatchers.insert(instance.instanceId, watcher);
     m_developmentReloadTimers.insert(instance.instanceId, timer);
@@ -1369,16 +1266,28 @@ void WidgetManager::clearDevelopmentWatcher(const QString& instanceId)
 QStringList WidgetManager::watchedFilesForPackage(const QString& packagePath) const
 {
     QStringList result;
-    const QDir dir(packagePath);
-    const QStringList filters {
+    if (packagePath.isEmpty() || !QDir(packagePath).exists()) {
+        return result;
+    }
+    const QStringList nameFilters {
         QStringLiteral("manifest.json"),
         QStringLiteral("*.html"),
         QStringLiteral("*.css"),
-        QStringLiteral("*.js")
+        QStringLiteral("*.js"),
+        QStringLiteral("*.json"),
+        QStringLiteral("*.svg"),
+        QStringLiteral("*.png")
     };
-    const QFileInfoList files = dir.entryInfoList(filters, QDir::Files, QDir::Name);
-    for (const QFileInfo& file : files) {
-        result.append(file.absoluteFilePath());
+    QDirIterator it(packagePath, nameFilters, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString filePath = it.next();
+        if (filePath.contains(QStringLiteral("/node_modules/")) ||
+            filePath.contains(QStringLiteral("/.git/")) ||
+            filePath.contains(QStringLiteral("/dist/")) ||
+            filePath.contains(QStringLiteral("/build/"))) {
+            continue;
+        }
+        result.append(filePath);
     }
     return result;
 }
@@ -1392,17 +1301,20 @@ QStringList WidgetManager::watchedDirectoriesForPackage(const QString& packagePa
     }
 
     result.append(root.absolutePath());
-    const QFileInfoList directories = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QFileInfo& directory : directories) {
-        const QString name = directory.fileName();
+    QDirIterator it(packagePath, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString dirPath = it.next();
+        const QString name = QFileInfo(dirPath).fileName();
         if (name == QStringLiteral(".git") ||
             name == QStringLiteral("node_modules") ||
+            name == QStringLiteral("dist") ||
+            name == QStringLiteral("build") ||
             name.compare(QStringLiteral("cache"), Qt::CaseInsensitive) == 0 ||
             name.compare(QStringLiteral("tmp"), Qt::CaseInsensitive) == 0 ||
             name.compare(QStringLiteral("temp"), Qt::CaseInsensitive) == 0) {
             continue;
         }
-        result.append(directory.absoluteFilePath());
+        result.append(dirPath);
     }
     return result;
 }
@@ -1428,11 +1340,6 @@ void WidgetManager::stopAll(bool includeWallpaper)
             }
         }
         m_osrBrowsers.clear();
-        if (m_defaultOsrBrowser) {
-            m_defaultOsrBrowser->close();
-            m_defaultOsrBrowser->deleteLater();
-            m_defaultOsrBrowser = nullptr;
-        }
         if (m_canvasWidget) {
             m_canvasWidget->clearAllFrames();
         }
@@ -1454,9 +1361,6 @@ void WidgetManager::stopAll(bool includeWallpaper)
                 osr->close();
                 osr->deleteLater();
             }
-        }
-        if (!wasStoppingAll) {
-            updateDefaultCefPage();
         }
     }
     m_stoppingAll = wasStoppingAll;

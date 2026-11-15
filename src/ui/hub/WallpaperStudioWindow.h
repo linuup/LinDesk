@@ -35,6 +35,10 @@ class StudioPreviewCanvas;
 struct WallpaperItem {
     QString id;
     QString name;
+    QString author;
+    QString authorUrl;
+    QString source;
+    QString sourceUrl;
     QString tag;
     QString description;
     QString packagePath;

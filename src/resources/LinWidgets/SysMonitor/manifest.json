@@ -1,0 +1,60 @@
+{
+  "id": "lindesk.sysmonitor",
+  "name": "SysMonitor Pro",
+  "version": "1.3.0",
+  "author": "LinDesk",
+  "description": "极简专业桌面硬件遥测面板，直观呈现处理器主频与功耗、显卡传感器、物理内存、驱动器阵列与网络吞吐。",
+  "icon": "icon.png",
+  "width": 320,
+  "height": 420,
+  "minWidth": 160,
+  "minHeight": 80,
+  "maxWidth": 600,
+  "maxHeight": 800,
+  "autoLoad": true,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "permissions": [
+    "desktop",
+    "storage"
+  ],
+  "settingsSchema": [
+    {
+      "key": "refreshInterval",
+      "type": "select",
+      "title": "采样刷新间隔",
+      "description": "硬件传感器与负载采样周期，数值越小响应越灵敏，数值越大后台能耗越低。",
+      "default": "1000",
+      "options": [
+        { "label": "500ms 极速响应", "value": "500" },
+        { "label": "1000ms 标准平衡", "value": "1000" },
+        { "label": "2000ms 均衡省电", "value": "2000" },
+        { "label": "5000ms 超低功耗", "value": "5000" }
+      ]
+    },
+    {
+      "key": "theme",
+      "type": "select",
+      "title": "主题模式",
+      "description": "切换深色或浅色外观界面风格。",
+      "default": "light",
+      "options": [
+        { "label": "浅色纯净", "value": "light" },
+        { "label": "暗夜深邃", "value": "dark" }
+      ]
+    },
+    {
+      "key": "viewMode",
+      "type": "select",
+      "title": "布局排版模式",
+      "description": "在标准舒适卡片与高密度极简条之间切换。",
+      "default": "standard",
+      "options": [
+        { "label": "标准舒适卡片", "value": "standard" },
+        { "label": "高密度极简条", "value": "compact" }
+      ]
+    }
+  ]
+}

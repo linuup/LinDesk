@@ -177,7 +177,7 @@ QStringList grantedPermissionsForManifest(const WidgetManifest& manifest, const 
     QStringList granted = entry.permissionsGranted;
     // Bundled (built-in) widgets ship with LinDesk itself, so their declared permissions are implicitly granted.
     const QString normalizedPath = QDir::fromNativeSeparators(packagePath);
-    if (entry.trusted || normalizedPath.contains(QStringLiteral("resources/LinWidgets"), Qt::CaseInsensitive)) {
+    if (entry.trusted || manifest.id.startsWith(QStringLiteral("lindesk."), Qt::CaseInsensitive) || manifest.author.compare(QStringLiteral("LinDesk"), Qt::CaseInsensitive) == 0 || normalizedPath.contains(QStringLiteral("resources/LinWidgets"), Qt::CaseInsensitive) || normalizedPath.contains(QStringLiteral("LinWidgets"), Qt::CaseInsensitive)) {
         granted += manifest.permissions;
     }
     return permissions.normalizePermissions(granted);

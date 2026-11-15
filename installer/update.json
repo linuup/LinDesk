@@ -1,10 +1,10 @@
 {
-  "version": "2.0.2",
+  "version": "2.0.4",
   "channel": "stable",
-  "url": "https://github.com/linuup/LinDesk/releases/download/v2.0.2/LinDesk_Setup_2.0.2_x64.exe",
-  "sha256": "8f9f58b093c7909108707cd17087fc01f519ac8a8f55e9d49db36fc64e30703d",
-  "notes": "### LinDesk 2.0.2 更新说明\n\n本次版本包含稳定性优化与细节修复：\n\n- 优化部分模块配置项与连接策略；\n- 完善工程构建与打包流水线；\n- 细节体验提升与已知问题修复。",
-  "publishedAt": "2026-11-12T17:45:50Z",
+  "url": "https://github.com/linuup/LinDesk/releases/download/v2.0.4/LinDesk_Setup_2.0.4_x64.exe",
+  "sha256": "66b1f04717aea25c500a0cc2ac835bb3ea43830ec2072748e938d926838272b6",
+  "notes": "32位打包异常",
+  "publishedAt": "2026-11-13T16:03:06Z",
   "minSupportedVersion": "1.0.0",
   "runtime": {
     "version": "1.0.0",

@@ -29,12 +29,20 @@ add_library(OCR_Plugin MODULE
 
 set(ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../3rdparty/onnxruntime")
 
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(ONNXRUNTIME_ARCH "x64")
+else()
+    set(ONNXRUNTIME_ARCH "x86")
+endif()
+set(ONNXRUNTIME_LIB_DIR "${ONNXRUNTIME_ROOT}/lib/${ONNXRUNTIME_ARCH}")
+message(STATUS "OCR ONNX Runtime arch: ${ONNXRUNTIME_ARCH} (${ONNXRUNTIME_LIB_DIR})")
+
 target_link_libraries(OCR_Plugin PRIVATE 
     Qt5::Core
     Qt5::Widgets
     Qt5::Network
     Qt5::Concurrent
-    ${ONNXRUNTIME_ROOT}/lib/onnxruntime.lib
+    "${ONNXRUNTIME_LIB_DIR}/onnxruntime.lib"
 )
 
 target_include_directories(OCR_Plugin PRIVATE
@@ -55,8 +63,8 @@ if(TARGET LinDesk)
     add_custom_command(TARGET OCR_Plugin POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:LinDesk>/plugins
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:OCR_Plugin> $<TARGET_FILE_DIR:LinDesk>/plugins/
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll $<TARGET_FILE_DIR:LinDesk>/
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll $<TARGET_FILE_DIR:LinDesk>/plugins/
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_LIB_DIR}/onnxruntime.dll" $<TARGET_FILE_DIR:LinDesk>/
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ONNXRUNTIME_LIB_DIR}/onnxruntime.dll" $<TARGET_FILE_DIR:LinDesk>/plugins/
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/models $<TARGET_FILE_DIR:LinDesk>/plugins/models
         COMMENT "Copying OCR_Plugin, onnxruntime.dll and models to plugins folder..."
     )

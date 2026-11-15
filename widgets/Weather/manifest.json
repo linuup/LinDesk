@@ -1,14 +1,14 @@
 {
   "id": "lindesk.weather",
   "name": "Weather",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "LinDesk",
-  "description": "A bundled weather widget template for testing network and storage permissions.",
+  "description": "Minimal clean weather widget with multi-day forecasts and air quality indicators.",
   "icon": "icon.png",
-  "width": 320,
+  "width": 300,
   "height": 160,
   "minWidth": 160,
-  "minHeight": 160,
+  "minHeight": 140,
   "maxWidth": 360,
   "maxHeight": 360,
   "autoLoad": true,
@@ -16,8 +16,30 @@
   "transparent": true,
   "resizable": true,
   "entry": "index.html",
+  "settings": "settings.html",
   "permissions": [
     "network",
-    "storage"
+    "storage",
+    "desktop"
+  ],
+  "settingsSchema": [
+    {
+      "key": "theme",
+      "type": "select",
+      "title": "天气主题外观",
+      "description": "切换浅色或深色气象卡片风格",
+      "default": "dark",
+      "options": [
+        { "label": "深色通透", "value": "dark" },
+        { "label": "浅色明亮", "value": "light" }
+      ]
+    },
+    {
+      "key": "defaultCity",
+      "type": "string",
+      "title": "默认关注城市",
+      "description": "未输入时的城市名或拼音如 Beijing, Shanghai, Shenzhen",
+      "default": "Shanghai"
+    }
   ]
 }

@@ -4,32 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Weather Mini</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="widget">
-    <div class="glass-panel">
+    <div class="glass-panel" id="glassPanel">
       <!-- Header -->
       <header class="header">
-        <div class="location-container">
-          <span class="location-icon" style="font-size: 1.2rem; margin-right: 0.4rem; opacity: 0.8;">📍</span>
-          <input id="locationInput" type="text" placeholder="输入城市后回车..." title="点击此处修改城市" />
+        <div class="location-container" id="locationBtn" title="点击打开城市设置">
+          <span id="locationCityName" class="location-name">--</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 0.6rem;">
-          <button type="button" id="themeToggle" class="theme-toggle" title="切换主题">☀️</button>
+        <div class="header-actions">
+          <button type="button" id="settingsBtn" class="icon-btn settings-btn" title="打开组件设置页">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
         </div>
       </header>
+
+      <!-- Empty State Card (shown when no cities are configured) -->
+      <section id="emptyStateCard" class="empty-state-card hidden">
+        <div class="empty-icon-wrap">
+          <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+              <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+          </span>
+        </div>
+        <div class="empty-title">尚未配置任何位置</div>
+        <div class="empty-desc">支持输入汉字、全拼与拼音首字母即时检索，或省市县三级级联精准添加。</div>
+        <button type="button" id="emptyActionBtn" class="primary-btn empty-btn">+ 打开设置添加城市</button>
+      </section>
       
       <!-- Weather Content Wrapper -->
-      <div class="weather-content">
+      <div id="weatherContent" class="weather-content">
         <!-- Current Weather -->
         <section class="current-weather">
           <div class="current-main">
             <div class="weather-icon-wrapper">
-              <div class="weather-icon" id="icon">☀️</div>
+              <div class="weather-icon" id="icon"></div>
             </div>
             <div class="temp-block">
               <div class="temperature" id="temperature">--°</div>
@@ -39,9 +55,24 @@
           
           <!-- Metrics -->
           <div class="metrics">
-            <div class="metric" title="空气质量"><span class="metric-icon">🌬️</span><span id="aqi">--</span></div>
-            <div class="metric" title="湿度"><span class="metric-icon">💧</span><span id="humidity">--%</span></div>
-            <div class="metric" title="风速"><span class="metric-icon">🍃</span><span id="wind">--</span></div>
+            <div class="metric" title="空气质量">
+              <span class="metric-icon">
+                <img src="icons/barometer.svg" alt="AQI" class="metric-svg-icon" />
+              </span>
+              <span id="aqi">--</span>
+            </div>
+            <div class="metric" title="湿度">
+              <span class="metric-icon">
+                <img src="icons/humidity.svg" alt="湿度" class="metric-svg-icon" />
+              </span>
+              <span id="humidity">--%</span>
+            </div>
+            <div class="metric" title="风速">
+              <span class="metric-icon">
+                <img src="icons/wind.svg" alt="风速" class="metric-svg-icon" />
+              </span>
+              <span id="wind">--</span>
+            </div>
           </div>
         </section>
         
@@ -51,8 +82,8 @@
         </section>
       </div>
     </div>
-
   </main>
+
   <script src="script.js"></script>
 </body>
 </html>

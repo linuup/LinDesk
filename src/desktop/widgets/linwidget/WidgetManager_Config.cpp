@@ -30,7 +30,6 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
     QVector<WidgetLayoutState> states;
     const QString path = configPath.isEmpty() ? ConfigManager::defaultConfigPath() : configPath;
     if (!ConfigManager::loadLayout(path, &states, errorMessage)) {
-        updateDefaultCefPage();
         if (configPath.isEmpty() && m_activeWallpaperId.isEmpty()) {
             loadWallpaperConfig();
         }
@@ -81,6 +80,9 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
     const QVector<WidgetLayoutState> uniqueStates = deduplicatedLayoutStates(states);
     m_layout.setStates(QVector<WidgetLayoutState>());
     for (const WidgetLayoutState& state : uniqueStates) {
+        if (state.instanceId == QStringLiteral("__default_page__")) {
+            continue;
+        }
         if (!state.visible) {
             m_layout.addOrUpdate(state);
             continue;
@@ -124,8 +126,6 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
         }
         emit widgetLaunched(instance.instanceId);
     }
-
-    updateDefaultCefPage();
 
     if (errorMessage && ok) {
         errorMessage->clear();

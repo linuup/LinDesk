@@ -173,78 +173,74 @@ const EmptyOverviewGuide: React.FC<EmptyOverviewGuideProps> = ({
   onCreateWidget
 }) => {
   return (
-    <div className="space-y-8 pb-12 animate-fade-in select-none">
-      {/* 1. 顶部沉浸欢迎卡片 (Hero Welcome Banner) */}
-      <section className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-900 via-slate-900 to-slate-950 text-white p-8 md:p-12 border border-indigo-500/20 shadow-xl dark:shadow-2xl">
-        {/* 背景微光氛围装饰 */}
-        <div className="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-1/4 -bottom-24 w-80 h-80 bg-violet-500/15 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="space-y-6 pb-12 select-none">
+      {/* 1. 顶部工作台概览卡片 (Refined Industrial Hero) */}
+      <section className="relative rounded-2xl overflow-hidden bg-gradient-to-b from-slate-900 to-slate-950 text-white p-7 sm:p-9 border border-slate-800 shadow-md">
         <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-indigo-200 text-xs font-medium mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-300 animate-pulse" />
-            <span>开启你的个性化桌面体验</span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/10 text-slate-300 text-xs font-mono font-medium mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span>桌面运行就绪</span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-            欢迎使用桌面工坊
+          <h1 className="text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+            LinDesk Hub
           </h1>
 
-          <p className="mt-3 text-sm sm:text-base text-slate-300 leading-relaxed">
-            目前桌面还没有添加任何壁纸和小工具。只需简单两步，就能把喜欢的动态视频设为桌面背景，摆放轻量桌面小工具。
+          <p className="mt-2 text-sm text-slate-400 leading-relaxed max-w-xl">
+            当前桌面尚未配置活动壁纸或桌面小组件。你可以导入视频作为动态壁纸，或直接启用内置桌面组件。
           </p>
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-2.5">
             <button
               type="button"
               onClick={onImportMedia}
-              className="px-5 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-lg shadow-indigo-500/30 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer"
+              className="btn-press px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              <span>添加第一张壁纸</span>
+              <Plus className="w-3.5 h-3.5" />
+              <span>导入壁纸</span>
             </button>
 
             <button
               type="button"
               onClick={onGoToStudio}
-              className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-semibold border border-white/20 backdrop-blur-md flex items-center gap-2 transition-all duration-200 cursor-pointer"
+              className="btn-press px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 flex items-center gap-1.5 cursor-pointer"
             >
-              <Sliders className="w-4 h-4 text-indigo-300" />
-              <span>进入壁纸工坊</span>
+              <Sliders className="w-3.5 h-3.5 text-slate-400" />
+              <span>壁纸工坊</span>
             </button>
 
             <button
               type="button"
               onClick={onGoToWidgets}
-              className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 hover:text-white text-xs sm:text-sm font-medium border border-white/10 transition-all duration-200 cursor-pointer"
+              className="btn-press px-4 py-2 rounded-lg bg-slate-800/60 hover:bg-slate-700/80 text-slate-300 text-xs font-medium border border-slate-700/60 flex items-center gap-1.5 cursor-pointer"
             >
-              <Layers className="w-4 h-4 text-slate-300" />
-              <span>浏览桌面小工具</span>
+              <Layers className="w-3.5 h-3.5 text-slate-400" />
+              <span>组件中心</span>
             </button>
           </div>
         </div>
       </section>
 
       {/* 2. 引导核心卡片 (Step by Step Guide) */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 指引 1：壁纸 */}
-        <div className="bg-white/95 dark:bg-[#131927]/90 rounded-2xl p-6 border border-slate-200/90 dark:border-slate-800/90 shadow-xs dark:shadow-md flex flex-col justify-between transition-colors">
+        <div className="acrylic-card rounded-xl p-5 flex flex-col justify-between transition-colors">
           <div>
-            <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center mb-4 shadow-2xs">
-              <Film className="w-6 h-6" />
+            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 flex items-center justify-center mb-3.5">
+              <Film className="w-5 h-5 opacity-90" />
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-indigo-100/70 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                第一步
+              <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60">
+                01
               </span>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                添置动态壁纸
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                动态壁纸
               </h3>
             </div>
 
             <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              支持把喜欢的 MP4 视频、风景照片或 GIF 动图一键设为桌面壁纸。画面在桌面上平滑循环，工作和放松时更加赏心悦目。
+              支持将 MP4/WebM 视频或图片一键配置为桌面壁纸。底座智能能效状态机将在全屏独占或遮挡时自动休眠降频。
             </p>
 
             {/* 小贴士 */}
@@ -588,8 +584,8 @@ export const Overview: React.FC<OverviewProps> = ({
                       />
                     )}
                     {/* Dark gradient vignettes for contrast and depth */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 via-slate-950/20 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/50 via-transparent to-transparent pointer-events-none" />
                   </div>
                 );
               })}
@@ -740,7 +736,13 @@ export const Overview: React.FC<OverviewProps> = ({
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
               {activeWall 
-                ? `${activeWall.author || '本地壁纸'} · 支持全屏游戏智能挂起与自动节能` 
+                ? (
+                  <span>
+                    {activeWall.author ? `作者: ${activeWall.author}` : '本地壁纸'}
+                    {activeWall.source ? ` · 来源: ${activeWall.source}` : ''}
+                    {' · 支持全屏游戏智能挂起与自动节能'}
+                  </span>
+                )
                 : '从下方精选壁纸中挑选一款，一键赋予桌面生动体验'}
             </p>
           </div>
@@ -836,7 +838,7 @@ export const Overview: React.FC<OverviewProps> = ({
         </div>
 
         {/* 4. Curated Wallpapers Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 sm:gap-5">
           {filteredWallpapers.map(wall => {
             const isRunning = isWallpaperRunning(wall);
             const isSelectedInHero = currentHero?.id === wall.id;
@@ -928,9 +930,15 @@ export const Overview: React.FC<OverviewProps> = ({
                     <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate" title={wall.name}>
                       {wall.name}
                     </h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                      {wall.author || 'LinDesk'}
-                    </p>
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                      <span className="truncate">{wall.author || 'LinDesk'}</span>
+                      {wall.source && (
+                        <>
+                          <span className="text-slate-300 dark:text-slate-700">·</span>
+                          <span className="truncate">{wall.source}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1010,9 +1018,15 @@ export const Overview: React.FC<OverviewProps> = ({
                     <h5 className="text-xs font-semibold text-slate-900 dark:text-white truncate">{widget.name}</h5>
                     <span className={`w-2 h-2 rounded-full shrink-0 ${widget.running ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                    {widget.description || widget.author || 'LinDesk 桌面组件'}
-                  </p>
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    <span className="truncate">{widget.author || 'LinDesk'}</span>
+                    {widget.source && (
+                      <>
+                        <span className="text-slate-300 dark:text-slate-700">·</span>
+                        <span className="truncate">{widget.source}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 

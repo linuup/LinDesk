@@ -635,7 +635,6 @@ public slots:
 	void armPendingShellNewTargetBox(LinBox* box);
 	void clearPendingShellNewTargetBox();
 	void openLinWidgetSettings(const QString& instanceId);
-	void showWidgetContextMenu(const QString& instanceId, const QPoint& globalPos);
 	int refreshWidgetResizeHint(const QPoint& pos, bool ctrlHeld);
 
 private:

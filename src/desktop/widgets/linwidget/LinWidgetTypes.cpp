@@ -294,6 +294,15 @@ QJsonObject manifestToJson(const WidgetManifest& manifest)
     object.insert(QStringLiteral("name"), manifest.name);
     object.insert(QStringLiteral("version"), manifest.version);
     object.insert(QStringLiteral("author"), manifest.author);
+    if (!manifest.authorUrl.isEmpty()) {
+        object.insert(QStringLiteral("authorUrl"), manifest.authorUrl);
+    }
+    if (!manifest.source.isEmpty()) {
+        object.insert(QStringLiteral("source"), manifest.source);
+    }
+    if (!manifest.sourceUrl.isEmpty()) {
+        object.insert(QStringLiteral("sourceUrl"), manifest.sourceUrl);
+    }
     object.insert(QStringLiteral("description"), manifest.description);
     object.insert(QStringLiteral("width"), manifest.width);
     object.insert(QStringLiteral("height"), manifest.height);
@@ -370,6 +379,9 @@ bool manifestFromJson(const QJsonObject& object, WidgetManifest* manifest, QStri
         !requireString(object, QStringLiteral("icon"), false, &parsed.icon, errorMessage)) {
         return false;
     }
+    requireString(object, QStringLiteral("authorUrl"), false, &parsed.authorUrl, nullptr);
+    requireString(object, QStringLiteral("source"), false, &parsed.source, nullptr);
+    requireString(object, QStringLiteral("sourceUrl"), false, &parsed.sourceUrl, nullptr);
     QString typeText;
     if (!requireString(object, QStringLiteral("type"), false, &typeText, errorMessage)) {
         return false;

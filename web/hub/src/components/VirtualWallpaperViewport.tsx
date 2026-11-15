@@ -8,6 +8,8 @@ interface VirtualWallpaperViewportProps {
   iframeRef?: React.Ref<HTMLIFrameElement>;
   className?: string;
   filterStyle?: React.CSSProperties;
+  fitMode?: 'cover' | 'contain';
+  enableAmbientBackdrop?: boolean;
 }
 
 export const VirtualWallpaperViewport: React.FC<VirtualWallpaperViewportProps> = ({
@@ -17,6 +19,8 @@ export const VirtualWallpaperViewport: React.FC<VirtualWallpaperViewportProps> =
   iframeRef,
   className = '',
   filterStyle = {},
+  fitMode = 'contain',
+  enableAmbientBackdrop = true,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -60,30 +64,70 @@ export const VirtualWallpaperViewport: React.FC<VirtualWallpaperViewportProps> =
     ? window.screen.height
     : 1080;
 
-  // Scale calculation: uniform scale preserving screen aspect ratio within the container
-  const scale = dimensions.width > 0 && dimensions.height > 0
+  // Contain scale (preserves exact screen ratio inside frame)
+  const containScale = dimensions.width > 0 && dimensions.height > 0
     ? Math.min(dimensions.width / screenW, dimensions.height / screenH)
     : 1;
 
-  const scaledW = screenW * scale;
-  const scaledH = screenH * scale;
-  const leftOffset = Math.max(0, (dimensions.width - scaledW) / 2);
-  const topOffset = Math.max(0, (dimensions.height - scaledH) / 2);
+  // Cover scale (fills 100% of container with zero black edges)
+  const coverScale = dimensions.width > 0 && dimensions.height > 0
+    ? Math.max(dimensions.width / screenW, dimensions.height / screenH)
+    : 1;
+
+  const activeScale = fitMode === 'cover' ? coverScale : containScale;
+  const leftOffset = (dimensions.width - screenW * activeScale) / 2;
+  const topOffset = (dimensions.height - screenH * activeScale) / 2;
+
+  // Background ambient backdrop scale (slightly oversized for soft blur)
+  const backdropScale = coverScale * 1.15;
+  const backdropLeft = (dimensions.width - screenW * backdropScale) / 2;
+  const backdropTop = (dimensions.height - screenH * backdropScale) / 2;
 
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full overflow-hidden bg-black select-none ${className}`}
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
     >
+      {/* 1. Ambient Dynamic Light Glow (Apple Music / Spotify Style Backdrop) */}
+      {enableAmbientBackdrop && dimensions.width > 0 && dimensions.height > 0 && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0">
+          <div
+            style={{
+              position: 'absolute',
+              left: `${backdropLeft}px`,
+              top: `${backdropTop}px`,
+              width: `${screenW}px`,
+              height: `${screenH}px`,
+              transform: `scale(${backdropScale})`,
+              transformOrigin: 'top left',
+              filter: 'blur(64px) saturate(180%) brightness(0.9)',
+              opacity: 0.9,
+            }}
+          >
+            <iframe
+              src={src}
+              title=""
+              className="w-full h-full border-0 pointer-events-none"
+              tabIndex={-1}
+              scrolling="no"
+            />
+          </div>
+          {/* Subtle frosted glass mist overlay to blend ambient lighting seamlessly */}
+          <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-md" />
+        </div>
+      )}
+
+      {/* 2. Main High-Fidelity Wallpaper Viewport */}
       {dimensions.width > 0 && dimensions.height > 0 && (
         <div
+          className="relative z-10"
           style={{
             position: 'absolute',
             left: `${leftOffset}px`,
             top: `${topOffset}px`,
             width: `${screenW}px`,
             height: `${screenH}px`,
-            transform: `scale(${scale})`,
+            transform: `scale(${activeScale})`,
             transformOrigin: 'top left',
             pointerEvents: 'none',
             filter: filterStyle?.filter,

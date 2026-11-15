@@ -3,8 +3,9 @@ import {
   Play, Square, Sliders, ImageOff, Search, Plus, 
   Upload, Volume2, VolumeX, Moon, RefreshCw, Eye, CheckCircle2, Sparkles,
   Trash2, FolderOpen, Settings2, Maximize2, Gauge, Film, Image as ImageIcon,
-  Monitor, ChevronDown, ChevronRight
+  Monitor, ChevronDown, ChevronRight, User, ExternalLink
 } from 'lucide-react';
+import { ipc } from '../services/ipc';
 import { WallpaperInfo, UniversalWallpaperSettings, StagedWallpaperMedia } from '../types';
 import { VirtualWallpaperViewport } from './VirtualWallpaperViewport';
 import { WallpaperDeleteModal } from './WallpaperDeleteModal';
@@ -26,6 +27,7 @@ interface WallpaperStudioProps {
   onDeleteWallpaper?: (id: string, packagePath: string, name: string) => void;
   onOpenFolder?: (id: string, packagePath: string) => void;
   selectedWallpaperId?: string;
+  onModalStateChange?: (isOpen: boolean) => void;
 }
 
 type FilterMode = 'all' | 'running' | 'video' | 'interactive' | 'custom';
@@ -163,7 +165,8 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
   onEditCustomWallpaper,
   onDeleteWallpaper,
   onOpenFolder,
-  selectedWallpaperId
+  selectedWallpaperId,
+  onModalStateChange
 }) => {
   const isWallpaperRunningOnDesktop = (wall: WallpaperInfo): boolean => {
     if (!activeWallpaperId) return false;
@@ -201,6 +204,10 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [showDesktopIcons, setShowDesktopIcons] = useState(false);
   const [wallpaperToDelete, setWallpaperToDelete] = useState<WallpaperInfo | null>(null);
+
+  useEffect(() => {
+    onModalStateChange?.(Boolean(wallpaperToDelete));
+  }, [wallpaperToDelete, onModalStateChange]);
   const [hoveredWallId, setHoveredWallId] = useState<string | null>(null);
   const [isHostControlsOpen, setIsHostControlsOpen] = useState(false);
 
@@ -492,7 +499,7 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-6">
         {/* =========================================================================
             LEFT 58% (7 Cols): Gallery
            ========================================================================= */}
@@ -604,7 +611,7 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
           </div>
 
           {/* Gallery Cards Grid (Lightweight, No Background iframes) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3 gap-3.5">
             {filteredWallpapers.map((wall) => {
               const isRunning = isWallpaperRunningOnDesktop(wall);
               const isSelected = selectedWall?.id === wall.id;
@@ -719,9 +726,15 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{wall.name}</h4>
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
-                        {wall.description || (isCustom ? '用户导入壁纸' : '官方动态壁纸')}
-                      </p>
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                        <span className="truncate">{wall.author || (isCustom ? '用户导入' : 'LinDesk')}</span>
+                        {wall.source && (
+                          <>
+                            <span>·</span>
+                            <span className="truncate">{wall.source}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -797,6 +810,45 @@ export const WallpaperStudio: React.FC<WallpaperStudioProps> = ({
                   <div className="flex items-center gap-2 min-w-0">
                     <Eye className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{selectedWall.name}</span>
+                    {/* Author & Source attribution pills */}
+                    <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                      {selectedWall.author && (
+                        selectedWall.authorUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => ipc.send('open_url', { url: selectedWall.authorUrl })}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/60 transition-colors cursor-pointer group"
+                            title={`访问作者主页: ${selectedWall.authorUrl}`}
+                          >
+                            <User className="w-2.5 h-2.5 text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
+                            <span>{selectedWall.author}</span>
+                            <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
+                            <User className="w-2.5 h-2.5 text-slate-400" />
+                            <span>{selectedWall.author}</span>
+                          </span>
+                        )
+                      )}
+                      {selectedWall.source && (
+                        selectedWall.sourceUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => ipc.send('open_url', { url: selectedWall.sourceUrl })}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 transition-colors cursor-pointer group"
+                            title={`访问资源来源: ${selectedWall.sourceUrl}`}
+                          >
+                            <span>来源: {selectedWall.source}</span>
+                            <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/60">
+                            来源: {selectedWall.source}
+                          </span>
+                        )
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {/* Desktop Icon Mock Overlay Toggle */}

@@ -118,8 +118,12 @@ public:
     int cefOsrBrowserCount() const { return m_osrBrowsers.size(); }
     bool showDevTools(const QString& instanceId);
 
+    bool isHotReloadEnabled() const { return m_hotReloadEnabled; }
+    void setHotReloadEnabled(bool enabled);
+
     void setWidgetLayerEmbedded(bool embedded);
     bool isWidgetLayerEmbedded() const;
+    void handleRuntimeMessage(const QString& widgetId, const QJsonObject& message);
 
 signals:
     void runtimeEnabledChanged(bool enabled);
@@ -127,6 +131,7 @@ signals:
     void widgetStopped(const QString& instanceId);
     void widgetError(const QString& instanceId, const QString& errorMessage);
     void widgetSettingsRequested(const QString& instanceId);
+    void widgetMessageDispatched(const QString& instanceId, const QJsonObject& message);
     void focusedWidgetChanged(const QString& instanceId);
     void imeCursorRectChanged(const QRect& cursorRect);
 
@@ -142,7 +147,6 @@ private:
     bool launchWidgetInstance(const WidgetInstance& instance,
                               const WidgetLayoutState& layoutState,
                               QString* errorMessage = nullptr);
-    void handleRuntimeMessage(const QString& widgetId, const QJsonObject& message);
     void handleSystemInfoRequest(const QJsonObject& message);
     void handleStorageRequest(const QJsonObject& message);
     void sendSystemInfoResponse(const QString& instanceId,
@@ -187,6 +191,7 @@ private:
     bool m_stoppingAll = false;
     bool m_showWidgetBounds = false;
     bool m_enabled = false;
+    bool m_hotReloadEnabled = false;
     bool m_widgetLayerEmbedded = true; // true = widget host below ListView; false = HWND_TOP (above)
     QWidget* m_linDesktopParent = nullptr;
     QString m_activeWallpaperId;
@@ -201,18 +206,16 @@ private:
     void renderActiveImageWallpaper();
     ::LinCef::LinWidgetCanvasWidget* m_canvasWidget = nullptr;
     QHash<QString, ::LinCef::CefOsrBrowserInstance*> m_osrBrowsers;
-    ::LinCef::CefOsrBrowserInstance* m_defaultOsrBrowser = nullptr;
     bool m_cefOsrEnabled = true;
     QString m_focusedInstanceId;
     QRect m_imeCursorRect;
     QMap<QString, QVector<qint64>> m_crashTimestamps;
     QHash<QString, int> m_totalCrashCounts;
     QSet<QString> m_crashTrippedWidgets;
+    QString m_pendingOpenSettingsWidgetId;
 
     QRect clampGeometryToHostBounds(const QRect& geometry) const;
     void handleBrowserCrashed(const QString& widgetId, int status, int errorCode, const QString& errorString);
-    void updateDefaultCefPage();
-    QString defaultCefPagePath() const;
 };
 
 }

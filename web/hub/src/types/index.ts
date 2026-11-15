@@ -33,6 +33,8 @@ export interface WidgetInfo {
   name: string;
   version: string;
   author: string;
+  authorUrl?: string;
+  sourceUrl?: string;
   description: string;
   role: 'widget' | 'wallpaper' | string;
   packagePath: string;
@@ -50,10 +52,12 @@ export interface WidgetInfo {
   grantedPermissions: string[];
   hasSettings: boolean;
   settingsFile?: string;
+  settingsUrl?: string;
   settingsSchema?: WidgetSettingField[];
   settingsValues?: Record<string, any>;
   runningInstanceIds: string[];
   instances?: WidgetInstanceItem[];
+  autoReload?: boolean;
 }
 
 export interface WallpaperPropertySchema {
@@ -86,6 +90,10 @@ export interface StagedWallpaperMedia {
   editWallpaperId?: string;
   packagePath?: string;
   description?: string;
+  author?: string;
+  authorUrl?: string;
+  source?: string;
+  sourceUrl?: string;
   sourcePath?: string;
   isArchived?: boolean;
   fileSizeBytes?: number;
@@ -99,6 +107,9 @@ export interface WallpaperInfo {
   name: string;
   version?: string;
   author?: string;
+  authorUrl?: string;
+  source?: string;
+  sourceUrl?: string;
   description: string;
   packagePath: string;
   role: 'wallpaper';

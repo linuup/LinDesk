@@ -1,27 +1,27 @@
-# LinDesk 小组件极简开发指南 (Widgets Guide)
+# LinDesk 小组件极简开发指南
 
-> **核心原则**：小组件本质上就是**普通的本地 HTML 静态网页卡片**。  
-> **不要开启 Visual Studio，不需要编译任何 C++ 代码**。直接用 Chrome 或 VS Code Live Server 打开即可开发与调试！
-> *(注：动态壁纸请移步根目录的 `wallpapers/` 专属目录)*
+小组件本质上是本地静态网页卡片。无需开启 Visual Studio，不需要编译任何 C++ 代码，直接使用 Chrome 浏览器或轻量本地 Web 服务器即可完成开发与调试。
+
+动态壁纸工程请移步根目录的 wallpapers 专属目录。
 
 ---
 
 ## 1. 目录结构与极简约定
 
-每个小组件都是一个独立的文件夹，必须包含两个核心文件：
+每个小组件都是独立的文件夹，必须包含两个核心文件：
 ```text
 my-widget/
-├── manifest.json      # 组件配置文件（声明名称、默认尺寸、权限）
-├── index.html         # 核心网页入口（HTML5 / CSS / JS / Canvas）
-├── style.css          # 样式文件（可选）
-└── icon.png           # 桌面与设置面板展示的图标（建议 128×128 PNG）
+├── manifest.json      # 组件配置文件，声明名称、默认尺寸与权限
+├── index.html         # 核心网页入口，基于 HTML5、CSS、JS 与 Canvas
+├── style.css          # 样式文件，可选
+└── icon.png           # 桌面与设置面板展示的图标，建议 128×128 像素 PNG
 ```
 
 ---
 
-## 2. 极简 `manifest.json` 模板
+## 2. 极简 manifest.json 模板
 
-复制以下内容保存为 `manifest.json` 即可：
+复制以下内容保存为 manifest.json 即可：
 
 ```json
 {
@@ -32,8 +32,8 @@ my-widget/
   "entry": "index.html",
   "icon": "icon.png",
   "role": "widget",
-  "width": 360,
-  "height": 200,
+  "width": 320,
+  "height": 420,
   "minWidth": 200,
   "minHeight": 120,
   "transparent": true,
@@ -41,18 +41,18 @@ my-widget/
 }
 ```
 
-> **字段说明**：
-> - `transparent`: 设为 `true` 开启背景透明（毛玻璃与自适应桌面必备）。
-> - `resizable`: 设为 `true` 允许用户在桌面上按住 `Ctrl` 拖拽边缘或滚轮缩放。
+字段说明：
+- transparent：设为 true 开启背景透明，毛玻璃与自适应桌面背景必备。
+- resizable：设为 true 允许用户在桌面上拖拽边缘调整尺寸或缩放。
 
 ---
 
-## 3. 宿主 API（只保留最核心的 3 个）
+## 3. 宿主 API
 
-在 LinDesk 桌面环境下运行时，宿主会在全局注入轻量的 `window.desktop` 对象：
+在 LinDesk 桌面环境下运行时，宿主会在全局注入轻量的 window.desktop 对象：
 
-### ① 本地数据持久化 (`storage`)
-组件重启后数据不丢失，自动按 `id` 独立存储在各组件专属目录中：
+### 本地数据持久化 storage
+组件重启后数据不丢失，自动按 id 独立存储在各组件专属目录中：
 ```javascript
 // 保存数据
 await window.desktop.storage.set("myKey", { theme: "dark", count: 42 });
@@ -63,26 +63,35 @@ const data = await window.desktop.storage.get("myKey");
 // 删除数据
 await window.desktop.storage.remove("myKey");
 ```
-*(注：在普通浏览器直接打开时，若没有 `window.desktop`，可直接使用原生 `localStorage`。)*
 
-### ② 系统硬件监控 (`systemInfo`)
-仅系统监视器、硬件仪表盘等组件使用：
+在普通浏览器直接打开时，若没有 window.desktop，代码会自动回退到浏览器原生 localStorage。
+
+### 系统硬件监控 systemInfo
+仅系统监视器、硬件仪表盘等组件使用，支持一次性快照与连续推送订阅：
 ```javascript
+// 方式 1：获取单次硬件快照
 const info = await window.desktop.systemInfo.getSnapshot();
-console.log("CPU 占用:", info.cpu.usagePercent);
-console.log("内存占用:", info.memory.usedPercent);
+console.log("CPU 占用率:", info.cpu.usagePercent);
+
+// 方式 2：注册周期监听，默认采样间隔 1000 毫秒
+const watchId = window.desktop.systemInfo.watch((info) => {
+  console.log("实时主频:", info.cpu.currentClockGhz);
+  console.log("显卡负载:", info.gpu.usagePercent);
+}, 1000);
+
+// 取消监听
+await window.desktop.systemInfo.unwatch(watchId);
 ```
 
-### ③ 打开组件设置 (`openSettings`)
+### 打开组件设置 openSettings
 ```javascript
 window.desktop.openSettings();
 ```
 
 ---
 
-## 4. 浏览器秒级调试工作流 (Zero-C++ Workflow)
+## 4. 调试与部署流程
 
-1. 双击当前目录下的 **`preview.html`**，直接在浏览器中打开多组件调试沙箱；
-2. 可以在沙箱中切换任意小组件，内置虚拟的 `window.desktop` 数据模拟器（自动模拟 CPU 波动与存储读写）；
-3. 打开浏览器的 F12 开发者工具，随意修改 HTML/CSS，按 F5 秒级刷新看效果；
-4. 调试满意后，把组件文件夹直接拷贝至 `%APPDATA%/LinDesk/LinWidgets/`，重新启动 LinDesk 即可常驻桌面！
+1. 打开浏览器的开发者工具，直接在浏览器中双击组件的 index.html 文件调试；
+2. 调试满意后，把组件文件夹直接拷贝至用户配置目录即可常驻桌面；
+3. 支持通过 LinDesk 桌面托盘重新加载小组件。

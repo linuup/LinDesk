@@ -1408,7 +1408,6 @@ bool WidgetManager::startWallpaper(const QString& packagePath, bool isDevelopmen
     }
 
     saveWallpaperConfig(resolvedPackagePath, resolvedIsDev, resolvedInteractive);
-    updateDefaultCefPage();
 
     if (LinCef::LinWidgetCanvasWidget::hostWidget()) {
         LinCef::LinWidgetCanvasWidget::hostWidget()->update();
@@ -1456,8 +1455,6 @@ void WidgetManager::stopWallpaper(bool clearConfig)
     if (LinCef::LinWidgetCanvasWidget::hostWidget()) {
         LinCef::LinWidgetCanvasWidget::hostWidget()->update();
     }
-
-    updateDefaultCefPage();
 }
 
 void WidgetManager::setWallpaperInteractive(bool interactive)

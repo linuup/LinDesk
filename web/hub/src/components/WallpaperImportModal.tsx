@@ -12,6 +12,10 @@ interface WallpaperImportModalProps {
     filePath: string;
     name: string;
     description: string;
+    author?: string;
+    authorUrl?: string;
+    source?: string;
+    sourceUrl?: string;
     scaling: 'cover' | 'contain' | 'fill';
     dimming: number;
     blur: number;
@@ -40,6 +44,10 @@ export const WallpaperImportModal: React.FC<WallpaperImportModalProps> = ({
 
   const [name, setName] = useState(media.name || '未命名壁纸');
   const [description, setDescription] = useState(media.description || '');
+  const [author, setAuthor] = useState(media.author || '');
+  const [authorUrl, setAuthorUrl] = useState(media.authorUrl || '');
+  const [source, setSource] = useState(media.source || '');
+  const [sourceUrl, setSourceUrl] = useState(media.sourceUrl || '');
   const [scaling, setScaling] = useState<'cover' | 'contain' | 'fill'>(
     media.customConfig?.scaling || 'cover'
   );
@@ -71,6 +79,10 @@ export const WallpaperImportModal: React.FC<WallpaperImportModalProps> = ({
   useEffect(() => {
     setName(media.name || '未命名壁纸');
     setDescription(media.description || '');
+    setAuthor(media.author || '');
+    setAuthorUrl(media.authorUrl || '');
+    setSource(media.source || '');
+    setSourceUrl(media.sourceUrl || '');
     setScaling(media.customConfig?.scaling || 'cover');
     setDimming(media.customConfig?.dimming ?? 0);
     const rawBlur = media.customConfig?.blur ?? 0;
@@ -99,11 +111,32 @@ export const WallpaperImportModal: React.FC<WallpaperImportModalProps> = ({
     return `${mb.toFixed(1)} MB`;
   };
 
+  // 锁定底座背景滚动，防止鼠标滚轮穿透滚动 Hub 页面
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevDocOverflow = document.documentElement.style.overflow;
+    const prevOverscroll = document.body.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevDocOverflow;
+      document.body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, []);
+
   const handleSubmit = (applyImmediately: boolean) => {
     onConfirm({
       filePath: media.filePath,
       name: name.trim() || media.name || '未命名壁纸',
       description: description.trim(),
+      author: author.trim(),
+      authorUrl: authorUrl.trim(),
+      source: source.trim(),
+      sourceUrl: sourceUrl.trim(),
       scaling,
       dimming,
       blur,
@@ -119,12 +152,14 @@ export const WallpaperImportModal: React.FC<WallpaperImportModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150 select-none"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150 select-none overscroll-contain"
       onClick={onClose}
+      onWheel={(e) => e.stopPropagation()}
     >
       <div
-        className="bg-white dark:bg-[#131927] rounded-2xl border border-slate-200 dark:border-slate-800/90 shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-white dark:bg-[#131927] rounded-2xl border border-slate-200 dark:border-slate-800/90 shadow-2xl w-[95vw] max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl overflow-hidden flex flex-col max-h-[88vh] h-[82vh] min-h-[560px] overscroll-contain transition-all"
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/80 dark:bg-[#0f1422]">
@@ -172,7 +207,10 @@ export const WallpaperImportModal: React.FC<WallpaperImportModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-12 gap-5">
+        <div
+          className="p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-12 gap-5 overscroll-contain"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {/* Staging Callout Notice for Dragged-in Wallpapers */}
           {isNewlyStaged && (
             <div className="md:col-span-12 p-3 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 animate-in fade-in duration-150">
@@ -300,6 +338,65 @@ export const WallpaperImportModal: React.FC<WallpaperImportModalProps> = ({
                   placeholder="输入简短描述..."
                   className="w-full px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs"
                 />
+              </div>
+
+              {/* Attribution: Author & Source */}
+              <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800/80 space-y-2.5">
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                  作者与资源出处（可选）
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                      原作者
+                    </label>
+                    <input
+                      type="text"
+                      value={author}
+                      onChange={(e) => setAuthor(e.target.value)}
+                      placeholder="例如: Inigo Quilez"
+                      className="w-full px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                      作者链接
+                    </label>
+                    <input
+                      type="url"
+                      value={authorUrl}
+                      onChange={(e) => setAuthorUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                      来源平台/作品
+                    </label>
+                    <input
+                      type="text"
+                      value={source}
+                      onChange={(e) => setSource(e.target.value)}
+                      placeholder="例如: Shadertoy / Bilibili"
+                      className="w-full px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">
+                      作品源地址
+                    </label>
+                    <input
+                      type="url"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-2.5 py-1 rounded-md text-[11px] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

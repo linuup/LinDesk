@@ -31,31 +31,27 @@ LINWIDGET_EXPORT bool linwidget_init(const LinWidgetDesktopCtx* ctx)
 
     if (!s_runtimeWidgetManager) {
         s_runtimeWidgetManager = new LinWidget::WidgetManager(nullptr);
-    }
 
-    s_runtimeWidgetManager->setDesktopLayerWindow((WId)ctx->desktopWindowHwnd);
-
-    if (ctx->onWidgetSettingsRequested) {
         QObject::connect(s_runtimeWidgetManager, &LinWidget::WidgetManager::widgetSettingsRequested,
-                         [ctx](const QString& instanceId) {
-                             if (ctx->onWidgetSettingsRequested) {
+                         [](const QString& instanceId) {
+                             if (s_desktopCtx.onWidgetSettingsRequested) {
                                  const QByteArray utf8 = instanceId.toUtf8();
-                                 ctx->onWidgetSettingsRequested(utf8.constData(), ctx->userData);
+                                 s_desktopCtx.onWidgetSettingsRequested(utf8.constData(), s_desktopCtx.userData);
                              }
                          });
-    }
 
-    if (ctx->onImeCursorRectChanged) {
         QObject::connect(s_runtimeWidgetManager, &LinWidget::WidgetManager::imeCursorRectChanged,
-                         [ctx](const QRect& r) {
-                             if (ctx->onImeCursorRectChanged) {
-                                 ctx->onImeCursorRectChanged(r.x(), r.y(), r.width(), r.height(), ctx->userData);
+                         [](const QRect& r) {
+                             if (s_desktopCtx.onImeCursorRectChanged) {
+                                 s_desktopCtx.onImeCursorRectChanged(r.x(), r.y(), r.width(), r.height(), s_desktopCtx.userData);
                              }
                          });
     }
 
-    if (ctx->desktopWidgetPtr) {
-        LinCef::LinWidgetCanvasWidget::setHostWidget(static_cast<QWidget*>(ctx->desktopWidgetPtr));
+    s_runtimeWidgetManager->setDesktopLayerWindow((WId)s_desktopCtx.desktopWindowHwnd);
+
+    if (s_desktopCtx.desktopWidgetPtr) {
+        LinCef::LinWidgetCanvasWidget::setHostWidget(static_cast<QWidget*>(s_desktopCtx.desktopWidgetPtr));
     }
 
     // 启动组件管理器

@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.31)
 # 修改版本号只需要改这里
 set(LINDESK_VERSION_MAJOR 2)
 set(LINDESK_VERSION_MINOR 0)
-set(LINDESK_VERSION_PATCH 2)
+set(LINDESK_VERSION_PATCH 4)
 set(LINDESK_VERSION_TAG "Stable")  # 可选值：Alpha, Beta, RC, Stable
 set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
 # 生成完整版本字符串set(LINDESK_VERSION "${LINDESK_VERSION_MAJOR}.${LINDESK_VERSION_MINOR}.${LINDESK_VERSION_PATCH}")
@@ -77,6 +77,12 @@ configure_file(
     "${CMAKE_SOURCE_DIR}/src/app/LinDesk.rc"
     @ONLY
 )
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 8 OR CMAKE_GENERATOR_PLATFORM STREQUAL "x64" OR CMAKE_CL_64)
+    set(LINDESK_ARCH "x64")
+else()
+    set(LINDESK_ARCH "x86")
+endif()
 
 # 配置 package.iss，输出到 installer 目录
 configure_file(

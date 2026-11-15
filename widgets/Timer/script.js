@@ -305,3 +305,31 @@ styleDots.forEach(dot => {
 
 // 初始化显示
 updateDisplay();
+
+// 监听宿主设置变更 (LinDesk Hub JSON-RPC IPC)
+window.addEventListener("message", (event) => {
+  const data = event && event.data;
+  if (!data || typeof data !== "object") return;
+  if (data.type === "settings_changed" || data.type === "linwidget_appearance_changed_notification") {
+    const settings = data.settings;
+    if (settings && typeof settings === "object") {
+      if (typeof settings.theme === "string") {
+        const isL = settings.theme === "light";
+        document.body.classList.toggle("light-theme", isL);
+        localStorage.setItem("lindesk_timer_theme", settings.theme);
+        if (iconSun && iconMoon) {
+          iconSun.style.display = isL ? "none" : "block";
+          iconMoon.style.display = isL ? "block" : "none";
+        }
+      }
+      if (typeof settings.defaultDuration === "number" && settings.defaultDuration > 0) {
+        totalSeconds = settings.defaultDuration;
+        if (state === 'Ready') {
+          remainingSeconds = totalSeconds;
+          updateDisplay();
+        }
+        localStorage.setItem('lindesk_timer_duration', totalSeconds);
+      }
+    }
+  }
+});

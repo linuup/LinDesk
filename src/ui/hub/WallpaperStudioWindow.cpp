@@ -427,6 +427,10 @@ void WallpaperStudioWindow::scanWallpapers() {
             WallpaperItem item;
             item.id = id;
             item.name = root.value(QStringLiteral("name")).toString(subDir.fileName());
+            item.author = root.value(QStringLiteral("author")).toString(QStringLiteral("LinDesk"));
+            item.authorUrl = root.value(QStringLiteral("authorUrl")).toString();
+            item.source = root.value(QStringLiteral("source")).toString();
+            item.sourceUrl = root.value(QStringLiteral("sourceUrl")).toString();
             item.description = root.value(QStringLiteral("description")).toString();
             item.packagePath = subDir.isDir() ? subDir.absoluteFilePath() : subDir.absolutePath();
             item.propertiesSchema = root.value(QStringLiteral("properties")).toObject();

@@ -125,7 +125,11 @@
     <tr><td><span class="tag p1">P1</span></td><td>壁纸工坊 (Wallpaper Studio) 可视化编辑器</td><td>提供类似 Wallpaper Engine 的 16:9 实时预览画板、本地图片/视频拖拽导入、Cover/Contain 裁剪、视频声音与速率调节、图标易读性毛玻璃与遮罩暗度滤镜、一键应用与 .lw 壁纸包导出</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>组件边缘缩放智能手柄与网格预设尺寸</td><td>基于 Ctrl 的 8 方向边缘缩放、内部拖拽、滚轮平滑缩放、Fluent 提示框与右键网格预设尺寸菜单</td><td><span class="state done">已完成</span></td></tr>
     <tr><td><span class="tag p1">P1</span></td><td>天气组件加载失败长轮询重试</td><td>首次加载无本地缓存且超时失败时，持续重试请求直到获得数据，不要 3 次后永久停止</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>组件内键盘快捷键分发解耦与防穿透</td><td>当小组件（如天气城市搜索、便签、Todo）处于输入聚焦状态时，按键 100% 优先派发给组件内核，拦截 Space 触发桌面预览、Delete 误删桌面图标、Ctrl+A 全选桌面文件、方向键移动图标焦点等冲突（<code>ListView_Input.cpp</code> / <code>WidgetManager.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p0">P0</span></td><td>组件中文输入法 (IME) 上下文联动与候选框定位校准</td><td>解决微软拼音、搜狗输入法在组件输入框打字时候选词浮窗跳至屏幕 (0,0) 左上角问题，确保 <code>imeCompositionRangeChanged</code> 精准叠加大组件在桌面的物理偏移，并配合 <code>updateMicroFocus()</code> 实时更新输入法光标位置（<code>WidgetManager.cpp</code> / <code>ListView_Input.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>组件双向焦点与失焦 (Blur) 状态机闭环</td><td>打通组件前端输入框 <code>blur</code> 事件与宿主 <code>focusedWidget</code> 的双向解绑；点击桌面空白处、文件图标或非组件区域时，向组件派发失焦通知并收起虚线框与闪烁光标，无缝恢复桌面原生快捷键（<code>CefOsrBrowserInstance.cpp</code> / <code>ListView_Input.cpp</code>）</td><td><span class="state todo">待办</span></td></tr>
     <tr><td><span class="tag p2">P2</span></td><td>便签小组件多实例独立配置管理</td><td>允许便签组件自行管理多个独立实例并在管理页中统一管理与查看</td><td><span class="state todo">待办</span></td></tr>
+    <tr><td><span class="tag p1">P1</span></td><td>无组件时移除 <code>default_page.html</code> 占位页，回退原始壁纸</td><td>已移除 <code>WidgetManager::updateDefaultCefPage()</code>、<code>m_defaultOsrBrowser</code> 与 <code>default_page.html</code>，无组件时直接保留桌面壁纸、图标与 Box 原生显示，并在加载配置时跳过残留的 <code>__default_page__</code> 实例</td><td><span class="state done">已完成</span></td></tr>
   </table>
   </div>
 

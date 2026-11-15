@@ -88,3 +88,16 @@ AI 修改或新增 UI 页面与功能时，**必须严格按以下步骤闭环**
 - **统一页面边距与头部结构**：所有设置子页面（`General`、`Desktop`、`ContextMenu`、`Box`、`LinWidgets`、`Plugins`、`About`）外层 `QVBoxLayout` 必须统一使用 `setContentsMargins(36, 12, 36, 32)`，顶部左对齐放置 `createPageTitle` + `4px` 间距 + `createPageSubtitle` + `20px` 间距后进入卡片内容区；
 - **滚动容器托管**：所有设置子页面统一由 `SettingUI::wrapScrollablePage` 包装为 `SmoothScrollArea`，子页面内部严禁重复嵌套 `QScrollArea`；
 - **按钮与弹窗**：页面内操作按钮统一使用 `SettingsUICommon::createSettingsActionButton`；客户端所有提示、告警与确认框一律使用 `FluentDialog`（`showInfo` / `showWarning` / `showError` / `confirm`），**绝对禁止调用 `QMessageBox`**。
+
+---
+
+## 4. 排版与表达约束
+
+### 4.1 禁用括号补充说明
+- 正文中严禁使用中文括号或英文括号进行解释、举例、同义词替换或补充说明，代码语法与数学公式除外；
+- 所有解释性内容必须直接融入正文句子中自然表述；
+- 表格表头或标题中需要补充属性时，直接拆分为独立的列或直接写明，不得使用括号夹注。
+
+### 4.2 直陈式工程表达
+- 剔除所有修饰性套话与同义反复，采用最直接、干练的工程语言；
+- 避免模糊指代，陈述结论、数据与方案时必须直截了当。

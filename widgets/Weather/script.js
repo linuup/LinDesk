@@ -1,341 +1,247 @@
 // ──────────────────────────────────────────────
-// Storage keys (namespaced to avoid collisions)
+// LinDesk Weather - Core Desktop Widget Runtime
 // ──────────────────────────────────────────────
-const STORAGE_KEY_THEME    = "lindesk_weather_theme";
-const STORAGE_KEY_LOCATION = "lindesk_weather_location"; // JSON: { latitude, longitude, label, query }
-const STORAGE_KEY_CACHE    = "lindesk_weather_cache";    // JSON: { timestamp, locationLabel, data }
 
-const REFRESH_INTERVAL    = 60 * 60 * 1000; // 1 hour
-const MAX_RETRIES         = 3;              // used only when cache is available
-const RETRY_DELAY         = 3000;           // base retry delay (ms)
-const MAX_RETRY_DELAY     = 30000;          // cap for exponential back-off (ms)
+const STORAGE_KEY_CITIES        = "lindesk_weather_cities";
+const STORAGE_KEY_CURRENT_ID    = "lindesk_weather_current_city_id";
+const STORAGE_KEY_THEME         = "lindesk_weather_theme";
+const STORAGE_KEY_CACHE_PREFIX  = "lindesk_weather_cache_";
+const STORAGE_KEY_LEGACY_LOC    = "lindesk_weather_location";
 
-const defaultLocation = {
-  latitude: 31.2304,
-  longitude: 121.4737,
-  label: "Shanghai"
-};
+const REFRESH_INTERVAL   = 60 * 60 * 1000; // 1 hour
+const MAX_RETRIES        = 3;
+const RETRY_DELAY        = 3000;
+const MAX_RETRY_DELAY    = 30000;
 
 const weatherCodeMap = {
-  0: { icon: "☀️", label: "晴朗" },
-  1: { icon: "🌤️", label: "主要晴间多云" },
-  2: { icon: "⛅", label: "多云" },
-  3: { icon: "☁️", label: "阴天" },
-  45: { icon: "🌫️", label: "雾" },
-  48: { icon: "🌫️", label: "冻雾" },
-  51: { icon: "🌦️", label: "细雨" },
-  53: { icon: "🌦️", label: "中雨" },
-  55: { icon: "🌧️", label: "毛毛雨" },
-  56: { icon: "🌧️", label: "冰雨" },
-  57: { icon: "🌧️", label: "冻雨" },
-  61: { icon: "🌧️", label: "小雨" },
-  63: { icon: "🌧️", label: "中雨" },
-  65: { icon: "🌧️", label: "大雨" },
-  66: { icon: "🌧️", label: "小冰雹" },
-  67: { icon: "🌧️", label: "大冰雹" },
-  71: { icon: "❄️", label: "降雪" },
-  73: { icon: "❄️", label: "轻雪" },
-  75: { icon: "❄️", label: "大雪" },
-  77: { icon: "❄️", label: "冰粒" },
-  80: { icon: "🌧️", label: "阵雨" },
-  81: { icon: "🌧️", label: "强阵雨" },
-  82: { icon: "⛈️", label: "暴雨" },
-  85: { icon: "❄️", label: "小雪" },
-  86: { icon: "❄️", label: "大雪" },
-  95: { icon: "⛈️", label: "雷阵雨" },
-  96: { icon: "⛈️", label: "雷阵雨带冰雹" },
-  99: { icon: "⛈️", label: "强雷阵雨" }
+  0: { icon: "clear-day.svg", iconNight: "clear-night.svg", label: "晴朗" },
+  1: { icon: "partly-cloudy-day.svg", iconNight: "partly-cloudy-night.svg", label: "晴间多云" },
+  2: { icon: "partly-cloudy-day.svg", iconNight: "partly-cloudy-night.svg", label: "多云" },
+  3: { icon: "overcast.svg", iconNight: "overcast.svg", label: "阴天" },
+  45: { icon: "fog.svg", iconNight: "fog-night.svg", label: "大雾" },
+  48: { icon: "fog.svg", iconNight: "fog-night.svg", label: "冻雾" },
+  51: { icon: "drizzle.svg", iconNight: "drizzle.svg", label: "毛毛细雨" },
+  53: { icon: "drizzle.svg", iconNight: "drizzle.svg", label: "中度细雨" },
+  55: { icon: "drizzle.svg", iconNight: "drizzle.svg", label: "浓密细雨" },
+  56: { icon: "sleet.svg", iconNight: "sleet.svg", label: "轻度冻雨" },
+  57: { icon: "sleet.svg", iconNight: "sleet.svg", label: "密集冻雨" },
+  61: { icon: "rain.svg", iconNight: "rain.svg", label: "小雨" },
+  63: { icon: "rain.svg", iconNight: "rain.svg", label: "中雨" },
+  65: { icon: "extreme-rain.svg", iconNight: "extreme-rain.svg", label: "大暴雨" },
+  66: { icon: "sleet.svg", iconNight: "sleet.svg", label: "轻度冰雨" },
+  67: { icon: "hail.svg", iconNight: "hail.svg", label: "强冰雹" },
+  71: { icon: "snow.svg", iconNight: "snow.svg", label: "小雪" },
+  73: { icon: "snow.svg", iconNight: "snow.svg", label: "中雪" },
+  75: { icon: "snow.svg", iconNight: "snow.svg", label: "大雪" },
+  77: { icon: "snow.svg", iconNight: "snow.svg", label: "雪粒" },
+  80: { icon: "partly-cloudy-day-rain.svg", iconNight: "partly-cloudy-night-rain.svg", label: "阵雨" },
+  81: { icon: "partly-cloudy-day-rain.svg", iconNight: "partly-cloudy-night-rain.svg", label: "强阵雨" },
+  82: { icon: "extreme-day-rain.svg", iconNight: "extreme-rain.svg", label: "极端暴雨" },
+  85: { icon: "partly-cloudy-day-snow.svg", iconNight: "partly-cloudy-night-snow.svg", label: "阵雪" },
+  86: { icon: "partly-cloudy-day-snow.svg", iconNight: "partly-cloudy-night-snow.svg", label: "强阵雪" },
+  95: { icon: "thunderstorms-day-rain.svg", iconNight: "thunderstorms-night-rain.svg", label: "雷阵雨" },
+  96: { icon: "thunderstorms-day-rain.svg", iconNight: "thunderstorms-night-rain.svg", label: "雷阵雨伴有冰雹" },
+  99: { icon: "thunderstorms.svg", iconNight: "thunderstorms.svg", label: "强雷暴" }
 };
 
-const elements = {
+function getMeteoconsIconHtml(iconFile, alt = "Weather") {
+  return `<img src="icons/${iconFile}" alt="${alt}" class="meteocons-svg" />`;
+}
+
+// ──────────────────────────────────────────────
+// DOM Elements Cache
+// ──────────────────────────────────────────────
+const el = {
+  locationBtn: document.getElementById("locationBtn"),
+  locationCityName: document.getElementById("locationCityName"),
+  cityDots: document.getElementById("cityDots"),
+  settingsBtn: document.getElementById("settingsBtn"),
+  
+  emptyStateCard: document.getElementById("emptyStateCard"),
+  emptyActionBtn: document.getElementById("emptyActionBtn"),
+  weatherContent: document.getElementById("weatherContent"),
+  
   icon: document.getElementById("icon"),
   temperature: document.getElementById("temperature"),
   condition: document.getElementById("condition"),
   aqi: document.getElementById("aqi"),
   humidity: document.getElementById("humidity"),
   wind: document.getElementById("wind"),
-  locationInput: document.getElementById("locationInput")
+  forecast: document.getElementById("forecast")
 };
 
 // ──────────────────────────────────────────────
-// Persistence helpers
+// Persistence & State Accessors
 // ──────────────────────────────────────────────
 
-/** Read the persisted location object (with lat/lon/label/query). */
-function getSavedLocation() {
+function getSavedCities() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCATION);
+    const raw = localStorage.getItem(STORAGE_KEY_CITIES);
     if (raw) {
-      const obj = JSON.parse(raw);
-      if (obj && typeof obj.latitude === "number" && typeof obj.longitude === "number"
-          && (obj.latitude !== 0 || obj.longitude !== 0)) {
-        return obj;
-      }
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr;
     }
-  } catch (_) { /* corrupted data – ignore */ }
-  return null;
+  } catch (_) {}
+  return [];
 }
 
-/** Return just the user-typed query string, or "". */
-function getSavedLocationQuery() {
+function getCurrentCityId() {
+  return localStorage.getItem(STORAGE_KEY_CURRENT_ID) || "";
+}
+
+function setCurrentCityId(id) {
+  localStorage.setItem(STORAGE_KEY_CURRENT_ID, id);
+}
+
+function getCurrentCity() {
+  const cities = getSavedCities();
+  if (!cities.length) return null;
+  const currentId = getCurrentCityId();
+  const found = cities.find(c => c.id === currentId);
+  return found || cities[0];
+}
+
+function formatLocationDisplay(item) {
+  if (!item) return "";
+  const name = item.name || "";
+  const city = item.city || "";
+  const prov = item.prov || item.province || "";
+  if (item.isCityLevel || name === city || name === city.replace(/(市|地区|盟|自治州)$/, "")) {
+    if (!prov || prov === city) {
+      return city;
+    }
+    return `${city} · ${prov}`;
+  }
+  if (!prov || prov === city) {
+    return `${name} · ${city}`;
+  }
+  return `${name} · ${city} · ${prov}`;
+}
+
+// ──────────────────────────────────────────────
+// Open Component Settings Page
+// ──────────────────────────────────────────────
+
+function openSettings() {
+  if (window.desktop && typeof desktop.openSettings === "function") {
+    desktop.openSettings();
+  } else {
+    window.open("settings.html", "WeatherSettings", "width=680,height=640");
+  }
+}
+
+// ──────────────────────────────────────────────
+// Weather API & Cache
+// ──────────────────────────────────────────────
+
+function mapWeatherCode(code, isNight = false) {
+  const item = weatherCodeMap[code];
+  if (!item) {
+    const fallbackIcon = isNight ? "clear-night.svg" : "clear-day.svg";
+    return {
+      iconFile: fallbackIcon,
+      iconSvg: getMeteoconsIconHtml(fallbackIcon, "未知天气"),
+      label: "未知天气"
+    };
+  }
+  const iconFile = (isNight && item.iconNight) ? item.iconNight : item.icon;
+  return {
+    iconFile,
+    iconSvg: getMeteoconsIconHtml(iconFile, item.label),
+    label: item.label
+  };
+}
+
+function getCityCache(cityId) {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOCATION);
-    if (raw) {
-      const obj = JSON.parse(raw);
-      return obj?.query || obj?.label || "";
-    }
-  } catch (_) { /* ignore */ }
-  return "";
-}
-
-/** Persist the full geocoded location + the original query. */
-function saveLocation(latitude, longitude, label, query) {
-  localStorage.setItem(
-    STORAGE_KEY_LOCATION,
-    JSON.stringify({ latitude, longitude, label, query: query || label })
-  );
-}
-
-// ──────────────────────────────────────────────
-// UI helpers
-// ──────────────────────────────────────────────
-
-function formatTime(date) {
-  return new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
-}
-
-function mapWeatherCode(code) {
-  return weatherCodeMap[code] || { icon: "🌈", label: "未知天气" };
-}
-
-function setStatus({ city, icon, temp, cond, humidity, wind, aqi }) {
-  if (document.activeElement !== elements.locationInput) {
-    elements.locationInput.value = city;
-  }
-  elements.icon.textContent = icon;
-  elements.temperature.textContent = `${Math.round(temp)}°`;
-  elements.condition.textContent = cond;
-  elements.aqi.textContent = aqi;
-  elements.humidity.textContent = humidity;
-  elements.wind.textContent = wind;
-}
-
-function setError(message) {
-  setStatus({
-    city: "Weather Mini",
-    icon: "⚠️",
-    temp: 0,
-    cond: message,
-    humidity: "--%",
-    wind: "-- km/h",
-    aqi: "--"
-  });
-}
-
-// ──────────────────────────────────────────────
-// Geocoding
-// ──────────────────────────────────────────────
-
-async function geocodeLocation(query) {
-  if (!query) return null;
-  try {
-    // 针对国内地名进行优化：去掉尾部的"省,市,区,县,新区"，提高开源API的命中率
-    let optimizedQuery = query.replace(/(省|市|区|县|新区)$/g, '');
-    // 将中间的"省"或"市"替换为空格，例如 "北京市海淀" -> "北京 海淀"
-    optimizedQuery = optimizedQuery.replace(/(省|市)/g, ' ');
-    
-    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(optimizedQuery)}&count=1&language=zh&format=json`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("地名检索失败");
-    }
-    const data = await response.json();
-    if (data.results && data.results.length > 0) {
-      const place = data.results[0];
-      return {
-        latitude: place.latitude,
-        longitude: place.longitude,
-        label: `${place.name}${place.admin1 ? ", " + place.admin1 : ""}${place.country ? ", " + place.country : ""}`
-      };
-    }
-  } catch (error) {
-    console.warn("地名检索失败：", error);
-  }
-  return null;
-}
-
-/**
- * Resolve the location to use for weather queries.
- * Priority: 1) cached location (instant, no network)  2) IP geolocation  3) default
- */
-async function getLocation() {
-  // 1. Use the cached full location (lat/lon) directly – no geocode needed
-  const cached = getSavedLocation();
-  if (cached) {
-    return cached;
-  }
-
-  // 2. If a query string is saved but coords are missing (e.g. legacy migration), geocode it
-  const savedQuery = getSavedLocationQuery();
-  if (savedQuery) {
-    const geocoded = await geocodeLocation(savedQuery);
-    if (geocoded) {
-      // Back-fill the cache so the next launch skips geocoding
-      saveLocation(geocoded.latitude, geocoded.longitude, geocoded.label, savedQuery);
-      return geocoded;
-    }
-  }
-
-  // 3. IP-based geolocation fallback
-  try {
-    const response = await fetch("https://geolocation-db.com/json/");
-    if (!response.ok) {
-      throw new Error("定位服务失败");
-    }
-    const data = await response.json();
-    if (data.latitude && data.longitude) {
-      return {
-        latitude: Number(data.latitude),
-        longitude: Number(data.longitude),
-        label: `${data.city || "未知城市"}${data.country_code ? ", " + data.country_code : ""}`
-      };
-    }
-  } catch (error) {
-    console.warn("定位失败：", error);
-  }
-  return defaultLocation;
-}
-
-// ──────────────────────────────────────────────
-// Weather data cache
-// ──────────────────────────────────────────────
-
-function getSavedWeatherCache() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_CACHE);
+    const raw = localStorage.getItem(STORAGE_KEY_CACHE_PREFIX + cityId);
     if (raw) return JSON.parse(raw);
-  } catch (_) { /* corrupted – ignore */ }
+  } catch (_) {}
   return null;
 }
 
-function saveWeatherCache(locationLabel, weatherData) {
-  localStorage.setItem(STORAGE_KEY_CACHE, JSON.stringify({
-    timestamp: Date.now(),
-    locationLabel,
-    data: weatherData
-  }));
+function saveCityCache(cityId, weatherData) {
+  try {
+    localStorage.setItem(STORAGE_KEY_CACHE_PREFIX + cityId, JSON.stringify({
+      timestamp: Date.now(),
+      data: weatherData
+    }));
+  } catch (_) {}
 }
 
-/** Render weather data (from API response or cache) onto the UI. */
-function renderWeatherData(locationLabel, weather) {
-  const current = weather.current_weather;
-  if (!current) return;
-
-  const mapped = mapWeatherCode(current.weathercode);
-  const humidity = weather.hourly?.relativehumidity_2m?.[0] != null
-    ? `${Math.round(weather.hourly.relativehumidity_2m[0])}%`
-    : "--%";
-  const wind = `${Math.round(current.windspeed)} km/h`;
-
-  setStatus({
-    city: locationLabel,
-    icon: mapped.icon,
-    temp: current.temperature,
-    cond: mapped.label,
-    humidity,
-    wind,
-    aqi: "--"
-  });
-
-  const forecastContainer = document.getElementById("forecast");
-  if (forecastContainer && weather.daily && weather.daily.time) {
-    forecastContainer.innerHTML = '';
-    const daily = weather.daily;
-    const maxDays = Math.min(4, daily.time.length - 1);
-    for (let i = 1; i <= maxDays; i++) {
-      const date = new Date(daily.time[i]);
-      let dayName = new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date);
-      if (i === 1) dayName = '明天';
-
-      const maxTemp = Math.round(daily.temperature_2m_max[i]);
-      const minTemp = Math.round(daily.temperature_2m_min[i]);
-      const forecastMapped = mapWeatherCode(daily.weathercode[i]);
-
-      const div = document.createElement("div");
-      div.className = "forecast-item";
-      div.innerHTML = `
-        <span class="forecast-day">${dayName}</span>
-        <span class="forecast-icon">${forecastMapped.icon}</span>
-        <span class="forecast-temp">${maxTemp}°<span class="forecast-temp-min">${minTemp}°</span></span>
-      `;
-      forecastContainer.appendChild(div);
-    }
-  }
-}
-
-// ──────────────────────────────────────────────
-// Weather fetching (with retry)
-// ──────────────────────────────────────────────
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Attempt a single weather fetch with a 10-second timeout.
- * Returns the parsed JSON on success, or throws on failure.
- */
-async function fetchWeatherOnce(latitude, longitude) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`;
+async function fetchJsonWithTimeout(url, timeoutMs = 7000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
     clearTimeout(timeoutId);
-    if (!response.ok) {
-      throw new Error(`天气服务返回 ${response.status}`);
-    }
-    const data = await response.json();
-    if (!data.current_weather) {
-      throw new Error("当前天气数据缺失");
-    }
-    return data;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
   }
 }
 
-/**
- * Fetch weather data with retry logic.
- * - infiniteRetry=true : keep retrying indefinitely with exponential back-off
- *   (used on first load when there is no cache to fall back to).
- * - infiniteRetry=false: attempt up to MAX_RETRIES times, then throw so the
- *   caller can fall back to cached data.
- */
+function mapWttrCodeToWmo(wttrCode) {
+  const code = Number(wttrCode);
+  if (code === 113) return 0;
+  if (code === 116) return 2;
+  if (code === 119 || code === 122) return 3;
+  if (code === 143 || code === 248 || code === 260) return 45;
+  if ([176, 263, 266, 293, 296, 353].includes(code)) return 61;
+  if ([299, 302, 305, 308, 356, 359].includes(code)) return 65;
+  if ([179, 182, 185, 227, 230, 323, 326, 329, 332, 335, 338, 368, 371].includes(code)) return 73;
+  if ([200, 386, 389, 392, 395].includes(code)) return 95;
+  return 2;
+}
+
+async function fetchWeatherOnce(latitude, longitude) {
+  const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`;
+  try {
+    const data = await fetchJsonWithTimeout(openMeteoUrl, 8000);
+    if (data && data.current_weather) {
+      return data;
+    }
+    throw new Error("Open-Meteo 数据不完整");
+  } catch (primaryError) {
+    console.warn("[Weather] Open-Meteo 备用转移至 wttr.in:", primaryError.message || primaryError);
+    const wttrUrl = `https://wttr.in/${Number(latitude).toFixed(4)},${Number(longitude).toFixed(4)}?format=j1`;
+    const wttrData = await fetchJsonWithTimeout(wttrUrl, 8000);
+    const cc = wttrData?.current_condition?.[0];
+    if (!cc) throw primaryError;
+    const days = Array.isArray(wttrData.weather) ? wttrData.weather : [];
+    return {
+      current_weather: {
+        temperature: Number(cc.temp_C),
+        windspeed: Number(cc.windspeedKmph || 0),
+        weathercode: mapWttrCodeToWmo(cc.weatherCode)
+      },
+      hourly: {
+        relativehumidity_2m: [Number(cc.humidity || 0)]
+      },
+      daily: {
+        time: days.map(d => d.date),
+        temperature_2m_max: days.map(d => Number(d.maxtempC)),
+        temperature_2m_min: days.map(d => Number(d.mintempC)),
+        weathercode: days.map(d => mapWttrCodeToWmo(d.hourly?.[4]?.weatherCode || cc.weatherCode))
+      }
+    };
+  }
+}
+
 async function fetchWeatherWithRetry(latitude, longitude, infiniteRetry = false) {
   let attempt = 0;
   const limit = infiniteRetry ? Infinity : MAX_RETRIES;
-
   while (attempt < limit) {
     attempt++;
     try {
-      const data = await fetchWeatherOnce(latitude, longitude);
-      console.log(`[Weather] 第 ${attempt} 次请求成功`);
-      return data;
+      return await fetchWeatherOnce(latitude, longitude);
     } catch (error) {
       if (infiniteRetry) {
-        // Exponential back-off, capped at MAX_RETRY_DELAY
         const waitMs = Math.min(RETRY_DELAY * Math.pow(2, attempt - 1), MAX_RETRY_DELAY);
-        console.warn(`[Weather] 第 ${attempt} 次请求失败，${waitMs / 1000}s 后重试:`, error.message);
-        await delay(waitMs);
+        await new Promise(r => setTimeout(r, waitMs));
       } else {
-        console.warn(`[Weather] 第 ${attempt}/${MAX_RETRIES} 次请求失败:`, error.message);
         if (attempt < MAX_RETRIES) {
-          await delay(RETRY_DELAY);
+          await new Promise(r => setTimeout(r, RETRY_DELAY));
         } else {
           throw error;
         }
@@ -344,145 +250,316 @@ async function fetchWeatherWithRetry(latitude, longitude, infiniteRetry = false)
   }
 }
 
-/**
- * @param {string|null} locationQuery - user-supplied city name, or null for auto-detect.
- * @param {boolean} forceInfiniteRetry - if true, retry indefinitely on failure (no cache fallback).
- */
-async function updateWeather(locationQuery, forceInfiniteRetry = false) {
+function renderWeatherData(city, weather) {
+  if (!weather || !weather.current_weather) return;
+  const current = weather.current_weather;
+  const currentHour = new Date().getHours();
+  const isNight = currentHour < 6 || currentHour >= 18;
+  const mapped = mapWeatherCode(current.weathercode, isNight);
+  
+  let humidityValue = weather.hourly?.relativehumidity_2m?.[0];
+  if (Array.isArray(weather.hourly?.time) && Array.isArray(weather.hourly?.relativehumidity_2m)) {
+    const currentHourPrefix = typeof current.time === "string" ? current.time.slice(0, 13) : "";
+    const matchedIdx = currentHourPrefix
+      ? weather.hourly.time.findIndex(t => typeof t === "string" && t.startsWith(currentHourPrefix))
+      : -1;
+    if (matchedIdx >= 0 && weather.hourly.relativehumidity_2m[matchedIdx] != null) {
+      humidityValue = weather.hourly.relativehumidity_2m[matchedIdx];
+    }
+  }
+  const humidity = humidityValue != null ? `${Math.round(humidityValue)}%` : "--%";
+  const wind = `${Math.round(current.windspeed)} km/h`;
+
+  el.icon.innerHTML = mapped.iconSvg;
+  el.temperature.textContent = `${Math.round(current.temperature)}°`;
+  el.condition.textContent = mapped.label;
+  el.humidity.textContent = humidity;
+  el.wind.textContent = wind;
+  el.aqi.textContent = "--";
+
+  if (el.forecast && weather.daily && weather.daily.time) {
+    el.forecast.innerHTML = "";
+    const daily = weather.daily;
+    const maxDays = Math.min(4, daily.time.length - 1);
+    for (let i = 1; i <= maxDays; i++) {
+      const date = new Date(daily.time[i]);
+      let dayName = new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(date);
+      if (i === 1) dayName = "明天";
+
+      const maxTemp = Math.round(daily.temperature_2m_max[i]);
+      const minTemp = Math.round(daily.temperature_2m_min[i]);
+      const forecastMapped = mapWeatherCode(daily.weathercode[i]);
+
+      const itemEl = document.createElement("div");
+      itemEl.className = "forecast-item";
+      itemEl.innerHTML = `
+        <span class="forecast-day">${dayName}</span>
+        <span class="forecast-icon">${forecastMapped.iconSvg}</span>
+        <span class="forecast-temp">${maxTemp}°<span class="forecast-temp-min">${minTemp}°</span></span>
+      `;
+      el.forecast.appendChild(itemEl);
+    }
+  }
+}
+
+// ──────────────────────────────────────────────
+// App State & UI Updater
+// ──────────────────────────────────────────────
+
+let activeWeatherRequestId = 0;
+
+async function updateActiveWeather(forceRetry = false) {
+  const currentCity = getCurrentCity();
+  if (!currentCity) {
+    showEmptyState();
+    return;
+  }
+
+  showNormalWeather(currentCity);
+
+  const cached = getCityCache(currentCity.id);
+  if (cached && cached.data) {
+    renderWeatherData(currentCity, cached.data);
+  } else {
+    el.condition.textContent = "同步气象中...";
+  }
+
+  const requestId = ++activeWeatherRequestId;
+
   try {
-    let location;
-    if (locationQuery) {
-      location = await geocodeLocation(locationQuery);
-      // Persist the full geocoded result so the next launch is instant
-      if (location) {
-        saveLocation(location.latitude, location.longitude, location.label, locationQuery);
+    const data = await fetchWeatherWithRetry(currentCity.lat, currentCity.lon, false);
+    if (requestId !== activeWeatherRequestId) return;
+    renderWeatherData(currentCity, data);
+    saveCityCache(currentCity.id, data);
+  } catch (err) {
+    if (requestId !== activeWeatherRequestId) return;
+    console.warn("[Weather] 更新天气失败:", err.message || err);
+    if (!cached) {
+      el.condition.textContent = "获取天气超时";
+    }
+  }
+}
+
+function showEmptyState() {
+  el.emptyStateCard.classList.remove("hidden");
+  el.weatherContent.classList.add("hidden");
+  el.locationCityName.textContent = "未配置";
+  el.locationBtn.title = "尚未配置城市，点击打开设置";
+  if (el.cityDots) el.cityDots.innerHTML = "";
+}
+
+function showNormalWeather(currentCity) {
+  el.emptyStateCard.classList.add("hidden");
+  el.weatherContent.classList.remove("hidden");
+  el.locationCityName.textContent = currentCity.name;
+  el.locationBtn.title = `当前展示: ${currentCity.display || formatLocationDisplay(currentCity)} 点击打开城市设置`;
+  renderCityDots();
+}
+
+function renderCityDots() {
+  if (!el.cityDots) return;
+  el.cityDots.innerHTML = "";
+}
+
+function switchCity(cityId) {
+  setCurrentCityId(cityId);
+  renderCityDots();
+  updateActiveWeather(false);
+}
+
+// ──────────────────────────────────────────────
+// Theme Management
+// ──────────────────────────────────────────────
+
+function initTheme() {
+  const currentTheme = localStorage.getItem(STORAGE_KEY_THEME) || "dark";
+  const isLight = currentTheme === "light";
+  document.body.classList.toggle("light-theme", isLight);
+}
+
+// ──────────────────────────────────────────────
+// Legacy Data Migration
+// ──────────────────────────────────────────────
+
+function migrateLegacyLocation() {
+  const existing = getSavedCities();
+  if (existing.length > 0) return;
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LEGACY_LOC);
+    if (raw) {
+      const oldObj = JSON.parse(raw);
+      if (oldObj && typeof oldObj.latitude === "number" && typeof oldObj.longitude === "number") {
+        const id = "legacy_" + Math.round(oldObj.latitude * 100);
+        const name = (oldObj.label || oldObj.query || "本地").split(/[,\s]/)[0];
+        const newCity = {
+          id,
+          name,
+          city: name,
+          prov: "",
+          lat: Number(oldObj.latitude),
+          lon: Number(oldObj.longitude),
+          display: oldObj.label || name
+        };
+        localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify([newCity]));
+        setCurrentCityId(id);
       }
     }
-    location = location || await getLocation();
-
-    const weather = await fetchWeatherWithRetry(location.latitude, location.longitude, forceInfiniteRetry);
-
-    // Success – render and update cache
-    renderWeatherData(location.label, weather);
-    saveWeatherCache(location.label, weather);
-    console.log(`[Weather] 数据已更新并缓存`);
-  } catch (error) {
-    // This branch is only reached when infiniteRetry=false and all MAX_RETRIES failed.
-    console.warn(`[Weather] 全部 ${MAX_RETRIES} 次请求均失败，尝试使用缓存`, error.message);
-
-    // Fall back to cached data
-    const cache = getSavedWeatherCache();
-    if (cache && cache.data) {
-      const ageMinutes = Math.round((Date.now() - cache.timestamp) / 60000);
-      console.log(`[Weather] 使用 ${ageMinutes} 分钟前的缓存数据`);
-      renderWeatherData(cache.locationLabel, cache.data);
-    } else {
-      // No cache at all – this should not happen since we use infiniteRetry
-      // when there is no cache, but guard just in case.
-      setError("无法获取天气（无缓存）");
-    }
-  }
+  } catch (_) {}
 }
 
 // ──────────────────────────────────────────────
-// Location input binding
+// Event Bindings
 // ──────────────────────────────────────────────
 
-function bindLocationSetting() {
-  const savedQuery = getSavedLocationQuery();
-  if (savedQuery) {
-    elements.locationInput.value = savedQuery;
+function applyWidgetSettings(settings) {
+  if (!settings || typeof settings !== "object") return;
+
+  if (Array.isArray(settings.cities) && settings.cities.length > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify(settings.cities));
+    } catch (_) {}
   }
 
-  const handleSetLocation = async () => {
-    const value = elements.locationInput.value.trim();
-    if (!value) return;
-    
-    elements.locationInput.blur();
-    elements.locationInput.value = "加载中...";
-    await updateWeather(value);
+  if (typeof settings.currentCityId === "string" && settings.currentCityId) {
+    try {
+      localStorage.setItem(STORAGE_KEY_CURRENT_ID, settings.currentCityId);
+    } catch (_) {}
+  } else if (Array.isArray(settings.cities) && settings.cities.length > 0) {
+    const curId = getCurrentCityId();
+    if (!curId || !settings.cities.some(c => c.id === curId)) {
+      try {
+        localStorage.setItem(STORAGE_KEY_CURRENT_ID, settings.cities[0].id);
+      } catch (_) {}
+    }
+  }
+
+  if (typeof settings.theme === "string") {
+    const isL = settings.theme === "light";
+    document.body.classList.toggle("light-theme", isL);
+    try {
+      localStorage.setItem(STORAGE_KEY_THEME, settings.theme);
+    } catch (_) {}
+  }
+
+  renderCityDots();
+  updateActiveWeather(true);
+}
+
+function syncSettingsFromBackend() {
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "linwidget://bridge/postMessage", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.send(JSON.stringify({
+      type: "widget_manager_request",
+      action: "info",
+      widgetId: "lindesk.weather"
+    }));
+  } catch (_) {}
+}
+
+function bindEvents() {
+  el.locationBtn.addEventListener("click", openSettings);
+  el.settingsBtn.addEventListener("click", openSettings);
+  el.emptyActionBtn.addEventListener("click", openSettings);
+
+  let hoverTimer = null;
+  const glassPanel = document.getElementById("glassPanel");
+
+  function handleMouseEnter() {
+    if (hoverTimer) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+    document.body.classList.add("is-hovered");
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      document.body.classList.remove("is-hovered");
+    }, 150);
+  }
+
+  window.addEventListener("mouseenter", handleMouseEnter);
+  window.addEventListener("mouseleave", handleMouseLeave);
+  document.addEventListener("mouseenter", handleMouseEnter);
+  document.addEventListener("mouseleave", handleMouseLeave);
+  if (glassPanel) {
+    glassPanel.addEventListener("mouseenter", handleMouseEnter);
+    glassPanel.addEventListener("mouseleave", handleMouseLeave);
+  }
+
+  // 鼠标移动活性检测：1.2秒内未收到移动事件判定鼠标离开
+  window.addEventListener("mousemove", () => {
+    handleMouseEnter();
+    if (hoverTimer) clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      document.body.classList.remove("is-hovered");
+    }, 1200);
+  });
+
+  window.addEventListener("storage", (event) => {
+    if (!event.key) return;
+    if (event.key === STORAGE_KEY_CITIES || event.key === STORAGE_KEY_CURRENT_ID) {
+      renderCityDots();
+      updateActiveWeather(true);
+    } else if (event.key === STORAGE_KEY_THEME) {
+      const isL = event.newValue === "light";
+      document.body.classList.toggle("light-theme", isL);
+    }
+  });
+
+  const handleMessage = (event) => {
+    const data = event && event.data;
+    if (!data || typeof data !== "object") return;
+
+    if (data.type === "linwidget_settings_changed_notification" || data.type === "settings_changed" || data.type === "settings_updated") {
+      applyWidgetSettings(data.settings || data);
+      return;
+    }
+
+    if (data.action === "info" && data.widget && data.widget.settingsValues) {
+      applyWidgetSettings(data.widget.settingsValues);
+      return;
+    }
+
+    if (data.type === "linwidget_appearance_changed_notification") {
+      const settings = data.settings;
+      if (settings && typeof settings === "object" && typeof settings.theme === "string") {
+        const isL = settings.theme === "light";
+        document.body.classList.toggle("light-theme", isL);
+        try {
+          localStorage.setItem(STORAGE_KEY_THEME, settings.theme);
+        } catch (_) {}
+      }
+    }
   };
 
-  elements.locationInput.addEventListener("focus", () => {
-    elements.locationInput.select();
-  });
-
-  elements.locationInput.addEventListener("keydown", async (event) => {
-    if (event.isComposing || event.keyCode === 229) {
-      return; // Ignore keydown during IME composition
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      await handleSetLocation();
-    } else if (event.key === "Escape") {
-      elements.locationInput.blur();
-      // Restore previous value
-      const saved = getSavedLocationQuery();
-      elements.locationInput.value = saved || "未知城市";
-    }
-  });
-}
-
-// ──────────────────────────────────────────────
-// Theme Toggle Logic
-// ──────────────────────────────────────────────
-
-function bindThemeToggle() {
-  const themeToggle = document.getElementById("themeToggle");
-  const currentTheme = localStorage.getItem(STORAGE_KEY_THEME) || "dark";
-
-  if (currentTheme === "light") {
-    document.body.classList.add("light-theme");
-    themeToggle.textContent = "🌙";
-  } else {
-    themeToggle.textContent = "☀️";
-  }
-
-  themeToggle.addEventListener("click", () => {
-    document.body.classList.toggle("light-theme");
-    const isLight = document.body.classList.contains("light-theme");
-    localStorage.setItem(STORAGE_KEY_THEME, isLight ? "light" : "dark");
-    themeToggle.textContent = isLight ? "🌙" : "☀️";
-  });
-}
-
-// ──────────────────────────────────────────────
-// Migrate legacy keys (one-time, from old "weatherTheme" / "weatherLocation")
-// ──────────────────────────────────────────────
-function migrateLegacyKeys() {
-  const oldTheme = localStorage.getItem("weatherTheme");
-  if (oldTheme) {
-    localStorage.setItem(STORAGE_KEY_THEME, oldTheme);
-    localStorage.removeItem("weatherTheme");
-  }
-  const oldLoc = localStorage.getItem("weatherLocation");
-  if (oldLoc) {
-    // Old format was just a city name string — wrap it as a query-only object
-    // so the next weather update will geocode and fill in lat/lon
-    localStorage.setItem(STORAGE_KEY_LOCATION, JSON.stringify({ latitude: 0, longitude: 0, label: oldLoc, query: oldLoc, needsGeocode: true }));
-    localStorage.removeItem("weatherLocation");
+  window.addEventListener("message", handleMessage);
+  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.addEventListener === "function") {
+    window.chrome.webview.addEventListener("message", handleMessage);
   }
 }
 
 // ──────────────────────────────────────────────
-// Boot
+// Boot Sequence
 // ──────────────────────────────────────────────
-migrateLegacyKeys();
-bindThemeToggle();
-bindLocationSetting();
 
-// Immediately render cached data (instant, no network), then fetch fresh data
-const cachedWeather = getSavedWeatherCache();
-const hasCachedData = !!(cachedWeather && cachedWeather.data);
+migrateLegacyLocation();
+initTheme();
+bindEvents();
+syncSettingsFromBackend();
 
-if (hasCachedData) {
-  console.log("[Weather] 启动时使用缓存数据渲染");
-  renderWeatherData(cachedWeather.locationLabel, cachedWeather.data);
+const initialCities = getSavedCities();
+if (initialCities.length > 0) {
+  if (!getCurrentCityId()) {
+    setCurrentCityId(initialCities[0].id);
+  }
+  updateActiveWeather(false);
+} else {
+  showEmptyState();
 }
 
-// Fetch fresh data in background.
-// If there is no cache to show, keep retrying indefinitely until we succeed.
-updateWeather(null, !hasCachedData);
-
-// Refresh every 1 hour (limited retries – cache is available as fallback)
-setInterval(() => updateWeather(), REFRESH_INTERVAL);
+setInterval(() => updateActiveWeather(false), REFRESH_INTERVAL);

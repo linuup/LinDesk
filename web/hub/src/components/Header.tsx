@@ -11,6 +11,7 @@ interface HeaderProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   isDebug?: boolean;
+  hasModalOpen?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,12 +20,20 @@ export const Header: React.FC<HeaderProps> = ({
   totalWidgets,
   theme,
   onToggleTheme,
-  isDebug = false
+  isDebug = false,
+  hasModalOpen = false
 }) => {
   const navRef = useRef<HTMLElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
 
   const reportInteractiveRects = useCallback(() => {
+    if (hasModalOpen) {
+      ipc.send('set_titlebar_rects', {
+        rects: [{ x: 0, y: 0, width: window.innerWidth || 1920, height: 44 }]
+      });
+      return;
+    }
+
     const rects: Array<{ x: number; y: number; width: number; height: number }> = [];
     if (navRef.current) {
       const r = navRef.current.getBoundingClientRect();
@@ -47,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
     if (rects.length > 0) {
       ipc.send('set_titlebar_rects', { rects });
     }
-  }, []);
+  }, [hasModalOpen]);
 
   useEffect(() => {
     reportInteractiveRects();
@@ -64,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
       window.removeEventListener('resize', reportInteractiveRects);
       if (observer) observer.disconnect();
     };
-  }, [reportInteractiveRects, totalWidgets, isDebug]);
+  }, [reportInteractiveRects, totalWidgets, isDebug, hasModalOpen]);
 
   const handleMinimize = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -82,7 +91,9 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="w-full h-11 bg-white/95 dark:bg-[#0f1422] border-b border-slate-200/90 dark:border-slate-800/90 flex items-center justify-between select-none z-50 sticky top-0 backdrop-blur-md transition-colors">
+    <header className={`w-full h-11 bg-white/95 dark:bg-[#0f1422] border-b border-slate-200/90 dark:border-slate-800/90 flex items-center justify-between select-none z-40 sticky top-0 backdrop-blur-md transition-colors ${
+      hasModalOpen ? 'pointer-events-none' : ''
+    }`}>
       {/* Left: Brand Identity + Left-aligned Tabs */}
       <div className="flex items-center h-full">
         {/* Brand Area (Native HTCAPTION Drag Area) */}
@@ -96,47 +107,49 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Interactive Navigation Tabs (HTCLIENT) */}
         <nav
           ref={navRef}
-          className="flex items-center gap-1 bg-slate-100/90 dark:bg-slate-900/90 p-1 rounded-lg border border-slate-200/80 dark:border-slate-800/80"
+          className={`flex items-center gap-0.5 bg-slate-100/80 dark:bg-slate-900/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-800/80 transition-opacity duration-150 ${
+            hasModalOpen ? 'pointer-events-none opacity-40' : ''
+          }`}
         >
           <button
             type="button"
             onClick={() => onTabChange('overview')}
-            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer select-none ${
               activeTab === 'overview'
-                ? 'bg-indigo-600 text-white shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 font-medium'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs font-medium border border-slate-200/60 dark:border-slate-700/60'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/40 font-normal'
             }`}
           >
-            <Compass className="w-3.5 h-3.5" />
-            <span>灵感探索</span>
+            <Compass className="w-3.5 h-3.5 opacity-80" />
+            <span>概览</span>
           </button>
 
           <button
             type="button"
             onClick={() => onTabChange('studio')}
-            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer select-none ${
               activeTab === 'studio'
-                ? 'bg-indigo-600 text-white shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 font-medium'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs font-medium border border-slate-200/60 dark:border-slate-700/60'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/40 font-normal'
             }`}
           >
-            <Sliders className="w-3.5 h-3.5" />
+            <Sliders className="w-3.5 h-3.5 opacity-80" />
             <span>壁纸工坊</span>
           </button>
 
           <button
             type="button"
             onClick={() => onTabChange('widgets')}
-            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer select-none ${
               activeTab === 'widgets'
-                ? 'bg-indigo-600 text-white shadow-xs font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 font-medium'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs font-medium border border-slate-200/60 dark:border-slate-700/60'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/40 font-normal'
             }`}
           >
-            <LayoutGrid className="w-3.5 h-3.5" />
+            <LayoutGrid className="w-3.5 h-3.5 opacity-80" />
             <span>桌面组件</span>
             {totalWidgets > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 font-mono font-semibold">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200/80 dark:bg-slate-700/80 text-slate-700 dark:text-slate-300 font-mono font-medium">
                 {totalWidgets}
               </span>
             )}
@@ -146,13 +159,13 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => onTabChange('desktop')}
-              className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3 py-1 rounded-md text-xs transition-all duration-150 flex items-center gap-1.5 cursor-pointer select-none ${
                 activeTab === 'desktop'
-                  ? 'bg-indigo-600 text-white shadow-xs font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/70 font-medium'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs font-medium border border-slate-200/60 dark:border-slate-700/60'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/40 font-normal'
               }`}
             >
-              <Terminal className="w-3.5 h-3.5" />
+              <Terminal className="w-3.5 h-3.5 opacity-80" />
               <span>控制台</span>
             </button>
           )}
@@ -165,7 +178,9 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Right: Theme Switcher + Native Windows 11 Caption Buttons */}
       <div
         ref={controlsRef}
-        className="flex items-center h-full"
+        className={`flex items-center h-full transition-opacity duration-150 ${
+          hasModalOpen ? 'pointer-events-none opacity-40' : ''
+        }`}
       >
         {/* Theme Toggle Button (☀️ / 🌙) */}
         <button

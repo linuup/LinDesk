@@ -140,6 +140,13 @@ LinHubWebWidget::LinHubWebWidget(const QString& url, QWidget* parent)
                 }
 
                 if (auto* mgr = LinWidget::WidgetManager::instance()) {
+                    const QString msgType = message.value(QStringLiteral("type")).toString().trimmed();
+                    if (action.isEmpty() && !msgType.isEmpty() && msgType != QStringLiteral("widget_manager_request")) {
+                        const QString targetWid = message.value(QStringLiteral("instanceId")).toString(
+                            message.value(QStringLiteral("widgetId")).toString()).trimmed();
+                        mgr->handleRuntimeMessage(targetWid, message);
+                        return;
+                    }
                     const QJsonObject resp = mgr->handleWidgetManagerRequest(message);
                     if (!resp.isEmpty() && m_browser) {
                         m_browser->sendMessageToWeb(resp);
@@ -153,6 +160,11 @@ LinHubWebWidget::LinHubWebWidget(const QString& url, QWidget* parent)
                 QJsonObject msg;
                 msg.insert(QStringLiteral("action"), QStringLiteral("runtime_state_changed"));
                 msg.insert(QStringLiteral("runtimeEnabled"), enabled);
+                m_browser->sendMessageToWeb(msg);
+            }
+        });
+        connect(mgr, &LinWidget::WidgetManager::widgetMessageDispatched, this, [this](const QString&, const QJsonObject& msg) {
+            if (m_browser) {
                 m_browser->sendMessageToWeb(msg);
             }
         });

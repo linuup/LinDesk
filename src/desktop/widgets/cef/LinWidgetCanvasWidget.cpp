@@ -180,23 +180,6 @@ QString LinWidgetCanvasWidget::widgetAt(const QPoint& pos) const
             continue;
         }
 
-        // 默认页面：全屏 OSR 渲染，按像素透明度感应交互（透明区域穿透给底层桌面图标）
-        if (it.key() == QStringLiteral("__default_page__")) {
-            if (!buf.imageBuffer.isNull()) {
-                const QPoint localPos = pos - buf.geometry.topLeft();
-                const qreal dpr = buf.imageBuffer.devicePixelRatio();
-                const int px = static_cast<int>(localPos.x() * (dpr > 0.0 ? dpr : 1.0));
-                const int py = static_cast<int>(localPos.y() * (dpr > 0.0 ? dpr : 1.0));
-                if (px >= 0 && px < buf.imageBuffer.width() &&
-                    py >= 0 && py < buf.imageBuffer.height()) {
-                    if (qAlpha(buf.imageBuffer.pixel(px, py)) < 10) {
-                        continue; // 透明边缘穿透给桌面
-                    }
-                }
-            }
-            return it.key();
-        }
-
         // 针对普通小组件，如果点击位置的像素 Alpha 接近 0，则允许事件穿透给底层图标
         if (!buf.imageBuffer.isNull()) {
             const QPoint localPos = pos - buf.geometry.topLeft();
