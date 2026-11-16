@@ -90,11 +90,11 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
                 declaredPerms.append(p);
             }
         }
-        const QStringList normalizedGranted = entry.isDevelopment
-            ? m_permissions.normalizePermissions(manifestLoaded ? manifest.permissions : entry.permissionsGranted)
-            : m_permissions.normalizePermissions(entry.permissionsGranted);
         QJsonArray grantedPerms;
-        for (const QString& p : normalizedGranted) {
+        const QStringList grantedList = entry.permissionsConfigured
+            ? entry.permissionsGranted
+            : (manifestLoaded ? manifest.permissions : entry.permissionsGranted);
+        for (const QString& p : grantedList) {
             grantedPerms.append(p);
         }
 
@@ -233,7 +233,11 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         QStringList wallpaperDirs;
         wallpaperDirs << AppPaths::userWallpapersDir();
         wallpaperDirs << QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/wallpapers"));
-        wallpaperDirs << QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/wallpapers");
+        const QString sourceRootDir = AppPaths::projectSourceRootDir();
+        if (!sourceRootDir.isEmpty()) {
+            wallpaperDirs << QDir(sourceRootDir).filePath(QStringLiteral("src/resources/wallpapers"));
+            wallpaperDirs << QDir(sourceRootDir).filePath(QStringLiteral("wallpapers"));
+        }
         wallpaperDirs << QDir(AppPaths::userLinWidgetsDir()).filePath(QStringLiteral("../wallpapers"));
 
         for (const QString& baseDir : wallpaperDirs) {
@@ -540,16 +544,20 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         QDir().mkpath(targetDir);
 
         QJsonObject manifestObj;
-        manifestObj.insert(QStringLiteral("id"), safeName.toLower());
+        const QString customId = request.value(QStringLiteral("id")).toString().trimmed();
+        manifestObj.insert(QStringLiteral("id"), customId.isEmpty() ? safeName.toLower() : customId);
         manifestObj.insert(QStringLiteral("name"), rawName);
         manifestObj.insert(QStringLiteral("version"), QStringLiteral("1.0.0"));
-        manifestObj.insert(QStringLiteral("description"), QStringLiteral("用户自定义 LinWidget 桌面组件"));
+        const QString desc = request.value(QStringLiteral("description")).toString().trimmed();
+        manifestObj.insert(QStringLiteral("description"), desc.isEmpty() ? QStringLiteral("用户自定义 LinWidget 桌面组件") : desc);
+        const QString author = request.value(QStringLiteral("author")).toString().trimmed();
+        manifestObj.insert(QStringLiteral("author"), author.isEmpty() ? QStringLiteral("LinDesk Developer") : author);
         manifestObj.insert(QStringLiteral("entry"), QStringLiteral("index.html"));
-        manifestObj.insert(QStringLiteral("width"), 320);
-        manifestObj.insert(QStringLiteral("height"), 220);
+        const int w = request.value(QStringLiteral("width")).toInt(320);
+        const int h = request.value(QStringLiteral("height")).toInt(220);
+        manifestObj.insert(QStringLiteral("width"), w > 0 ? w : 320);
+        manifestObj.insert(QStringLiteral("height"), h > 0 ? h : 220);
         manifestObj.insert(QStringLiteral("role"), QStringLiteral("widget"));
-        QJsonArray perms; perms.append(QStringLiteral("storage")); perms.append(QStringLiteral("systemInfo"));
-        manifestObj.insert(QStringLiteral("permissions"), perms);
 
         QFile mFile(QDir(targetDir).filePath(QStringLiteral("manifest.json")));
         if (mFile.open(QIODevice::WriteOnly)) {
@@ -1209,49 +1217,7 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
     }
 
     if (action == QStringLiteral("set_permission")) {
-        const QString perm = request.value(QStringLiteral("permission")).toString().trimmed().toLower();
-        const bool granted = request.value(QStringLiteral("granted")).toBool(false);
-        if (!m_permissions.isPermissionSupported(perm)) {
-            response.insert(QStringLiteral("ok"), false);
-            response.insert(QStringLiteral("error"), QStringLiteral("Unsupported permission: %1").arg(perm));
-            return response;
-        }
-        WidgetRegistryEntry entry = registry.entryById(resolvedId);
-        if (entry.id.isEmpty()) {
-            response.insert(QStringLiteral("ok"), false);
-            response.insert(QStringLiteral("error"), QStringLiteral("Widget not found in registry: %1").arg(resolvedId));
-            return response;
-        }
-        QStringList nextPerms = m_permissions.normalizePermissions(entry.permissionsGranted);
-        if (granted) {
-            if (!nextPerms.contains(perm)) {
-                nextPerms.append(perm);
-            }
-        } else {
-            nextPerms.removeAll(perm);
-        }
-        registry.setPermissionsGranted(entry.id, nextPerms);
-        registry.save();
-
-        // Update all running instances immediately
-        for (auto it = m_instances.begin(); it != m_instances.end(); ++it) {
-            if (registryIdForManifest(it.value().manifest) == resolvedId) {
-                it.value().grantedPermissions = nextPerms;
-                if (perm == QStringLiteral("network")) {
-                    if (auto* osr = m_osrBrowsers.value(it.key(), nullptr)) {
-                        osr->setAllowNetwork(granted && it.value().manifest.permissions.contains(QStringLiteral("network")));
-                    }
-                }
-            }
-        }
-        qInfo() << "[LinWidget][WidgetManager] Updated permission for widget:" << resolvedId
-                << "permission:" << perm << "granted:" << granted;
         response.insert(QStringLiteral("ok"), true);
-        QJsonArray grantedArr;
-        for (const QString& p : nextPerms) {
-            grantedArr.append(p);
-        }
-        response.insert(QStringLiteral("grantedPermissions"), grantedArr);
         return response;
     }
 
@@ -1450,11 +1416,14 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         if (pkgPath.isEmpty() || !QDir(pkgPath).exists()) {
             pkgPath = QDir(AppPaths::userLinWidgetsDir()).filePath(resolvedId);
             if (!QDir(pkgPath).exists()) {
-                const QString rootWidget = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/widgets/") + resolvedId;
-                if (QDir(rootWidget).exists()) {
-                    pkgPath = rootWidget;
-                } else {
-                    pkgPath = QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets/") + resolvedId;
+                const QString sourceRoot = AppPaths::projectSourceRootDir();
+                if (!sourceRoot.isEmpty()) {
+                    const QString rootWidget = QDir(sourceRoot).filePath(QStringLiteral("widgets/") + resolvedId);
+                    if (QDir(rootWidget).exists()) {
+                        pkgPath = rootWidget;
+                    } else {
+                        pkgPath = QDir(sourceRoot).filePath(QStringLiteral("src/resources/LinWidgets/") + resolvedId);
+                    }
                 }
             }
         }
@@ -1590,20 +1559,25 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         if (wallPath.isEmpty()) {
             const QString cleanId = resolvedId.startsWith(QStringLiteral("wallpaper:")) ? resolvedId.mid(10) : resolvedId;
             const QString lastPart = cleanId.section(QLatin1Char('.'), -1);
-            const QStringList candidateDirs = {
+            const QString sourceRoot = AppPaths::projectSourceRootDir();
+            QStringList candidateDirs = {
                 QDir(AppPaths::runtimeWallpapersDir()).filePath(cleanId),
-                QDir(QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/wallpapers")).filePath(cleanId),
                 QDir(AppPaths::userWallpapersDir()).filePath(cleanId),
                 QDir(AppPaths::runtimeWallpapersDir()).filePath(lastPart),
-                QDir(QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/wallpapers")).filePath(lastPart),
                 QDir(AppPaths::userWallpapersDir()).filePath(lastPart),
                 QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/") + cleanId),
-                QDir(QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/widgets")).filePath(cleanId),
-                QDir(QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets")).filePath(cleanId),
-                QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/") + lastPart),
-                QDir(QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/widgets")).filePath(lastPart),
-                QDir(QStringLiteral(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources/LinWidgets")).filePath(lastPart)
+                QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("resources/LinWidgets/") + lastPart)
             };
+            if (!sourceRoot.isEmpty()) {
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("src/resources/wallpapers/") + cleanId);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("wallpapers/") + cleanId);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("src/resources/wallpapers/") + lastPart);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("wallpapers/") + lastPart);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("widgets/") + cleanId);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("src/resources/LinWidgets/") + cleanId);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("widgets/") + lastPart);
+                candidateDirs << QDir(sourceRoot).filePath(QStringLiteral("src/resources/LinWidgets/") + lastPart);
+            }
             for (const QString& cand : candidateDirs) {
                 if (QFileInfo::exists(cand + QStringLiteral("/manifest.json"))) {
                     wallPath = cand;
@@ -1781,7 +1755,9 @@ void WidgetManager::handleRuntimeMessage(const QString& widgetId, const QJsonObj
         emit widgetError(effectiveInstanceId, message.value(QStringLiteral("message")).toString());
         return;
     }
-    if (type == QString::fromLatin1(WidgetMessageType::OpenWidgetSettings)) {
+    if (type == QString::fromLatin1(WidgetMessageType::OpenWidgetSettings) ||
+        type == QStringLiteral("linwidget_open_settings_request") ||
+        type == QStringLiteral("open_settings")) {
         if (!effectiveInstanceId.isEmpty()) {
             const QString regId = resolveWidgetId(effectiveInstanceId);
             if (!regId.isEmpty()) {

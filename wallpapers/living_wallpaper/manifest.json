@@ -8,10 +8,6 @@
   "type": "html",
   "entry": "index.html",
   "interactive": true,
-  "permissions": [
-    "storage",
-    "desktop"
-  ],
   "properties": {
     "particleCount": {
       "type": "slider",

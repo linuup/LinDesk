@@ -176,4 +176,6 @@ export interface CreateWidgetData {
   template: 'vanilla' | 'react' | 'webgl';
   width: number;
   height: number;
+  permissions?: string[];
 }
+

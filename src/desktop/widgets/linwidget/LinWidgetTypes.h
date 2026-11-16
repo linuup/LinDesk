@@ -107,6 +107,7 @@ struct WidgetRegistryEntry {
     QString updatedAt;
     QString lastRunState = QStringLiteral("stopped");
     QStringList permissionsGranted;
+    bool permissionsConfigured = false;
 };
 
 QString runtimeTypeToString(RuntimeType type);

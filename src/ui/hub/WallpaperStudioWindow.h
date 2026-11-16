@@ -95,7 +95,6 @@ public slots:
     void refreshWidgetsList();
     void showCreateWidgetDialog();
     void addDevelopmentWidget();
-    void toggleWidgetPermission(const QString& widgetId, const QString& permission, bool currentGranted);
     void clearWidgetStorage(const QString& widgetId, const QString& widgetName);
     void uninstallWidget(const QString& widgetId, const QString& widgetName, const QString& packagePath, const QStringList& runningInstanceIds);
     void showQuickWidgetSettingsDialog(const QString& widgetId, const QString& widgetName, const QString& packagePath);

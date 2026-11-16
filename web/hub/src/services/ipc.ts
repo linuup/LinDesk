@@ -501,18 +501,7 @@ class IPCService {
         break;
       }
       case 'set_permission': {
-        const targetId = (payload.widgetId || '').toLowerCase();
-        const perm = payload.permission;
-        const granted = payload.granted;
-        const w = this.mockState.widgets.find((item: any) => item.id.toLowerCase() === targetId);
-        if (w) {
-          if (granted && !w.grantedPermissions.includes(perm)) {
-            w.grantedPermissions.push(perm);
-          } else if (!granted) {
-            w.grantedPermissions = w.grantedPermissions.filter((p: any) => p !== perm);
-          }
-        }
-        resp = { action: 'set_permission', requestId, ok: true, grantedPermissions: w ? w.grantedPermissions : [] };
+        resp = { action: 'set_permission', requestId, ok: true };
         break;
       }
       case 'save_widget_settings': {
@@ -600,8 +589,8 @@ class IPCService {
           status: 'running',
           crashCount: 0,
           storageUsedBytes: 10240,
-          declaredPermissions: ['storage', 'systemInfo'],
-          grantedPermissions: ['storage', 'systemInfo'],
+          declaredPermissions: payload.permissions || ['storage'],
+          grantedPermissions: payload.permissions || ['storage'],
           hasSettings: false,
           runningInstanceIds: [`dev:${newId}`]
         };

@@ -1,0 +1,19 @@
+{
+  "id": "lindesk.todo",
+  "name": "Todo",
+  "version": "1.1.0",
+  "author": "LinDesk",
+  "description": "Minimal task checklist widget with category tags and instant sync.",
+  "width": 280,
+  "height": 380,
+  "minWidth": 180,
+  "minHeight": 220,
+  "maxWidth": 500,
+  "maxHeight": 800,
+  "autoLoad": true,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "settings": "settings.html"
+}

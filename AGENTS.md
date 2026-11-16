@@ -32,7 +32,7 @@
 - **模块与文件映射**：
   - `web/hub/src/App.tsx`：应用主视图顶层调度、IPC 消息总线与 Tab 切换；
   - `web/hub/src/components/WallpaperStudio.tsx`：Master-Detail 二合一壁纸工坊（左侧 58% 搜索与流式画廊、拖拽一键导入，右侧 42% 16:9 实时物理画板、模拟桌面图标、作者专属动态属性表单、宿主通用外挂控制项）；
-  - `web/hub/src/components/WidgetCenter.tsx`：桌面组件管理、脚手架创建与权限管理；
+  - `web/hub/src/components/WidgetCenter.tsx`：桌面组件管理与脚手架创建；
   - `web/hub/src/components/PowerView.tsx`：底座能效与 0.0% 挂起智能休眠状态机（AC 60 FPS / 电池 30 FPS / 全屏 3D 游戏 WasHidden 0% 挂起）；
   - `web/hub/src/components/DevConsole.tsx`：IPC 实时报文与日志监控；
   - `web/hub/src/services/ipc.ts`：前端与 C++ 后端双向通信 Bridge (`linwidget://bridge/postMessage`)。
@@ -54,6 +54,12 @@ AI 修改或新增 UI 页面与功能时，**必须严格按以下步骤闭环**
 4. **C++ 与 Native 职责边界**：
    - C++（`WallpaperStudioWindow.cpp`）作为 CEF 容器宿主壳，必须且仅加载 `resources/hub/index.html`；
    - C++（`WidgetManager.cpp`）仅负责 Win32 穿透、CEF OSR 离屏渲染管理与 JSON-RPC 消息响应（`list`, `apply_wallpaper`, `set_wallpaper_property`, `stop_wallpaper`），严禁侵入 UI 呈现逻辑。
+
+### 2.3 桌面组件与壁纸源文件修改边界铁律
+凡涉及桌面小组件与动态壁纸的设计、样式、脚本或资源变更：
+- **小组件源码权威根目录**：`widgets/`，天气组件绝对路径为 `D:\Desktop\LinDesk\widgets\Weather`；
+- **壁纸资源权威根目录**：`wallpapers/`，壁纸绝对路径为 `D:\Desktop\LinDesk\wallpapers`；
+- **绝对禁止项**：严禁直接编辑或修改构建运行目录（如 `build/Debug/resources/...` 或 `build/Release/resources/...`）下的组件与壁纸文件；所有设计修改必须且仅在源码根目录完成，修改后通过构建脚本同步覆盖至运行目录，防止运行目录被重新构建时直接覆盖导致劳动成果丢失。
 
 ---
 

@@ -9,10 +9,5 @@
   "entry": "index.html",
   "width": 1120,
   "height": 720,
-  "interactive": true,
-  "permissions": [
-    "desktop",
-    "storage",
-    "system"
-  ]
+  "interactive": true
 }

@@ -169,19 +169,31 @@ QJsonObject uptimeSnapshot()
 
     SysTimeOfDayInfo tod = {};
     ULONG retLen = 0;
-    quint64 uptimeSec = 0;
-    qint64 bootMs = 0;
+    quint64 kernelUptimeSec = 0;
+    qint64 kernelBootMs = 0;
     if (pfnNtQueryTime && pfnNtQueryTime(3 /* SystemTimeOfDayInformation */, &tod, sizeof(tod), &retLen) >= 0 && tod.CurrentTime.QuadPart > tod.BootTime.QuadPart) {
         const quint64 diff100ns = static_cast<quint64>(tod.CurrentTime.QuadPart - tod.BootTime.QuadPart);
-        uptimeSec = diff100ns / 10000000ULL;
-        bootMs = static_cast<qint64>((static_cast<quint64>(tod.BootTime.QuadPart) - 116444736000000000ULL) / 10000ULL);
+        kernelUptimeSec = diff100ns / 10000000ULL;
+        kernelBootMs = static_cast<qint64>((static_cast<quint64>(tod.BootTime.QuadPart) - 116444736000000000ULL) / 10000ULL);
     } else {
-        uptimeSec = GetTickCount64() / 1000ULL;
-        bootMs = QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(uptimeSec * 1000ULL);
+        kernelUptimeSec = GetTickCount64() / 1000ULL;
+        kernelBootMs = QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(kernelUptimeSec * 1000ULL);
     }
-    object.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(uptimeSec));
-    object.insert(QStringLiteral("bootTimestampMs"), static_cast<double>(bootMs));
+
+    const quint64 activeUptimeSec = GetTickCount64() / 1000ULL;
+    const qint64 activeBootMs = QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(activeUptimeSec * 1000ULL);
+
+    object.insert(QStringLiteral("kernelUptimeSeconds"), static_cast<double>(kernelUptimeSec));
+    object.insert(QStringLiteral("kernelBootTimestampMs"), static_cast<double>(kernelBootMs));
+    object.insert(QStringLiteral("activeUptimeSeconds"), static_cast<double>(activeUptimeSec));
+    object.insert(QStringLiteral("activeBootTimestampMs"), static_cast<double>(activeBootMs));
+    object.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(activeUptimeSec));
+    object.insert(QStringLiteral("bootTimestampMs"), static_cast<double>(activeBootMs));
 #else
+    object.insert(QStringLiteral("kernelUptimeSeconds"), 0);
+    object.insert(QStringLiteral("kernelBootTimestampMs"), 0);
+    object.insert(QStringLiteral("activeUptimeSeconds"), 0);
+    object.insert(QStringLiteral("activeBootTimestampMs"), 0);
     object.insert(QStringLiteral("uptimeSeconds"), 0);
     object.insert(QStringLiteral("bootTimestampMs"), 0);
 #endif
@@ -306,6 +318,11 @@ QJsonObject SystemInfoService::snapshot()
 
     const QJsonObject uptime = uptimeSnapshot();
     object.insert(QStringLiteral("uptimeSeconds"), uptime.value(QStringLiteral("uptimeSeconds")));
+    object.insert(QStringLiteral("bootTimestampMs"), uptime.value(QStringLiteral("bootTimestampMs")));
+    object.insert(QStringLiteral("kernelUptimeSeconds"), uptime.value(QStringLiteral("kernelUptimeSeconds")));
+    object.insert(QStringLiteral("kernelBootTimestampMs"), uptime.value(QStringLiteral("kernelBootTimestampMs")));
+    object.insert(QStringLiteral("activeUptimeSeconds"), uptime.value(QStringLiteral("activeUptimeSeconds")));
+    object.insert(QStringLiteral("activeBootTimestampMs"), uptime.value(QStringLiteral("activeBootTimestampMs")));
     object.insert(QStringLiteral("timestampMs"), static_cast<double>(now));
     return object;
 }
@@ -539,16 +556,19 @@ QJsonObject SystemInfoService::cpuSnapshot()
 
     SysTimeOfDayInfo tod = {};
     ULONG retLenTod = 0;
-    quint64 uptimeSec = 0;
-    qint64 bootMs = 0;
+    quint64 kernelUptimeSec = 0;
+    qint64 kernelBootMs = 0;
     if (pfnNtQueryTime && pfnNtQueryTime(3 /* SystemTimeOfDayInformation */, &tod, sizeof(tod), &retLenTod) >= 0 && tod.CurrentTime.QuadPart > tod.BootTime.QuadPart) {
         const quint64 diff100ns = static_cast<quint64>(tod.CurrentTime.QuadPart - tod.BootTime.QuadPart);
-        uptimeSec = diff100ns / 10000000ULL;
-        bootMs = static_cast<qint64>((static_cast<quint64>(tod.BootTime.QuadPart) - 116444736000000000ULL) / 10000ULL);
+        kernelUptimeSec = diff100ns / 10000000ULL;
+        kernelBootMs = static_cast<qint64>((static_cast<quint64>(tod.BootTime.QuadPart) - 116444736000000000ULL) / 10000ULL);
     } else {
-        uptimeSec = GetTickCount64() / 1000ULL;
-        bootMs = QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(uptimeSec * 1000ULL);
+        kernelUptimeSec = GetTickCount64() / 1000ULL;
+        kernelBootMs = QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(kernelUptimeSec * 1000ULL);
     }
+
+    const quint64 activeUptimeSec = GetTickCount64() / 1000ULL;
+    const qint64 activeBootMs = QDateTime::currentMSecsSinceEpoch() - static_cast<qint64>(activeUptimeSec * 1000ULL);
 
     // Cache Topology and Sockets (Query once and cache)
     if (!m_hasCachedCacheAndSockets) {
@@ -594,8 +614,12 @@ QJsonObject SystemInfoService::cpuSnapshot()
     object.insert(QStringLiteral("processCount"), processCount);
     object.insert(QStringLiteral("threadCount"), threadCount);
     object.insert(QStringLiteral("handleCount"), handleCount);
-    object.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(uptimeSec));
-    object.insert(QStringLiteral("bootTimestampMs"), static_cast<double>(bootMs));
+    object.insert(QStringLiteral("kernelUptimeSeconds"), static_cast<double>(kernelUptimeSec));
+    object.insert(QStringLiteral("kernelBootTimestampMs"), static_cast<double>(kernelBootMs));
+    object.insert(QStringLiteral("activeUptimeSeconds"), static_cast<double>(activeUptimeSec));
+    object.insert(QStringLiteral("activeBootTimestampMs"), static_cast<double>(activeBootMs));
+    object.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(activeUptimeSec));
+    object.insert(QStringLiteral("bootTimestampMs"), static_cast<double>(activeBootMs));
 
     object.insert(QStringLiteral("l1CacheKB"), static_cast<double>(m_cachedL1CacheBytes) / 1024.0);
     object.insert(QStringLiteral("l2CacheMB"), static_cast<double>(m_cachedL2CacheBytes) / (1024.0 * 1024.0));

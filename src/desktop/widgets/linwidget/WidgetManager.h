@@ -1,7 +1,6 @@
 #pragma once
 
 #include "desktop/widgets/linwidget/LayoutManager.h"
-#include "desktop/widgets/linwidget/PermissionManager.h"
 #include "services/SystemInfo/SystemInfoService.h"
 #include "desktop/widgets/linwidget/WinMfVideoEngine.h"
 
@@ -177,7 +176,6 @@ private:
     QString resolveWidgetId(const QString& rawId) const;
 
     LayoutManager m_layout;
-    PermissionManager m_permissions;
     WId m_hostParentWindow = 0;
     WId m_desktopLayerWindow = 0;
     QSet<QString> m_runningWidgets;

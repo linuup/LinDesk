@@ -20,12 +20,6 @@ void WidgetManager::handleSystemInfoRequest(const QJsonObject& message)
         sendSystemInfoResponse(instanceId, requestId, action, false, QJsonObject(), QStringLiteral("Widget instance is not running."));
         return;
     }
-    if (!m_permissions.canUseDesktopApi(instance.grantedPermissions)) {
-        qWarning() << "[LinWidget][WidgetManager] system_info_request rejected: 'desktop' permission not granted for"
-                   << instanceId << "granted:" << instance.grantedPermissions << "action:" << action;
-        sendSystemInfoResponse(instanceId, requestId, action, false, QJsonObject(), QStringLiteral("Desktop permission is required."));
-        return;
-    }
 
     if (action == QStringLiteral("snapshot")) {
         sendSystemInfoResponse(instanceId, requestId, action, true, m_systemInfoService.snapshot());
@@ -59,7 +53,8 @@ void WidgetManager::handleSystemInfoRequest(const QJsonObject& message)
         auto* timer = new QTimer(this);
         timer->setInterval(intervalMs);
         connect(timer, &QTimer::timeout, this, [this, instanceId, watchId]() {
-            if (!m_instances.contains(instanceId)) {
+            const WidgetInstance inst = m_instances.value(instanceId);
+            if (inst.instanceId.isEmpty()) {
                 stopSystemInfoWatchesForInstance(instanceId);
                 return;
             }
@@ -128,12 +123,6 @@ void WidgetManager::handleStorageRequest(const QJsonObject& message)
     const WidgetInstance instance = m_instances.value(instanceId);
     if (instance.instanceId.isEmpty()) {
         sendStorageResponse(instanceId, requestId, false, QJsonValue(), QStringLiteral("Widget instance is not running."));
-        return;
-    }
-    if (!m_permissions.canUseStorage(instance.grantedPermissions)) {
-        appendSharedLog(QStringLiteral("permission"),
-                        QStringLiteral("%1 permission denied: storage").arg(instanceId));
-        sendStorageResponse(instanceId, requestId, false, QJsonValue(), QStringLiteral("Storage permission is required."));
         return;
     }
     if (scope != QStringLiteral("instance") && scope != QStringLiteral("widget")) {

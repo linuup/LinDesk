@@ -89,6 +89,37 @@ inline bool isDebugOrDevMode()
 #endif
 }
 
+inline QString projectSourceRootDir()
+{
+    // 1. 优先读取开发者环境变量
+    const QString envSourceRoot = qEnvironmentVariable("LINDESK_SOURCE_ROOT");
+    if (!envSourceRoot.isEmpty() && QDir(envSourceRoot).exists()) {
+        return QDir::cleanPath(envSourceRoot);
+    }
+
+    // 2. 编译期内置源码路径探测
+#ifdef LINDESK_SOURCE_DIR
+    const QString compileSourceDir = QString::fromUtf8(LINDESK_SOURCE_DIR);
+    if (!compileSourceDir.isEmpty() && QDir(compileSourceDir).exists()) {
+        return QDir::cleanPath(compileSourceDir);
+    }
+#endif
+
+    // 3. 基于当前可执行程序目录向上动态回溯探测工程根目录
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 5; ++i) {
+        if (dir.exists(QStringLiteral("CMakeLists.txt")) &&
+            dir.exists(QStringLiteral("widgets")) &&
+            dir.exists(QStringLiteral("src"))) {
+            return dir.cleanPath(dir.absolutePath());
+        }
+        if (!dir.cdUp()) {
+            break;
+        }
+    }
+    return QString();
+}
+
 inline QString userLinWidgetsDir()
 {
     if (isDebugOrDevMode()) {

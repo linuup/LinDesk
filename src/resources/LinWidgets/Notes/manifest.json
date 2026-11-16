@@ -1,0 +1,17 @@
+{
+  "id": "lindesk.notes.lin",
+  "name": "Notes",
+  "version": "1.1.0",
+  "author": "LinDesk",
+  "description": "Clean translucent desktop sticky notes with markdown & multi-instance support.",
+  "width": 260,
+  "height": 260,
+  "minWidth": 160,
+  "minHeight": 160,
+  "type": "html",
+  "transparent": true,
+  "resizable": true,
+  "entry": "index.html",
+  "settings": "settings.html",
+  "multiInstance": true
+}

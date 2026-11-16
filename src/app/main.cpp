@@ -84,12 +84,16 @@ static bool copyDirRecursively(const QString& sourcePath, const QString& targetP
 
 static void ensureDevelopmentResources()
 {
-    const QString sourceDir = QString::fromUtf8(LINDESK_SOURCE_DIR) + QStringLiteral("/src/resources");
+    const QString rootDir = AppPaths::projectSourceRootDir();
+    if (rootDir.isEmpty()) {
+        return;
+    }
+    const QString sourceDir = rootDir + QStringLiteral("/src/resources");
     const QString targetDir = QCoreApplication::applicationDirPath() + QStringLiteral("/resources");
     if (QDir(sourceDir).exists()) {
         copyDirRecursively(sourceDir, targetDir);
     }
-    const QString widgetsDir = QString::fromUtf8(LINDESK_SOURCE_DIR) + QStringLiteral("/widgets");
+    const QString widgetsDir = rootDir + QStringLiteral("/widgets");
     const QString widgetsTargetDir = targetDir + QStringLiteral("/LinWidgets");
     if (QDir(widgetsDir).exists()) {
         copyDirRecursively(widgetsDir, widgetsTargetDir);

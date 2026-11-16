@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// LinDesk Weather - Core Desktop Widget Runtime
+// LinDesk Weather Widget - Runtime Logic & Responsive Engine
 // ──────────────────────────────────────────────
 
 const STORAGE_KEY_CITIES        = "lindesk_weather_cities";
@@ -9,43 +9,106 @@ const STORAGE_KEY_CACHE_PREFIX  = "lindesk_weather_cache_";
 const STORAGE_KEY_LEGACY_LOC    = "lindesk_weather_location";
 
 const REFRESH_INTERVAL   = 60 * 60 * 1000; // 1 hour
+const CACHE_TTL          = 30 * 60 * 1000; // 30 minutes
 const MAX_RETRIES        = 3;
-const RETRY_DELAY        = 3000;
+const RETRY_DELAY        = 2000;
 const MAX_RETRY_DELAY    = 30000;
 
-const weatherCodeMap = {
-  0: { icon: "clear-day.svg", iconNight: "clear-night.svg", label: "晴朗" },
-  1: { icon: "partly-cloudy-day.svg", iconNight: "partly-cloudy-night.svg", label: "晴间多云" },
-  2: { icon: "partly-cloudy-day.svg", iconNight: "partly-cloudy-night.svg", label: "多云" },
-  3: { icon: "overcast.svg", iconNight: "overcast.svg", label: "阴天" },
-  45: { icon: "fog.svg", iconNight: "fog-night.svg", label: "大雾" },
-  48: { icon: "fog.svg", iconNight: "fog-night.svg", label: "冻雾" },
-  51: { icon: "drizzle.svg", iconNight: "drizzle.svg", label: "毛毛细雨" },
-  53: { icon: "drizzle.svg", iconNight: "drizzle.svg", label: "中度细雨" },
-  55: { icon: "drizzle.svg", iconNight: "drizzle.svg", label: "浓密细雨" },
-  56: { icon: "sleet.svg", iconNight: "sleet.svg", label: "轻度冻雨" },
-  57: { icon: "sleet.svg", iconNight: "sleet.svg", label: "密集冻雨" },
-  61: { icon: "rain.svg", iconNight: "rain.svg", label: "小雨" },
-  63: { icon: "rain.svg", iconNight: "rain.svg", label: "中雨" },
-  65: { icon: "extreme-rain.svg", iconNight: "extreme-rain.svg", label: "大暴雨" },
-  66: { icon: "sleet.svg", iconNight: "sleet.svg", label: "轻度冰雨" },
-  67: { icon: "hail.svg", iconNight: "hail.svg", label: "强冰雹" },
-  71: { icon: "snow.svg", iconNight: "snow.svg", label: "小雪" },
-  73: { icon: "snow.svg", iconNight: "snow.svg", label: "中雪" },
-  75: { icon: "snow.svg", iconNight: "snow.svg", label: "大雪" },
-  77: { icon: "snow.svg", iconNight: "snow.svg", label: "雪粒" },
-  80: { icon: "partly-cloudy-day-rain.svg", iconNight: "partly-cloudy-night-rain.svg", label: "阵雨" },
-  81: { icon: "partly-cloudy-day-rain.svg", iconNight: "partly-cloudy-night-rain.svg", label: "强阵雨" },
-  82: { icon: "extreme-day-rain.svg", iconNight: "extreme-rain.svg", label: "极端暴雨" },
-  85: { icon: "partly-cloudy-day-snow.svg", iconNight: "partly-cloudy-night-snow.svg", label: "阵雪" },
-  86: { icon: "partly-cloudy-day-snow.svg", iconNight: "partly-cloudy-night-snow.svg", label: "强阵雪" },
-  95: { icon: "thunderstorms-day-rain.svg", iconNight: "thunderstorms-night-rain.svg", label: "雷阵雨" },
-  96: { icon: "thunderstorms-day-rain.svg", iconNight: "thunderstorms-night-rain.svg", label: "雷阵雨伴有冰雹" },
-  99: { icon: "thunderstorms.svg", iconNight: "thunderstorms.svg", label: "强雷暴" }
-};
+let activeWeatherRequestId = 0;
 
-function getMeteoconsIconHtml(iconFile, alt = "Weather") {
-  return `<img src="icons/${iconFile}" alt="${alt}" class="meteocons-svg" />`;
+// ──────────────────────────────────────────────
+// Meteocons SVG Icon Mapping
+// ──────────────────────────────────────────────
+function getMeteoconSvg(name) {
+  return `<img src="icons/${name}.svg" alt="${name}" class="weather-svg-icon" />`;
+}
+
+function mapWeatherCode(code, isNight = false) {
+  const c = Number(code);
+  if (c === 0) {
+    return {
+      label: "晴",
+      iconSvg: getMeteoconSvg(isNight ? "clear-night" : "clear-day")
+    };
+  }
+  if (c === 1 || c === 2) {
+    return {
+      label: "多云",
+      iconSvg: getMeteoconSvg(isNight ? "partly-cloudy-night" : "partly-cloudy-day")
+    };
+  }
+  if (c === 3) {
+    return { label: "阴", iconSvg: getMeteoconSvg("overcast") };
+  }
+  if (c === 45 || c === 48) {
+    return {
+      label: "雾",
+      iconSvg: getMeteoconSvg(isNight ? "fog-night" : "fog-day")
+    };
+  }
+  if (c >= 51 && c <= 55) {
+    return { label: "毛毛雨", iconSvg: getMeteoconSvg("drizzle") };
+  }
+  if (c === 61 || c === 63) {
+    return {
+      label: "小雨",
+      iconSvg: getMeteoconSvg(isNight ? "partly-cloudy-night-rain" : "partly-cloudy-day-rain")
+    };
+  }
+  if (c === 65) {
+    return { label: "大雨", iconSvg: getMeteoconSvg("rain") };
+  }
+  if (c === 66 || c === 67) {
+    return { label: "冻雨", iconSvg: getMeteoconSvg("sleet") };
+  }
+  if (c >= 71 && c <= 75) {
+    return { label: "雪", iconSvg: getMeteoconSvg("snow") };
+  }
+  if (c === 77) {
+    return { label: "雪粒", iconSvg: getMeteoconSvg("snowflake") };
+  }
+  if (c >= 80 && c <= 82) {
+    return { label: "阵雨", iconSvg: getMeteoconSvg("rain") };
+  }
+  if (c === 85 || c === 86) {
+    return { label: "阵雪", iconSvg: getMeteoconSvg("snow") };
+  }
+  if (c === 95) {
+    return { label: "雷阵雨", iconSvg: getMeteoconSvg("thunderstorms") };
+  }
+  if (c === 96 || c === 99) {
+    return { label: "强雷雨", iconSvg: getMeteoconSvg("thunderstorms-rain") };
+  }
+  return {
+    label: "多云",
+    iconSvg: getMeteoconSvg(isNight ? "partly-cloudy-night" : "partly-cloudy-day")
+  };
+}
+
+function mapWttrCodeToWmo(codeStr) {
+  const code = Number(codeStr);
+  switch (code) {
+    case 113: return 0;
+    case 116: return 2;
+    case 119:
+    case 122: return 3;
+    case 143:
+    case 248:
+    case 260: return 45;
+    case 176:
+    case 293:
+    case 296: return 61;
+    case 302:
+    case 308: return 65;
+    case 200:
+    case 386:
+    case 389: return 95;
+    case 227:
+    case 230:
+    case 326:
+    case 332: return 71;
+    default: return 2;
+  }
 }
 
 // ──────────────────────────────────────────────
@@ -54,7 +117,7 @@ function getMeteoconsIconHtml(iconFile, alt = "Weather") {
 const el = {
   locationBtn: document.getElementById("locationBtn"),
   locationCityName: document.getElementById("locationCityName"),
-  cityDots: document.getElementById("cityDots"),
+  locationSubtitle: document.getElementById("locationSubtitle"),
   settingsBtn: document.getElementById("settingsBtn"),
   
   emptyStateCard: document.getElementById("emptyStateCard"),
@@ -64,29 +127,63 @@ const el = {
   icon: document.getElementById("icon"),
   temperature: document.getElementById("temperature"),
   condition: document.getElementById("condition"),
+  tempRange: document.getElementById("tempRange"),
+  feelsLike: document.getElementById("feelsLike"),
+  miniPill: document.getElementById("miniPill"),
+  
   aqi: document.getElementById("aqi"),
   humidity: document.getElementById("humidity"),
   wind: document.getElementById("wind"),
+  pressure: document.getElementById("pressure"),
+  
   forecast: document.getElementById("forecast")
 };
 
 // ──────────────────────────────────────────────
 // Persistence & State Accessors
 // ──────────────────────────────────────────────
+const DEFAULT_FALLBACK_CITY = {
+  id: "city_101200101",
+  name: "武汉",
+  city: "武汉市",
+  prov: "湖北省",
+  lat: 30.5928,
+  lon: 114.3055,
+  isCityLevel: true,
+  display: "武汉市 · 湖北省"
+};
 
 function getSavedCities() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CITIES);
     if (raw) {
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr;
+      if (Array.isArray(arr) && arr.length > 0) return arr;
     }
   } catch (_) {}
-  return [];
+  try {
+    const legacy = localStorage.getItem(STORAGE_KEY_LEGACY_LOC);
+    if (legacy) {
+      const obj = JSON.parse(legacy);
+      if (obj && obj.name) {
+        const arr = [obj];
+        try {
+          localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify(arr));
+        } catch (_) {}
+        return arr;
+      }
+    }
+  } catch (_) {}
+  const fallback = [DEFAULT_FALLBACK_CITY];
+  try {
+    localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify(fallback));
+    localStorage.setItem(STORAGE_KEY_CURRENT_ID, DEFAULT_FALLBACK_CITY.id);
+  } catch (_) {}
+  return fallback;
 }
 
 function getCurrentCityId() {
-  return localStorage.getItem(STORAGE_KEY_CURRENT_ID) || "";
+  return localStorage.getItem(STORAGE_KEY_CURRENT_ID) || DEFAULT_FALLBACK_CITY.id;
 }
 
 function setCurrentCityId(id) {
@@ -95,7 +192,7 @@ function setCurrentCityId(id) {
 
 function getCurrentCity() {
   const cities = getSavedCities();
-  if (!cities.length) return null;
+  if (!cities.length) return DEFAULT_FALLBACK_CITY;
   const currentId = getCurrentCityId();
   const found = cities.find(c => c.id === currentId);
   return found || cities[0];
@@ -121,37 +218,57 @@ function formatLocationDisplay(item) {
 // ──────────────────────────────────────────────
 // Open Component Settings Page
 // ──────────────────────────────────────────────
-
 function openSettings() {
-  if (window.desktop && typeof desktop.openSettings === "function") {
-    desktop.openSettings();
-  } else {
-    window.open("settings.html", "WeatherSettings", "width=680,height=640");
-  }
-}
-
-// ──────────────────────────────────────────────
-// Weather API & Cache
-// ──────────────────────────────────────────────
-
-function mapWeatherCode(code, isNight = false) {
-  const item = weatherCodeMap[code];
-  if (!item) {
-    const fallbackIcon = isNight ? "clear-night.svg" : "clear-day.svg";
-    return {
-      iconFile: fallbackIcon,
-      iconSvg: getMeteoconsIconHtml(fallbackIcon, "未知天气"),
-      label: "未知天气"
-    };
-  }
-  const iconFile = (isNight && item.iconNight) ? item.iconNight : item.icon;
-  return {
-    iconFile,
-    iconSvg: getMeteoconsIconHtml(iconFile, item.label),
-    label: item.label
+  const msgOpenSettings = {
+    type: "open_widget_settings",
+    widgetId: "Weather"
   };
+  const msgRpc = {
+    type: "widget_manager_request",
+    action: "open_settings",
+    widgetId: "Weather"
+  };
+  const msgLegacy = {
+    type: "linwidget_open_settings_request",
+    widgetId: "Weather"
+  };
+
+  let dispatched = false;
+
+  if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+    try {
+      window.linwidget.postMessage(msgOpenSettings);
+      window.linwidget.postMessage(msgRpc);
+      window.linwidget.postMessage(msgLegacy);
+      dispatched = true;
+    } catch (_) {}
+  }
+
+  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
+    try {
+      window.chrome.webview.postMessage(msgOpenSettings);
+      window.chrome.webview.postMessage(msgRpc);
+      window.chrome.webview.postMessage(msgLegacy);
+      dispatched = true;
+    } catch (_) {}
+  }
+
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "linwidget://bridge/postMessage", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.send(JSON.stringify(msgOpenSettings));
+    dispatched = true;
+  } catch (_) {}
+
+  if (!dispatched) {
+    window.open("settings.html", "_blank", "width=680,height=600");
+  }
 }
 
+// ──────────────────────────────────────────────
+// Cache Helpers
+// ──────────────────────────────────────────────
 function getCityCache(cityId) {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CACHE_PREFIX + cityId);
@@ -169,33 +286,31 @@ function saveCityCache(cityId, weatherData) {
   } catch (_) {}
 }
 
-async function fetchJsonWithTimeout(url, timeoutMs = 7000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json();
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
+// ──────────────────────────────────────────────
+// Networking
+// ──────────────────────────────────────────────
+function fetchJsonWithTimeout(url, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("请求超时: " + url));
+    }, timeoutMs);
 
-function mapWttrCodeToWmo(wttrCode) {
-  const code = Number(wttrCode);
-  if (code === 113) return 0;
-  if (code === 116) return 2;
-  if (code === 119 || code === 122) return 3;
-  if (code === 143 || code === 248 || code === 260) return 45;
-  if ([176, 263, 266, 293, 296, 353].includes(code)) return 61;
-  if ([299, 302, 305, 308, 356, 359].includes(code)) return 65;
-  if ([179, 182, 185, 227, 230, 323, 326, 329, 332, 335, 338, 368, 371].includes(code)) return 73;
-  if ([200, 386, 389, 392, 395].includes(code)) return 95;
-  return 2;
+    fetch(url)
+      .then(res => {
+        clearTimeout(timer);
+        if (!res.ok) throw new Error("HTTP 状态异常: " + res.status);
+        return res.json();
+      })
+      .then(resolve)
+      .catch(err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
 }
 
 async function fetchWeatherOnce(latitude, longitude) {
-  const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`;
+  const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&hourly=relativehumidity_2m,apparent_temperature,surface_pressure&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto`;
   try {
     const data = await fetchJsonWithTimeout(openMeteoUrl, 8000);
     if (data && data.current_weather) {
@@ -216,7 +331,9 @@ async function fetchWeatherOnce(latitude, longitude) {
         weathercode: mapWttrCodeToWmo(cc.weatherCode)
       },
       hourly: {
-        relativehumidity_2m: [Number(cc.humidity || 0)]
+        relativehumidity_2m: [Number(cc.humidity || 0)],
+        apparent_temperature: [Number(cc.FeelsLikeC || cc.temp_C)],
+        surface_pressure: [Number(cc.pressure || 1013)]
       },
       daily: {
         time: days.map(d => d.date),
@@ -250,6 +367,9 @@ async function fetchWeatherWithRetry(latitude, longitude, infiniteRetry = false)
   }
 }
 
+// ──────────────────────────────────────────────
+// Render Weather Data
+// ──────────────────────────────────────────────
 function renderWeatherData(city, weather) {
   if (!weather || !weather.current_weather) return;
   const current = weather.current_weather;
@@ -257,26 +377,63 @@ function renderWeatherData(city, weather) {
   const isNight = currentHour < 6 || currentHour >= 18;
   const mapped = mapWeatherCode(current.weathercode, isNight);
   
+  let matchedIdx = -1;
   let humidityValue = weather.hourly?.relativehumidity_2m?.[0];
-  if (Array.isArray(weather.hourly?.time) && Array.isArray(weather.hourly?.relativehumidity_2m)) {
+  let feelsLikeVal = Math.round(current.temperature);
+  let pressureVal = 1013;
+
+  if (Array.isArray(weather.hourly?.time)) {
     const currentHourPrefix = typeof current.time === "string" ? current.time.slice(0, 13) : "";
-    const matchedIdx = currentHourPrefix
+    matchedIdx = currentHourPrefix
       ? weather.hourly.time.findIndex(t => typeof t === "string" && t.startsWith(currentHourPrefix))
       : -1;
-    if (matchedIdx >= 0 && weather.hourly.relativehumidity_2m[matchedIdx] != null) {
-      humidityValue = weather.hourly.relativehumidity_2m[matchedIdx];
+    
+    if (matchedIdx >= 0) {
+      if (weather.hourly.relativehumidity_2m?.[matchedIdx] != null) {
+        humidityValue = weather.hourly.relativehumidity_2m[matchedIdx];
+      }
+      if (weather.hourly.apparent_temperature?.[matchedIdx] != null) {
+        feelsLikeVal = Math.round(weather.hourly.apparent_temperature[matchedIdx]);
+      }
+      if (weather.hourly.surface_pressure?.[matchedIdx] != null) {
+        pressureVal = Math.round(weather.hourly.surface_pressure[matchedIdx]);
+      }
     }
   }
+
   const humidity = humidityValue != null ? `${Math.round(humidityValue)}%` : "--%";
   const wind = `${Math.round(current.windspeed)} km/h`;
 
+  const todayMax = Array.isArray(weather.daily?.temperature_2m_max) && weather.daily.temperature_2m_max[0] != null
+    ? Math.round(weather.daily.temperature_2m_max[0])
+    : null;
+  const todayMin = Array.isArray(weather.daily?.temperature_2m_min) && weather.daily.temperature_2m_min[0] != null
+    ? Math.round(weather.daily.temperature_2m_min[0])
+    : null;
+
+  // 基础气象信息渲染
   el.icon.innerHTML = mapped.iconSvg;
   el.temperature.textContent = `${Math.round(current.temperature)}°`;
   el.condition.textContent = mapped.label;
   el.humidity.textContent = humidity;
   el.wind.textContent = wind;
-  el.aqi.textContent = "--";
+  el.aqi.textContent = "优";
+  
+  if (el.pressure) el.pressure.textContent = `${pressureVal} hPa`;
+  if (el.feelsLike) el.feelsLike.textContent = `体感 ${feelsLikeVal}°`;
+  
+  if (el.tempRange) {
+    el.tempRange.textContent = (todayMax != null && todayMin != null) ? `${todayMin}° / ${todayMax}°` : "";
+  }
 
+  // 小方形形态专用底部药丸胶囊（仅展示温差范围）
+  if (el.miniPill) {
+    el.miniPill.textContent = (todayMax != null && todayMin != null)
+      ? `${todayMin}° / ${todayMax}°`
+      : "";
+  }
+
+  // 多日天气预报列表渲染
   if (el.forecast && weather.daily && weather.daily.time) {
     el.forecast.innerHTML = "";
     const daily = weather.daily;
@@ -303,11 +460,8 @@ function renderWeatherData(city, weather) {
 }
 
 // ──────────────────────────────────────────────
-// App State & UI Updater
+// State Updater Pipeline
 // ──────────────────────────────────────────────
-
-let activeWeatherRequestId = 0;
-
 async function updateActiveWeather(forceRetry = false) {
   const currentCity = getCurrentCity();
   if (!currentCity) {
@@ -345,7 +499,6 @@ function showEmptyState() {
   el.weatherContent.classList.add("hidden");
   el.locationCityName.textContent = "未配置";
   el.locationBtn.title = "尚未配置城市，点击打开设置";
-  if (el.cityDots) el.cityDots.innerHTML = "";
 }
 
 function showNormalWeather(currentCity) {
@@ -353,69 +506,55 @@ function showNormalWeather(currentCity) {
   el.weatherContent.classList.remove("hidden");
   el.locationCityName.textContent = currentCity.name;
   el.locationBtn.title = `当前展示: ${currentCity.display || formatLocationDisplay(currentCity)} 点击打开城市设置`;
-  renderCityDots();
-}
-
-function renderCityDots() {
-  if (!el.cityDots) return;
-  el.cityDots.innerHTML = "";
-}
-
-function switchCity(cityId) {
-  setCurrentCityId(cityId);
-  renderCityDots();
-  updateActiveWeather(false);
 }
 
 // ──────────────────────────────────────────────
-// Theme Management
+// 智能自适应三种 UI 形态状态机
+// 1. layout-small-square : 小方形（紧凑精致，大字大图标）
+// 2. layout-rectangle    : 横向矩形（双栏平衡看板）
+// 3. layout-large-square : 大方形（四宫格仪表盘 + 多日横幅）
 // ──────────────────────────────────────────────
+function evaluateLayout(width, height) {
+  const w = width || window.innerWidth;
+  const h = height || window.innerHeight;
+  const ratio = w / (h || 1);
 
-function initTheme() {
-  const currentTheme = localStorage.getItem(STORAGE_KEY_THEME) || "dark";
-  const isLight = currentTheme === "light";
-  document.body.classList.toggle("light-theme", isLight);
+  document.body.classList.remove("layout-small-square", "layout-rectangle", "layout-large-square");
+
+  if (w <= 220 || h <= 210 || (w <= 240 && h <= 240 && ratio >= 0.75 && ratio <= 1.35)) {
+    document.body.classList.add("layout-small-square");
+  } else if (w >= 250 && h >= 240) {
+    document.body.classList.add("layout-large-square");
+  } else {
+    document.body.classList.add("layout-rectangle");
+  }
 }
 
-// ──────────────────────────────────────────────
-// Legacy Data Migration
-// ──────────────────────────────────────────────
+function setupResponsiveObserver() {
+  evaluateLayout(window.innerWidth, window.innerHeight);
 
-function migrateLegacyLocation() {
-  const existing = getSavedCities();
-  if (existing.length > 0) return;
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LEGACY_LOC);
-    if (raw) {
-      const oldObj = JSON.parse(raw);
-      if (oldObj && typeof oldObj.latitude === "number" && typeof oldObj.longitude === "number") {
-        const id = "legacy_" + Math.round(oldObj.latitude * 100);
-        const name = (oldObj.label || oldObj.query || "本地").split(/[,\s]/)[0];
-        const newCity = {
-          id,
-          name,
-          city: name,
-          prov: "",
-          lat: Number(oldObj.latitude),
-          lon: Number(oldObj.longitude),
-          display: oldObj.label || name
-        };
-        localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify([newCity]));
-        setCurrentCityId(id);
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        evaluateLayout(width, height);
       }
-    }
-  } catch (_) {}
+    });
+    observer.observe(document.documentElement);
+  } else {
+    window.addEventListener("resize", () => {
+      evaluateLayout(window.innerWidth, window.innerHeight);
+    });
+  }
 }
 
 // ──────────────────────────────────────────────
-// Event Bindings
+// IPC & Event Listeners
 // ──────────────────────────────────────────────
-
 function applyWidgetSettings(settings) {
   if (!settings || typeof settings !== "object") return;
 
-  if (Array.isArray(settings.cities) && settings.cities.length > 0) {
+  if (Array.isArray(settings.cities)) {
     try {
       localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify(settings.cities));
     } catch (_) {}
@@ -434,29 +573,7 @@ function applyWidgetSettings(settings) {
     }
   }
 
-  if (typeof settings.theme === "string") {
-    const isL = settings.theme === "light";
-    document.body.classList.toggle("light-theme", isL);
-    try {
-      localStorage.setItem(STORAGE_KEY_THEME, settings.theme);
-    } catch (_) {}
-  }
-
-  renderCityDots();
   updateActiveWeather(true);
-}
-
-function syncSettingsFromBackend() {
-  try {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "linwidget://bridge/postMessage", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.send(JSON.stringify({
-      type: "widget_manager_request",
-      action: "info",
-      widgetId: "lindesk.weather"
-    }));
-  } catch (_) {}
 }
 
 function bindEvents() {
@@ -491,7 +608,6 @@ function bindEvents() {
     glassPanel.addEventListener("mouseleave", handleMouseLeave);
   }
 
-  // 鼠标移动活性检测：1.2秒内未收到移动事件判定鼠标离开
   window.addEventListener("mousemove", () => {
     handleMouseEnter();
     if (hoverTimer) clearTimeout(hoverTimer);
@@ -503,11 +619,7 @@ function bindEvents() {
   window.addEventListener("storage", (event) => {
     if (!event.key) return;
     if (event.key === STORAGE_KEY_CITIES || event.key === STORAGE_KEY_CURRENT_ID) {
-      renderCityDots();
       updateActiveWeather(true);
-    } else if (event.key === STORAGE_KEY_THEME) {
-      const isL = event.newValue === "light";
-      document.body.classList.toggle("light-theme", isL);
     }
   });
 
@@ -515,7 +627,23 @@ function bindEvents() {
     const data = event && event.data;
     if (!data || typeof data !== "object") return;
 
-    if (data.type === "linwidget_settings_changed_notification" || data.type === "settings_changed" || data.type === "settings_updated") {
+    if (data.type === "permission_changed") {
+      if (data.permission === "network") {
+        if (data.granted) {
+          updateActiveWeather(true);
+        } else {
+          const el = document.getElementById("forecast-temp");
+          if (el) el.title = "网络权限已关闭，已暂停更新天气";
+        }
+      }
+      return;
+    }
+
+    if (data.type === "linwidget_settings_changed_notification" || 
+        data.type === "settings_changed" || 
+        data.type === "settings_updated" ||
+        data.type === "linwidget_settings_sync" ||
+        data.type === "linwidget_appearance_changed_notification") {
       applyWidgetSettings(data.settings || data);
       return;
     }
@@ -523,17 +651,6 @@ function bindEvents() {
     if (data.action === "info" && data.widget && data.widget.settingsValues) {
       applyWidgetSettings(data.widget.settingsValues);
       return;
-    }
-
-    if (data.type === "linwidget_appearance_changed_notification") {
-      const settings = data.settings;
-      if (settings && typeof settings === "object" && typeof settings.theme === "string") {
-        const isL = settings.theme === "light";
-        document.body.classList.toggle("light-theme", isL);
-        try {
-          localStorage.setItem(STORAGE_KEY_THEME, settings.theme);
-        } catch (_) {}
-      }
     }
   };
 
@@ -543,14 +660,26 @@ function bindEvents() {
   }
 }
 
+function queryHostSettings() {
+  const req = {
+    type: "widget_manager_request",
+    action: "info",
+    widgetId: "Weather"
+  };
+  if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+    try { window.linwidget.postMessage(req); } catch (_) {}
+  }
+  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
+    try { window.chrome.webview.postMessage(req); } catch (_) {}
+  }
+}
+
 // ──────────────────────────────────────────────
 // Boot Sequence
 // ──────────────────────────────────────────────
-
-migrateLegacyLocation();
-initTheme();
+setupResponsiveObserver();
 bindEvents();
-syncSettingsFromBackend();
+queryHostSettings();
 
 const initialCities = getSavedCities();
 if (initialCities.length > 0) {

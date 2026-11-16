@@ -13,6 +13,5 @@
   "resizable": true,
   "entry": "index.html",
   "settings": "settings.html",
-  "multiInstance": true,
-  "permissions": ["storage", "desktop"]
+  "multiInstance": true
 }

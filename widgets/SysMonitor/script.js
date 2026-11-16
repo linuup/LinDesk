@@ -27,17 +27,21 @@ const detailContents = {
 };
 
 const detailTitles = {
-  cpu: 'CPU PROCESSOR DETAIL',
-  gpu: 'GPU GRAPHICS DETAIL',
-  ram: 'RAM MEMORY DETAIL',
-  disk: 'STORAGE VOLUMES DETAIL',
-  net: 'NETWORK TOPOLOGY DETAIL',
-  battery: 'POWER & BATTERY DETAIL'
+  cpu: 'CPU 详情',
+  gpu: 'GPU 详情',
+  ram: 'RAM 内存详情',
+  disk: '存储卷详情',
+  net: '网络拓扑详情',
+  battery: '电源与电池详情'
 };
 
 let activeDetailModule = null;
 let selectedGpuIndex = 0;
 let cachedGpuData = null;
+
+// ================= CLIENT CONFIGURATION =================
+// 运行时间统计基准：'boot' 为本次开机通电时长 (默认)，'kernel' 为内核累计运行时间 (任务管理器标准)
+let UPTIME_DISPLAY_MODE = 'boot';
 
 // Open Detail View
 function openDetail(moduleKey) {
@@ -78,7 +82,10 @@ function closeDetail() {
 
 // Bind Direct Single Click on Overview Hardware Cards
 const hardwareCards = document.querySelectorAll('.hardware-card');
-hardwareCards.forEach(card => {
+
+
+
+ hardwareCards.forEach(card => {
   card.addEventListener('click', (e) => {
     e.preventDefault();
     const detailKey = card.getAttribute('data-detail');
@@ -104,6 +111,31 @@ const dom = {
   ribbonCpu: document.querySelector('.hardware-card[data-detail="cpu"] .accent-ribbon'),
   ribbonGpu: document.querySelector('.hardware-card[data-detail="gpu"] .accent-ribbon'),
   ribbonDisk: document.querySelector('.hardware-card[data-detail="disk"] .accent-ribbon'),
+
+  
+  // Capsule Mode Elements
+  capCpuUsage: document.getElementById('capCpuUsage'),
+  capCpuTemp: document.getElementById('capCpuTemp'),
+  capCpuBar: document.getElementById('capCpuBar'),
+
+  capGpuUsage: document.getElementById('capGpuUsage'),
+  capGpuTemp: document.getElementById('capGpuTemp'),
+  capGpuBar: document.getElementById('capGpuBar'),
+
+  capRamUsage: document.getElementById('capRamUsage'),
+  capRamUsed: document.getElementById('capRamUsed'),
+  capRamBar: document.getElementById('capRamBar'),
+
+  capDiskUsage: document.getElementById('capDiskUsage'),
+  capDiskFree: document.getElementById('capDiskFree'),
+  capDiskBar: document.getElementById('capDiskBar'),
+
+  capNetDown: document.getElementById('capNetDown'),
+  capNetUp: document.getElementById('capNetUp'),
+
+  capBatteryItem: document.getElementById('capBatteryItem'),
+  capBatPercent: document.getElementById('capBatPercent'),
+  capBatBar: document.getElementById('capBatBar'),
 
   // Level 1: Overview
   ovCpuName: document.getElementById('ovCpuName'),
@@ -157,6 +189,10 @@ const dom = {
   dtCpuProc: document.getElementById('dtCpuProc'),
   dtCpuUptime: document.getElementById('dtCpuUptime'),
   dtCpuBootTime: document.getElementById('dtCpuBootTime'),
+  dtCpuActiveUptime: document.getElementById('dtCpuActiveUptime'),
+  dtCpuActiveBootTime: document.getElementById('dtCpuActiveBootTime'),
+  dtCpuKernelUptime: document.getElementById('dtCpuKernelUptime'),
+  dtCpuKernelBootTime: document.getElementById('dtCpuKernelBootTime'),
   dtCpuSockets: document.getElementById('dtCpuSockets'),
   dtCpuVirt: document.getElementById('dtCpuVirt'),
   dtCpuL1Cache: document.getElementById('dtCpuL1Cache'),
@@ -235,7 +271,11 @@ const dom = {
   dtNetIp: document.getElementById('dtNetIp'),
   dtNetGateway: document.getElementById('dtNetGateway'),
 
+  ovBatRail: document.getElementById('ovBatRail'),
+
   // Level 2.5 Battery & Power Detail
+  dtBatTag: document.getElementById('dtBatTag'),
+  dtBatRail: document.getElementById('dtBatRail'),
   dtBatPercent: document.getElementById('dtBatPercent'),
   dtBatUnit: document.getElementById('dtBatUnit'),
   dtBatStatePill: document.getElementById('dtBatStatePill'),
@@ -263,6 +303,24 @@ function formatRate(bytesPerSec) {
 }
 
 const pad2 = (n) => String(Math.floor(n)).padStart(2, '0');
+
+
+function cleanGpuName(name) {
+  if (!name || typeof name !== 'string') return 'Graphics';
+  return name
+    .replace(/NVIDIAs+GeForces+/i, 'GeForce ')
+    .replace(/AMDs+Radeons+/i, 'Radeon ')
+    .replace(/Intels+Arcs+/i, 'Arc ')
+    .replace(/Intels+UHDs+Graphics/i, 'Intel UHD')
+    .replace(/Intels+Iriss+Xes+Graphics/i, 'Iris Xe')
+    .replace(/(R)|(TM)/gi, '')
+    .trim();
+}
+
+function cleanCpuName(name) {
+  if (!name || typeof name !== 'string') return 'Processor';
+  return name.replace(/\(R\)|\(TM\)/gi, '').replace(/\s+/g, ' ').trim();
+}
 
 function formatUptimeTaskMgr(seconds) {
   if (!seconds || seconds <= 0) return '--';
@@ -505,6 +563,25 @@ function parseMemoryInfo(m) {
   };
 }
 
+
+// ================= SEMANTIC COLOR DISPATCHER =================
+// 正常: 苹果蓝 (#0071e3), 中载: 琥珀金 (#f59e0b), 告警: 珊瑚红 (#ef4444)
+function setSemanticBar(barEl, percent, isOverload = false) {
+  if (!barEl) return;
+  const p = Math.min(100, Math.max(0, percent));
+  barEl.style.width = `${p}%`;
+  if (isOverload || p >= 85) {
+    barEl.style.background = 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)';
+    barEl.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.4)';
+  } else if (p >= 70) {
+    barEl.style.background = 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)';
+    barEl.style.boxShadow = '0 0 8px rgba(245, 158, 11, 0.35)';
+  } else {
+    barEl.style.background = 'linear-gradient(90deg, #2563eb 0%, #3b82f6 100%)';
+    barEl.style.boxShadow = '0 0 8px rgba(37, 99, 235, 0.25)';
+  }
+}
+
 // ================= HARDWARE SNAPSHOT INGESTION =================
 window.updateSystemTelemetry = function(data) {
   if (!data || typeof data !== 'object') return;
@@ -557,13 +634,23 @@ window.updateSystemTelemetry = function(data) {
     }
 
     // Uptime & Boot Time
-    const cpuUptimeSec = c.uptimeSeconds !== undefined ? c.uptimeSeconds : globalUptime;
-    const bootMs = c.bootTimestampMs || data.bootTimestampMs;
-    currentUptimeSec = cpuUptimeSec;
+    const kernelUptimeSec = c.kernelUptimeSeconds !== undefined ? c.kernelUptimeSeconds : (c.uptimeSeconds !== undefined ? c.uptimeSeconds : globalUptime);
+    const kernelBootMs = c.kernelBootTimestampMs || c.bootTimestampMs || data.bootTimestampMs;
+
+    const activeUptimeSec = c.activeUptimeSeconds !== undefined ? c.activeUptimeSeconds : (c.uptimeSeconds !== undefined ? c.uptimeSeconds : globalUptime);
+    const activeBootMs = c.activeBootTimestampMs || c.bootTimestampMs || data.bootTimestampMs;
+
+    currentActiveUptimeSec = activeUptimeSec;
+    currentKernelUptimeSec = kernelUptimeSec;
+    currentUptimeSec = (UPTIME_DISPLAY_MODE === 'kernel') ? kernelUptimeSec : activeUptimeSec;
     lastTelemetryTimestamp = Date.now();
-    const ovUptimeText = formatUptimeOverview(cpuUptimeSec);
-    const taskMgrUptimeText = formatUptimeTaskMgr(cpuUptimeSec);
-    const bootTimeText = formatBootTimestamp(cpuUptimeSec, bootMs);
+
+    const activeUptimeText = formatUptimeOverview(activeUptimeSec);
+    const kernelUptimeText = formatUptimeTaskMgr(kernelUptimeSec);
+    const activeBootText = formatBootTimestamp(activeUptimeSec, activeBootMs);
+    const kernelBootText = formatBootTimestamp(kernelUptimeSec, kernelBootMs);
+
+    const ovUptimeText = (UPTIME_DISPLAY_MODE === 'kernel') ? kernelUptimeText : activeUptimeText;
 
     // Overload Dynamic Alert (>85% or >85°C -> Coral Laser Glow)
     const isCpuOverload = cpuP > 85 || (rawTemp !== undefined && rawTemp > 85);
@@ -571,17 +658,22 @@ window.updateSystemTelemetry = function(data) {
     if (dom.ribbonCpu) dom.ribbonCpu.classList.toggle('ribbon-coral', isCpuOverload);
 
     // Level 1: Overview
-    if (dom.ovCpuName) dom.ovCpuName.textContent = cpuName;
+    if (dom.ovCpuName) dom.ovCpuName.textContent = cleanCpuName(cpuName);
     if (dom.ovCpuUsage) dom.ovCpuUsage.textContent = cpuP;
     if (dom.ovCpuTemp) dom.ovCpuTemp.textContent = tempText;
     if (dom.ovCpuClock) dom.ovCpuClock.textContent = curClockText !== '-- GHz' ? curClockText : (baseClockText !== '-- GHz' ? baseClockText : `${lCores} 线程`);
     if (dom.ovSysUptime) {
       dom.ovSysUptime.textContent = ovUptimeText;
-      dom.ovSysUptime.title = "系统开机运行时间 任务管理器格式 " + taskMgrUptimeText;
+      dom.ovSysUptime.title = "本次通电运行: " + activeUptimeText + " | 内核累计运行: " + kernelUptimeText + "，点击可切换显示基准";
     }
+    
+    // Capsule CPU
+    if (dom.capCpuUsage) dom.capCpuUsage.textContent = `${cpuP}%`;
+    if (dom.capCpuTemp) dom.capCpuTemp.textContent = tempText !== '-- °C' ? `${Math.round(rawTemp)}°` : `${curClockGhz.toFixed(1)}G`;
+    if (dom.capCpuBar) setSemanticBar(dom.capCpuBar, cpuP, isCpuOverload);
+
     if (dom.ovCpuBar) {
-      dom.ovCpuBar.style.width = `${Math.min(100, Math.max(0, cpuP))}%`;
-      dom.ovCpuBar.style.background = isCpuOverload ? 'var(--accent-coral)' : 'var(--accent-cyan)';
+      setSemanticBar(dom.ovCpuBar, cpuP, isCpuOverload);
     }
 
     // Level 2.1: CPU Detail
@@ -645,18 +737,14 @@ window.updateSystemTelemetry = function(data) {
 
       dom.dtCoresGrid.innerHTML = cores.map(core => {
         const u = Math.round(core.usage !== undefined ? core.usage : 0);
-        const freqText = core.frequencyMHz ? `${(core.frequencyMHz / 1000).toFixed(1)}G` : '';
         return `
-          <div class="core-cell font-mono">
+          <div class="core-cell font-mono" title="${core.name || `C${core.id}`}: ${u}% ${core.frequencyMHz ? (core.frequencyMHz / 1000).toFixed(2) + ' GHz' : ''}">
             <div class="core-cell-top">
               <span class="core-name">${core.name || `C${core.id}`}</span>
-              <span class="core-freq">${freqText}</span>
-            </div>
-            <div class="core-cell-bottom">
-              <div class="core-bar-track">
-                <div class="core-bar-fill" style="width: ${Math.min(100, Math.max(0, u))}%;"></div>
-              </div>
               <span class="core-usage-num">${u}%</span>
+            </div>
+            <div class="core-bar-track">
+              <div class="core-bar-fill" style="width: ${Math.min(100, Math.max(0, u))}%;"></div>
             </div>
           </div>
         `;
@@ -668,11 +756,18 @@ window.updateSystemTelemetry = function(data) {
     if (dom.dtCpuTempFull) dom.dtCpuTempFull.textContent = tempText;
     if (dom.dtCpuPower) dom.dtCpuPower.textContent = powerText;
     if (dom.dtCpuProc) dom.dtCpuProc.textContent = c.processCount !== undefined ? `${c.processCount} 个` : '--';
-    if (dom.dtCpuUptime) {
-      dom.dtCpuUptime.textContent = taskMgrUptimeText;
-      dom.dtCpuUptime.title = formatUptimeFull(cpuUptimeSec);
+    if (dom.dtCpuActiveUptime) {
+      dom.dtCpuActiveUptime.textContent = activeUptimeText;
+      dom.dtCpuActiveUptime.title = formatUptimeFull(activeUptimeSec);
     }
-    if (dom.dtCpuBootTime) dom.dtCpuBootTime.textContent = bootTimeText;
+    if (dom.dtCpuActiveBootTime) dom.dtCpuActiveBootTime.textContent = activeBootText;
+    if (dom.dtCpuKernelUptime) {
+      dom.dtCpuKernelUptime.textContent = kernelUptimeText;
+      dom.dtCpuKernelUptime.title = formatUptimeFull(kernelUptimeSec);
+    }
+    if (dom.dtCpuKernelBootTime) dom.dtCpuKernelBootTime.textContent = kernelBootText;
+    if (dom.dtCpuUptime) dom.dtCpuUptime.textContent = kernelUptimeText;
+    if (dom.dtCpuBootTime) dom.dtCpuBootTime.textContent = kernelBootText;
   }
 
   // 2. GPU
@@ -721,13 +816,18 @@ window.updateSystemTelemetry = function(data) {
     }
 
     // Level 1: Overview
-    if (dom.ovGpuName) dom.ovGpuName.textContent = gpuName;
+    if (dom.ovGpuName) dom.ovGpuName.textContent = cleanGpuName(gpuName);
     if (dom.ovGpuUsage) dom.ovGpuUsage.textContent = gpuP;
     if (dom.ovGpuTemp) dom.ovGpuTemp.textContent = gpuTempText;
     if (dom.ovGpuVram) dom.ovGpuVram.textContent = vTotalGB !== '--' ? `${vUsedGB} / ${vTotalGB} GB` : '-- GB';
+    
+    // Capsule GPU
+    if (dom.capGpuUsage) dom.capGpuUsage.textContent = `${gpuP}%`;
+    if (dom.capGpuTemp) dom.capGpuTemp.textContent = gpuTempText !== '-- °C' ? `${Math.round(rawGpuTemp)}°` : (vTotalGB !== '--' ? `${vUsedGB}G` : '--');
+    if (dom.capGpuBar) setSemanticBar(dom.capGpuBar, gpuP, isGpuOverload);
+
     if (dom.ovGpuBar) {
-      dom.ovGpuBar.style.width = `${Math.min(100, Math.max(0, gpuP))}%`;
-      dom.ovGpuBar.style.background = isGpuOverload ? 'var(--accent-coral)' : 'var(--accent-purple)';
+      setSemanticBar(dom.ovGpuBar, gpuP, isGpuOverload);
     }
 
     // Level 2.2: GPU Detail
@@ -769,7 +869,15 @@ window.updateSystemTelemetry = function(data) {
     if (dom.ovRamUsage) dom.ovRamUsage.textContent = ramP;
     if (dom.ovRamUsed) dom.ovRamUsed.textContent = `${usedGB.toFixed(1)} GB`;
     if (dom.ovRamTotal) dom.ovRamTotal.textContent = `/ ${totalGB.toFixed(0)} GB`;
-    if (dom.ovRamBar) dom.ovRamBar.style.width = `${Math.min(100, Math.max(0, ramP))}%`;
+    
+    // Capsule RAM
+    if (dom.capRamUsage) dom.capRamUsage.textContent = `${ramP}%`;
+    if (dom.capRamUsed) dom.capRamUsed.textContent = `${usedGB.toFixed(1)}G`;
+    if (dom.capRamBar) setSemanticBar(dom.capRamBar, ramP, ramP > 85);
+
+    if (dom.ovRamBar) {
+      setSemanticBar(dom.ovRamBar, ramP, ramP > 85);
+    }
 
     // Level 2.3: RAM Detail - Modern Visualizer
     if (dom.dtRamUsedHuge) dom.dtRamUsedHuge.textContent = usedGB.toFixed(1);
@@ -854,18 +962,23 @@ window.updateSystemTelemetry = function(data) {
 
     // Level 1: Overview DISK Card
     if (dom.ovDiskName) {
-      dom.ovDiskName.textContent = drives.length > 0 ? `${drives.length} 个存储卷` : '本地存储阵列';
+      dom.ovDiskName.textContent = drives.length > 0 ? `${drives.length}卷` : '卷';
     }
     if (dom.ovDiskUsage) dom.ovDiskUsage.textContent = diskP;
     if (dom.ovDiskUsed) {
-      dom.ovDiskUsed.textContent = totalTB >= 1 ? `${usedTB.toFixed(1)} TB` : `${usedGB.toFixed(0)} GB`;
+      dom.ovDiskUsed.textContent = totalTB >= 1 ? `${usedTB.toFixed(1)}T` : `${usedGB.toFixed(0)}G`;
     }
     if (dom.ovDiskTotal) {
-      dom.ovDiskTotal.textContent = totalTB >= 1 ? `/ ${totalTB.toFixed(1)} TB` : `/ ${totalGB.toFixed(0)} GB`;
+      dom.ovDiskTotal.textContent = totalTB >= 1 ? `/${totalTB.toFixed(1)}T` : `/${totalGB.toFixed(0)}G`;
     }
+    
+    // Capsule DISK
+    if (dom.capDiskUsage) dom.capDiskUsage.textContent = `${diskP}%`;
+    if (dom.capDiskFree) dom.capDiskFree.textContent = formatBytes(freeBytes, 0);
+    if (dom.capDiskBar) setSemanticBar(dom.capDiskBar, diskP, isDiskWarning);
+
     if (dom.ovDiskBar) {
-      dom.ovDiskBar.style.width = `${diskP}%`;
-      dom.ovDiskBar.style.background = isDiskWarning ? 'var(--accent-coral)' : 'var(--accent-teal)';
+      setSemanticBar(dom.ovDiskBar, diskP, isDiskWarning);
     }
     if (dom.cardDisk) dom.cardDisk.classList.toggle('card-overload', isDiskWarning);
     if (dom.ribbonDisk) dom.ribbonDisk.classList.toggle('ribbon-coral', isDiskWarning);
@@ -916,25 +1029,32 @@ window.updateSystemTelemetry = function(data) {
       }
     }
 
-    // Render partition stack
-    if (dom.dtVolCountTag) dom.dtVolCountTag.textContent = `${drives.length} 个磁盘逻辑卷`;
+    // Render modern logical drive volume cards
+    if (dom.dtVolCountTag) dom.dtVolCountTag.textContent = `${drives.length} 个挂载分区`;
     if (dom.dtDriveStack) {
       dom.dtDriveStack.innerHTML = drives.map(drv => {
         const dTot = drv.totalBytes || 1;
         const dFre = drv.freeBytes || 0;
         const dUsd = drv.usedBytes !== undefined ? drv.usedBytes : (dTot - dFre);
         const dPct = Math.min(100, Math.max(0, Math.round((dUsd / dTot) * 100)));
-        const dWarn = dPct >= 90;
-        const barClr = dWarn ? 'var(--accent-coral)' : 'var(--accent-teal)';
-        const alertCls = dWarn ? 'ds-cap-alert' : '';
+        const isBoot = drv.root && drv.root.toUpperCase().startsWith('C:');
+        const isWarn = dPct >= 90;
+        const barClr = isWarn ? 'var(--accent-coral)' : 'var(--accent-teal)';
         return `
-          <div class="drive-slot-row font-mono">
-            <div class="ds-head">
-              <span class="ds-root-badge">${drv.root}</span>
-              <span class="ds-cap ${alertCls}">剩余 <b>${formatBytes(dFre, 1)}</b> / ${formatBytes(dTot, 0)} · ${dPct}%</span>
+          <div class="drive-card-item font-mono">
+            <div class="dci-head">
+              <div class="dci-left">
+                <span class="dci-root-pill">${drv.root}</span>
+                ${isBoot ? '<span class="dci-tag-boot">系统卷</span>' : ''}
+              </div>
+              <span class="dci-pct ${isWarn ? 'alert' : ''}">${dPct}%</span>
             </div>
-            <div class="track-bar">
-              <div class="fill-bar" style="width: ${dPct}%; background: ${barClr};"></div>
+            <div class="dci-space-row">
+              <span class="dci-space-free">可用 <b>${formatBytes(dFre, 1)}</b></span>
+              <span class="dci-space-total">总容量 ${formatBytes(dTot, 0)}</span>
+            </div>
+            <div class="dci-rail">
+              <div class="dci-fill" style="width: ${dPct}%; background: ${barClr};"></div>
             </div>
           </div>
         `;
@@ -958,6 +1078,11 @@ window.updateSystemTelemetry = function(data) {
     if (dom.ovNetName) dom.ovNetName.textContent = adapterName;
     if (dom.ovNetDown) dom.ovNetDown.textContent = formatRate(rx);
     if (dom.ovNetUp) dom.ovNetUp.textContent = formatRate(tx);
+    
+    // Capsule NET
+    if (dom.capNetDown) dom.capNetDown.textContent = `↓${formatRate(rx)}`;
+    if (dom.capNetUp) dom.capNetUp.textContent = `↑${formatRate(tx)}`;
+
     if (dom.ovNetBar) {
       const activeTrafficPct = Math.min(100, Math.max(6, Math.round(((rx + tx) / (1024 * 1024 * 5)) * 100)));
       dom.ovNetBar.style.width = `${activeTrafficPct}%`;
@@ -983,10 +1108,10 @@ window.updateSystemTelemetry = function(data) {
     const hasBattery = !!b.available;
     const isAcLine = !!b.acLineOnline;
     const isCharging = !!b.charging;
-    const percent = b.percent !== undefined && b.percent >= 0 ? b.percent : (hasBattery ? 100 : 100);
-    const lifeSeconds = b.lifeSeconds !== undefined && b.lifeSeconds > 0 ? b.lifeSeconds : 0;
+    const percent = (b.percent !== undefined && b.percent >= 0) ? b.percent : 0;
+    const lifeSeconds = (b.lifeSeconds !== undefined && b.lifeSeconds > 0) ? b.lifeSeconds : 0;
 
-    let powerStatusSummary = '已连接电源';
+    let powerStatusSummary = '交流供电';
     if (hasBattery) {
       if (isCharging) {
         powerStatusSummary = '正在充电';
@@ -996,50 +1121,104 @@ window.updateSystemTelemetry = function(data) {
         powerStatusSummary = '电池供电';
       }
     } else {
-      powerStatusSummary = isAcLine ? '已连接电源' : '未连接电源';
+      powerStatusSummary = isAcLine ? '交流供电' : '未连接电源';
     }
 
     let lifeTimeText = '--';
-    if (lifeSeconds > 0) {
-      const h = Math.floor(lifeSeconds / 3600);
-      const m = Math.floor((lifeSeconds % 3600) / 60);
-      lifeTimeText = `剩余约 ${h}小时${m}分`;
-    } else if (hasBattery && isCharging) {
-      lifeTimeText = '外接电源充电中';
-    } else if (!hasBattery) {
-      lifeTimeText = '台式机持续供电';
+    if (hasBattery) {
+      if (lifeSeconds > 0) {
+        const h = Math.floor(lifeSeconds / 3600);
+        const m = Math.floor((lifeSeconds % 3600) / 60);
+        lifeTimeText = `剩余约 ${h}小时${m}分`;
+      } else if (isCharging) {
+        lifeTimeText = '外接电源充电中';
+      } else {
+        lifeTimeText = isAcLine ? '已充满 未在充电' : '放电中';
+      }
+    } else {
+      lifeTimeText = '持续稳定供电 无续航限制';
     }
 
     // Level 1: Overview
-    if (dom.ovBatStatus) dom.ovBatStatus.textContent = hasBattery ? '内置电池' : '供电状态';
-    if (dom.ovBatPercent) dom.ovBatPercent.textContent = hasBattery ? percent : '100';
-    if (dom.ovBatUnit) dom.ovBatUnit.textContent = '%';
-    if (dom.ovBatState) dom.ovBatState.textContent = powerStatusSummary;
-    if (dom.ovBatBar) dom.ovBatBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    // 台式机无电池则彻底隐藏电源卡片，笔记本有电池则自适应展现
+    
+    // Capsule Battery
+    if (dom.capBatteryItem) dom.capBatteryItem.style.display = hasBattery ? 'inline-flex' : 'none';
+    if (hasBattery) {
+      if (dom.capBatPercent) dom.capBatPercent.textContent = `${percent}%`;
+      if (dom.capBatBar) setSemanticBar(dom.capBatBar, percent, percent <= 20);
+    }
+
+    const cardBat = document.getElementById('cardBattery') || dom.cardBattery;
+    if (cardBat) {
+      cardBat.style.display = hasBattery ? 'flex' : 'none';
+    }
+    if (hasBattery) {
+      if (dom.ovBatStatus) dom.ovBatStatus.textContent = '电池';
+      if (dom.ovBatPercent) {
+        dom.ovBatPercent.textContent = percent;
+        dom.ovBatPercent.style.fontSize = '';
+      }
+      if (dom.ovBatUnit) dom.ovBatUnit.style.display = 'inline';
+      if (dom.ovBatState) dom.ovBatState.textContent = powerStatusSummary;
+      if (dom.ovBatBar) setSemanticBar(dom.ovBatBar, percent, percent <= 20);
+      if (dom.ovBatRail) dom.ovBatRail.style.visibility = 'visible';
+    }
 
     // Level 2.5: Battery Detail
-    if (dom.dtBatPercent) dom.dtBatPercent.textContent = hasBattery ? percent : '100';
-    if (dom.dtBatStatePill) dom.dtBatStatePill.textContent = powerStatusSummary;
-    if (dom.dtBatBar) dom.dtBatBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
-    if (dom.dtBatAvailable) dom.dtBatAvailable.textContent = hasBattery ? '已安装物理电池' : '未检测到电池 台式机设备';
-    if (dom.dtBatAcLine) dom.dtBatAcLine.textContent = isAcLine ? '已接入外接电源' : '未接入外接电源';
-    if (dom.dtBatCharging) dom.dtBatCharging.textContent = isCharging ? '正在充电' : (isAcLine ? '已充满 未在充电' : '放电中');
-    if (dom.dtBatLife) dom.dtBatLife.textContent = lifeTimeText;
+    if (dom.dtBatTag) dom.dtBatTag.textContent = hasBattery ? 'BATTERY LEVEL' : 'POWER SUPPLY';
+    if (hasBattery) {
+      if (dom.dtBatPercent) {
+        dom.dtBatPercent.textContent = percent;
+        dom.dtBatPercent.style.fontSize = '';
+      }
+      if (dom.dtBatUnit) dom.dtBatUnit.style.display = 'inline';
+      if (dom.dtBatStatePill) dom.dtBatStatePill.textContent = powerStatusSummary;
+      if (dom.dtBatBar) dom.dtBatBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+      if (dom.dtBatRail) dom.dtBatRail.style.visibility = 'visible';
+      if (dom.dtBatAvailable) dom.dtBatAvailable.textContent = '已安装物理电池';
+      if (dom.dtBatAcLine) dom.dtBatAcLine.textContent = isAcLine ? '已接入外接电源' : '未接入外接电源';
+      if (dom.dtBatCharging) dom.dtBatCharging.textContent = isCharging ? '正在充电' : (isAcLine ? '已充满 未充电' : '放电中');
+      if (dom.dtBatLife) dom.dtBatLife.textContent = lifeTimeText;
+    } else {
+      if (dom.dtBatPercent) {
+        dom.dtBatPercent.textContent = '交流供电';
+        dom.dtBatPercent.style.fontSize = '20px';
+      }
+      if (dom.dtBatUnit) dom.dtBatUnit.style.display = 'none';
+      if (dom.dtBatStatePill) dom.dtBatStatePill.textContent = isAcLine ? '稳定持续供电' : '离线';
+      if (dom.dtBatBar) dom.dtBatBar.style.width = '0%';
+      if (dom.dtBatRail) dom.dtBatRail.style.visibility = 'hidden';
+      if (dom.dtBatAvailable) dom.dtBatAvailable.textContent = '未配备物理电池 台式机系统';
+      if (dom.dtBatAcLine) dom.dtBatAcLine.textContent = isAcLine ? '交流电已连通' : '未连接';
+      if (dom.dtBatCharging) dom.dtBatCharging.textContent = '交流供电 无需充电';
+      if (dom.dtBatLife) dom.dtBatLife.textContent = lifeTimeText;
+    }
     if (dom.dtOsVersion) dom.dtOsVersion.textContent = osVerText;
   }
 };
 
 // ================= LIVE UPTIME TICKER & PREVIEW SIMULATION =================
+let currentActiveUptimeSec = 0;
+let currentKernelUptimeSec = 0;
 let currentUptimeSec = 0;
 let lastTelemetryTimestamp = 0;
 
-// High precision live ticker every second so up time ticks smoothly
+// High precision live ticker every second so uptime ticks smoothly
 setInterval(() => {
-  if (currentUptimeSec > 0 && lastTelemetryTimestamp > 0) {
+  if (lastTelemetryTimestamp > 0) {
     const elapsed = Math.floor((Date.now() - lastTelemetryTimestamp) / 1000);
-    const liveSec = currentUptimeSec + elapsed;
-    if (dom.ovSysUptime) dom.ovSysUptime.textContent = formatUptimeOverview(liveSec);
-    if (dom.dtCpuUptime) dom.dtCpuUptime.textContent = formatUptimeTaskMgr(liveSec);
+    const liveActiveSec = currentActiveUptimeSec + elapsed;
+    const liveKernelSec = currentKernelUptimeSec + elapsed;
+    const activeText = formatUptimeOverview(liveActiveSec);
+    const kernelText = formatUptimeTaskMgr(liveKernelSec);
+
+    if (dom.ovSysUptime) {
+      dom.ovSysUptime.textContent = (UPTIME_DISPLAY_MODE === 'kernel') ? kernelText : activeText;
+    }
+    if (dom.dtCpuActiveUptime) dom.dtCpuActiveUptime.textContent = activeText;
+    if (dom.dtCpuKernelUptime) dom.dtCpuKernelUptime.textContent = kernelText;
+    if (dom.dtCpuUptime) dom.dtCpuUptime.textContent = kernelText;
   }
 }, 1000);
 
@@ -1153,10 +1332,129 @@ function runPreviewTick() {
 // ================= BOOTSTRAP =================
 let currentWatchId = null;
 let currentIntervalMs = 1000;
+let isPermissionBlocked = false;
+
+function openComponentSettings() {
+  const msgOpenSettings = {
+    type: "open_widget_settings",
+    widgetId: "SysMonitor"
+  };
+  const msgRpc = {
+    type: "widget_manager_request",
+    action: "open_settings",
+    widgetId: "SysMonitor"
+  };
+  const msgLegacy = {
+    type: "linwidget_open_settings_request",
+    widgetId: "SysMonitor"
+  };
+
+  if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+    try {
+      window.linwidget.postMessage(msgOpenSettings);
+      window.linwidget.postMessage(msgRpc);
+      window.linwidget.postMessage(msgLegacy);
+    } catch (_) {}
+  }
+
+  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
+    try {
+      window.chrome.webview.postMessage(msgOpenSettings);
+      window.chrome.webview.postMessage(msgRpc);
+      window.chrome.webview.postMessage(msgLegacy);
+    } catch (_) {}
+  }
+
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "linwidget://bridge/postMessage", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.send(JSON.stringify(msgRpc));
+  } catch (_) {}
+}
+
+function renderTelemetryStandbyValues() {
+  // Gracefully transition numeric readouts to clean muted dashes
+  if (dom.ovCpuUsage) dom.ovCpuUsage.textContent = '--';
+  if (dom.ovCpuTemp) dom.ovCpuTemp.textContent = '-- °C';
+  if (dom.ovCpuClock) dom.ovCpuClock.textContent = '-- GHz';
+  if (dom.ovCpuBar) dom.ovCpuBar.style.width = '0%';
+  if (dom.ovSysUptime) dom.ovSysUptime.textContent = 'STANDBY';
+
+  if (dom.ovGpuUsage) dom.ovGpuUsage.textContent = '--';
+  if (dom.ovGpuTemp) dom.ovGpuTemp.textContent = '-- °C';
+  if (dom.ovGpuVram) dom.ovGpuVram.textContent = '-- GB';
+  if (dom.ovGpuBar) dom.ovGpuBar.style.width = '0%';
+
+  if (dom.ovRamUsage) dom.ovRamUsage.textContent = '--';
+  if (dom.ovRamUsed) dom.ovRamUsed.textContent = '-- GB';
+  if (dom.ovRamTotal) dom.ovRamTotal.textContent = '/ -- GB';
+  if (dom.ovRamBar) dom.ovRamBar.style.width = '0%';
+
+  if (dom.ovDiskUsage) dom.ovDiskUsage.textContent = '--%';
+  if (dom.ovDiskUsed) dom.ovDiskUsed.textContent = '-- GB';
+  if (dom.ovDiskTotal) dom.ovDiskTotal.textContent = '/ -- TB';
+  if (dom.ovDiskBar) dom.ovDiskBar.style.width = '0%';
+
+  if (dom.ovNetDown) dom.ovNetDown.textContent = '-- B/s';
+  if (dom.ovNetUp) dom.ovNetUp.textContent = '-- B/s';
+  if (dom.ovNetBar) dom.ovNetBar.style.width = '0%';
+
+  // Detail sheets if currently opened
+  if (dom.dtCpuUsage) dom.dtCpuUsage.textContent = '--';
+  if (dom.dtCpuClock) dom.dtCpuClock.textContent = '-- GHz';
+  if (dom.dtCpuTemp) dom.dtCpuTemp.textContent = '-- °C';
+  if (dom.dtCpuBar) dom.dtCpuBar.style.width = '0%';
+
+  // Reset network history waveform
+  historyRx.fill(0);
+  historyTx.fill(0);
+  if (activeDetailModule === 'net') {
+    drawCanvas();
+  }
+}
+
+function setPermissionBlockedState(blocked, message) {
+  isPermissionBlocked = blocked;
+  const statusBar = document.getElementById('telemetryStatusBar');
+
+  if (blocked) {
+    if (simTimer) {
+      clearInterval(simTimer);
+      simTimer = null;
+    }
+    if (currentWatchId && window.desktop && window.desktop.systemInfo) {
+      try { window.desktop.systemInfo.unwatch(currentWatchId); } catch (e) {}
+      currentWatchId = null;
+    }
+
+    document.body.classList.add('standby-state');
+    if (statusBar) {
+      statusBar.style.display = 'flex';
+      const openBtn = document.getElementById('tsbOpenSettingsBtn');
+      if (openBtn && !openBtn.__bound) {
+        openBtn.__bound = true;
+        openBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openComponentSettings();
+        });
+      }
+    }
+
+    renderTelemetryStandbyValues();
+  } else {
+    document.body.classList.remove('standby-state');
+    if (statusBar) {
+      statusBar.style.display = 'none';
+    }
+  }
+}
 
 async function startTelemetryStream() {
+  if (isPermissionBlocked) return;
+
   if (!window.desktop || !window.desktop.systemInfo) {
-    if (!simTimer) {
+    if (!simTimer && location.protocol !== 'linwidget:') {
       simTimer = setInterval(runPreviewTick, 1000);
       runPreviewTick();
     }
@@ -1176,29 +1474,163 @@ async function startTelemetryStream() {
     }
     if (typeof window.desktop.systemInfo.getSnapshot === 'function') {
       window.desktop.systemInfo.getSnapshot().then(initial => {
+        setPermissionBlockedState(false);
         if (initial && typeof initial === 'object') {
           window.updateSystemTelemetry(initial);
         }
       }).catch(err => {
-        console.warn("[SysMonitor] Initial snapshot warning:", err);
+        const msg = String(err && err.message || err || '');
+        if (msg.includes('Desktop permission is required') || msg.includes('permission not granted')) {
+          setPermissionBlockedState(true, msg);
+        }
       });
     }
     currentWatchId = window.desktop.systemInfo.watch(info => {
+      setPermissionBlockedState(false);
       window.updateSystemTelemetry(info);
     }, currentIntervalMs);
   } catch (e) {
-    console.warn("Watch failed, fallback to preview", e);
+    const msg = String(e && e.message || e || '');
+    if (msg.includes('Desktop permission is required') || msg.includes('permission not granted')) {
+      setPermissionBlockedState(true, msg);
+    }
   }
 }
 
+
+// ================= ONE-CLICK CLIPBOARD COPY HELPER =================
+function showCopyToast(text) {
+  const toast = document.getElementById('copyToast');
+  if (!toast) return;
+  toast.textContent = text ? `已复制: ${text}` : '已复制到剪贴板';
+  toast.classList.add('show');
+  clearTimeout(window.__copyToastTimer);
+  window.__copyToastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 1600);
+}
+
+function copyToClipboard(str) {
+  if (!str) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(str).then(() => showCopyToast(str)).catch(() => {
+      fallbackCopy(str);
+    });
+  } else {
+    fallbackCopy(str);
+  }
+}
+
+function fallbackCopy(str) {
+  const ta = document.createElement('textarea');
+  ta.value = str;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showCopyToast(str);
+  } catch (err) {
+    console.error('Copy failed', err);
+  }
+  document.body.removeChild(ta);
+}
+
+// Bind click-to-copy on all property rows and values
+function initPropertyCopyHandlers() {
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('.prop-row');
+    if (row) {
+      const valEl = row.querySelector('.prop-v');
+      const keyEl = row.querySelector('.prop-k');
+      const valText = valEl ? valEl.textContent.trim() : '';
+      const keyText = keyEl ? keyEl.textContent.trim() : '';
+      if (valText && valText !== '--') {
+        copyToClipboard(valText);
+        row.classList.add('copied');
+        setTimeout(() => row.classList.remove('copied'), 400);
+      }
+    }
+  });
+}
+
+
+// ================= DYNAMIC LAYOUT & CAPSULE STATE MACHINE =================
+let currentLayoutConfig = 'auto'; // 'auto' | 'standard' | 'capsule' | 'compact'
+
+function applyLayoutMode(mode) {
+  currentLayoutConfig = mode || 'auto';
+  reevaluateLayout();
+}
+
+function reevaluateLayout() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  let targetMode = currentLayoutConfig;
+
+  if (currentLayoutConfig === 'auto') {
+    // If aspect ratio is wide and short (e.g., width > 360 and height <= 90), or height < 120
+    if (h <= 90 || (w >= 340 && h <= 120)) {
+      targetMode = 'capsule';
+    } else if (w <= 200 || h <= 280) {
+      targetMode = 'compact';
+    } else {
+      targetMode = 'standard';
+    }
+  }
+
+  document.body.classList.toggle('mode-capsule', targetMode === 'capsule');
+  document.body.classList.toggle('mode-compact', targetMode === 'compact');
+}
+
+// Bind resize listener for auto responsiveness
+window.addEventListener('resize', () => {
+  reevaluateLayout();
+});
+
 window.addEventListener('DOMContentLoaded', () => {
+  reevaluateLayout();
+  initPropertyCopyHandlers();
+  document.body.classList.remove('dark-theme');
+  if (dom.ovSysUptime) {
+    dom.ovSysUptime.style.cursor = 'pointer';
+    dom.ovSysUptime.addEventListener('click', (e) => {
+      e.stopPropagation();
+      UPTIME_DISPLAY_MODE = (UPTIME_DISPLAY_MODE === 'boot') ? 'kernel' : 'boot';
+      const elapsed = Math.max(0, Math.floor((Date.now() - lastTelemetryTimestamp) / 1000));
+      const liveActiveSec = currentActiveUptimeSec + elapsed;
+      const liveKernelSec = currentKernelUptimeSec + elapsed;
+      dom.ovSysUptime.textContent = (UPTIME_DISPLAY_MODE === 'kernel') ? formatUptimeTaskMgr(liveKernelSec) : formatUptimeOverview(liveActiveSec);
+    });
+  }
   initCanvas();
   startTelemetryStream();
+});
+
+function handlePermissionEvent(perm, granted) {
+  if (perm === 'desktop') {
+    if (!granted) {
+      setPermissionBlockedState(true);
+    } else {
+      setPermissionBlockedState(false);
+      startTelemetryStream();
+    }
+  }
+}
+
+window.addEventListener("linwidget:permission_changed", (e) => {
+  const d = e && e.detail;
+  if (d) handlePermissionEvent(d.permission, d.granted);
 });
 
 window.addEventListener("message", (event) => {
   const data = event && event.data;
   if (!data || typeof data !== "object") return;
+  if (data.type === "permission_changed") {
+    handlePermissionEvent(data.permission, data.granted);
+    return;
+  }
   if (data.type === "settings_changed" || data.type === "linwidget_appearance_changed_notification") {
     const settings = data.settings;
     if (settings && typeof settings === "object") {
@@ -1206,7 +1638,7 @@ window.addEventListener("message", (event) => {
         document.body.classList.toggle("dark-theme", settings.theme === "dark");
       }
       if (typeof settings.viewMode === "string") {
-        document.body.classList.toggle("mode-compact", settings.viewMode === "compact");
+        applyLayoutMode(settings.viewMode);
       }
       if (settings.refreshInterval !== undefined) {
         const newInt = parseInt(settings.refreshInterval, 10);

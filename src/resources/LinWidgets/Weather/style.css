@@ -1,0 +1,936 @@
+/* ──────────────────────────────────────────────
+   LinDesk Weather Widget - 3 Adaptive UI Layouts
+   1. layout-small-square : Mini Glanceable Badge (e.g. 160x160 ~ 200x200)
+   2. layout-rectangle    : Classic Dual-Pane Banner (e.g. 320x160 ~ 360x180)
+   3. layout-large-square : Full Weather Station Dashboard (e.g. 300x300 ~ 360x360)
+   ────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --font-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+}
+
+html {
+  font-size: 14px;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--font-body);
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.widget {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Meteocons Sky Card Base Surface */
+.glass-panel {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #1677c7 0%, #0d8fd2 50%, #1e80bf 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 16px 40px rgba(10, 50, 90, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-xl);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  padding: 0.85rem 1rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Ambient Radial Glow */
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  top: -40%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 130%;
+  height: 90%;
+  background: radial-gradient(ellipse, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.05) 45%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ──────────────────────────────────────────────
+   Header & Action Controls
+   ────────────────────────────────────────────── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 20;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.location-container {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  min-width: 0;
+  transition: opacity 0.15s ease;
+}
+
+.location-container:hover {
+  opacity: 0.85;
+}
+
+.location-name {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.location-subtitle {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  z-index: 25;
+  position: relative;
+}
+
+.icon-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  outline: none;
+}
+
+.icon-btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Settings button: clearly visible, always clickable, scale on active */
+.settings-btn {
+  opacity: 0.65 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, transform 0.15s ease;
+}
+
+.settings-btn:hover,
+body.is-hovered .settings-btn,
+body:hover .settings-btn,
+.widget:hover .settings-btn,
+.glass-panel:hover .settings-btn {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.settings-btn:active {
+  transform: scale(0.92);
+}
+
+/* ──────────────────────────────────────────────
+   Core Weather & Elements
+   ────────────────────────────────────────────── */
+.weather-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+  z-index: 5;
+}
+
+.current-weather {
+  display: flex;
+  flex-direction: column;
+}
+
+.current-main {
+  display: flex;
+  align-items: center;
+}
+
+.weather-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
+}
+
+.weather-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weather-icon img,
+.weather-icon svg,
+.weather-svg-icon {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.temp-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.temp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.temperature {
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  letter-spacing: -0.04em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.temp-range-badge {
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.condition-row,
+.condition,
+.feels-like {
+  display: none !important;
+}
+
+/* Metric item base */
+.metric {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(4px);
+}
+
+.metric-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.metric-svg-icon {
+  width: 1rem;
+  height: 1rem;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.metric-text-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-label {
+  font-size: 0.65rem;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+.metric-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* Forecast item base */
+.forecast {
+  display: flex;
+}
+
+.forecast-item {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+}
+
+.forecast-day {
+  font-weight: 600;
+}
+
+.forecast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.forecast-icon img,
+.forecast-icon svg,
+.forecast-icon .weather-svg-icon {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+  display: block;
+}
+
+.forecast-temp {
+  font-weight: 700;
+}
+
+.forecast-temp-min {
+  opacity: 0.65;
+  font-weight: 500;
+  margin-left: 0.25rem;
+}
+
+/* ──────────────────────────────────────────────
+   形态 1：小方形布局 (layout-small-square)
+   紧凑轻盈、大字大图标、一瞥即知
+   ────────────────────────────────────────────── */
+body.layout-small-square .glass-panel {
+  padding: 0.45rem 0.65rem 0.4rem 0.65rem;
+  justify-content: space-between;
+}
+
+body.layout-small-square .location-name {
+  font-size: 0.95rem;
+}
+
+body.layout-small-square .weather-content {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.layout-small-square .current-weather {
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.layout-small-square .current-main {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  width: 100%;
+}
+
+body.layout-small-square .weather-icon-wrapper {
+  width: 4rem;
+  height: 4rem;
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 58px;
+  max-height: 58px;
+  flex-shrink: 0;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22));
+}
+
+body.layout-small-square .weather-icon {
+  width: 100%;
+  height: 100%;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+body.layout-small-square .weather-svg-icon {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  object-fit: contain;
+}
+
+body.layout-small-square .temp-block {
+  align-items: center;
+}
+
+body.layout-small-square .temp-row {
+  justify-content: center;
+}
+
+body.layout-small-square .temperature {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+body.layout-small-square .temp-range-badge,
+body.layout-small-square .feels-like,
+body.layout-small-square .condition-row,
+body.layout-small-square .condition {
+  display: none !important;
+}
+
+body.layout-small-square .small-square-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+body.layout-small-square .mini-pill {
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 0.12rem 0.6rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  letter-spacing: -0.01em;
+}
+
+body.layout-small-square .metrics,
+body.layout-small-square .forecast {
+  display: none !important;
+}
+
+/* ──────────────────────────────────────────────
+   形态 2：标准矩形布局 (layout-rectangle)
+   左右双栏平衡、左侧纵向垂直居中、右侧立式多日看板
+   ────────────────────────────────────────────── */
+body.layout-rectangle .glass-panel {
+  padding: 0.75rem 1rem;
+  justify-content: space-between;
+}
+
+body.layout-rectangle .small-square-footer {
+  display: none !important;
+}
+
+body.layout-rectangle .weather-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+/* 左侧气象核心区：整体垂直居中，消除上下脱节与大面积空洞 */
+body.layout-rectangle .current-weather {
+  flex: 1.15;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+body.layout-rectangle .current-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+body.layout-rectangle .weather-icon-wrapper {
+  width: 4.6rem;
+  height: 4.6rem;
+  min-width: 64px;
+  min-height: 64px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22));
+}
+
+body.layout-rectangle .temp-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+body.layout-rectangle .temp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+body.layout-rectangle .temperature {
+  font-size: 3.4rem;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+body.layout-rectangle .temp-range-badge {
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+body.layout-rectangle .condition-row,
+body.layout-rectangle .condition,
+body.layout-rectangle .feels-like {
+  display: none !important;
+}
+
+/* 左侧胶囊指标：三栏等宽、不换行、高度对齐统一 */
+body.layout-rectangle .metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0;
+  flex-wrap: nowrap;
+}
+
+body.layout-rectangle .metric {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.4rem;
+  gap: 0.3rem;
+  height: 1.85rem;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+body.layout-rectangle .metric-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.layout-rectangle .metric-svg-icon {
+  width: 0.88rem;
+  height: 0.88rem;
+}
+
+body.layout-rectangle .metric-text-group {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+body.layout-rectangle .metric-label {
+  display: none !important;
+}
+
+body.layout-rectangle .metric-val {
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.layout-rectangle .metric-pressure {
+  display: none !important;
+}
+
+/* 右侧预报条目卡片 */
+body.layout-rectangle .forecast {
+  width: 44%;
+  max-width: 155px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+body.layout-rectangle .forecast-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.6rem;
+  flex: 1;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-sizing: border-box;
+}
+
+body.layout-rectangle .forecast-day {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+body.layout-rectangle .forecast-icon {
+  width: 1.3rem;
+  height: 1.3rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.layout-rectangle .forecast-temp {
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+body.layout-rectangle .forecast-temp-min {
+  opacity: 0.7;
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-left: 0;
+}
+
+/* ──────────────────────────────────────────────
+   形态 3：大方形气象工作站 (layout-large-square)
+   顶部 Hero + 四宫格专业指标 + 底部多日横向趋势
+   ────────────────────────────────────────────── */
+body.layout-large-square .glass-panel {
+  padding: 0.75rem 0.9rem;
+  justify-content: space-between;
+}
+
+body.layout-large-square .small-square-footer {
+  display: none !important;
+}
+
+body.layout-large-square .location-name {
+  font-size: 1.15rem;
+}
+
+body.layout-large-square .weather-content {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.45rem;
+  overflow: hidden;
+}
+
+body.layout-large-square .current-weather {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+/* 顶部 Hero 气象主体：充满上半部空间，左侧大温标与右侧大图标居中对称，填补右侧空白 */
+body.layout-large-square .current-main {
+  flex: 1.25;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.25rem 0.2rem;
+  width: 100%;
+}
+
+body.layout-large-square .weather-icon-wrapper {
+  width: 7.4rem;
+  height: 7.4rem;
+  min-width: 98px;
+  min-height: 98px;
+  max-width: 120px;
+  max-height: 120px;
+  order: 2;
+  flex-shrink: 0;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.3));
+}
+
+body.layout-large-square .weather-icon {
+  width: 100%;
+  height: 100%;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+body.layout-large-square .weather-icon img,
+body.layout-large-square .weather-icon svg,
+body.layout-large-square .weather-svg-icon {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block !important;
+}
+
+body.layout-large-square .temp-block {
+  order: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+body.layout-large-square .temp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+body.layout-large-square .temperature {
+  font-size: 4.8rem;
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+}
+
+body.layout-large-square .temp-range-badge {
+  font-size: 1.15rem;
+  font-weight: 600;
+  opacity: 0.88;
+  white-space: nowrap;
+}
+
+body.layout-large-square .condition-row,
+body.layout-large-square .condition,
+body.layout-large-square .feels-like {
+  display: none !important;
+}
+
+/* 中部四宫格指标卡 */
+body.layout-large-square .metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.35rem;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+body.layout-large-square .metric {
+  padding: 0.32rem 0.5rem;
+  gap: 0.45rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-sizing: border-box;
+}
+
+body.layout-large-square .metric-svg-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+body.layout-large-square .metric-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+body.layout-large-square .metric-label {
+  display: block;
+  font-size: 0.65rem;
+  opacity: 0.75;
+}
+
+body.layout-large-square .metric-val {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+body.layout-large-square .metric-pressure {
+  display: flex !important;
+}
+
+/* 底部横向多日天气预报条 */
+body.layout-large-square .forecast {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding-top: 0;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+body.layout-large-square .forecast-item {
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 0.35rem 0.25rem;
+  gap: 0.15rem;
+  border-radius: var(--radius-sm);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+body.layout-large-square .forecast-day {
+  font-size: 0.72rem;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+body.layout-large-square .forecast-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+}
+
+body.layout-large-square .forecast-temp {
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  white-space: nowrap;
+}
+
+body.layout-large-square .forecast-temp-min {
+  margin-left: 0;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+/* ──────────────────────────────────────────────
+   Empty State Guidance
+   ────────────────────────────────────────────── */
+.empty-state-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.5rem;
+  padding: 0.6rem;
+}
+
+.empty-icon-wrap {
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon svg {
+  width: 1.4rem;
+  height: 1.4rem;
+  color: #ffffff;
+}
+
+.empty-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.empty-desc {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  max-width: 14rem;
+  line-height: 1.35;
+}
+
+.primary-btn {
+  background: #ffffff;
+  color: #0b6cb5;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.primary-btn:hover {
+  background: #f0f7ff;
+  transform: translateY(-1px);
+}

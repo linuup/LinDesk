@@ -12,8 +12,5 @@
   "type": "html",
   "transparent": true,
   "resizable": true,
-  "entry": "index.html",
-  "permissions": [
-    "storage"
-  ]
+  "entry": "index.html"
 }

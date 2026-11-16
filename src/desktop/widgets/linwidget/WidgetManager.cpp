@@ -90,8 +90,11 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
         return false;
     }
 
+    bool resolvedIsDev = isDevelopment;
+    const QString resolvedPkgPath = resolveOptimalPackagePath(packagePath, &resolvedIsDev, false);
+
     WidgetManifest manifest;
-    if (!WidgetPackage::loadManifest(packagePath, &manifest, errorMessage)) {
+    if (!WidgetPackage::loadManifest(resolvedPkgPath, &manifest, errorMessage)) {
         return false;
     }
 
@@ -99,12 +102,16 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
         if (instanceId) {
             *instanceId = QStringLiteral("wallpaper:") + manifest.id;
         }
-        return startWallpaper(packagePath, isDevelopment, false, errorMessage);
+        return startWallpaper(resolvedPkgPath, resolvedIsDev, false, errorMessage);
     }
 
-    const QString requestedPackageKey = canonicalPackagePath(packagePath);
-    const QString requestedIdentityKey = widgetIdentityKey(manifest, packagePath);
-    const QString requestedLayoutId = instanceLayoutId(manifest, isDevelopment);
+    const QString effectivePkgPath = resolvedPkgPath;
+    const bool effectiveIsDev = resolvedIsDev;
+    const bool effectiveAutoReload = autoReload || (m_hotReloadEnabled && effectiveIsDev);
+
+    const QString requestedPackageKey = canonicalPackagePath(effectivePkgPath);
+    const QString requestedIdentityKey = widgetIdentityKey(manifest, effectivePkgPath);
+    const QString requestedLayoutId = instanceLayoutId(manifest, effectiveIsDev);
     for (const WidgetLayoutState& state : m_layout.states()) {
         QString existingIdentityKey;
         WidgetManifest existingManifest;
@@ -112,8 +119,8 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
             existingIdentityKey = widgetIdentityKey(existingManifest, state.packagePath);
         }
         if (state.instanceId == requestedLayoutId ||
-            (canonicalPackagePath(state.packagePath) == requestedPackageKey && state.instanceId.startsWith(isDevelopment ? QStringLiteral("dev:") : QStringLiteral("installed:"))) ||
-            (!requestedIdentityKey.isEmpty() && existingIdentityKey == requestedIdentityKey && state.instanceId.startsWith(isDevelopment ? QStringLiteral("dev:") : QStringLiteral("installed:")))) {
+            (canonicalPackagePath(state.packagePath) == requestedPackageKey && state.instanceId.startsWith(effectiveIsDev ? QStringLiteral("dev:") : QStringLiteral("installed:"))) ||
+            (!requestedIdentityKey.isEmpty() && existingIdentityKey == requestedIdentityKey && state.instanceId.startsWith(effectiveIsDev ? QStringLiteral("dev:") : QStringLiteral("installed:")))) {
             if (instanceId) {
                 *instanceId = state.instanceId;
             }
@@ -122,15 +129,16 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
             }
             WidgetLayoutState nextState = state;
             nextState.visible = true;
+            nextState.packagePath = effectivePkgPath;
             if (!m_runningWidgets.contains(state.instanceId)) {
                 WidgetInstance instance;
                 instance.instanceId = state.instanceId;
-                instance.packagePath = packagePath;
+                instance.packagePath = effectivePkgPath;
                 instance.manifest = manifest;
-                instance.grantedPermissions = grantedPermissionsForManifest(manifest, packagePath, isDevelopment);
-                instance.isDevelopment = isDevelopment;
-                instance.autoReload = autoReload;
-                instance.geometry = resolvedWidgetGeometry(manifest, state.geometry, isDevelopment);
+                instance.grantedPermissions = grantedPermissionsForManifest(manifest, effectivePkgPath, effectiveIsDev);
+                instance.isDevelopment = effectiveIsDev;
+                instance.autoReload = effectiveAutoReload;
+                instance.geometry = resolvedWidgetGeometry(manifest, state.geometry, effectiveIsDev);
                 nextState.geometry = instance.geometry;
                 if (!launchWidgetInstance(instance, nextState, errorMessage)) {
                     return false;
@@ -146,21 +154,21 @@ bool WidgetManager::launchWidgetPackage(const QString& packagePath,
 
     WidgetInstance instance;
     instance.instanceId = requestedLayoutId;
-    instance.packagePath = packagePath;
+    instance.packagePath = effectivePkgPath;
     instance.manifest = manifest;
-    instance.grantedPermissions = grantedPermissionsForManifest(manifest, packagePath, isDevelopment);
-    instance.isDevelopment = isDevelopment;
-    instance.autoReload = autoReload;
-    instance.geometry = resolvedWidgetGeometry(manifest, geometry, isDevelopment);
+    instance.grantedPermissions = grantedPermissionsForManifest(manifest, effectivePkgPath, effectiveIsDev);
+    instance.isDevelopment = effectiveIsDev;
+    instance.autoReload = effectiveAutoReload;
+    instance.geometry = resolvedWidgetGeometry(manifest, geometry, effectiveIsDev);
 
     WidgetLayoutState layoutState;
     layoutState.instanceId = instance.instanceId;
-    layoutState.packagePath = packagePath;
+    layoutState.packagePath = effectivePkgPath;
     layoutState.registryId = registryIdForManifest(manifest);
     layoutState.geometry = instance.geometry;
     layoutState.zOrder = m_layout.nextZOrder();
     layoutState.visible = true;
-    layoutState.isDevelopment = isDevelopment;
+    layoutState.isDevelopment = effectiveIsDev;
     layoutState.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
 
     if (!launchWidgetInstance(instance, layoutState, errorMessage)) {
@@ -194,14 +202,6 @@ bool WidgetManager::createWidgetInstance(const QString& sourceInstanceId,
         if (errorMessage) {
             *errorMessage = QStringLiteral("This widget does not support multiple instances.");
         }
-        return false;
-    }
-    if (!PermissionManager().canUseDesktopApi(source.grantedPermissions)) {
-        if (errorMessage) {
-            *errorMessage = QStringLiteral("Desktop permission is required.");
-        }
-        appendSharedLog(QStringLiteral("permission"),
-                        QStringLiteral("%1 permission denied: desktop").arg(sourceInstanceId));
         return false;
     }
 
@@ -339,8 +339,7 @@ bool WidgetManager::launchWidgetInstance(const WidgetInstance& instance,
     if (m_cefOsrEnabled && LinCef::CefManager::instance()->isCefAvailable() && LinCef::CefManager::instance()->initialize()) {
         auto* osr = new LinCef::CefOsrBrowserInstance(instance.instanceId, this);
         osr->setPackagePath(instance.packagePath);
-        osr->setAllowNetwork(m_permissions.canUseNetwork(instance.grantedPermissions) &&
-                             instance.manifest.permissions.contains(QStringLiteral("network")));
+        osr->setAllowNetwork(true);
 
         connect(osr, &LinCef::CefOsrBrowserInstance::frameReady, this,
                 [this](const QString& wid, const QRect& geom, const QImage& img, const QVector<QRect>& dirty) {
@@ -451,8 +450,7 @@ bool WidgetManager::restartWidget(const QString& instanceId)
         configureDevelopmentWatcher(instance);
         auto* osr = m_osrBrowsers.value(instanceId);
         if (osr) {
-            osr->setAllowNetwork(m_permissions.canUseNetwork(instance.grantedPermissions) &&
-                                 instance.manifest.permissions.contains(QStringLiteral("network")));
+            osr->setAllowNetwork(true);
             const QString entryFile = instance.manifest.entry.isEmpty() ? QStringLiteral("index.html") : instance.manifest.entry;
             const QString entryUrl = QStringLiteral("linwidget://%1/%2").arg(instance.instanceId, entryFile);
             osr->loadUrl(entryUrl);

@@ -1,0 +1,1403 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>天气设置</title>
+  <style>
+    :root {
+      --bg: #f3f3f3;
+      --card-bg: #ffffff;
+      --card-border: #e5e5e5;
+      --inner-bg: #f9f9f9;
+      --text-main: #1b1b1b;
+      --text-muted: #5c5c5c;
+      --accent: #0067c0;
+      --accent-hover: #1975c5;
+      --accent-light: #eff6fc;
+      --badge-bg: #e0f2fe;
+      --badge-text: #0369a1;
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
+      --success-text: #059669;
+      --warning-bg: #fffbeb;
+      --warning-border: #fde68a;
+      --warning-text: #d97706;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #131927;
+        --card-bg: #1a2234;
+        --card-border: #2a344a;
+        --inner-bg: #111726;
+        --text-main: #f1f5f9;
+        --text-muted: #94a3b8;
+        --accent: #38bdf8;
+        --accent-hover: #0ea5e9;
+        --accent-light: rgba(56, 189, 248, 0.15);
+        --badge-bg: rgba(56, 189, 248, 0.2);
+        --badge-text: #38bdf8;
+        --success-bg: rgba(16, 185, 129, 0.15);
+        --success-border: rgba(16, 185, 129, 0.3);
+        --success-text: #34d399;
+        --warning-bg: rgba(245, 158, 11, 0.15);
+        --warning-border: rgba(245, 158, 11, 0.3);
+        --warning-text: #fbbf24;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      padding: 20px;
+      font-size: 13px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-icon {
+      width: 16px;
+      height: 16px;
+      color: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .card-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* 1. 当前配置地区卡片 */
+    .current-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .current-card.is-modified {
+      background: var(--warning-bg);
+      border-color: var(--warning-border);
+    }
+
+    .current-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .current-icon-box {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--accent-light);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .current-info {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .current-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .current-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .status-badge.active {
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      color: var(--success-text);
+    }
+
+    .status-badge.draft {
+      background: var(--warning-bg);
+      border: 1px solid var(--warning-border);
+      color: var(--warning-text);
+    }
+
+    .current-coords {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    /* 2. 搜索框与下拉列表 */
+    .search-wrapper {
+      position: relative;
+      width: 100%;
+    }
+
+    .search-input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .search-input-wrap svg.search-icon {
+      position: absolute;
+      left: 12px;
+      width: 14px;
+      height: 14px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 9px 32px 9px 34px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--inner-bg);
+      color: var(--text-main);
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.15s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+      background: var(--card-bg);
+      box-shadow: 0 0 0 2px var(--accent-light);
+    }
+
+    .search-clear-btn {
+      position: absolute;
+      right: 8px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+    }
+
+    .search-clear-btn:hover {
+      color: var(--text-main);
+    }
+
+    /* 浮动下拉搜索结果面板 */
+    .search-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+      max-height: 240px;
+      overflow-y: auto;
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      padding: 4px;
+      gap: 2px;
+    }
+
+    .search-dropdown.open {
+      display: flex;
+    }
+
+    .search-result-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: var(--card-bg);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      gap: 8px;
+    }
+
+    .search-result-item:hover {
+      background: var(--accent-light);
+      border-color: var(--accent);
+    }
+
+    .result-name-col {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .result-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .city-badge {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 0 4px;
+      border-radius: 3px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      border: 1px solid var(--accent);
+      flex-shrink: 0;
+    }
+
+    .coords-tag {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      color: var(--text-muted);
+      background: var(--inner-bg);
+      border: 1px solid var(--card-border);
+      padding: 1px 5px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    /* 3. 三级联动水平整洁工具条 */
+    .cascade-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      width: 100%;
+    }
+
+    .cascade-col {
+      position: relative;
+    }
+
+    .cascade-btn {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--inner-bg);
+      color: var(--text-main);
+      font-size: 12px;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s ease;
+      text-align: left;
+    }
+
+    .cascade-btn:hover {
+      border-color: var(--accent);
+      background: var(--card-bg);
+    }
+
+    .cascade-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .cascade-btn span {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cascade-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 90;
+      display: none;
+      flex-direction: column;
+      padding: 4px;
+      gap: 2px;
+    }
+
+    .cascade-dropdown.open {
+      display: flex;
+    }
+
+    .cascade-item {
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.1s ease;
+    }
+
+    .cascade-item:hover {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+
+    .cascade-item.active {
+      background: var(--accent);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    /* 4. 最底下保存与还原操作栏 */
+    .save-bar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      margin-top: 4px;
+    }
+
+    .btn {
+      padding: 7px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      outline: none;
+      border: none;
+    }
+
+    .btn-secondary {
+      background: var(--inner-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: var(--card-border);
+      color: var(--text-muted);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(17, 24, 39, 0.9);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 999;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 1. 当前配置地区卡片 -->
+    <div class="current-card" id="currentLocationCard">
+      <div class="current-left">
+        <div class="current-icon-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">
+            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+        </div>
+        <div class="current-info">
+          <div class="current-title-row">
+            <span class="current-name" id="currentLocationName">未配置任何地区</span>
+            <span class="status-badge active" id="currentStatusBadge">当前生效</span>
+          </div>
+          <span class="current-coords" id="currentLocationCoords">经纬度 --, --</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 全量搜索选择地区卡片 -->
+    <div class="card" id="searchCard">
+      <div class="card-header">
+        <div class="card-title-group">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.3-4.3"/>
+          </svg>
+          <span class="card-title">全量拼音检索</span>
+        </div>
+        <span class="card-desc">输入城市汉字、全拼或拼音首字母即时搜索</span>
+      </div>
+
+      <div class="search-wrapper" id="searchWrapper">
+        <div class="search-input-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.3-4.3"/>
+          </svg>
+          <input
+            type="text"
+            id="searchInput"
+            class="search-input"
+            placeholder="搜索全国370市及2800区县"
+            autocomplete="off"
+          />
+          <button type="button" id="searchClearBtn" class="search-clear-btn hidden" title="清空搜索">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- 浮动搜索结果面板，选中后立即收起 -->
+        <div class="search-dropdown" id="searchDropdown"></div>
+      </div>
+    </div>
+
+    <!-- 3. 三级联动行政区划选择卡片 -->
+    <div class="card" id="cascadeCard">
+      <div class="card-header">
+        <div class="card-title-group">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          <span class="card-title">省市县三级级联选择</span>
+        </div>
+        <span class="card-desc">横向逐级筛选，点击区县直接选定</span>
+      </div>
+
+      <!-- 单行并排3列整洁结构 -->
+      <div class="cascade-bar" id="cascadeBar">
+        <div class="cascade-col">
+          <button type="button" class="cascade-btn" id="provinceSelectBtn">
+            <span id="provinceLabel">请选择省份</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;opacity:0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="cascade-dropdown" id="provinceDropdown"></div>
+        </div>
+
+        <div class="cascade-col">
+          <button type="button" class="cascade-btn" id="citySelectBtn">
+            <span id="cityLabel">请选择城市</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;opacity:0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="cascade-dropdown" id="cityDropdown"></div>
+        </div>
+
+        <div class="cascade-col">
+          <button type="button" class="cascade-btn" id="districtSelectBtn">
+            <span id="districtLabel">请选择区县</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;opacity:0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="cascade-dropdown" id="districtDropdown"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 最底下保存与还原操作栏 -->
+    <div class="save-bar">
+      <button type="button" class="btn btn-secondary hidden" id="resetBtn">
+        放弃修改
+      </button>
+      <button type="button" class="btn btn-primary" id="saveBtn" disabled>
+        保存配置并生效
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- 引入行政区划离线数据库 -->
+  <script src="city_data.js"></script>
+  <script>
+    const STORAGE_KEY_CITIES = "lindesk_weather_cities";
+    const STORAGE_KEY_CURRENT_ID = "lindesk_weather_current_city_id";
+
+    // 状态管理
+    let savedCity = null;
+    let draftCity = null;
+    let cityLevelList = [];
+
+    // 级联选中状态
+    let selectedProv = "";
+    let selectedCity = "";
+    let selectedDistId = "";
+
+    // DOM 元素引用
+    const el = {
+      currentCard: document.getElementById("currentLocationCard"),
+      currentName: document.getElementById("currentLocationName"),
+      currentStatusBadge: document.getElementById("currentStatusBadge"),
+      currentCoords: document.getElementById("currentLocationCoords"),
+      searchWrapper: document.getElementById("searchWrapper"),
+      searchInput: document.getElementById("searchInput"),
+      searchClearBtn: document.getElementById("searchClearBtn"),
+      searchDropdown: document.getElementById("searchDropdown"),
+      cascadeBar: document.getElementById("cascadeBar"),
+      provinceSelectBtn: document.getElementById("provinceSelectBtn"),
+      provinceLabel: document.getElementById("provinceLabel"),
+      provinceDropdown: document.getElementById("provinceDropdown"),
+      citySelectBtn: document.getElementById("citySelectBtn"),
+      cityLabel: document.getElementById("cityLabel"),
+      cityDropdown: document.getElementById("cityDropdown"),
+      districtSelectBtn: document.getElementById("districtSelectBtn"),
+      districtLabel: document.getElementById("districtLabel"),
+      districtDropdown: document.getElementById("districtDropdown"),
+      resetBtn: document.getElementById("resetBtn"),
+      saveBtn: document.getElementById("saveBtn"),
+      toast: document.getElementById("toast")
+    };
+
+    function showToast(msg) {
+      el.toast.textContent = msg;
+      el.toast.classList.add("show");
+      setTimeout(() => el.toast.classList.remove("show"), 2000);
+    }
+
+    function formatCoords(lat, lon) {
+      if (lat == null || lon == null) return "--";
+      const latDir = lat >= 0 ? "N" : "S";
+      const lonDir = lon >= 0 ? "E" : "W";
+      return `${Math.abs(Number(lat)).toFixed(2)}°${latDir}, ${Math.abs(Number(lon)).toFixed(2)}°${lonDir}`;
+    }
+
+    function formatLocationDisplay(d) {
+      if (!d) return "";
+      const name = d.name || "";
+      const city = d.city || "";
+      const prov = d.prov || "";
+      if (d.isCityLevel || name === city || name === city.replace(/(市|地区|盟|自治州)$/, "")) {
+        if (!prov || prov === city) {
+          return city;
+        }
+        return `${city} · ${prov}`;
+      }
+      if (!prov || prov === city) {
+        return `${name} · ${city}`;
+      }
+      return `${name} · ${city} · ${prov}`;
+    }
+
+    // 初始化全国地级市检索单元
+    function initCityLevelList() {
+      if (!window.CHINA_PROVINCES || !window.CHINA_DISTRICTS) return;
+      cityLevelList = [];
+      for (const prov of Object.keys(window.CHINA_PROVINCES)) {
+        for (const cityName of Object.keys(window.CHINA_PROVINCES[prov])) {
+          const dists = window.CHINA_PROVINCES[prov][cityName];
+          if (!dists || dists.length === 0) continue;
+          const primary = dists[0];
+          const fullNode = window.CHINA_DISTRICTS.find(d => d.id === primary.id);
+          const nameClean = cityName.replace(/(市|地区|盟|自治州)$/, "");
+          cityLevelList.push({
+            id: "city_" + primary.id,
+            name: nameClean,
+            fullName: cityName,
+            city: cityName,
+            prov: prov,
+            lat: primary.lat,
+            lon: primary.lon,
+            py: fullNode ? fullNode.cpy || "" : "",
+            pyb: fullNode ? fullNode.cpyb || "" : "",
+            ini: fullNode ? fullNode.cini || "" : "",
+            inib: fullNode ? fullNode.cinib || "" : "",
+            isCityLevel: true
+          });
+        }
+      }
+    }
+
+    const DEFAULT_CONFIG_CITY = {
+      id: "city_101200101",
+      name: "武汉",
+      city: "武汉市",
+      prov: "湖北省",
+      lat: 30.5928,
+      lon: 114.3055,
+      isCityLevel: true,
+      display: "武汉市 · 湖北省"
+    };
+
+    // 读取本地存储
+    function loadSavedCity() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_CITIES);
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr) && arr.length > 0) {
+            const curId = localStorage.getItem(STORAGE_KEY_CURRENT_ID);
+            savedCity = arr.find(c => c.id === curId) || arr[0];
+          }
+        }
+      } catch (_) {}
+      if (!savedCity) {
+        try {
+          const legacy = localStorage.getItem(STORAGE_KEY_LEGACY_LOC);
+          if (legacy) {
+            const obj = JSON.parse(legacy);
+            if (obj && obj.name) {
+              savedCity = obj;
+            }
+          }
+        } catch (_) {}
+      }
+      if (!savedCity) {
+        savedCity = { ...DEFAULT_CONFIG_CITY };
+        try {
+          localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify([savedCity]));
+          localStorage.setItem(STORAGE_KEY_CURRENT_ID, savedCity.id);
+        } catch (_) {}
+      }
+      draftCity = savedCity ? { ...savedCity } : null;
+      renderCurrentUI();
+      if (savedCity) {
+        syncCascadeToLoadedCity(savedCity);
+      }
+    }
+
+    // 渲染当前配置地区与修改状态
+    function renderCurrentUI() {
+      const isModified = Boolean(
+        draftCity && (!savedCity || draftCity.id !== savedCity.id)
+      );
+
+      if (draftCity) {
+        const displayName = draftCity.display || formatLocationDisplay(draftCity);
+        el.currentName.textContent = displayName;
+        el.currentCoords.textContent = `经纬度: ${formatCoords(draftCity.lat, draftCity.lon)}`;
+        
+        if (isModified) {
+          el.currentCard.classList.add("is-modified");
+          el.currentStatusBadge.className = "status-badge draft";
+          el.currentStatusBadge.textContent = "已暂选待保存";
+          el.resetBtn.classList.remove("hidden");
+          el.saveBtn.disabled = false;
+        } else {
+          el.currentCard.classList.remove("is-modified");
+          el.currentStatusBadge.className = "status-badge active";
+          el.currentStatusBadge.textContent = "当前生效";
+          el.resetBtn.classList.add("hidden");
+          el.saveBtn.disabled = true;
+        }
+      } else {
+        el.currentCard.classList.remove("is-modified");
+        el.currentName.textContent = "未配置任何地区";
+        el.currentCoords.textContent = "请搜索或通过三级联动选择天气地区";
+        el.currentStatusBadge.className = "status-badge draft";
+        el.currentStatusBadge.textContent = "未配置";
+        el.resetBtn.classList.add("hidden");
+        el.saveBtn.disabled = true;
+      }
+    }
+
+    // 关闭/收起搜索下拉面板
+    function closeSearchDropdown() {
+      el.searchDropdown.classList.remove("open");
+      el.searchDropdown.innerHTML = "";
+    }
+
+    // 选中某个目标：更新暂选并立即收起下拉列表
+    function selectCityCandidate(item) {
+      draftCity = { ...item };
+      renderCurrentUI();
+      syncCascadeToLoadedCity(item);
+      // 选择后立即收起下拉选择面板，清空并解除输入焦点
+      closeSearchDropdown();
+      closeAllCascadeDropdowns();
+      el.searchInput.value = "";
+      el.searchClearBtn.classList.add("hidden");
+      el.searchInput.blur();
+      showToast(`已暂选 ${item.name}，点击底部保存生效`);
+    }
+
+    // 全量检索算法
+    function handleSearch(query) {
+      const q = (query || "").trim().toLowerCase();
+      if (!q) {
+        closeSearchDropdown();
+        el.searchClearBtn.classList.add("hidden");
+        return;
+      }
+
+      el.searchClearBtn.classList.remove("hidden");
+      const scored = [];
+
+      // 1. 匹配地级市级别
+      for (let i = 0; i < cityLevelList.length; i++) {
+        const c = cityLevelList[i];
+        let s = 0;
+        if (c.name === q || c.fullName === q) s = 120;
+        else if (c.pyb === q) s = 118;
+        else if (c.py === q) s = 116;
+        else if (c.name.startsWith(q) || c.fullName.startsWith(q)) s = 110;
+        else if (c.pyb && c.pyb.startsWith(q)) s = 108;
+        else if (c.py && c.py.startsWith(q)) s = 106;
+        else if (c.inib === q || c.ini === q) s = 104;
+        else if (c.name.includes(q) || c.fullName.includes(q)) s = 95;
+        else if (c.pyb && c.pyb.includes(q)) s = 90;
+        else if (c.inib && c.inib.startsWith(q)) s = 85;
+
+        if (s > 0) {
+          const isMuni = !c.prov || c.prov === c.city;
+          scored.push({
+            item: {
+              id: c.id,
+              name: c.name,
+              city: c.city,
+              prov: c.prov,
+              lat: c.lat,
+              lon: c.lon,
+              isCityLevel: true,
+              display: isMuni ? c.city : `${c.city} · ${c.prov}`
+            },
+            score: s
+          });
+        }
+      }
+
+      // 2. 匹配区县级别
+      if (window.CHINA_DISTRICTS) {
+        for (let i = 0; i < window.CHINA_DISTRICTS.length; i++) {
+          const d = window.CHINA_DISTRICTS[i];
+          const nameBase = d.name.replace(/(区|县|市|旗|新区)$/, "");
+          const cityBase = (d.city || "").replace(/(市|地区|盟|自治州)$/, "");
+          const fullZh = (d.prov || "") + (d.city || "") + (d.name || "");
+          const compactZh = fullZh.replace(/省|市|自治区|特别行政区|地区|盟|自治州|区|县|旗|新区/g, "");
+          const fullPy = (d.cpyb || "") + (d.pyb || "");
+
+          let s = 0;
+          if (d.name === q || nameBase === q) s = 100;
+          else if (d.pyb === q) s = 98;
+          else if (cityBase === q || d.city === q) s = 95;
+          else if (d.cpyb === q) s = 94;
+          else if (fullZh === q || compactZh === q) s = 93;
+          else if (fullPy === q) s = 92;
+          else if (d.name.startsWith(q) || nameBase.startsWith(q)) s = 88;
+          else if (d.pyb && d.pyb.startsWith(q)) s = 86;
+          else if (d.py && d.py.startsWith(q)) s = 84;
+          else if (cityBase.startsWith(q) || (d.city && d.city.startsWith(q))) s = 82;
+          else if (d.cpyb && d.cpyb.startsWith(q)) s = 80;
+          else if (d.cinib === q) s = 78;
+          else if (d.name.includes(q)) s = 75;
+          else if (d.city && d.city.includes(q)) s = 73;
+          else if (compactZh.includes(q) || fullZh.includes(q)) s = 70;
+          else if (fullPy.includes(q)) s = 68;
+          else if (d.pyb && d.pyb.includes(q)) s = 65;
+          else if (d.cpyb && d.cpyb.includes(q)) s = 62;
+          else if (d.inib === q) s = 60;
+          else if (d.inib && d.inib.startsWith(q)) s = 55;
+          else if (d.cini === q || (d.cini && d.cini.startsWith(q))) s = 50;
+          else if (d.ini && d.ini.startsWith(q)) s = 45;
+          else if (d.ini && d.ini.includes(q)) s = 40;
+
+          if (s > 0) {
+            scored.push({
+              item: {
+                id: d.id,
+                name: d.name,
+                city: d.city,
+                prov: d.prov,
+                lat: d.lat,
+                lon: d.lon,
+                isCityLevel: false,
+                display: formatLocationDisplay(d)
+              },
+              score: s
+            });
+          }
+        }
+      }
+
+      scored.sort((a, b) => b.score - a.score);
+      const topResults = scored.slice(0, 20);
+
+      el.searchDropdown.innerHTML = "";
+      if (topResults.length === 0) {
+        el.searchDropdown.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:12px;">未匹配到相关地区</div>';
+      } else {
+        topResults.forEach(({ item }) => {
+          const div = document.createElement("div");
+          div.className = "search-result-item";
+          div.innerHTML = `
+            <div class="result-name-col">
+              <span class="result-name">${item.display}</span>
+              ${item.isCityLevel ? '<span class="city-badge">全市</span>' : ''}
+            </div>
+            <span class="coords-tag">${formatCoords(item.lat, item.lon)}</span>
+          `;
+          div.addEventListener("click", () => {
+            selectCityCandidate(item);
+          });
+          el.searchDropdown.appendChild(div);
+        });
+      }
+      el.searchDropdown.classList.add("open");
+    }
+
+    // ──────────────────────────────────────────────
+    // 三级级联选择逻辑（横向并排单行，选定即刻收起）
+    // ──────────────────────────────────────────────
+    function closeAllCascadeDropdowns() {
+      el.provinceDropdown.classList.remove("open");
+      el.cityDropdown.classList.remove("open");
+      el.districtDropdown.classList.remove("open");
+      el.provinceSelectBtn.classList.remove("active");
+      el.citySelectBtn.classList.remove("active");
+      el.districtSelectBtn.classList.remove("active");
+    }
+
+    function renderProvinceDropdown() {
+      if (!window.CHINA_PROVINCES) return;
+      const provs = Object.keys(window.CHINA_PROVINCES);
+      el.provinceDropdown.innerHTML = "";
+      provs.forEach(p => {
+        const item = document.createElement("div");
+        item.className = "cascade-item" + (p === selectedProv ? " active" : "");
+        item.textContent = p;
+        item.addEventListener("click", () => {
+          selectedProv = p;
+          el.provinceLabel.textContent = p;
+          closeAllCascadeDropdowns();
+          onProvinceChanged(true);
+        });
+        el.provinceDropdown.appendChild(item);
+      });
+    }
+
+    function renderCityDropdown() {
+      el.cityDropdown.innerHTML = "";
+      if (!selectedProv || !window.CHINA_PROVINCES[selectedProv]) return;
+      const cities = Object.keys(window.CHINA_PROVINCES[selectedProv]);
+      cities.forEach(c => {
+        const item = document.createElement("div");
+        item.className = "cascade-item" + (c === selectedCity ? " active" : "");
+        item.textContent = c;
+        item.addEventListener("click", () => {
+          selectedCity = c;
+          el.cityLabel.textContent = c;
+          closeAllCascadeDropdowns();
+          onCityChanged(true);
+        });
+        el.cityDropdown.appendChild(item);
+      });
+    }
+
+    function renderDistrictDropdown() {
+      el.districtDropdown.innerHTML = "";
+      if (!selectedProv || !selectedCity || !window.CHINA_PROVINCES[selectedProv]?.[selectedCity]) return;
+      const dists = window.CHINA_PROVINCES[selectedProv][selectedCity] || [];
+
+      // 首项：全市（严格直接显示城市名称）
+      const cityFirstItem = document.createElement("div");
+      cityFirstItem.className = "cascade-item" + (selectedDistId === "CITY_ALL" ? " active" : "");
+      cityFirstItem.innerHTML = `<span>${selectedCity}</span><span style="font-size:10px;opacity:0.6;">全市</span>`;
+      cityFirstItem.addEventListener("click", () => {
+        selectedDistId = "CITY_ALL";
+        el.districtLabel.textContent = selectedCity;
+        closeAllCascadeDropdowns();
+        applyCascadeDirectSelection();
+      });
+      el.districtDropdown.appendChild(cityFirstItem);
+
+      // 各区县列表
+      dists.forEach(d => {
+        const item = document.createElement("div");
+        item.className = "cascade-item" + (d.id === selectedDistId ? " active" : "");
+        item.textContent = d.name;
+        item.addEventListener("click", () => {
+          selectedDistId = d.id;
+          el.districtLabel.textContent = d.name;
+          closeAllCascadeDropdowns();
+          applyCascadeDirectSelection();
+        });
+        el.districtDropdown.appendChild(item);
+      });
+    }
+
+    function initCascade() {
+      renderProvinceDropdown();
+
+      // 省份按钮点击
+      el.provinceSelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSearchDropdown();
+        const isOpen = el.provinceDropdown.classList.contains("open");
+        closeAllCascadeDropdowns();
+        if (!isOpen) {
+          renderProvinceDropdown();
+          el.provinceDropdown.classList.add("open");
+          el.provinceSelectBtn.classList.add("active");
+          const activeItem = el.provinceDropdown.querySelector(".cascade-item.active");
+          if (activeItem) {
+            setTimeout(() => activeItem.scrollIntoView({ block: "nearest" }), 20);
+          }
+        }
+      });
+
+      // 城市按钮点击
+      el.citySelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSearchDropdown();
+        const isOpen = el.cityDropdown.classList.contains("open");
+        closeAllCascadeDropdowns();
+        if (!isOpen) {
+          renderCityDropdown();
+          el.cityDropdown.classList.add("open");
+          el.citySelectBtn.classList.add("active");
+          const activeItem = el.cityDropdown.querySelector(".cascade-item.active");
+          if (activeItem) {
+            setTimeout(() => activeItem.scrollIntoView({ block: "nearest" }), 20);
+          }
+        }
+      });
+
+      // 区县按钮点击
+      el.districtSelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSearchDropdown();
+        const isOpen = el.districtDropdown.classList.contains("open");
+        closeAllCascadeDropdowns();
+        if (!isOpen) {
+          renderDistrictDropdown();
+          el.districtDropdown.classList.add("open");
+          el.districtSelectBtn.classList.add("active");
+          const activeItem = el.districtDropdown.querySelector(".cascade-item.active");
+          if (activeItem) {
+            setTimeout(() => activeItem.scrollIntoView({ block: "nearest" }), 20);
+          }
+        }
+      });
+    }
+
+    function onProvinceChanged(autoOpen = true) {
+      selectedCity = "";
+      selectedDistId = "";
+      el.cityLabel.textContent = "请选择城市";
+      el.districtLabel.textContent = "请选择区县";
+
+      if (!selectedProv || !window.CHINA_PROVINCES[selectedProv]) {
+        el.cityDropdown.innerHTML = "";
+        el.districtDropdown.innerHTML = "";
+        return;
+      }
+
+      renderCityDropdown();
+      el.districtDropdown.innerHTML = "";
+
+      const cities = Object.keys(window.CHINA_PROVINCES[selectedProv]);
+      if (cities.length === 1) {
+        selectedCity = cities[0];
+        el.cityLabel.textContent = selectedCity;
+        onCityChanged(autoOpen);
+      } else if (autoOpen) {
+        setTimeout(() => {
+          el.cityDropdown.classList.add("open");
+          el.citySelectBtn.classList.add("active");
+        }, 50);
+      }
+    }
+
+    function onCityChanged(autoOpen = true) {
+      selectedDistId = "";
+      el.districtLabel.textContent = "请选择区县";
+
+      if (!selectedProv || !selectedCity || !window.CHINA_PROVINCES[selectedProv][selectedCity]) {
+        el.districtDropdown.innerHTML = "";
+        return;
+      }
+
+      renderDistrictDropdown();
+
+      if (autoOpen) {
+        setTimeout(() => {
+          el.districtDropdown.classList.add("open");
+          el.districtSelectBtn.classList.add("active");
+        }, 50);
+      }
+    }
+
+    function findMatchingProvince(provName) {
+      if (!window.CHINA_PROVINCES || !provName) return null;
+      const provs = Object.keys(window.CHINA_PROVINCES);
+      if (provs.includes(provName)) return provName;
+      const base = provName.replace(/(省|市|壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区)$/, "");
+      for (const p of provs) {
+        const pBase = p.replace(/(省|市|壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区)$/, "");
+        if (pBase === base || p.startsWith(base) || base.startsWith(pBase)) {
+          return p;
+        }
+      }
+      return null;
+    }
+
+    function findMatchingCity(provKey, cityName) {
+      if (!window.CHINA_PROVINCES || !provKey || !cityName) return null;
+      const citiesMap = window.CHINA_PROVINCES[provKey];
+      if (!citiesMap) return null;
+      const cities = Object.keys(citiesMap);
+      if (cities.includes(cityName)) return cityName;
+      const base = cityName.replace(/(市|地区|盟|自治州)$/, "");
+      for (const c of cities) {
+        const cBase = c.replace(/(市|地区|盟|自治州)$/, "");
+        if (cBase === base || c.startsWith(base) || base.startsWith(cBase)) {
+          return c;
+        }
+      }
+      return null;
+    }
+
+    function findMatchingDistrict(provKey, cityKey, targetCityObj) {
+      if (!window.CHINA_PROVINCES || !provKey || !cityKey || !targetCityObj) return null;
+      const dists = window.CHINA_PROVINCES[provKey]?.[cityKey] || [];
+      if (dists.length === 0) return null;
+
+      if (targetCityObj.isCityLevel) {
+        return { id: "CITY_ALL", name: cityKey };
+      }
+
+      const tName = (targetCityObj.name || "").replace(/(区|县|市|旗|新区)$/, "");
+      const cName = cityKey.replace(/(市|地区|盟|自治州)$/, "");
+      if (tName === cName) {
+        return { id: "CITY_ALL", name: cityKey };
+      }
+
+      if (targetCityObj.id) {
+        const matchId = dists.find(d => d.id === targetCityObj.id || "city_" + d.id === targetCityObj.id);
+        if (matchId) return matchId;
+      }
+
+      for (const d of dists) {
+        const dBase = d.name.replace(/(区|县|市|旗|新区)$/, "");
+        if (dBase === tName || d.name === targetCityObj.name) {
+          return d;
+        }
+      }
+
+      return { id: "CITY_ALL", name: cityKey };
+    }
+
+    function syncCascadeToLoadedCity(target) {
+      if (!target || !window.CHINA_PROVINCES) return;
+
+      let provKey = findMatchingProvince(target.prov);
+      if (!provKey && target.city) {
+        for (const p of Object.keys(window.CHINA_PROVINCES)) {
+          if (findMatchingCity(p, target.city)) {
+            provKey = p;
+            break;
+          }
+        }
+      }
+      if (!provKey) return;
+
+      const cityKey = findMatchingCity(provKey, target.city || target.name);
+      if (!cityKey) return;
+
+      const distObj = findMatchingDistrict(provKey, cityKey, target);
+      if (!distObj) return;
+
+      selectedProv = provKey;
+      el.provinceLabel.textContent = provKey;
+
+      selectedCity = cityKey;
+      el.cityLabel.textContent = cityKey;
+
+      selectedDistId = distObj.id;
+      el.districtLabel.textContent = distObj.name;
+
+      renderProvinceDropdown();
+      renderCityDropdown();
+      renderDistrictDropdown();
+      closeAllCascadeDropdowns();
+    }
+
+    function getCascadeCandidate() {
+      if (!selectedProv || !selectedCity || !selectedDistId) return null;
+      const dists = window.CHINA_PROVINCES[selectedProv]?.[selectedCity] || [];
+      if (dists.length === 0) return null;
+
+      if (selectedDistId === "CITY_ALL") {
+        const primary = dists[0];
+        const isMuni = !selectedProv || selectedProv === selectedCity;
+        return {
+          id: "city_" + primary.id,
+          name: selectedCity.replace(/(市|地区|盟|自治州)$/, ""),
+          city: selectedCity,
+          prov: selectedProv,
+          lat: primary.lat,
+          lon: primary.lon,
+          isCityLevel: true,
+          display: isMuni ? selectedCity : `${selectedCity} · ${selectedProv}`
+        };
+      }
+
+      const d = dists.find(item => item.id === selectedDistId);
+      if (!d) return null;
+      return {
+        id: d.id,
+        name: d.name,
+        city: selectedCity,
+        prov: selectedProv,
+        lat: d.lat,
+        lon: d.lon,
+        isCityLevel: false,
+        display: formatLocationDisplay({ name: d.name, city: selectedCity, prov: selectedProv })
+      };
+    }
+
+    // 级联点选区县后：直接应用为暂选目标并完全收起，免去多余二次点击
+    function applyCascadeDirectSelection() {
+      const candidate = getCascadeCandidate();
+      if (!candidate) return;
+      draftCity = { ...candidate };
+      renderCurrentUI();
+      closeAllCascadeDropdowns();
+      showToast(`已暂选 ${candidate.name}，点击底部保存生效`);
+    }
+
+    // ──────────────────────────────────────────────
+    // 保存与通知小组件
+    // ──────────────────────────────────────────────
+    function notifyChanges() {
+      const settingsPayload = {
+        cities: [savedCity],
+        currentCityId: savedCity.id
+      };
+
+      const saveRpcMsg = {
+        type: "widget_manager_request",
+        action: "save_widget_settings",
+        widgetId: "Weather",
+        settings: settingsPayload
+      };
+
+      const settingsNotification = {
+        type: "linwidget_settings_changed",
+        widgetId: "Weather",
+        settings: settingsPayload
+      };
+
+      // 1. window.linwidget
+      if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+        try {
+          window.linwidget.postMessage(saveRpcMsg);
+          window.linwidget.postMessage(settingsNotification);
+        } catch (_) {}
+      }
+
+      // 2. CEF 宿主 IPC
+      if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
+        try {
+          chrome.webview.postMessage(saveRpcMsg);
+          chrome.webview.postMessage(settingsNotification);
+          chrome.webview.postMessage({
+            type: "linwidget_settings_changed_request",
+            widgetId: "Weather"
+          });
+        } catch (_) {}
+      }
+
+      // 3. XMLHttpRequest bridge
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "linwidget://bridge/postMessage", true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify(saveRpcMsg));
+      } catch (_) {}
+
+      // 4. Hub 父页面 iframe 消息
+      try {
+        window.parent.postMessage({
+          type: "linwidget_settings_changed",
+          widgetId: "Weather",
+          settings: settingsPayload
+        }, "*");
+      } catch (_) {}
+
+      // 5. 跨窗口 storage 事件
+      try {
+        window.dispatchEvent(new Event("storage"));
+      } catch (_) {}
+    }
+
+    function handleSave() {
+      if (!draftCity) return;
+      savedCity = { ...draftCity };
+      localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify([savedCity]));
+      localStorage.setItem(STORAGE_KEY_CURRENT_ID, savedCity.id);
+      renderCurrentUI();
+      notifyChanges();
+      showToast("天气地区配置已保存并生效！");
+    }
+
+    function handleReset() {
+      draftCity = savedCity ? { ...savedCity } : null;
+      renderCurrentUI();
+      closeSearchDropdown();
+      closeAllCascadeDropdowns();
+      el.searchInput.value = "";
+      el.searchClearBtn.classList.add("hidden");
+      if (savedCity) {
+        syncCascadeToLoadedCity(savedCity);
+      }
+      showToast("已恢复已保存的地区");
+    }
+
+    // 事件绑定
+    function bindEvents() {
+      el.searchInput.addEventListener("input", (e) => {
+        closeAllCascadeDropdowns();
+        handleSearch(e.target.value);
+      });
+
+      el.searchClearBtn.addEventListener("click", () => {
+        el.searchInput.value = "";
+        closeSearchDropdown();
+        el.searchClearBtn.classList.add("hidden");
+        el.searchInput.focus();
+      });
+
+      // 点击外部区域自动收起所有浮层下拉菜单
+      document.addEventListener("click", (e) => {
+        if (!el.searchWrapper.contains(e.target)) {
+          closeSearchDropdown();
+        }
+        if (!el.cascadeBar.contains(e.target)) {
+          closeAllCascadeDropdowns();
+        }
+      });
+
+      el.saveBtn.addEventListener("click", handleSave);
+      el.resetBtn.addEventListener("click", handleReset);
+    }
+
+    // 页面启动
+    window.addEventListener("DOMContentLoaded", () => {
+      initCityLevelList();
+      initCascade();
+      bindEvents();
+      loadSavedCity();
+    });
+  </script>
+</body>
+</html>

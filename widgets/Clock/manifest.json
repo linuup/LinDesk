@@ -16,9 +16,6 @@
   "transparent": true,
   "resizable": true,
   "entry": "index.html",
-  "permissions": [
-    "storage"
-  ],
   "settingsSchema": [
     {
       "key": "clockTheme",

@@ -425,6 +425,12 @@
       color: var(--accent);
     }
 
+    .cascade-item.active {
+      background: var(--accent);
+      color: #ffffff;
+      font-weight: 600;
+    }
+
     /* 4. 最底下保存与还原操作栏 */
     .save-bar {
       display: flex;
@@ -721,6 +727,17 @@
       }
     }
 
+    const DEFAULT_CONFIG_CITY = {
+      id: "city_101200101",
+      name: "武汉",
+      city: "武汉市",
+      prov: "湖北省",
+      lat: 30.5928,
+      lon: 114.3055,
+      isCityLevel: true,
+      display: "武汉市 · 湖北省"
+    };
+
     // 读取本地存储
     function loadSavedCity() {
       try {
@@ -733,8 +750,29 @@
           }
         }
       } catch (_) {}
+      if (!savedCity) {
+        try {
+          const legacy = localStorage.getItem(STORAGE_KEY_LEGACY_LOC);
+          if (legacy) {
+            const obj = JSON.parse(legacy);
+            if (obj && obj.name) {
+              savedCity = obj;
+            }
+          }
+        } catch (_) {}
+      }
+      if (!savedCity) {
+        savedCity = { ...DEFAULT_CONFIG_CITY };
+        try {
+          localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify([savedCity]));
+          localStorage.setItem(STORAGE_KEY_CURRENT_ID, savedCity.id);
+        } catch (_) {}
+      }
       draftCity = savedCity ? { ...savedCity } : null;
       renderCurrentUI();
+      if (savedCity) {
+        syncCascadeToLoadedCity(savedCity);
+      }
     }
 
     // 渲染当前配置地区与修改状态
@@ -782,6 +820,7 @@
     function selectCityCandidate(item) {
       draftCity = { ...item };
       renderCurrentUI();
+      syncCascadeToLoadedCity(item);
       // 选择后立即收起下拉选择面板，清空并解除输入焦点
       closeSearchDropdown();
       closeAllCascadeDropdowns();
@@ -927,118 +966,50 @@
       el.districtSelectBtn.classList.remove("active");
     }
 
-    function initCascade() {
+    function renderProvinceDropdown() {
       if (!window.CHINA_PROVINCES) return;
       const provs = Object.keys(window.CHINA_PROVINCES);
-
-      // 省份选项列表
       el.provinceDropdown.innerHTML = "";
       provs.forEach(p => {
         const item = document.createElement("div");
-        item.className = "cascade-item";
+        item.className = "cascade-item" + (p === selectedProv ? " active" : "");
         item.textContent = p;
         item.addEventListener("click", () => {
           selectedProv = p;
           el.provinceLabel.textContent = p;
           closeAllCascadeDropdowns();
-          onProvinceChanged();
+          onProvinceChanged(true);
         });
         el.provinceDropdown.appendChild(item);
       });
-
-      // 省份按钮点击
-      el.provinceSelectBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeSearchDropdown();
-        const isOpen = el.provinceDropdown.classList.contains("open");
-        closeAllCascadeDropdowns();
-        if (!isOpen) {
-          el.provinceDropdown.classList.add("open");
-          el.provinceSelectBtn.classList.add("active");
-        }
-      });
-
-      // 城市按钮点击
-      el.citySelectBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeSearchDropdown();
-        const isOpen = el.cityDropdown.classList.contains("open");
-        closeAllCascadeDropdowns();
-        if (!isOpen) {
-          el.cityDropdown.classList.add("open");
-          el.citySelectBtn.classList.add("active");
-        }
-      });
-
-      // 区县按钮点击
-      el.districtSelectBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeSearchDropdown();
-        const isOpen = el.districtDropdown.classList.contains("open");
-        closeAllCascadeDropdowns();
-        if (!isOpen) {
-          el.districtDropdown.classList.add("open");
-          el.districtSelectBtn.classList.add("active");
-        }
-      });
     }
 
-    function onProvinceChanged() {
-      selectedCity = "";
-      selectedDistId = "";
-      el.cityLabel.textContent = "请选择城市";
-      el.districtLabel.textContent = "请选择区县";
-
-      if (!selectedProv || !window.CHINA_PROVINCES[selectedProv]) {
-        el.cityDropdown.innerHTML = "";
-        el.districtDropdown.innerHTML = "";
-        return;
-      }
-
-      const cities = Object.keys(window.CHINA_PROVINCES[selectedProv]);
+    function renderCityDropdown() {
       el.cityDropdown.innerHTML = "";
+      if (!selectedProv || !window.CHINA_PROVINCES[selectedProv]) return;
+      const cities = Object.keys(window.CHINA_PROVINCES[selectedProv]);
       cities.forEach(c => {
         const item = document.createElement("div");
-        item.className = "cascade-item";
+        item.className = "cascade-item" + (c === selectedCity ? " active" : "");
         item.textContent = c;
         item.addEventListener("click", () => {
           selectedCity = c;
           el.cityLabel.textContent = c;
           closeAllCascadeDropdowns();
-          onCityChanged();
+          onCityChanged(true);
         });
         el.cityDropdown.appendChild(item);
       });
-
-      // 如果只有一个城市（如直辖市），自动补齐并加载区县
-      if (cities.length === 1) {
-        selectedCity = cities[0];
-        el.cityLabel.textContent = selectedCity;
-        onCityChanged();
-      } else {
-        // 自动展开城市选择框
-        setTimeout(() => {
-          el.cityDropdown.classList.add("open");
-          el.citySelectBtn.classList.add("active");
-        }, 50);
-      }
     }
 
-    function onCityChanged() {
-      selectedDistId = "";
-      el.districtLabel.textContent = "请选择区县";
-
-      if (!selectedProv || !selectedCity || !window.CHINA_PROVINCES[selectedProv][selectedCity]) {
-        el.districtDropdown.innerHTML = "";
-        return;
-      }
-
-      const dists = window.CHINA_PROVINCES[selectedProv][selectedCity] || [];
+    function renderDistrictDropdown() {
       el.districtDropdown.innerHTML = "";
+      if (!selectedProv || !selectedCity || !window.CHINA_PROVINCES[selectedProv]?.[selectedCity]) return;
+      const dists = window.CHINA_PROVINCES[selectedProv][selectedCity] || [];
 
-      // 首项：全市（严格直接显示城市名称，不带“整个”二字）
+      // 首项：全市（严格直接显示城市名称）
       const cityFirstItem = document.createElement("div");
-      cityFirstItem.className = "cascade-item";
+      cityFirstItem.className = "cascade-item" + (selectedDistId === "CITY_ALL" ? " active" : "");
       cityFirstItem.innerHTML = `<span>${selectedCity}</span><span style="font-size:10px;opacity:0.6;">全市</span>`;
       cityFirstItem.addEventListener("click", () => {
         selectedDistId = "CITY_ALL";
@@ -1051,7 +1022,7 @@
       // 各区县列表
       dists.forEach(d => {
         const item = document.createElement("div");
-        item.className = "cascade-item";
+        item.className = "cascade-item" + (d.id === selectedDistId ? " active" : "");
         item.textContent = d.name;
         item.addEventListener("click", () => {
           selectedDistId = d.id;
@@ -1061,12 +1032,203 @@
         });
         el.districtDropdown.appendChild(item);
       });
+    }
 
-      // 自动展开区县选择框
-      setTimeout(() => {
-        el.districtDropdown.classList.add("open");
-        el.districtSelectBtn.classList.add("active");
-      }, 50);
+    function initCascade() {
+      renderProvinceDropdown();
+
+      // 省份按钮点击
+      el.provinceSelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSearchDropdown();
+        const isOpen = el.provinceDropdown.classList.contains("open");
+        closeAllCascadeDropdowns();
+        if (!isOpen) {
+          renderProvinceDropdown();
+          el.provinceDropdown.classList.add("open");
+          el.provinceSelectBtn.classList.add("active");
+          const activeItem = el.provinceDropdown.querySelector(".cascade-item.active");
+          if (activeItem) {
+            setTimeout(() => activeItem.scrollIntoView({ block: "nearest" }), 20);
+          }
+        }
+      });
+
+      // 城市按钮点击
+      el.citySelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSearchDropdown();
+        const isOpen = el.cityDropdown.classList.contains("open");
+        closeAllCascadeDropdowns();
+        if (!isOpen) {
+          renderCityDropdown();
+          el.cityDropdown.classList.add("open");
+          el.citySelectBtn.classList.add("active");
+          const activeItem = el.cityDropdown.querySelector(".cascade-item.active");
+          if (activeItem) {
+            setTimeout(() => activeItem.scrollIntoView({ block: "nearest" }), 20);
+          }
+        }
+      });
+
+      // 区县按钮点击
+      el.districtSelectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeSearchDropdown();
+        const isOpen = el.districtDropdown.classList.contains("open");
+        closeAllCascadeDropdowns();
+        if (!isOpen) {
+          renderDistrictDropdown();
+          el.districtDropdown.classList.add("open");
+          el.districtSelectBtn.classList.add("active");
+          const activeItem = el.districtDropdown.querySelector(".cascade-item.active");
+          if (activeItem) {
+            setTimeout(() => activeItem.scrollIntoView({ block: "nearest" }), 20);
+          }
+        }
+      });
+    }
+
+    function onProvinceChanged(autoOpen = true) {
+      selectedCity = "";
+      selectedDistId = "";
+      el.cityLabel.textContent = "请选择城市";
+      el.districtLabel.textContent = "请选择区县";
+
+      if (!selectedProv || !window.CHINA_PROVINCES[selectedProv]) {
+        el.cityDropdown.innerHTML = "";
+        el.districtDropdown.innerHTML = "";
+        return;
+      }
+
+      renderCityDropdown();
+      el.districtDropdown.innerHTML = "";
+
+      const cities = Object.keys(window.CHINA_PROVINCES[selectedProv]);
+      if (cities.length === 1) {
+        selectedCity = cities[0];
+        el.cityLabel.textContent = selectedCity;
+        onCityChanged(autoOpen);
+      } else if (autoOpen) {
+        setTimeout(() => {
+          el.cityDropdown.classList.add("open");
+          el.citySelectBtn.classList.add("active");
+        }, 50);
+      }
+    }
+
+    function onCityChanged(autoOpen = true) {
+      selectedDistId = "";
+      el.districtLabel.textContent = "请选择区县";
+
+      if (!selectedProv || !selectedCity || !window.CHINA_PROVINCES[selectedProv][selectedCity]) {
+        el.districtDropdown.innerHTML = "";
+        return;
+      }
+
+      renderDistrictDropdown();
+
+      if (autoOpen) {
+        setTimeout(() => {
+          el.districtDropdown.classList.add("open");
+          el.districtSelectBtn.classList.add("active");
+        }, 50);
+      }
+    }
+
+    function findMatchingProvince(provName) {
+      if (!window.CHINA_PROVINCES || !provName) return null;
+      const provs = Object.keys(window.CHINA_PROVINCES);
+      if (provs.includes(provName)) return provName;
+      const base = provName.replace(/(省|市|壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区)$/, "");
+      for (const p of provs) {
+        const pBase = p.replace(/(省|市|壮族自治区|回族自治区|维吾尔自治区|自治区|特别行政区)$/, "");
+        if (pBase === base || p.startsWith(base) || base.startsWith(pBase)) {
+          return p;
+        }
+      }
+      return null;
+    }
+
+    function findMatchingCity(provKey, cityName) {
+      if (!window.CHINA_PROVINCES || !provKey || !cityName) return null;
+      const citiesMap = window.CHINA_PROVINCES[provKey];
+      if (!citiesMap) return null;
+      const cities = Object.keys(citiesMap);
+      if (cities.includes(cityName)) return cityName;
+      const base = cityName.replace(/(市|地区|盟|自治州)$/, "");
+      for (const c of cities) {
+        const cBase = c.replace(/(市|地区|盟|自治州)$/, "");
+        if (cBase === base || c.startsWith(base) || base.startsWith(cBase)) {
+          return c;
+        }
+      }
+      return null;
+    }
+
+    function findMatchingDistrict(provKey, cityKey, targetCityObj) {
+      if (!window.CHINA_PROVINCES || !provKey || !cityKey || !targetCityObj) return null;
+      const dists = window.CHINA_PROVINCES[provKey]?.[cityKey] || [];
+      if (dists.length === 0) return null;
+
+      if (targetCityObj.isCityLevel) {
+        return { id: "CITY_ALL", name: cityKey };
+      }
+
+      const tName = (targetCityObj.name || "").replace(/(区|县|市|旗|新区)$/, "");
+      const cName = cityKey.replace(/(市|地区|盟|自治州)$/, "");
+      if (tName === cName) {
+        return { id: "CITY_ALL", name: cityKey };
+      }
+
+      if (targetCityObj.id) {
+        const matchId = dists.find(d => d.id === targetCityObj.id || "city_" + d.id === targetCityObj.id);
+        if (matchId) return matchId;
+      }
+
+      for (const d of dists) {
+        const dBase = d.name.replace(/(区|县|市|旗|新区)$/, "");
+        if (dBase === tName || d.name === targetCityObj.name) {
+          return d;
+        }
+      }
+
+      return { id: "CITY_ALL", name: cityKey };
+    }
+
+    function syncCascadeToLoadedCity(target) {
+      if (!target || !window.CHINA_PROVINCES) return;
+
+      let provKey = findMatchingProvince(target.prov);
+      if (!provKey && target.city) {
+        for (const p of Object.keys(window.CHINA_PROVINCES)) {
+          if (findMatchingCity(p, target.city)) {
+            provKey = p;
+            break;
+          }
+        }
+      }
+      if (!provKey) return;
+
+      const cityKey = findMatchingCity(provKey, target.city || target.name);
+      if (!cityKey) return;
+
+      const distObj = findMatchingDistrict(provKey, cityKey, target);
+      if (!distObj) return;
+
+      selectedProv = provKey;
+      el.provinceLabel.textContent = provKey;
+
+      selectedCity = cityKey;
+      el.cityLabel.textContent = cityKey;
+
+      selectedDistId = distObj.id;
+      el.districtLabel.textContent = distObj.name;
+
+      renderProvinceDropdown();
+      renderCityDropdown();
+      renderDistrictDropdown();
+      closeAllCascadeDropdowns();
     }
 
     function getCascadeCandidate() {
@@ -1117,25 +1279,62 @@
     // 保存与通知小组件
     // ──────────────────────────────────────────────
     function notifyChanges() {
-      // 1. CEF 宿主 IPC
-      try {
-        if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
+      const settingsPayload = {
+        cities: [savedCity],
+        currentCityId: savedCity.id
+      };
+
+      const saveRpcMsg = {
+        type: "widget_manager_request",
+        action: "save_widget_settings",
+        widgetId: "Weather",
+        settings: settingsPayload
+      };
+
+      const settingsNotification = {
+        type: "linwidget_settings_changed",
+        widgetId: "Weather",
+        settings: settingsPayload
+      };
+
+      // 1. window.linwidget
+      if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+        try {
+          window.linwidget.postMessage(saveRpcMsg);
+          window.linwidget.postMessage(settingsNotification);
+        } catch (_) {}
+      }
+
+      // 2. CEF 宿主 IPC
+      if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
+        try {
+          chrome.webview.postMessage(saveRpcMsg);
+          chrome.webview.postMessage(settingsNotification);
           chrome.webview.postMessage({
             type: "linwidget_settings_changed_request",
             widgetId: "Weather"
           });
-        }
+        } catch (_) {}
+      }
+
+      // 3. XMLHttpRequest bridge
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "linwidget://bridge/postMessage", true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify(saveRpcMsg));
       } catch (_) {}
 
-      // 2. Hub 父页面 iframe 消息
+      // 4. Hub 父页面 iframe 消息
       try {
         window.parent.postMessage({
           type: "linwidget_settings_changed",
-          widgetId: "Weather"
+          widgetId: "Weather",
+          settings: settingsPayload
         }, "*");
       } catch (_) {}
 
-      // 3. 跨窗口 storage 事件
+      // 5. 跨窗口 storage 事件
       try {
         window.dispatchEvent(new Event("storage"));
       } catch (_) {}
@@ -1158,6 +1357,9 @@
       closeAllCascadeDropdowns();
       el.searchInput.value = "";
       el.searchClearBtn.classList.add("hidden");
+      if (savedCity) {
+        syncCascadeToLoadedCity(savedCity);
+      }
       showToast("已恢复已保存的地区");
     }
 

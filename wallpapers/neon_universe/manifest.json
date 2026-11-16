@@ -8,9 +8,6 @@
   "entry": "index.html",
   "role": "wallpaper",
   "interactive": true,
-  "permissions": [
-    "audio"
-  ],
   "properties": {
     "windSpeed": {
       "type": "slider",

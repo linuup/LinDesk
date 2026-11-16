@@ -230,10 +230,9 @@
     <tr><td><code>RuntimeInstaller</code></td><td>组件系统运行时安装 / 卸载 / 版本管理 / 加载初始化（<code>src/desktop/runtime/</code>）。</td></tr>
     <tr><td><code>LinWidgetRuntimeBridge</code>（<code>runtime_export</code>）</td><td>主程序侧运行时 DLL 动态加载桥：<code>LoadLibraryW</code> + 导出函数指针解析，暴露 <code>isLoaded / loadRuntime / unloadRuntime / init</code>、壁纸接口（<code>hasActiveWallpaper / isWallpaperInteractive / activeWallpaperPackagePath</code>）等。</td></tr>
     <tr><td><code>WidgetManager</code></td><td>组件调度总控：启动/停止/重启/多实例、布局/配置持久化、系统信息与存储消息处理、开发模式热重载、健康巡检。</td></tr>
-    <tr><td><code>WidgetPackage</code> / <code>WidgetValidator</code></td><td>组件包规范解析与校验（<code>manifest.json</code>、entry 定位、权限声明）。</td></tr>
-    <tr><td><code>LayoutManager</code></td><td>实例布局状态（位置/尺寸/zOrder/可见性）。</td></tr>
-    <tr><td><code>PermissionManager</code></td><td>权限门控（network / storage / desktop）。</td></tr>
-    <tr><td><code>WidgetRegistryManager</code></td><td>注册表：内置/安装组件与开发项目、启用状态、授权。</td></tr>
+    <tr><td><code>WidgetPackage</code> / <code>WidgetValidator</code></td><td>组件包规范解析与校验：<code>manifest.json</code> 与 entry 定位。</td></tr>
+    <tr><td><code>LayoutManager</code></td><td>实例布局状态，包含位置、尺寸、zOrder 与可见性。</td></tr>
+    <tr><td><code>WidgetRegistryManager</code></td><td>组件注册表：内置组件、安装组件与开发项目，以及启用状态。</td></tr>
     <tr><td><code>ConfigManager</code></td><td>布局配置读写（路径见第 5 节）。</td></tr>
     <tr><td><code>WidgetSettingsDialog</code> / <code>LinWidgetProjectTools</code></td><td>组件设置对话框、开发项目一键安装工具。</td></tr>
   </table>

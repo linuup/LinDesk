@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { WidgetInfo, WidgetSettingField } from '../types';
+import { WidgetInfo } from '../types';
 import { 
   Play, 
   Square, 
@@ -39,7 +39,6 @@ interface WidgetCenterProps {
   onLaunch: (id: string, packagePath: string) => void;
   onStop: (id: string) => void;
   onRestart?: (id: string) => void;
-  onTogglePermission?: (id: string, perm: string, granted: boolean) => void;
   onClearStorage?: (id: string, name: string) => void;
   onOpenFolder: (id: string, path: string) => void;
   onOpenWidgetsDir: () => void;
@@ -180,25 +179,6 @@ export const WidgetCenter: React.FC<WidgetCenterProps> = ({
         <IconComp className={`w-5 h-5 ${visual.color}`} />
       </div>
     );
-  };
-
-  const normalizeSchema = (schema: any): WidgetSettingField[] => {
-    if (!schema) return [];
-    if (Array.isArray(schema)) return schema;
-    if (typeof schema === 'object') {
-      return Object.entries(schema).map(([key, val]: [string, any]) => ({
-        key,
-        type: val?.type || 'string',
-        title: val?.title || val?.label || key,
-        description: val?.description,
-        default: val?.default,
-        min: val?.min,
-        max: val?.max,
-        step: val?.step,
-        options: val?.options,
-      }));
-    }
-    return [];
   };
 
   const handleToggleSettings = (w: WidgetInfo) => {
@@ -459,9 +439,7 @@ export const WidgetCenter: React.FC<WidgetCenterProps> = ({
       ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
         {filteredWidgets.map((w) => {
-          const schemaFields = normalizeSchema(w.settingsSchema);
           const isModalActive = activeSettingsWidgetId === w.id;
-          const hasSettings = Boolean(w.hasSettings || w.settingsUrl || schemaFields.length > 0);
 
           return (
             <div
@@ -583,19 +561,18 @@ export const WidgetCenter: React.FC<WidgetCenterProps> = ({
                     </button>
                   )}
 
-                  {hasSettings && (
-                    <button
-                      onClick={() => handleToggleSettings(w)}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1 transition-colors cursor-pointer ${
-                        isModalActive
-                          ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 dark:border-indigo-800/80 text-indigo-700 dark:text-indigo-300'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shadow-2xs'
-                      }`}
-                    >
-                      <SlidersHorizontal className="w-3 h-3" />
-                      <span>配置</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleToggleSettings(w)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1 transition-colors cursor-pointer ${
+                      isModalActive
+                        ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 dark:border-indigo-800/80 text-indigo-700 dark:text-indigo-300'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shadow-2xs'
+                    }`}
+                    title="配置组件参数与安全沙箱权限"
+                  >
+                    <SlidersHorizontal className="w-3 h-3" />
+                    <span>设置</span>
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-1">

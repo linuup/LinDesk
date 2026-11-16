@@ -1,6 +1,5 @@
 #include "desktop/widgets/linwidget/WidgetSettingsDialog.h"
 
-#include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetManager.h"
 #include "services/AppPaths.h"
 
@@ -100,7 +99,7 @@ WidgetSettingsDialog::WidgetSettingsDialog(QString packagePath,
     : QDialog(parent)
     , m_packagePath(std::move(packagePath))
     , m_manifest(std::move(manifest))
-    , m_grantedPermissions(PermissionManager().normalizePermissions(grantedPermissions))
+    , m_grantedPermissions(std::move(grantedPermissions))
     , m_isDevelopment(isDevelopment)
     , m_instanceId(std::move(instanceId))
 {

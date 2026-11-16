@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Weather Mini</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="layout-rectangle">
+  <main class="widget">
+    <div class="glass-panel" id="glassPanel">
+      <!-- 统一顶部标题栏 -->
+      <header class="header">
+        <div class="location-container" id="locationBtn" title="点击打开城市设置">
+          <span id="locationCityName" class="location-name">--</span>
+          <span id="locationSubtitle" class="location-subtitle"></span>
+        </div>
+        <div class="header-actions">
+          <button type="button" id="settingsBtn" class="icon-btn settings-btn" title="打开组件设置页">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- 空状态卡片 -->
+      <section id="emptyStateCard" class="empty-state-card hidden">
+        <div class="empty-icon-wrap">
+          <span class="empty-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+              <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+          </span>
+        </div>
+        <div class="empty-title">尚未配置任何位置</div>
+        <div class="empty-desc">支持即时拼音检索或省市县三级级联选择</div>
+        <button type="button" id="emptyActionBtn" class="primary-btn empty-btn">+ 打开设置添加城市</button>
+      </section>
+      
+      <!-- 天气主内容区（三种形态自适应） -->
+      <div id="weatherContent" class="weather-content">
+        <!-- 核心气象区 -->
+        <section class="current-weather">
+          <div class="current-main">
+            <div class="weather-icon-wrapper">
+              <div class="weather-icon" id="icon">
+                <img src="icons/clear-day.svg" alt="天气图标" class="weather-svg-icon" />
+              </div>
+            </div>
+            <div class="temp-block">
+              <div class="temp-row">
+                <span class="temperature" id="temperature">--°</span>
+                <span class="temp-range-badge" id="tempRange">--</span>
+              </div>
+              <div class="condition-row">
+                <span class="condition" id="condition">正在获取天气</span>
+                <span class="feels-like" id="feelsLike"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 小方形专用底部温度胶囊 -->
+          <div class="small-square-footer" id="smallSquareFooter">
+            <span class="mini-pill" id="miniPill">--</span>
+          </div>
+
+          <!-- 环境气象指标（矩形单行胶囊 / 大方形四宫格） -->
+          <div class="metrics" id="metricsContainer">
+            <div class="metric metric-humidity" title="湿度">
+              <span class="metric-icon">
+                <img src="icons/humidity.svg" alt="湿度" class="metric-svg-icon" />
+              </span>
+              <div class="metric-text-group">
+                <span class="metric-label">湿度</span>
+                <span class="metric-val" id="humidity">--%</span>
+              </div>
+            </div>
+            <div class="metric metric-wind" title="风速">
+              <span class="metric-icon">
+                <img src="icons/wind.svg" alt="风速" class="metric-svg-icon" />
+              </span>
+              <div class="metric-text-group">
+                <span class="metric-label">风速</span>
+                <span class="metric-val" id="wind">--</span>
+              </div>
+            </div>
+            <div class="metric metric-aqi" title="空气质量">
+              <span class="metric-icon">
+                <img src="icons/barometer.svg" alt="AQI" class="metric-svg-icon" />
+              </span>
+              <div class="metric-text-group">
+                <span class="metric-label">空气</span>
+                <span class="metric-val" id="aqi">优</span>
+              </div>
+            </div>
+            <div class="metric metric-pressure" id="pressureMetric" title="气压">
+              <span class="metric-icon">
+                <img src="icons/compass.svg" alt="气压" class="metric-svg-icon" />
+              </span>
+              <div class="metric-text-group">
+                <span class="metric-label">气压</span>
+                <span class="metric-val" id="pressure">1013 hPa</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- 未来预报区（矩形右侧立式 / 大方形底部横式 / 小方形隐藏） -->
+        <section class="forecast" id="forecast">
+          <!-- 动态注入多日天气预报条目 -->
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

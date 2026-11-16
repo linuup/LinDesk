@@ -352,20 +352,7 @@ public:
             return RV_CONTINUE;
         }
 
-        // 2. Network permission sandbox: block remote network access if network permission is not granted
-        if (m_owner && !m_owner->allowNetwork()) {
-            const QString urlStr = QString::fromStdWString(urlW).trimmed().toLower();
-            if (urlStr.startsWith(QLatin1String("http://")) ||
-                urlStr.startsWith(QLatin1String("https://")) ||
-                urlStr.startsWith(QLatin1String("ws://")) ||
-                urlStr.startsWith(QLatin1String("wss://")) ||
-                urlStr.startsWith(QLatin1String("ftp://"))) {
-                qWarning() << "[LinWidget][CefOsrBrowserInstance] Blocked network request for widget"
-                           << m_owner->widgetId() << "url:" << QString::fromStdWString(urlW);
-                return RV_CANCEL;
-            }
-        }
-
+        // 2. Allow all web resource and standard network requests for desktop widgets
         return RV_CONTINUE;
     }
 
@@ -988,6 +975,19 @@ void CefOsrBrowserInstance::injectBridgeScript(CefRefPtr<CefFrame> frame)
         "          const cb = systemInfoWatchers.get(wid);"
         "          try { cb(data.data || {}); }"
         "          catch (e) { console.error('[LinDesk Bridge] Error in system_info_update callback:', e); }"
+        "        }"
+        "      }"
+        "      if (data.type === 'permission_changed') {"
+        "        const perm = data.permission;"
+        "        const granted = !!data.granted;"
+        "        if (perm === 'desktop' && !granted) {"
+        "          systemInfoWatchers.clear();"
+        "        }"
+        "        try {"
+        "          window.dispatchEvent(new CustomEvent('linwidget:permission_changed', { detail: data }));"
+        "          window.postMessage(data, '*');"
+        "        } catch (e) {"
+        "          console.error('[LinDesk Bridge] Error dispatching permission_changed event:', e);"
         "        }"
         "      }"
         "      if (data.type === 'wallpaper_property_change' || data.type === 'wallpaper_config_update' || data.type === 'wallpaper_property') {"

@@ -7,19 +7,15 @@
   "icon": "icon.png",
   "width": 320,
   "height": 420,
-  "minWidth": 160,
-  "minHeight": 80,
-  "maxWidth": 600,
-  "maxHeight": 800,
+  "minWidth": 140,
+  "minHeight": 36,
+  "maxWidth": 1920,
+  "maxHeight": 1200,
   "autoLoad": true,
   "type": "html",
   "transparent": true,
   "resizable": true,
   "entry": "index.html",
-  "permissions": [
-    "desktop",
-    "storage"
-  ],
   "settingsSchema": [
     {
       "key": "refreshInterval",
@@ -28,10 +24,22 @@
       "description": "硬件传感器与负载采样周期，数值越小响应越灵敏，数值越大后台能耗越低。",
       "default": "1000",
       "options": [
-        { "label": "500ms 极速响应", "value": "500" },
-        { "label": "1000ms 标准平衡", "value": "1000" },
-        { "label": "2000ms 均衡省电", "value": "2000" },
-        { "label": "5000ms 超低功耗", "value": "5000" }
+        {
+          "label": "500ms 极速响应",
+          "value": "500"
+        },
+        {
+          "label": "1000ms 标准平衡",
+          "value": "1000"
+        },
+        {
+          "label": "2000ms 均衡省电",
+          "value": "2000"
+        },
+        {
+          "label": "5000ms 超低功耗",
+          "value": "5000"
+        }
       ]
     },
     {
@@ -41,8 +49,14 @@
       "description": "切换深色或浅色外观界面风格。",
       "default": "light",
       "options": [
-        { "label": "浅色纯净", "value": "light" },
-        { "label": "暗夜深邃", "value": "dark" }
+        {
+          "label": "浅色纯净",
+          "value": "light"
+        },
+        {
+          "label": "暗夜深邃",
+          "value": "dark"
+        }
       ]
     },
     {
@@ -50,10 +64,24 @@
       "type": "select",
       "title": "布局排版模式",
       "description": "在标准舒适卡片与高密度极简条之间切换。",
-      "default": "standard",
+      "default": "auto",
       "options": [
-        { "label": "标准舒适卡片", "value": "standard" },
-        { "label": "高密度极简条", "value": "compact" }
+        {
+          "label": "自动自适应 (根据窗口比例切换)",
+          "value": "auto"
+        },
+        {
+          "label": "标准舒适卡片 (垂直面板)",
+          "value": "standard"
+        },
+        {
+          "label": "灵动状态栏胶囊 (水平横条)",
+          "value": "capsule"
+        },
+        {
+          "label": "高密度极简条 (纵向迷你)",
+          "value": "compact"
+        }
       ]
     }
   ]

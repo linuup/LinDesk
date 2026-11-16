@@ -163,8 +163,8 @@
     <li>中层：CEF OSR 组件画布（每个组件独立 OSR 实例，帧按图层合成）。</li>
     <li>上层：桌面图标与收纳盒（ListView / LinBox）。</li>
   </ul>
-  <p>组件系统与主程序通过<strong>独立运行时 DLL + 导出函数桥</strong>集成（主程序可脱离运行）；组件与运行时的通信走统一消息协议（设置变更、系统信息、存储、实例管理）；布局/权限/注册表等逻辑为纯 C++ 层，与渲染引擎无关。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>，文档体系见 <a href="LinDesk_Docs_Index.html">文档中心</a>。</p>
-  <p class="note"><strong>当前状态：</strong>WebView2 已彻底移除（旧组件经 <code>chrome.webview</code> 兼容桥运行）；CEF OSR 渲染、消息桥、输入路由、组件系统独立运行时安装/卸载、壁纸组件、日志与崩溃、双架构发布均已落地。组件权限沙箱、console 日志捕获、崩溃自动恢复、组件市场等见<a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a>。</p>
+  <p>组件系统与主程序通过<strong>独立运行时 DLL 与导出函数桥</strong>集成，主程序可脱离运行；组件与运行时的通信走统一消息协议，包括设置变更、系统信息、存储与实例管理；布局与注册表等逻辑为纯 C++ 层，与渲染引擎无关。架构细节见 <a href="LinDesk_Architecture_Guide.html">架构指南</a>，文档体系见 <a href="LinDesk_Docs_Index.html">文档中心</a>。</p>
+  <p class="note"><strong>当前状态：</strong>WebView2 已彻底移除，旧组件经 <code>chrome.webview</code> 兼容桥运行；CEF OSR 渲染、消息桥、输入路由、组件系统独立运行时安装与卸载、壁纸组件、日志与崩溃、双架构发布均已落地；组件能力全量直通，不再受虚构权限沙箱限制。console 日志捕获、崩溃自动恢复、组件市场等见<a href="LinDesk_Widget_Platform_Plan.html">组件系统方案</a>。</p>
 </section>
 
 <footer class="doc-foot" style="margin-top:48px;padding-top:14px;border-top:1px solid var(--line-soft);color:var(--text-sub);font-size:13px;">

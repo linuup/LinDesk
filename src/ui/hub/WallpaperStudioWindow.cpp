@@ -2234,32 +2234,6 @@ void WallpaperStudioWindow::renderWidgetCards() {
         storageCol->addWidget(quotaBar);
         metaRow->addLayout(storageCol, 1);
 
-        // Permission Pills
-        auto* permTitle = new QLabel(tr("授权:"), card);
-        permTitle->setStyleSheet(QStringLiteral("color: #64748b; font-size: 11px; background: transparent; border: none;"));
-        metaRow->addWidget(permTitle);
-
-        auto addPermPill = [this, card, metaRow, w](const QString& permKey, const QString& label) {
-            const bool declared = w.declaredPermissions.contains(permKey, Qt::CaseInsensitive);
-            const bool granted = w.grantedPermissions.contains(permKey, Qt::CaseInsensitive);
-            if (!declared) return;
-
-            auto* pBtn = new QPushButton(label, card);
-            pBtn->setCursor(Qt::PointingHandCursor);
-            pBtn->setStyleSheet(granted
-                ? QStringLiteral("QPushButton { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; }")
-                : QStringLiteral("QPushButton { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; }"));
-            pBtn->setToolTip(granted ? tr("点击撤销 %1 权限").arg(label) : tr("点击授予 %1 权限").arg(label));
-            connect(pBtn, &QPushButton::clicked, this, [this, id = w.id, permKey, granted]() {
-                toggleWidgetPermission(id, permKey, granted);
-            });
-            metaRow->addWidget(pBtn);
-        };
-
-        addPermPill(QStringLiteral("network"), tr("🌐 网络"));
-        addPermPill(QStringLiteral("storage"), tr("📁 存储"));
-        addPermPill(QStringLiteral("desktop"), tr("🖥 桌面"));
-
         metaRow->addStretch();
         cardLayout->addLayout(metaRow);
 
@@ -2669,31 +2643,7 @@ void WallpaperStudioWindow::addDevelopmentWidget() {
     }
 }
 
-void WallpaperStudioWindow::toggleWidgetPermission(const QString& widgetId, const QString& permission, bool currentGranted) {
-    auto& bridge = LinWidgetRuntimeBridge::instance();
-    if (bridge.isLoaded()) {
-        QJsonObject req;
-        req.insert(QStringLiteral("action"), QStringLiteral("set_permission"));
-        req.insert(QStringLiteral("id"), widgetId);
-        req.insert(QStringLiteral("permission"), permission);
-        req.insert(QStringLiteral("granted"), !currentGranted);
-        bridge.queryWidgetManager(req);
-    }
 
-    auto& registry = LinWidget::WidgetRegistryManager::instance();
-    registry.load();
-    const auto entry = registry.entryById(widgetId);
-    QStringList perms = entry.permissionsGranted;
-    if (currentGranted) {
-        perms.removeAll(permission);
-    } else {
-        if (!perms.contains(permission)) perms.append(permission);
-    }
-    registry.setPermissionsGranted(widgetId, perms);
-    registry.save();
-
-    refreshWidgetsList();
-}
 
 void WallpaperStudioWindow::clearWidgetStorage(const QString& widgetId, const QString& widgetName) {
     if (!FluentDialog::confirm(

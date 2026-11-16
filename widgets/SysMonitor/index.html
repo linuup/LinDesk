@@ -14,39 +14,15 @@
    ========================================================================== */
 
 :root {
-  --bg-panel: rgba(15, 23, 42, 0.76);
-  --border-glass: rgba(255, 255, 255, 0.12);
-  --highlight-glass: rgba(255, 255, 255, 0.15);
+  --bg-panel: rgba(246, 248, 251, 0.82);
+  --border-glass: rgba(255, 255, 255, 0.85);
+  --highlight-glass: rgba(255, 255, 255, 0.98);
+  --panel-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.12), 0 4px 16px rgba(15, 23, 42, 0.04);
 
-  --card-bg: rgba(30, 41, 59, 0.65);
-  --card-border: rgba(255, 255, 255, 0.08);
-  --card-hover: rgba(51, 65, 85, 0.85);
-  --inner-well: rgba(15, 23, 42, 0.55);
-
-  --text-main: #f8fafc;
-  --text-sub: #94a3b8;
-  --text-dim: #64748b;
-
-  --accent-cyan: #38bdf8;
-  --accent-purple: #c084fc;
-  --accent-blue: #60a5fa;
-  --accent-emerald: #34d399;
-  --accent-amber: #fbbf24;
-  --accent-teal: #2dd4bf;
-  --accent-coral: #f87171;
-
-  --bar-track: rgba(255, 255, 255, 0.1);
-}
-
-body.light-theme {
-  --bg-panel: rgba(255, 255, 255, 0.88);
-  --border-glass: rgba(226, 232, 240, 0.85);
-  --highlight-glass: rgba(255, 255, 255, 0.95);
-
-  --card-bg: rgba(255, 255, 255, 0.9);
-  --card-border: rgba(226, 232, 240, 0.9);
+  --card-bg: rgba(255, 255, 255, 0.78);
+  --card-border: rgba(226, 232, 240, 0.8);
   --card-hover: #ffffff;
-  --inner-well: #f8fafc;
+  --inner-well: rgba(241, 245, 249, 0.85);
 
   --text-main: #0f172a;
   --text-sub: #475569;
@@ -60,7 +36,33 @@ body.light-theme {
   --accent-teal: #0d9488;
   --accent-coral: #dc2626;
 
-  --bar-track: #e2e8f0;
+  --bar-track: rgba(15, 23, 42, 0.05);
+}
+
+body.dark-theme {
+  --bg-panel: rgba(15, 23, 42, 0.82);
+  --border-glass: rgba(255, 255, 255, 0.14);
+  --highlight-glass: rgba(255, 255, 255, 0.16);
+  --panel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 20px 48px -12px rgba(0, 0, 0, 0.45);
+
+  --card-bg: rgba(30, 41, 59, 0.72);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-hover: rgba(51, 65, 85, 0.9);
+  --inner-well: rgba(15, 23, 42, 0.65);
+
+  --text-main: #f8fafc;
+  --text-sub: #94a3b8;
+  --text-dim: #64748b;
+
+  --accent-cyan: #38bdf8;
+  --accent-purple: #c084fc;
+  --accent-blue: #60a5fa;
+  --accent-emerald: #34d399;
+  --accent-amber: #fbbf24;
+  --accent-teal: #2dd4bf;
+  --accent-coral: #f87171;
+
+  --bar-track: rgba(255, 255, 255, 0.08);
 }
 
 * {
@@ -116,9 +118,7 @@ body.mode-compact .glass-panel {
 body.mode-compact .hardware-card {
   padding: 4px 6px;
   border-radius: 6px;
-}
-body.mode-compact .card-action-hint {
-  display: none;
+  gap: 3px;
 }
 body.mode-compact .big-number {
   font-size: 15px;
@@ -126,13 +126,10 @@ body.mode-compact .big-number {
 body.mode-compact .secondary-telemetry {
   font-size: 10px;
 }
-body.mode-compact .tag-badge {
-  font-size: 8px;
-  padding: 0 3px;
-}
 body.mode-compact .energy-rail {
   height: 3px;
 }
+
 .widget-root {
   width: 100%;
   height: 100%;
@@ -145,17 +142,21 @@ body.mode-compact .energy-rail {
   height: 100%;
   box-sizing: border-box;
   background: var(--bg-panel);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
   border: 1px solid var(--border-glass);
-  box-shadow: inset 0 1px 0 var(--highlight-glass), 0 8px 32px rgba(0, 0, 0, 0.28);
-  border-radius: 14px;
+  box-shadow: inset 0 1px 0 var(--highlight-glass), var(--panel-shadow);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  padding: 12px 14px;
+  padding: 12px 13px;
   -webkit-app-region: drag;
+}
+
+body.dark-theme .glass-panel {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), var(--panel-shadow);
 }
 
 /* ================= LEVEL 1: OVERVIEW ROOT ================= */
@@ -169,46 +170,6 @@ body.mode-compact .energy-rail {
   -webkit-app-region: no-drag;
 }
 
-.stage-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--card-border);
-  margin-bottom: 8px;
-  flex-shrink: 0;
-}
-
-.head-title-wrap {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.head-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text-main);
-}
-
-.head-desc {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text-dim);
-}
-
-.uptime-badge {
-  font-size: 11px;
-  color: var(--text-sub);
-  background: var(--inner-well);
-  border: 1px solid var(--card-border);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-/* 4 Module Cards */
 .module-cards-stack {
   flex: 1;
   display: flex;
@@ -228,180 +189,291 @@ body.mode-compact .energy-rail {
 
 .hardware-card {
   position: relative;
-  background: var(--card-bg);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.88) 0%, rgba(248, 250, 252, 0.65) 100%);
   border: 1px solid var(--card-border);
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+  padding: 8px 11px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 5px;
   cursor: pointer;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.dark-theme .hardware-card {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.65) 100%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .hardware-card:hover {
-  background: var(--card-hover);
-  border-color: rgba(255, 255, 255, 0.18);
-  transform: translateY(-1px);
+  background: linear-gradient(145deg, #ffffff 0%, rgba(241, 245, 249, 0.85) 100%);
+  border-color: rgba(37, 99, 235, 0.25);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 18px -2px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
 }
 
-.accent-ribbon {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
+body.dark-theme .hardware-card:hover {
+  background: linear-gradient(145deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
+  border-color: rgba(96, 165, 250, 0.35);
+  box-shadow: 0 6px 18px -2px rgba(0, 0, 0, 0.4);
 }
-.ribbon-cyan { background: var(--accent-cyan); }
-.ribbon-purple { background: var(--accent-purple); }
-.ribbon-blue { background: var(--accent-blue); }
-.ribbon-emerald { background: var(--accent-emerald); }
-.ribbon-amber { background: var(--accent-amber); }
-.ribbon-teal { background: var(--accent-teal); }
-.ribbon-coral { background: var(--accent-coral) !important; box-shadow: 0 0 8px rgba(248, 113, 113, 0.6); }
 
-/* Overload Alert Animation */
-@keyframes alertPulse {
-  0% { opacity: 0.85; }
-  50% { opacity: 1; transform: scale(1.01); }
-  100% { opacity: 0.85; }
+/* Hero Cards subtle identity badges */
+.module-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.badge-cpu {
+  color: #0284c7;
+  background: rgba(2, 132, 199, 0.1);
+}
+body.dark-theme .badge-cpu {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+}
+
+.badge-gpu {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+}
+body.dark-theme .badge-gpu {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.15);
+}
+
+.badge-ram {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+body.dark-theme .badge-ram {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.badge-disk {
+  color: #0d9488;
+  background: rgba(13, 148, 136, 0.1);
+}
+body.dark-theme .badge-disk {
+  color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.15);
+}
+
+.badge-net {
+  color: #059669;
+  background: rgba(5, 150, 105, 0.1);
+}
+body.dark-theme .badge-net {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.15);
 }
 
 .hardware-card.card-overload {
-  border-color: rgba(248, 113, 113, 0.45) !important;
-  box-shadow: 0 0 12px rgba(248, 113, 113, 0.22) !important;
-}
-
-.card-content-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-  padding-right: 6px;
+  border-color: rgba(220, 38, 38, 0.45) !important;
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.18) !important;
 }
 
 .card-title-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+  min-width: 0;
+}
+
+.title-left-group {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.module-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: -0.01em;
+}
+
+.device-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 .uptime-pill {
   margin-left: auto;
-  font-size: 9px;
+  flex-shrink: 0;
+  font-size: 10px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-sub);
   background: var(--inner-well);
   border: 1px solid var(--card-border);
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 4px;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.uptime-pill:hover {
+  background: var(--card-bg);
+  color: var(--text-main);
 }
 
-.tag-badge {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-}
-.tag-cyan { background: rgba(56, 189, 248, 0.16); color: var(--accent-cyan); }
-.tag-purple { background: rgba(192, 132, 252, 0.16); color: var(--accent-purple); }
-.tag-blue { background: rgba(96, 165, 250, 0.16); color: var(--accent-blue); }
-.tag-emerald { background: rgba(52, 211, 153, 0.16); color: var(--accent-emerald); }
-.tag-amber { background: rgba(251, 191, 36, 0.16); color: var(--accent-amber); }
-.tag-teal { background: rgba(45, 212, 191, 0.16); color: var(--accent-teal); }
-
-.device-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-sub);
-}
-
+/* Metrics Row: Left 24px Big Number, Right 11px Clean Stack */
 .card-metrics-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .big-load-display {
   display: flex;
   align-items: baseline;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .big-number {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text-main);
   line-height: 1;
-  min-width: 1.8rem;
-  text-align: left;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
 }
 
 .unit-percent {
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-dim);
 }
 
 .secondary-telemetry {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.stat-primary {
   font-size: 11px;
-}
-
-.temp-text {
-  color: var(--text-main);
   font-weight: 600;
+  color: var(--text-main);
+  line-height: 1.2;
 }
 
-.clock-text, .dim-text {
+.stat-secondary {
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-dim);
+  line-height: 1.2;
 }
 
-.stream-pair {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-}
-
-.stream-symbol {
-  font-weight: 700;
-}
-
-.rate-val {
-  font-weight: 600;
-  color: var(--text-main);
-  min-width: 4.5rem;
-}
-
+/* Universal Energy Rail */
 .energy-rail {
   width: 100%;
-  height: 4px;
+  height: 4.5px;
   background: var(--bar-track);
-  border-radius: 2px;
+  border-radius: 3px;
   overflow: hidden;
-  margin-top: 1px;
+  position: relative;
 }
 
 .energy-fill {
   height: 100%;
-  border-radius: 2px;
-  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 3px;
+  background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%);
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.25);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease;
 }
-.fill-cyan { background: var(--accent-cyan); }
-.fill-purple { background: var(--accent-purple); }
-.fill-blue { background: var(--accent-blue); }
-.fill-emerald { background: var(--accent-emerald); }
-.fill-amber { background: var(--accent-amber); }
-.fill-teal { background: var(--accent-teal); }
+
+body.dark-theme .energy-fill {
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.35);
+}
+
+/* Secondary Tier: 50% / 50% Sub-Grid Row */
+.sub-grid-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  width: 100%;
+}
+
+.sub-card {
+  padding: 7px 9px;
+  gap: 4px;
+}
+
+.sub-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.sub-card-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.1;
+  margin-left: auto;
+}
+
+.sub-card-secondary {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.net-stream-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.stream-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.stream-arrow {
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--text-sub);
+}
+
+.stream-val {
+  color: var(--text-main);
+}
 
 .card-action-hint {
   display: flex;
@@ -461,21 +533,29 @@ body.mode-compact .energy-rail {
 .back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: var(--inner-well);
+  gap: 5px;
+  background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 5px;
-  padding: 3px 8px;
+  border-radius: 6px;
+  padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-sub);
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .back-btn:hover {
-  background: var(--card-bg);
-  color: var(--text-main);
+  background: #ffffff;
+  color: var(--accent-blue);
+  border-color: rgba(0, 113, 227, 0.3);
+  transform: translateX(-1px);
+}
+
+body.dark-theme .back-btn:hover {
+  background: rgba(51, 65, 85, 0.95);
+  color: #ffffff;
 }
 
 .overlay-content-scroll {
@@ -501,13 +581,20 @@ body.mode-compact .energy-rail {
 
 /* Detail UI Components */
 .detail-hero-box {
-  background: var(--card-bg);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(240, 246, 255, 0.6) 100%);
   border: 1px solid var(--card-border);
+  border-left: 3.5px solid var(--accent-blue);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.05);
+}
+
+body.dark-theme .detail-hero-box {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.6) 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .dh-left {
@@ -517,10 +604,10 @@ body.mode-compact .energy-rail {
 }
 
 .dh-tag {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: 0.05em;
+  color: var(--text-sub);
+  letter-spacing: normal;
 }
 
 .dh-number-row {
@@ -587,9 +674,12 @@ body.mode-compact .energy-rail {
   background: var(--card-bg);
 }
 .gpu-pill-tab.active {
-  background: rgba(192, 132, 252, 0.18);
+  background: rgba(124, 58, 237, 0.12);
   border-color: var(--accent-purple);
   color: var(--accent-purple);
+}
+body.dark-theme .gpu-pill-tab.active {
+  background: rgba(192, 132, 252, 0.18);
 }
 
 /* Property Sheet */
@@ -600,15 +690,35 @@ body.mode-compact .energy-rail {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
 .prop-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
   border-bottom: 1px solid var(--card-border);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+  user-select: text;
+}
+
+.prop-row:nth-child(even) {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+body.dark-theme .prop-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.prop-row:hover {
+  background: rgba(37, 99, 235, 0.08);
 }
 
 .prop-row:last-child {
@@ -617,12 +727,127 @@ body.mode-compact .energy-rail {
 
 .prop-k {
   color: var(--text-sub);
-  font-weight: 500;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  pointer-events: none;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prop-k::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--card-border);
+  transition: all 0.18s ease;
+}
+
+.prop-row:hover .prop-k::before {
+  background: var(--accent-blue);
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.45);
 }
 
 .prop-v {
   font-weight: 600;
   color: var(--text-main);
+  user-select: text;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  background: rgba(0, 0, 0, 0.035);
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+body.dark-theme .prop-v {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* 明显的悬停态：背景与底板深度融合，微蓝边框，复制徽标指示 */
+.prop-row:hover .prop-v {
+  background: #ffffff;
+  border-color: rgba(37, 99, 235, 0.4);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.12);
+  color: var(--accent-blue);
+  transform: translateY(-0.5px);
+}
+
+body.dark-theme .prop-row:hover .prop-v {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: #93c5fd;
+}
+
+/* 复制成功时的激活态 */
+.prop-row.copied {
+  background: rgba(37, 99, 235, 0.16) !important;
+}
+
+.prop-row.copied .prop-v {
+  background: var(--accent-blue) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.3) !important;
+}
+
+/* Copy Floating Notification - Acrylic Frosted Glass Aesthetic */
+.copy-toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%) translateY(16px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  color: var(--text-main);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 999;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-toast::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  box-shadow: 0 0 6px var(--accent-blue);
+}
+
+body.dark-theme .copy-toast {
+  background: rgba(30, 41, 59, 0.88);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+}
+
+.copy-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .section-caption {
@@ -709,9 +934,10 @@ body.mode-compact .energy-rail {
   gap: 8px;
   font-size: 9px;
   font-weight: 600;
-  background: rgba(15, 23, 42, 0.7);
-  padding: 1px 4px;
-  border-radius: 3px;
+  background: var(--inner-well);
+  border: 1px solid var(--card-border);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .chart-rx { color: var(--accent-emerald); }
@@ -752,14 +978,19 @@ body.mode-compact .energy-rail {
   
 /* ================= LEVEL 2.3 MEMORY MODERN DESIGN ================= */
 .mem-hero-card {
-  background: var(--card-bg);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(238, 246, 255, 0.65) 100%);
   border: 1px solid var(--card-border);
+  border-left: 3.5px solid var(--accent-blue);
   border-radius: 10px;
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.06);
+}
+
+body.dark-theme .mem-hero-card {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.6) 100%);
 }
 
 .mem-hero-top {
@@ -769,11 +1000,10 @@ body.mode-compact .energy-rail {
 }
 
 .sec-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text-sub);
 }
 
 .mem-main-numbers {
@@ -804,13 +1034,17 @@ body.mode-compact .energy-rail {
 }
 
 .mem-pill-badge {
-  background: rgba(59, 130, 246, 0.16);
-  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.25);
   color: var(--accent-blue);
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 12px;
+}
+body.dark-theme .mem-pill-badge {
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(59, 130, 246, 0.35);
 }
 
 .mem-freq-tag {
@@ -879,14 +1113,20 @@ body.mode-compact .energy-rail {
 }
 
 .metric-quad-cell {
-  background: var(--card-bg);
+  background: linear-gradient(180deg, var(--card-bg) 0%, var(--inner-well) 100%);
   border: 1px solid var(--card-border);
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  transition: background 0.16s ease, border-color 0.16s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.metric-quad-cell:hover {
+  transform: translateY(-1px);
+  border-color: rgba(0, 113, 227, 0.3);
 }
 
 .metric-quad-cell:hover {
@@ -913,98 +1153,102 @@ body.mode-compact .energy-rail {
   margin-top: 1px;
 }
 
-/* Multi-Core Monitor Card */
+/* Multi-Core Monitor Card - Compact & Clean */
 .cores-card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
 .cores-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--card-border);
 }
 
 .cores-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--text-dim);
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text-sub);
 }
 
 .cores-count {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--accent-cyan);
+  color: var(--accent-blue);
+  background: rgba(0, 113, 227, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .cores-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
 }
 
 .core-cell {
-  background: var(--inner-well);
+  background: linear-gradient(180deg, var(--card-bg) 0%, var(--inner-well) 100%);
   border: 1px solid var(--card-border);
   border-radius: 5px;
   padding: 4px 6px;
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.core-cell:hover {
+  border-color: rgba(0, 113, 227, 0.35);
+  transform: translateY(-1px);
 }
 
 .core-cell-top {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  font-size: 10px;
+  align-items: baseline;
+  gap: 2px;
 }
 
 .core-name {
   color: var(--text-sub);
+  font-weight: 500;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.core-usage-num {
+  font-size: 11px;
   font-weight: 600;
-}
-
-.core-freq {
-  color: var(--text-dim);
-  font-size: 9px;
-}
-
-.core-cell-bottom {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  color: var(--text-main);
+  text-align: right;
+  white-space: nowrap;
 }
 
 .core-bar-track {
-  flex: 1;
-  height: 4px;
+  width: 100%;
+  height: 3px;
   background: var(--bar-track);
-  border-radius: 2px;
+  border-radius: 1.5px;
   overflow: hidden;
 }
 
 .core-bar-fill {
   height: 100%;
-  background: var(--accent-cyan);
-  border-radius: 2px;
+  background: var(--accent-blue);
+  border-radius: 1.5px;
   transition: width 0.25s ease;
-}
-
-.core-usage-num {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-main);
-  min-width: 26px;
-  text-align: right;
 }
 
 /* Physical DIMM Slots Card */
@@ -1025,11 +1269,10 @@ body.mode-compact .energy-rail {
 }
 
 .dimm-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--text-dim);
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text-sub);
 }
 
 .dimm-count {
@@ -1145,14 +1388,19 @@ body.mode-compact .energy-rail {
 
 /* ================= LEVEL 2.4 DISK DETAIL MODERN DESIGN ================= */
 .disk-hero-card {
-  background: var(--card-bg);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(236, 253, 245, 0.65) 100%);
   border: 1px solid var(--card-border);
+  border-left: 3.5px solid var(--accent-teal);
   border-radius: 10px;
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.06);
+}
+
+body.dark-theme .disk-hero-card {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.6) 100%);
 }
 
 .disk-hero-top {
@@ -1188,13 +1436,17 @@ body.mode-compact .energy-rail {
 }
 
 .disk-pill-badge {
-  background: rgba(45, 212, 191, 0.16);
-  border: 1px solid rgba(45, 212, 191, 0.35);
+  background: rgba(13, 148, 136, 0.12);
+  border: 1px solid rgba(13, 148, 136, 0.25);
   color: var(--accent-teal);
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 12px;
+}
+body.dark-theme .disk-pill-badge {
+  background: rgba(45, 212, 191, 0.16);
+  border: 1px solid rgba(45, 212, 191, 0.35);
 }
 
 .disk-free-tag {
@@ -1235,13 +1487,19 @@ body.mode-compact .energy-rail {
 
 /* System Boot Drive Card */
 .main-drive-card {
-  background: var(--card-bg);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(240, 253, 250, 0.6) 100%);
   border: 1px solid var(--card-border);
+  border-left: 3.5px solid var(--accent-teal);
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+}
+
+body.dark-theme .main-drive-card {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.6) 100%);
 }
 
 .mdc-head {
@@ -1257,10 +1515,10 @@ body.mode-compact .energy-rail {
 }
 
 .mdc-tag {
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--text-dim);
-  letter-spacing: 0.05em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-sub);
+  letter-spacing: normal;
 }
 
 .mdc-title {
@@ -1298,158 +1556,474 @@ body.mode-compact .energy-rail {
   font-weight: 600;
 }
 
+
+/* Disk Detail Theme Colors */
+.detail-hero-box.disk-hero-accent {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(240, 253, 250, 0.65) 100%);
+  border-left: 3.5px solid var(--accent-teal);
+  box-shadow: 0 2px 6px rgba(13, 148, 136, 0.05);
+}
+
+body.dark-theme .detail-hero-box.disk-hero-accent {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.6) 100%);
+}
+
+.drives-modern-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.drive-card-item {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.16s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.drive-card-item:hover {
+  background: var(--card-hover);
+  border-color: rgba(13, 148, 136, 0.3);
+  transform: translateY(-0.5px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dci-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dci-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dci-root-pill {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-main);
+  background: var(--inner-well);
+  border: 1px solid var(--card-border);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.dci-tag-boot {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-teal);
+  background: rgba(13, 148, 136, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.dci-pct {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.dci-pct.alert {
+  color: var(--accent-coral);
+}
+
+.dci-space-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+.dci-space-free {
+  font-weight: 500;
+}
+
+.dci-space-free b {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.dci-space-total {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.dci-rail {
+  width: 100%;
+  height: 4px;
+  background: var(--bar-track);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.dci-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ================= TELEMETRY STANDBY & PERMISSION BANNER ================= */
+.telemetry-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 7px;
+  padding: 5px 8px;
+  margin-bottom: 7px;
+  flex-shrink: 0;
+  animation: bannerFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+body.dark-theme .telemetry-status-bar {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+@keyframes bannerFadeIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.tsb-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tsb-beacon {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.tsb-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.tsb-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #d97706;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+body.dark-theme .tsb-action-btn {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.tsb-action-btn:hover {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #ffffff;
+}
+
+body.dark-theme .tsb-action-btn:hover {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #0f172a;
+}
+
+.standby-state .hardware-card {
+  opacity: 0.88;
+}
+
+.standby-state .slot-num {
+  opacity: 0.45;
+}
+
+.standby-state .energy-fill {
+  opacity: 0.2;
+}
+
+.standby-state .uptime-pill {
+  color: var(--text-dim) !important;
+  border-color: var(--card-border) !important;
+  background: var(--inner-well) !important;
+}
+
+
+/* ================= MINIMAL CAPSULE STATUS BAR ================= */
+body.mode-capsule .overview-stage,
+body.mode-capsule .detail-overlay {
+  display: none !important;
+}
+
+body.mode-capsule .capsule-stage {
+  display: flex !important;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+body.mode-capsule .glass-panel {
+  padding: 2px 14px !important;
+  border-radius: 20px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid var(--border-glass) !important;
+}
+
+body.dark-theme.mode-capsule .glass-panel {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.capsule-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+}
+
+.capsule-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+}
+
+.cap-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
+.cap-val {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.cap-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+}
+
+.cap-divider {
+  width: 1px;
+  height: 10px;
+  background: var(--card-border);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
 </style>
 </head>
 <body>
   <div class="widget-root">
     <div class="glass-panel" id="glassPanel">
 
+            <!-- ================= CAPSULE HORIZONTAL STATUS BAR MODE ================= -->
+      <section class="capsule-stage" id="capsuleStage" style="display: none;">
+        <div class="capsule-container">
+          <!-- CPU -->
+          <div class="capsule-pill">
+            <span class="cap-label">CPU</span>
+            <span class="cap-val font-mono slot-num" id="capCpuUsage">0%</span>
+            <span class="cap-sub font-mono" id="capCpuTemp">--°</span>
+          </div>
+          <span class="cap-divider"></span>
+
+          <!-- GPU -->
+          <div class="capsule-pill">
+            <span class="cap-label">GPU</span>
+            <span class="cap-val font-mono slot-num" id="capGpuUsage">0%</span>
+            <span class="cap-sub font-mono" id="capGpuTemp">--°</span>
+          </div>
+          <span class="cap-divider"></span>
+
+          <!-- RAM -->
+          <div class="capsule-pill">
+            <span class="cap-label">RAM</span>
+            <span class="cap-val font-mono slot-num" id="capRamUsage">0%</span>
+            <span class="cap-sub font-mono" id="capRamUsed">--G</span>
+          </div>
+        </div>
+      </section>
+
       <!-- ================= LEVEL 1: OVERVIEW STAGE ================= -->
       <section class="overview-stage" id="overviewStage">
+        <!-- Telemetry Standby Status Bar (Visible only when desktop permission revoked) -->
+        <div class="telemetry-status-bar" id="telemetryStatusBar" style="display: none;">
+          <div class="tsb-left">
+            <span class="tsb-beacon"></span>
+            <span class="tsb-text">硬件遥测待命 · 需系统桌面权限</span>
+          </div>
+          <button class="tsb-action-btn" id="tsbOpenSettingsBtn" title="打开组件设置授权">授权恢复</button>
+        </div>
+
         <!-- 4 Distinct Hardware Module Cards -->
         <div class="module-cards-stack">
 
-          <!-- 1. CPU MODULE CARD -->
-          <article class="hardware-card" data-detail="cpu" title="双击查看 CPU 详细指标">
-            <div class="accent-ribbon ribbon-cyan"></div>
-            <div class="card-content-col">
-              <div class="card-title-row">
-                <span class="tag-badge tag-cyan">CPU</span>
-                <span class="device-name truncate" id="ovCpuName">Processor</span>
-                <span class="uptime-pill font-mono" id="ovSysUptime" title="系统开机运行时间">--</span>
+          <!-- 1. CPU HERO CARD -->
+          <article class="hardware-card" data-detail="cpu" id="cardCpu" title="双击查看处理器详情">
+            <div class="card-title-row">
+              <div class="title-left-group">
+                <span class="module-badge badge-cpu">CPU</span>
+                <span class="device-name" id="ovCpuName">Processor</span>
               </div>
-              <div class="card-metrics-row">
-                <div class="big-load-display font-mono">
-                  <span class="big-number slot-num" id="ovCpuUsage">0</span>
-                  <span class="unit-percent">%</span>
-                </div>
-                <div class="secondary-telemetry font-mono">
-                  <span class="temp-text" id="ovCpuTemp">-- °C</span>
-                  <span class="clock-text" id="ovCpuClock">-- GHz</span>
-                </div>
+              <span class="uptime-pill font-mono" id="ovSysUptime" title="点击切换开机时间或内核时间">--</span>
+            </div>
+            <div class="card-metrics-row">
+              <div class="big-load-display font-mono">
+                <span class="big-number slot-num" id="ovCpuUsage">0</span>
+                <span class="unit-percent">%</span>
               </div>
-              <div class="energy-rail">
-                <div class="energy-fill fill-cyan" id="ovCpuBar" style="width: 0%;"></div>
+              <div class="secondary-telemetry font-mono">
+                <span class="stat-primary" id="ovCpuTemp">-- °C</span>
+                <span class="stat-secondary" id="ovCpuClock">-- GHz</span>
               </div>
+            </div>
+            <div class="energy-rail">
+              <div class="energy-fill" id="ovCpuBar" style="width: 0%;"></div>
             </div>
           </article>
 
-          <!-- 2. GPU MODULE CARD -->
-          <article class="hardware-card" data-detail="gpu" title="双击查看 GPU 详细指标">
-            <div class="accent-ribbon ribbon-purple"></div>
-            <div class="card-content-col">
-              <div class="card-title-row">
-                <span class="tag-badge tag-purple">GPU</span>
-                <span class="device-name truncate" id="ovGpuName">Graphics</span>
+          <!-- 2. GPU HERO CARD -->
+          <article class="hardware-card" data-detail="gpu" id="cardGpu" title="双击查看图形核心详情">
+            <div class="card-title-row">
+              <div class="title-left-group">
+                <span class="module-badge badge-gpu">GPU</span>
+                <span class="device-name" id="ovGpuName">Graphics</span>
               </div>
-              <div class="card-metrics-row">
-                <div class="big-load-display font-mono">
-                  <span class="big-number slot-num" id="ovGpuUsage">0</span>
-                  <span class="unit-percent">%</span>
-                </div>
-                <div class="secondary-telemetry font-mono">
-                  <span class="temp-text" id="ovGpuTemp">-- °C</span>
-                  <span class="clock-text" id="ovGpuVram">-- GB</span>
-                </div>
+            </div>
+            <div class="card-metrics-row">
+              <div class="big-load-display font-mono">
+                <span class="big-number slot-num" id="ovGpuUsage">0</span>
+                <span class="unit-percent">%</span>
               </div>
-              <div class="energy-rail">
-                <div class="energy-fill fill-purple" id="ovGpuBar" style="width: 0%;"></div>
+              <div class="secondary-telemetry font-mono">
+                <span class="stat-primary" id="ovGpuTemp">-- °C</span>
+                <span class="stat-secondary" id="ovGpuVram">-- GB</span>
               </div>
+            </div>
+            <div class="energy-rail">
+              <div class="energy-fill" id="ovGpuBar" style="width: 0%;"></div>
             </div>
           </article>
 
-          <!-- 3. RAM MODULE CARD -->
-          <article class="hardware-card" data-detail="ram" title="双击查看内存详细指标">
-            <div class="accent-ribbon ribbon-blue"></div>
-            <div class="card-content-col">
-              <div class="card-title-row">
-                <span class="tag-badge tag-blue">RAM</span>
-                <span class="device-name truncate" id="ovRamName">System Memory</span>
+          <!-- 3. RAM HERO CARD -->
+          <article class="hardware-card" data-detail="ram" id="cardRam" title="双击查看物理内存详情">
+            <div class="card-title-row">
+              <div class="title-left-group">
+                <span class="module-badge badge-ram">RAM</span>
+                <span class="device-name" id="ovRamName">System Memory</span>
               </div>
-              <div class="card-metrics-row">
-                <div class="big-load-display font-mono">
-                  <span class="big-number slot-num" id="ovRamUsage">0</span>
-                  <span class="unit-percent">%</span>
-                </div>
-                <div class="secondary-telemetry font-mono">
-                  <span class="clock-text" id="ovRamUsed">-- GB</span>
-                  <span class="dim-text" id="ovRamTotal">/ -- GB</span>
-                </div>
+            </div>
+            <div class="card-metrics-row">
+              <div class="big-load-display font-mono">
+                <span class="big-number slot-num" id="ovRamUsage">0</span>
+                <span class="unit-percent">%</span>
               </div>
-              <div class="energy-rail">
-                <div class="energy-fill fill-blue" id="ovRamBar" style="width: 0%;"></div>
+              <div class="secondary-telemetry font-mono">
+                <span class="stat-primary" id="ovRamUsed">-- GB</span>
+                <span class="stat-secondary" id="ovRamTotal">/ -- GB</span>
               </div>
+            </div>
+            <div class="energy-rail">
+              <div class="energy-fill" id="ovRamBar" style="width: 0%;"></div>
             </div>
           </article>
 
-          <!-- 4. DISK MODULE CARD (DEDICATED STORAGE) -->
-          <article class="hardware-card" data-detail="disk" title="点击查看本地存储阵列详情">
-            <div class="accent-ribbon ribbon-teal"></div>
-            <div class="card-content-col">
+          <!-- 4. SECONDARY TIER: DISK & NETWORK ROW (50% / 50%) -->
+          <div class="sub-grid-row">
+            <!-- 4.1 DISK SUB-CARD -->
+            <article class="hardware-card sub-card" data-detail="disk" id="cardDisk" title="双击查看本地存储详情">
               <div class="card-title-row">
-                <span class="tag-badge tag-teal">DISK</span>
-                <span class="device-name truncate" id="ovDiskName">本地存储阵列</span>
+                <span class="module-badge badge-disk">DISK</span>
+                <span class="sub-card-value font-mono" id="ovDiskUsage">0%</span>
               </div>
-              <div class="card-metrics-row font-mono">
-                <div class="big-load-display font-mono">
-                  <span class="big-number slot-num" id="ovDiskUsage">0</span>
-                  <span class="unit-percent">%</span>
+              <div class="sub-card-secondary font-mono">
+                <span id="ovDiskUsed">-- GB</span>
+                <span id="ovDiskTotal">/ -- TB</span>
+              </div>
+              <div class="energy-rail">
+                <div class="energy-fill" id="ovDiskBar" style="width: 0%;"></div>
+              </div>
+            </article>
+
+            <!-- 4.2 NETWORK SUB-CARD -->
+            <article class="hardware-card sub-card" data-detail="net" id="cardNet" title="双击查看网络拓扑详情">
+              <div class="card-title-row">
+                <span class="module-badge badge-net">NET</span>
+                <span class="sub-card-secondary" id="ovNetName">以太网</span>
+              </div>
+              <div class="net-stream-stack font-mono">
+                <div class="stream-line">
+                  <span class="stream-arrow">↓</span>
+                  <span class="stream-val slot-num" id="ovNetDown">0 B/s</span>
                 </div>
-                <div class="secondary-telemetry font-mono">
-                  <span class="clock-text" id="ovDiskUsed">-- GB</span>
-                  <span class="dim-text" id="ovDiskTotal">/ -- TB</span>
+                <div class="stream-line">
+                  <span class="stream-arrow">↑</span>
+                  <span class="stream-val slot-num" id="ovNetUp">0 B/s</span>
                 </div>
               </div>
               <div class="energy-rail">
-                <div class="energy-fill fill-teal" id="ovDiskBar" style="width: 0%;"></div>
+                <div class="energy-fill" id="ovNetBar" style="width: 10%;"></div>
+              </div>
+            </article>
+          </div>
+
+          <!-- 5. POWER CARD (AUTO-HIDDEN ON DESKTOPS WITHOUT BATTERY) -->
+          <article class="hardware-card" data-detail="battery" id="cardBattery" style="display: none;" title="双击查看电池与电源详情">
+            <div class="card-title-row">
+              <div class="title-left-group">
+                <span class="module-title">PWR</span>
+                <span class="device-name" id="ovBatStatus">内置电池</span>
               </div>
             </div>
-          </article>
-
-          <!-- 4. NETWORK MODULE CARD -->
-          <article class="hardware-card" data-detail="net" title="双击查看网络详细指标">
-            <div class="accent-ribbon ribbon-emerald"></div>
-            <div class="card-content-col">
-              <div class="card-title-row">
-                <span class="tag-badge tag-emerald">NET</span>
-                <span class="device-name truncate" id="ovNetName">Active Interface</span>
+            <div class="card-metrics-row">
+              <div class="big-load-display font-mono">
+                <span class="big-number slot-num" id="ovBatPercent">--</span>
+                <span class="unit-percent" id="ovBatUnit">%</span>
               </div>
-              <div class="card-metrics-row font-mono">
-                <div class="stream-pair">
-                  <span class="stream-symbol text-emerald">↓</span>
-                  <span class="rate-val slot-num" id="ovNetDown">0 B/s</span>
-                </div>
-                <div class="stream-pair">
-                  <span class="stream-symbol text-cyan">↑</span>
-                  <span class="rate-val slot-num" id="ovNetUp">0 B/s</span>
-                </div>
-              </div>
-              <div class="energy-rail">
-                <div class="energy-fill fill-emerald" id="ovNetBar" style="width: 20%;"></div>
+              <div class="secondary-telemetry font-mono">
+                <span class="stat-primary" id="ovBatState">已连接电源</span>
               </div>
             </div>
-          </article>
-
-          <!-- 5. BATTERY & POWER MODULE CARD -->
-          <article class="hardware-card" data-detail="battery" title="双击查看电源与电池详细指标">
-            <div class="accent-ribbon ribbon-amber"></div>
-            <div class="card-content-col">
-              <div class="card-title-row">
-                <span class="tag-badge tag-amber">PWR</span>
-                <span class="device-name truncate" id="ovBatStatus">电源状态</span>
-              </div>
-              <div class="card-metrics-row font-mono">
-                <div class="big-load-display font-mono">
-                  <span class="big-number slot-num" id="ovBatPercent">--</span>
-                  <span class="unit-percent" id="ovBatUnit">%</span>
-                </div>
-                <div class="secondary-telemetry font-mono">
-                  <span class="clock-text" id="ovBatState">已连接电源</span>
-                </div>
-              </div>
-              <div class="energy-rail">
-                <div class="energy-fill fill-amber" id="ovBatBar" style="width: 100%;"></div>
-              </div>
+            <div class="energy-rail" id="ovBatRail">
+              <div class="energy-fill" id="ovBatBar" style="width: 100%;"></div>
             </div>
           </article>
 
@@ -1463,14 +2037,13 @@ body.mode-compact .energy-rail {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
             <span>返回概览</span>
           </button>
-          <span class="tag-badge" id="overlayBadge">CPU DETAIL</span>
         </header>
 
         <!-- 2.1 CPU DETAIL CONTENT -->
         <div class="overlay-content-scroll" id="contentCpu">
           <div class="detail-hero-box">
             <div class="dh-left">
-              <span class="dh-tag">PROCESSOR LOAD</span>
+              <span class="dh-tag">处理器即时负载</span>
               <div class="dh-number-row font-mono">
                 <span class="dh-value slot-num" id="dtCpuUsage">0</span>
                 <span class="dh-unit">%</span>
@@ -1554,12 +2127,20 @@ body.mode-compact .energy-rail {
               <span class="prop-v text-cyan" id="dtCpuPower">-- W</span>
             </div>
             <div class="prop-row">
-              <span class="prop-k">正常运行时间</span>
-              <span class="prop-v text-cyan" id="dtCpuUptime">--</span>
+              <span class="prop-k">本次通电运行</span>
+              <span class="prop-v text-cyan" id="dtCpuActiveUptime">--</span>
             </div>
             <div class="prop-row">
-              <span class="prop-k">系统启动时刻</span>
-              <span class="prop-v" id="dtCpuBootTime">--</span>
+              <span class="prop-k">本次开机时刻</span>
+              <span class="prop-v" id="dtCpuActiveBootTime">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">内核累计运行</span>
+              <span class="prop-v text-cyan" id="dtCpuKernelUptime">--</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">内核初始引导</span>
+              <span class="prop-v" id="dtCpuKernelBootTime">--</span>
             </div>
           </div>
         </div>
@@ -1573,7 +2154,7 @@ body.mode-compact .energy-rail {
 
           <div class="detail-hero-box">
             <div class="dh-left">
-              <span class="dh-tag">GPU CORE LOAD</span>
+              <span class="dh-tag">图形核心即时负载</span>
               <div class="dh-number-row font-mono">
                 <span class="dh-value slot-num" id="dtGpuUsage">0</span>
                 <span class="dh-unit">%</span>
@@ -1627,60 +2208,28 @@ body.mode-compact .energy-rail {
 
         <!-- 2.3 RAM DETAIL CONTENT -->
         <div class="overlay-content-scroll" id="contentRam">
-          <!-- 1. Top Memory Visualizer Hero -->
-          <div class="mem-hero-card">
-            <div class="mem-hero-top">
-              <div class="mem-hero-info">
-                <span class="sec-label">MEMORY USAGE · 物理内存</span>
-                <div class="mem-main-numbers font-mono">
-                  <span class="big-val" id="dtRamUsedHuge">--</span>
-                  <span class="sub-val" id="dtRamTotalHuge">/ -- GB</span>
-                </div>
-              </div>
-              <div class="mem-hero-status font-mono">
-                <span class="mem-pill-badge" id="dtRamUsagePill">--%</span>
-                <span class="mem-freq-tag" id="dtRamSpeedTag">-- MT/s</span>
+          <!-- 1. Hero Summary Card (Linear Style) -->
+          <div class="detail-hero-box">
+            <div class="dh-left">
+              <span class="dh-tag">物理内存即时占用</span>
+              <div class="dh-number-row font-mono">
+                <span class="dh-value slot-num" id="dtRamUsedHuge">0</span>
+                <span class="dh-unit" id="dtRamTotalHuge">/ 0 GB</span>
               </div>
             </div>
-
-            <!-- Segment Distribution Bar -->
-            <div class="mem-seg-bar">
-              <div class="mem-seg-fill" id="dtRamSegUsed" style="width: 0%;"></div>
-            </div>
-            <div class="mem-seg-legend font-mono">
-              <span class="leg-item"><i class="leg-dot dot-used"></i>已分配物理内存 <b id="dtRamLegUsed">--</b></span>
-              <span class="leg-item"><i class="leg-dot dot-avail"></i>可用缓存 <b id="dtRamLegAvail">--</b></span>
+            <div class="dh-right font-mono">
+              <span class="dh-clock text-blue" id="dtRamUsagePill">0% 负载</span>
+              <span class="dh-clock" id="dtRamSpeedTag">-- MT/s</span>
             </div>
           </div>
-
-          <!-- 2. 2x2 Metric Quad Grid -->
-          <div class="metric-quad-grid font-mono">
-            <div class="metric-quad-cell">
-              <span class="mq-label">已用物理容量</span>
-              <span class="mq-val text-blue" id="dtRamUsed">-- GB</span>
-              <span class="mq-sub">应用与系统常驻</span>
-            </div>
-            <div class="metric-quad-cell">
-              <span class="mq-label">可用缓冲容量</span>
-              <span class="mq-val" id="dtRamAvail">-- GB</span>
-              <span class="mq-sub">待命与空闲内存</span>
-            </div>
-            <div class="metric-quad-cell">
-              <span class="mq-label">虚拟提交分页</span>
-              <span class="mq-val" id="dtRamCommit">-- GB</span>
-              <span class="mq-sub">提交峰值与交换</span>
-            </div>
-            <div class="metric-quad-cell">
-              <span class="mq-label">通道工作时钟</span>
-              <span class="mq-val text-blue" id="dtRamBusFreq">-- MT/s</span>
-              <span class="mq-sub" id="dtRamChannelSub">总计 -- GB 容量</span>
-            </div>
+          <div class="energy-rail">
+            <div class="energy-fill fill-blue" id="dtRamSegUsed" style="width: 0%;"></div>
           </div>
 
-          <!-- 3. Physical DIMM Slots Card -->
+          <!-- 2. Physical DIMM Slots Card -->
           <div class="dimm-card font-mono">
             <div class="dimm-header">
-              <span class="dimm-title">物理内存插槽通道</span>
+              <span class="dimm-title">物理插槽通道拓扑</span>
               <span class="dimm-count" id="dtDimmCount">-- 条可用</span>
             </div>
             <div class="dimm-slots-list" id="dtDimmList">
@@ -1688,8 +2237,24 @@ body.mode-compact .energy-rail {
             </div>
           </div>
 
-          <!-- 4. Advanced Memory Architecture -->
+          <!-- 3. Unified Memory Parameter Sheet -->
           <div class="prop-sheet-card font-mono">
+            <div class="prop-row">
+              <span class="prop-k">已用物理内存</span>
+              <span class="prop-v text-blue" id="dtRamUsed">-- GB</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">可用备用缓冲</span>
+              <span class="prop-v" id="dtRamAvail">-- GB</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">虚拟提交总量</span>
+              <span class="prop-v" id="dtRamCommit">-- GB</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">通道传输频率</span>
+              <span class="prop-v text-blue" id="dtRamBusFreq">-- MT/s</span>
+            </div>
             <div class="prop-row">
               <span class="prop-k">模组品牌厂商</span>
               <span class="prop-v text-blue" id="dtRamBrand">--</span>
@@ -1716,57 +2281,51 @@ body.mode-compact .energy-rail {
         
         <!-- 2.4 DISK STORAGE DETAIL CONTENT -->
         <div class="overlay-content-scroll" id="contentDisk">
-          <!-- 1. Top Storage Hero Card -->
-          <div class="disk-hero-card font-mono">
-            <div class="disk-hero-top">
-              <div class="disk-hero-info">
-                <span class="sec-label">TOTAL STORAGE · 存储总量</span>
-                <div class="disk-main-numbers">
-                  <span class="big-val text-teal" id="dtDiskUsedHuge">--</span>
-                  <span class="sub-val" id="dtDiskTotalHuge">/ -- TB</span>
-                </div>
-              </div>
-              <div class="disk-hero-status">
-                <span class="disk-pill-badge" id="dtDiskUsagePill">--%</span>
-                <span class="disk-free-tag" id="dtDiskFreeTag">剩余 -- GB 可用</span>
+          <!-- 1. Unified Total Storage Hero Card -->
+          <div class="detail-hero-box disk-hero-accent">
+            <div class="dh-left">
+              <span class="dh-tag">本地存储总占用</span>
+              <div class="dh-number-row font-mono">
+                <span class="dh-value slot-num" id="dtDiskUsedHuge">0</span>
+                <span class="dh-unit" id="dtDiskTotalHuge">/ 0 TB</span>
               </div>
             </div>
-
-            <!-- Total Storage Bar -->
-            <div class="disk-seg-bar">
-              <div class="disk-seg-fill" id="dtDiskBar" style="width: 0%;"></div>
-            </div>
-            <div class="disk-seg-legend font-mono">
-              <span class="leg-item"><i class="leg-dot dot-teal"></i>已用存储空间 <b id="dtDiskLegUsed">--</b></span>
-              <span class="leg-item"><i class="leg-dot dot-avail"></i>剩余空闲空间 <b id="dtDiskLegFree">--</b></span>
+            <div class="dh-right font-mono">
+              <span class="dh-clock text-teal" id="dtDiskUsagePill">0% 占用</span>
+              <span class="dh-clock" id="dtDiskFreeTag">剩余 -- GB 可用</span>
             </div>
           </div>
-
-          <!-- 2. System Main Drive Spotlight Card -->
-          <div class="main-drive-card font-mono" id="dtMainDriveCard">
-            <div class="mdc-head">
-              <div class="mdc-left">
-                <span class="mdc-tag">SYSTEM BOOT VOLUME</span>
-                <span class="mdc-title">系统引导盘 <b id="dtMainDriveRoot">C:\</b></span>
-              </div>
-              <span class="mdc-status-badge" id="dtMainDriveStatus">运转健康</span>
-            </div>
-            <div class="mdc-metrics">
-              <span class="mdc-space" id="dtMainDriveSpace">剩余 -- GB / -- GB</span>
-              <span class="mdc-pct" id="dtMainDrivePct">--%</span>
-            </div>
-            <div class="track-bar">
-              <div class="fill-bar" id="dtMainDriveBar" style="width: 0%; background: var(--accent-teal);"></div>
-            </div>
+          <div class="energy-rail">
+            <div class="energy-fill fill-teal" id="dtDiskBar" style="width: 0%;"></div>
           </div>
 
-          <!-- 3. All Mounted Partitions -->
+          <!-- 2. All Logical Drive Volume Cards -->
           <div class="storage-section-header">
-            <span>MOUNTED VOLUMES 全部逻辑卷阵列</span>
+            <span>逻辑卷分区清单</span>
             <span class="vol-count-tag" id="dtVolCountTag">-- 个磁盘分区</span>
           </div>
-          <div class="drives-stack" id="dtDriveStack">
-            <!-- Rendered by JS -->
+          <div class="drives-modern-grid font-mono" id="dtDriveStack">
+            <!-- Rendered dynamically by JS into clean card slots -->
+          </div>
+
+          <!-- 3. Storage Global Parameters -->
+          <div class="prop-sheet-card font-mono">
+            <div class="prop-row">
+              <span class="prop-k">已用存储空间</span>
+              <span class="prop-v text-teal" id="dtDiskLegUsed">-- GB</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">剩余可用空间</span>
+              <span class="prop-v" id="dtDiskLegFree">-- GB</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">系统引导卷盘符</span>
+              <span class="prop-v text-teal" id="dtMainDriveRoot">C:\</span>
+            </div>
+            <div class="prop-row">
+              <span class="prop-k">系统卷运行状态</span>
+              <span class="prop-v" id="dtMainDriveStatus">运转健康</span>
+            </div>
           </div>
         </div>
 
@@ -1821,7 +2380,7 @@ body.mode-compact .energy-rail {
         <div class="overlay-content-scroll" id="contentBattery">
           <div class="detail-hero-box">
             <div class="dh-left">
-              <span class="dh-tag">BATTERY LEVEL</span>
+              <span class="dh-tag" id="dtBatTag">电源与电量状态</span>
               <div class="dh-number-row font-mono">
                 <span class="dh-value slot-num" id="dtBatPercent">100</span>
                 <span class="dh-unit" id="dtBatUnit">%</span>
@@ -1831,7 +2390,7 @@ body.mode-compact .energy-rail {
               <span class="dh-clock text-amber" id="dtBatStatePill">已连接电源</span>
             </div>
           </div>
-          <div class="energy-rail">
+          <div class="energy-rail" id="dtBatRail">
             <div class="energy-fill fill-amber" id="dtBatBar" style="width: 100%;"></div>
           </div>
 
@@ -1865,5 +2424,6 @@ body.mode-compact .energy-rail {
   </div>
 
   <script src="script.js"></script>
+  <div id="copyToast" class="copy-toast">已复制到剪贴板</div>
 </body>
 </html>

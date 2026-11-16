@@ -14,9 +14,6 @@
   "type": "html",
   "transparent": true,
   "resizable": true,
-  "permissions": [
-    "storage"
-  ],
   "settingsSchema": [
     {
       "key": "theme",

@@ -1,6 +1,5 @@
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
 
-#include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "services/AppPaths.h"
 
@@ -262,7 +261,6 @@ bool WidgetRegistryManager::upsertFromPackage(const QString& packagePath, QStrin
     entry.autoReload = false;
     entry.autoLoad = manifest.autoLoad;
     entry.role = manifest.role;
-    entry.permissionsGranted = PermissionManager().normalizePermissions(entry.permissionsGranted);
     entry.updatedAt = now;
 
     m_entries.insert(registryKey(manifest.id, false), entry);
@@ -312,8 +310,9 @@ bool WidgetRegistryManager::addDevelopmentProject(const QString& sourcePath, QSt
     entry.autoReload = true;
     entry.autoLoad = manifest.autoLoad;
     entry.role = manifest.role;
-    entry.permissionsGranted = PermissionManager().normalizePermissions(
-        entry.permissionsGranted + QStringList{ QStringLiteral("network"), QStringLiteral("storage"), QStringLiteral("desktop") });
+    if (!entry.permissionsConfigured) {
+        entry.permissionsGranted = manifest.permissions;
+    }
     entry.updatedAt = now;
 
     m_entries.insert(registryKey(manifest.id, true), entry);
@@ -433,7 +432,8 @@ bool WidgetRegistryManager::setPermissionsGranted(const QString& id, bool isDeve
     if (it == m_entries.end()) {
         return false;
     }
-    it->permissionsGranted = PermissionManager().normalizePermissions(permissions);
+    it->permissionsGranted = permissions;
+    it->permissionsConfigured = true;
     it->updatedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     return true;
 }

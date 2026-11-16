@@ -636,6 +636,7 @@ QJsonObject registryEntryToJson(const WidgetRegistryEntry& entry)
     object.insert(QStringLiteral("updatedAt"), entry.updatedAt);
     object.insert(QStringLiteral("lastRunState"), entry.lastRunState);
     object.insert(QStringLiteral("permissionsGranted"), permissions);
+    object.insert(QStringLiteral("permissionsConfigured"), entry.permissionsConfigured);
     return object;
 }
 
@@ -675,6 +676,9 @@ bool registryEntryFromJson(const QJsonObject& object, WidgetRegistryEntry* entry
             parsed.permissionsGranted.append(permission);
         }
     }
+    parsed.permissionsConfigured = object.contains(QStringLiteral("permissionsConfigured"))
+        ? object.value(QStringLiteral("permissionsConfigured")).toBool(false)
+        : object.contains(QStringLiteral("permissionsGranted"));
 
     if (parsed.id.isEmpty() || parsed.packagePath.isEmpty()) {
         return false;

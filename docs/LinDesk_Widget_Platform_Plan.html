@@ -455,7 +455,7 @@
     <tr><th>块</th><th>内容</th><th>要点</th></tr>
     <tr><td>组件列表（左栏）</td><td>已装组件：名称 / 版本 / 启用状态 / 运行状态 / role 标记；空态引导去市场下载</td><td>数据来自 <code>widget_manager list</code></td></tr>
     <tr><td>基础信息（右栏）</td><td>名称 / 版本 / 来源 / 包大小 / 启用状态 / 描述与作者</td><td>manifest + 目录扫描</td></tr>
-    <tr><td>权限面板</td><td>manifest 声明权限（network / storage / desktop）逐项开关</td><td><code>widget_manager set_permission</code>，即时写回注册表并联动 OSR 网络沙箱</td></tr>
+    <tr><td>能力直通</td><td>权限门控已彻底移除，小组件默认直通网络、本地存储与硬件遥测能力，无需声明权限字段</td><td>移除冗余鉴权判定与网络拦截沙箱，底座全量开放运行</td></tr>
     <tr><td>数据管理</td><td>storage 用量（上限 16MB 进度条）+ [清空数据] + [导出备份]</td><td><code>widget_manager clear_storage / export_data</code>，清空组件数据目录并广播通知</td></tr>
     <tr><td>运行状态</td><td>正常/异常/累计崩溃恢复次数 + [重启组件] + [打开日志]</td><td><code>widget_manager restart</code>；日志定位到 <code>logs/cef.log</code> 与 <code>desktop.log</code></td></tr>
     <tr><td>操作</td><td>[启用/停用] [更新] [卸载]（保留用户数据，需确认）</td><td><code>widget_manager set_enabled</code>；卸载只删代码包与注册表，保留数据目录</td></tr>
@@ -696,7 +696,7 @@ window.LinDesk.wallpaper.onPropertyChange(function (prop) {
     <tr><th>文件 / 位置</th><th>任务</th><th>级别</th><th>章节</th></tr>
     <tr><td><code>ListView.cpp</code>（鼠标事件）+ 运行时桥</td><td><strong>组件 Ctrl+拖拽移动</strong>：命中 + Ctrl → 移动模式（不转发 OSR）→ 实时更新 geometry（桥导出 get/set_widget_geometry，复用 moveWidget）→ 抬起持久化；Ctrl+点击仍转发；壁纸/默认页不可拖</td><td><span class="tag keep">已落地</span></td><td>6.1</td></tr>
     <tr><td>设置页组件区完善</td><td>组件列表 + [下载组件] + [检查更新] + [卸载] + [打开组件管理]；入口按运行时/组件显隐</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
-    <tr><td>组件管理窗口</td><td>两栏窗口 + 权限开关 / 数据管理 / 运行状态 / 重启 / 日志；消息走 widget_manager 收敛类型</td><td><span class="tag keep">已落地</span></td><td>6.2</td></tr>
+    <tr><td>组件管理窗口</td><td>两栏窗口，集成数据管理、运行状态监测、重启与日志定位；消息走 widget_manager 收敛类型</td><td><span class="tag keep">已落地</span></td><td>6.2</td></tr>
     <tr><td>settings schema 渲染</td><td>manifest settingsSchema → 自动渲染设置对话框；与 settings.html 并存</td><td><span class="tag keep">已落地</span></td><td>6.3</td></tr>
   </table>
 
@@ -717,7 +717,7 @@ window.LinDesk.wallpaper.onPropertyChange(function (prop) {
     <colgroup><col style="width:8%"><col style="width:42%"><col style="width:50%"></colgroup>
     <tr><th>级别</th><th>内容</th><th>验收要点</th></tr>
     <tr><td><span class="tag p0">P0</span></td><td><strong>第 8.1 节核心地基</strong>：统一 .lw 包规范与目录分流（Wallpapers/ vs LinWidgets/）；三合一 window.LinDesk 极简原生能力注入；极客本地明文热重载与 F12 调试支持</td><td>组件与壁纸物理解耦且安装分流准确；window.LinDesk 接口可用且无冗余 IPC 报错；文件夹修改保存按 Ctrl+R 瞬时刷新</td></tr>
-    <tr><td><span class="tag keep">已落地</span></td><td><strong>第 6 章体验层全闭环</strong>：组件 Ctrl+拖拽移动、组件管理窗口（双栏）、设置页组件区动作完善、manifest.settingsSchema 自动渲染</td><td>按住 Ctrl 拖动组件到任意位置且重启恢复；双栏管理窗口权限/数据/运行状态闭环；settingsSchema 自动生成表单并即时生效</td></tr>
+    <tr><td><span class="tag keep">已落地</span></td><td><strong>第 6 章体验层全闭环</strong>：组件 Ctrl+拖拽移动、组件管理窗口、设置页组件区动作完善、manifest.settingsSchema 自动渲染</td><td>按住 Ctrl 拖动组件到任意位置且重启恢复；双栏管理窗口数据与运行状态闭环；settingsSchema 自动生成表单并即时生效</td></tr>
     <tr><td><span class="tag keep">已落地</span></td><td><strong>第 7 章壁纸工坊 (Wallpaper Studio) 与 LinDesk Hub</strong>：1120×720 Fluent 悬浮独立大窗口、双级激活入口（桌面右键+设置卡片）、16:9 实时画板、桌面图标浮层、声明式 properties 规范与 property_update IPC 闭环</td><td>桌面右键一键呼出工坊；16:9 画布实时动画与图标透视；支持声明式参数动态生成与壁纸启停</td></tr>
     <tr><td><span class="tag p1">P1</span></td><td><strong>第 8.2 节安装与生态闭环</strong>：CEF 运行时在线安装/卸载 UI 卡片；.lw 离线拖拽安装与打包导出；壁纸工坊体验打磨</td><td>无 CEF 用户直观看到引导安装进度条；.lw 包拖拽即装即用</td></tr>
     <tr><td><span class="tag p2">P2</span></td><td><strong>第 8.3 节安全与性能治理</strong>：openPath 物理级二进制拦截、目录穿越防护、前台独占全屏智能休眠 (0.0% CPU/GPU)</td><td>恶意 .exe 无法被拉起；前台全屏游戏时壁纸与组件自动挂起</td></tr>

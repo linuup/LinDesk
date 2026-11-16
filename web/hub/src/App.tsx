@@ -264,6 +264,13 @@ export const App: React.FC = () => {
           addToast('success', '组件已重新加载');
           refreshState();
         }
+      } else if (action === 'clear_storage') {
+        if (data.ok) {
+          addToast('success', '存储已清空', '组件持久化数据已全部移除');
+          refreshState();
+        } else {
+          addToast('error', '清空失败', data.error || '未知错误');
+        }
       } else if (action === 'apply_wallpaper') {
         if (data.ok) {
           if (typeof data.activeWallpaperId === 'string' && data.activeWallpaperId) {
@@ -377,10 +384,6 @@ export const App: React.FC = () => {
 
   const handleRestart = (id: string) => {
     ipc.send('restart', { widgetId: id });
-  };
-
-  const handleTogglePermission = (id: string, perm: string, granted: boolean) => {
-    ipc.send('set_permission', { widgetId: id, permission: perm, granted });
   };
 
   const handleClearStorage = (id: string) => {
@@ -617,7 +620,6 @@ export const App: React.FC = () => {
               onLaunch={handleLaunch}
               onStop={handleStop}
               onRestart={handleRestart}
-              onTogglePermission={handleTogglePermission}
               onClearStorage={handleClearStorage}
               onOpenFolder={handleOpenFolder}
               onOpenWidgetsDir={handleOpenWidgetsDir}

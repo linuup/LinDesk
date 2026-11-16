@@ -5,7 +5,6 @@
 #include "desktop/widgets/cef/CefOsrBrowserInstance.h"
 #include "desktop/widgets/cef/CefManager.h"
 #include "desktop/widgets/linwidget/ConfigManager.h"
-#include "desktop/widgets/linwidget/PermissionManager.h"
 #include "desktop/widgets/linwidget/WidgetMessageTypes.h"
 #include "desktop/widgets/linwidget/WidgetPackage.h"
 #include "desktop/widgets/linwidget/WidgetRegistryManager.h"
@@ -161,11 +160,10 @@ QRect screenClampedGeometry(const QRect& geometry)
     return next;
 }
 
-QStringList grantedPermissionsForManifest(const WidgetManifest& manifest, const QString& packagePath, bool isDevelopment)
+QStringList grantedPermissionsForManifest(const WidgetManifest& /*manifest*/, const QString& packagePath, bool isDevelopment)
 {
-    PermissionManager permissions;
     if (isDevelopment) {
-        return permissions.normalizePermissions({ QStringLiteral("network"), QStringLiteral("storage"), QStringLiteral("desktop") });
+        return {};
     }
 
     auto& registry = WidgetRegistryManager::instance();
@@ -173,14 +171,7 @@ QStringList grantedPermissionsForManifest(const WidgetManifest& manifest, const 
     registry.upsertFromPackage(packagePath);
     registry.save();
 
-    const WidgetRegistryEntry entry = registry.entryById(manifest.id);
-    QStringList granted = entry.permissionsGranted;
-    // Bundled (built-in) widgets ship with LinDesk itself, so their declared permissions are implicitly granted.
-    const QString normalizedPath = QDir::fromNativeSeparators(packagePath);
-    if (entry.trusted || manifest.id.startsWith(QStringLiteral("lindesk."), Qt::CaseInsensitive) || manifest.author.compare(QStringLiteral("LinDesk"), Qt::CaseInsensitive) == 0 || normalizedPath.contains(QStringLiteral("resources/LinWidgets"), Qt::CaseInsensitive) || normalizedPath.contains(QStringLiteral("LinWidgets"), Qt::CaseInsensitive)) {
-        granted += manifest.permissions;
-    }
-    return permissions.normalizePermissions(granted);
+    return {};
 }
 
 QSize clampedWidgetSize(const WidgetManifest& manifest, const QSize& requestedSize)
@@ -448,8 +439,17 @@ inline QString resolveOptimalPackagePath(const QString& inputPath, bool* isDevOu
     WidgetManifest manifest;
     const bool manifestLoaded = WidgetPackage::loadManifest(inputPath, &manifest, nullptr);
 
-#ifdef LINDESK_SOURCE_DIR
-    const QString sourceRoot = QStringLiteral(LINDESK_SOURCE_DIR);
+    // 检查热重载模式或开发调试模式
+    QSettings configSettings(AppPaths::configFilePath(), QSettings::IniFormat);
+    const bool hotReloadConfig = configSettings.value(QStringLiteral("LinWidgets/HotReloadEnabled"), false).toBool();
+    const bool devModeEnv = qEnvironmentVariableIsSet("LINDESK_DEV_MODE");
+#ifdef QT_DEBUG
+    const bool isDebugBuild = true;
+#else
+    const bool isDebugBuild = false;
+#endif
+
+    const QString sourceRoot = AppPaths::projectSourceRootDir();
     if (!sourceRoot.isEmpty() && QDir(sourceRoot).exists()) {
         const QString baseName = QFileInfo(inputPath).fileName();
         QStringList candidates;
@@ -497,20 +497,13 @@ inline QString resolveOptimalPackagePath(const QString& inputPath, bool* isDevOu
 
         const QString appDir = QDir::cleanPath(QCoreApplication::applicationDirPath());
         const bool runningFromBuild = appDir.startsWith(QDir::cleanPath(sourceRoot), Qt::CaseInsensitive);
-        const bool devModeEnv = qEnvironmentVariableIsSet("LINDESK_DEV_MODE");
-#ifdef QT_DEBUG
-        const bool isDebugBuild = true;
-#else
-        const bool isDebugBuild = false;
-#endif
 
-        if (!foundSource.isEmpty() && (devModeEnv || isDebugBuild || runningFromBuild)) {
+        if (!foundSource.isEmpty() && (hotReloadConfig || devModeEnv || isDebugBuild || runningFromBuild)) {
             resolved = foundSource;
             isDev = true;
             qInfo() << "[LinWidget] Resolved package to development source tree path:" << resolved;
         }
     }
-#endif
 
     if (!isDev && resolved.contains(QStringLiteral("AppData"), Qt::CaseInsensitive)) {
         const QString baseName = QFileInfo(resolved).fileName();

@@ -52,7 +52,8 @@ export const CreateWidgetModal: React.FC<CreateWidgetModalProps> = ({
       description: description.trim(),
       template,
       width: Number(width) || 320,
-      height: Number(height) || 240
+      height: Number(height) || 240,
+      permissions: []
     });
   };
 

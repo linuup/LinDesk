@@ -17,11 +17,6 @@
   "resizable": true,
   "entry": "index.html",
   "settings": "settings.html",
-  "permissions": [
-    "network",
-    "storage",
-    "desktop"
-  ],
   "settingsSchema": [
     {
       "key": "theme",

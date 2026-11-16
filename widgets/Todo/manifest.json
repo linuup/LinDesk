@@ -15,8 +15,5 @@
   "transparent": true,
   "resizable": true,
   "entry": "index.html",
-  "settings": "settings.html",
-  "permissions": [
-    "storage"
-  ]
+  "settings": "settings.html"
 }

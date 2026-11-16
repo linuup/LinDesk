@@ -48,25 +48,28 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
                 if (!entry.enabled || !entry.autoLoad || !QFileInfo::exists(entry.packagePath)) {
                     continue;
                 }
+                bool resolvedEntryDev = entry.isDevelopment;
+                const QString resolvedEntryPath = resolveOptimalPackagePath(entry.packagePath, &resolvedEntryDev, false);
+                const QString effectiveEntryPath = (!resolvedEntryPath.isEmpty() && QDir(resolvedEntryPath).exists()) ? resolvedEntryPath : entry.packagePath;
                 WidgetManifest manifest;
-                if (!WidgetPackage::loadManifest(entry.packagePath, &manifest, nullptr)) {
+                if (!WidgetPackage::loadManifest(effectiveEntryPath, &manifest, nullptr)) {
                     continue;
                 }
                 if (manifest.role.compare(QStringLiteral("wallpaper"), Qt::CaseInsensitive) == 0) {
                     continue;
                 }
-                const QString instanceId = instanceLayoutId(manifest, entry.isDevelopment);
+                const QString instanceId = instanceLayoutId(manifest, resolvedEntryDev);
                 if (knownInstanceIds.contains(instanceId)) {
                     continue;
                 }
                 WidgetLayoutState state;
                 state.instanceId = instanceId;
-                state.packagePath = entry.packagePath;
+                state.packagePath = effectiveEntryPath;
                 state.registryId = registryIdForManifest(manifest);
                 state.geometry = QRect(QPoint(260, 220), QSize(manifest.width, manifest.height));
                 state.zOrder = m_layout.nextZOrder();
                 state.visible = true;
-                state.isDevelopment = entry.isDevelopment;
+                state.isDevelopment = resolvedEntryDev;
                 state.createdAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
                 states.append(state);
                 knownInstanceIds.insert(instanceId);
@@ -90,7 +93,10 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
 
         WidgetManifest manifest;
         QString launchError;
-        if (!WidgetPackage::loadManifest(state.packagePath, &manifest, &launchError)) {
+        bool resolvedIsDev = stateIsDevelopment(state);
+        const QString resolvedPkgPath = resolveOptimalPackagePath(state.packagePath, &resolvedIsDev, false);
+        const QString effectivePkgPath = (!resolvedPkgPath.isEmpty() && QDir(resolvedPkgPath).exists()) ? resolvedPkgPath : state.packagePath;
+        if (!WidgetPackage::loadManifest(effectivePkgPath, &manifest, &launchError)) {
             ok = false;
             emit widgetError(state.instanceId, launchError);
             continue;
@@ -100,19 +106,22 @@ bool WidgetManager::restoreFromConfig(const QString& configPath, QString* errorM
             continue;
         }
 
+        const bool effectiveAutoReload = resolvedIsDev || (m_hotReloadEnabled && resolvedIsDev);
+
         WidgetInstance instance;
         instance.instanceId = state.instanceId;
-        instance.packagePath = state.packagePath;
+        instance.packagePath = effectivePkgPath;
         instance.manifest = manifest;
-        instance.isDevelopment = stateIsDevelopment(state);
-        instance.autoReload = instance.isDevelopment;
-        instance.grantedPermissions = grantedPermissionsForManifest(manifest, state.packagePath, instance.isDevelopment);
+        instance.isDevelopment = resolvedIsDev;
+        instance.autoReload = effectiveAutoReload;
+        instance.grantedPermissions = grantedPermissionsForManifest(manifest, effectivePkgPath, instance.isDevelopment);
         instance.geometry = resolvedWidgetGeometry(manifest, state.geometry, instance.isDevelopment);
         if (instance.instanceId.isEmpty()) {
             instance.instanceId = makeInstanceId(manifest);
         }
 
         WidgetLayoutState launchState = state;
+        launchState.packagePath = effectivePkgPath;
         launchState.registryId = state.registryId.isEmpty() ? registryIdForManifest(manifest) : state.registryId;
         launchState.isDevelopment = instance.isDevelopment;
         if (launchState.createdAt.isEmpty()) {
