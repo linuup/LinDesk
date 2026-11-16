@@ -1619,6 +1619,10 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         changedMsg.insert(QStringLiteral("settings"), existing);
         broadcastToWidgetInstances(resolvedId, changedMsg);
 
+        QJsonObject syncMsg = makeWidgetMessage(QStringLiteral("linwidget_settings_changed_notification"), resolvedId);
+        syncMsg.insert(QStringLiteral("settings"), existing);
+        broadcastToWidgetInstances(resolvedId, syncMsg);
+
         response.insert(QStringLiteral("ok"), true);
         response.insert(QStringLiteral("settings"), existing);
         return response;
@@ -2105,9 +2109,15 @@ bool WidgetManager::sendMessageToWidget(const QString& instanceId, const QJsonOb
 
 void WidgetManager::broadcastToWidgetInstances(const QString& widgetRegistryId, const QJsonObject& message)
 {
-    const QString targetId = widgetRegistryId.trimmed().toLower();
+    const QString resolvedTarget = resolveWidgetId(widgetRegistryId).trimmed().toLower();
+    const QString rawTarget = widgetRegistryId.trimmed().toLower();
     for (const WidgetLayoutState& state : m_layout.states()) {
-        if (state.registryId.trimmed().toLower() == targetId && m_runningWidgets.contains(state.instanceId)) {
+        const QString regId = state.registryId.trimmed().toLower();
+        const bool match = (regId == resolvedTarget) ||
+                           (regId == rawTarget) ||
+                           (!rawTarget.isEmpty() && regId.endsWith(QLatin1Char('.') + rawTarget)) ||
+                           (!resolvedTarget.isEmpty() && regId.endsWith(QLatin1Char('.') + resolvedTarget));
+        if (match && m_runningWidgets.contains(state.instanceId)) {
             QJsonObject instanceMessage = message;
             instanceMessage.insert(QStringLiteral("instanceId"), state.instanceId);
             instanceMessage.insert(QStringLiteral("widgetId"), state.instanceId);

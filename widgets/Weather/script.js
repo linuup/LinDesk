@@ -2,6 +2,9 @@
 // LinDesk Weather Widget - Runtime Logic & Responsive Engine
 // ──────────────────────────────────────────────
 
+const urlParams = new URLSearchParams(window.location.search);
+const TARGET_WIDGET_ID = urlParams.get("widgetId") || "lindesk.weather";
+
 const STORAGE_KEY_CITIES        = "lindesk_weather_cities";
 const STORAGE_KEY_CURRENT_ID    = "lindesk_weather_current_city_id";
 const STORAGE_KEY_THEME         = "lindesk_weather_theme";
@@ -219,47 +222,31 @@ function formatLocationDisplay(item) {
 // Open Component Settings Page
 // ──────────────────────────────────────────────
 function openSettings() {
-  const msgOpenSettings = {
-    type: "open_widget_settings",
-    widgetId: "Weather"
-  };
-  const msgRpc = {
-    type: "widget_manager_request",
-    action: "open_settings",
-    widgetId: "Weather"
-  };
-  const msgLegacy = {
-    type: "linwidget_open_settings_request",
-    widgetId: "Weather"
-  };
+  const reqs = [
+    { type: "open_widget_settings", widgetId: TARGET_WIDGET_ID },
+    { type: "open_widget_settings", widgetId: "Weather" },
+    { type: "widget_manager_request", action: "open_settings", widgetId: TARGET_WIDGET_ID },
+    { type: "widget_manager_request", action: "open_settings", widgetId: "Weather" },
+    { type: "linwidget_open_settings_request", widgetId: TARGET_WIDGET_ID }
+  ];
 
   let dispatched = false;
 
-  if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+  reqs.forEach((msg) => {
+    if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+      try { window.linwidget.postMessage(msg); dispatched = true; } catch (_) {}
+    }
+    if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
+      try { window.chrome.webview.postMessage(msg); dispatched = true; } catch (_) {}
+    }
     try {
-      window.linwidget.postMessage(msgOpenSettings);
-      window.linwidget.postMessage(msgRpc);
-      window.linwidget.postMessage(msgLegacy);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "linwidget://bridge/postMessage", true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.send(JSON.stringify(msg));
       dispatched = true;
     } catch (_) {}
-  }
-
-  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
-    try {
-      window.chrome.webview.postMessage(msgOpenSettings);
-      window.chrome.webview.postMessage(msgRpc);
-      window.chrome.webview.postMessage(msgLegacy);
-      dispatched = true;
-    } catch (_) {}
-  }
-
-  try {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "linwidget://bridge/postMessage", true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.send(JSON.stringify(msgOpenSettings));
-    dispatched = true;
-  } catch (_) {}
+  });
 
   if (!dispatched) {
     window.open("settings.html", "_blank", "width=680,height=600");
@@ -472,24 +459,33 @@ async function updateActiveWeather(forceRetry = false) {
   showNormalWeather(currentCity);
 
   const cached = getCityCache(currentCity.id);
-  if (cached && cached.data) {
+  if (cached && cached.data && !forceRetry) {
     renderWeatherData(currentCity, cached.data);
   } else {
-    el.condition.textContent = "同步气象中...";
+    el.condition.textContent = `正在同步 ${currentCity.name} 气象...`;
+    if (el.tempLarge && (!cached || !cached.data)) {
+      el.tempLarge.style.opacity = "0.5";
+    }
   }
 
   const requestId = ++activeWeatherRequestId;
 
   try {
-    const data = await fetchWeatherWithRetry(currentCity.lat, currentCity.lon, false);
+    const data = await fetchWeatherWithRetry(currentCity.lat, currentCity.lon, forceRetry);
     if (requestId !== activeWeatherRequestId) return;
+    if (el.tempLarge) {
+      el.tempLarge.style.opacity = "1";
+    }
     renderWeatherData(currentCity, data);
     saveCityCache(currentCity.id, data);
   } catch (err) {
     if (requestId !== activeWeatherRequestId) return;
     console.warn("[Weather] 更新天气失败:", err.message || err);
+    if (el.tempLarge) {
+      el.tempLarge.style.opacity = "1";
+    }
     if (!cached) {
-      el.condition.textContent = "获取天气超时";
+      el.condition.textContent = "获取天气超时，点击重试";
     }
   }
 }
@@ -554,22 +550,36 @@ function setupResponsiveObserver() {
 function applyWidgetSettings(settings) {
   if (!settings || typeof settings !== "object") return;
 
-  if (Array.isArray(settings.cities)) {
+  let changed = false;
+
+  if (Array.isArray(settings.cities) && settings.cities.length > 0) {
     try {
       localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify(settings.cities));
+      changed = true;
     } catch (_) {}
   }
 
   if (typeof settings.currentCityId === "string" && settings.currentCityId) {
     try {
       localStorage.setItem(STORAGE_KEY_CURRENT_ID, settings.currentCityId);
+      changed = true;
     } catch (_) {}
   } else if (Array.isArray(settings.cities) && settings.cities.length > 0) {
     const curId = getCurrentCityId();
     if (!curId || !settings.cities.some(c => c.id === curId)) {
       try {
         localStorage.setItem(STORAGE_KEY_CURRENT_ID, settings.cities[0].id);
+        changed = true;
       } catch (_) {}
+    }
+  }
+
+  // 立即在界面上反馈切换后的城市名，并平滑显示过渡状态
+  const targetCity = getCurrentCity();
+  if (targetCity) {
+    showNormalWeather(targetCity);
+    if (el.condition) {
+      el.condition.textContent = `正在同步 ${targetCity.name} 天气...`;
     }
   }
 
@@ -619,6 +629,13 @@ function bindEvents() {
   window.addEventListener("storage", (event) => {
     if (!event.key) return;
     if (event.key === STORAGE_KEY_CITIES || event.key === STORAGE_KEY_CURRENT_ID) {
+      const city = getCurrentCity();
+      if (city) {
+        showNormalWeather(city);
+        if (el.condition) {
+          el.condition.textContent = `正在同步 ${city.name} 天气...`;
+        }
+      }
       updateActiveWeather(true);
     }
   });
@@ -643,13 +660,23 @@ function bindEvents() {
         data.type === "settings_changed" || 
         data.type === "settings_updated" ||
         data.type === "linwidget_settings_sync" ||
-        data.type === "linwidget_appearance_changed_notification") {
+        data.type === "linwidget_appearance_changed_notification" ||
+        data.type === "linwidget_settings_changed") {
       applyWidgetSettings(data.settings || data);
       return;
     }
 
-    if (data.action === "info" && data.widget && data.widget.settingsValues) {
-      applyWidgetSettings(data.widget.settingsValues);
+    if (data.action === "save_widget_settings" && data.settings) {
+      applyWidgetSettings(data.settings);
+      return;
+    }
+
+    if (data.action === "info") {
+      if (data.widget && data.widget.settingsValues) {
+        applyWidgetSettings(data.widget.settingsValues);
+      } else if (data.settingsValues) {
+        applyWidgetSettings(data.settingsValues);
+      }
       return;
     }
   };
@@ -661,17 +688,24 @@ function bindEvents() {
 }
 
 function queryHostSettings() {
-  const req = {
-    type: "widget_manager_request",
-    action: "info",
-    widgetId: "Weather"
-  };
-  if (window.linwidget && typeof window.linwidget.postMessage === "function") {
-    try { window.linwidget.postMessage(req); } catch (_) {}
-  }
-  if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
-    try { window.chrome.webview.postMessage(req); } catch (_) {}
-  }
+  const reqs = [
+    { type: "widget_manager_request", action: "info", widgetId: "lindesk.weather" },
+    { type: "widget_manager_request", action: "info", widgetId: "Weather" }
+  ];
+  reqs.forEach((req) => {
+    if (window.linwidget && typeof window.linwidget.postMessage === "function") {
+      try { window.linwidget.postMessage(req); } catch (_) {}
+    }
+    if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === "function") {
+      try { window.chrome.webview.postMessage(req); } catch (_) {}
+    }
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "linwidget://bridge/postMessage", true);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.send(JSON.stringify(req));
+    } catch (_) {}
+  });
 }
 
 // ──────────────────────────────────────────────

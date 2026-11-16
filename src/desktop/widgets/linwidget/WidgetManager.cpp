@@ -1084,10 +1084,30 @@ QString WidgetManager::resolveWidgetId(const QString& rawId) const
         target.startsWith(QStringLiteral("wallpaper:"))) {
         const QStringList parts = target.split(QLatin1Char(':'));
         if (parts.size() >= 2) {
-            return parts.at(1).trimmed().toLower();
+            target = parts.at(1).trimmed();
         }
     }
-    return target.toLower();
+    const QString lowerTarget = target.toLower();
+
+    // 智能匹配注册表条目：优先精确匹配，其次尝试组件名称与 ID 后缀匹配
+    auto& registry = WidgetRegistryManager::instance();
+    const WidgetRegistryEntry directEntry = registry.entryById(lowerTarget);
+    if (!directEntry.id.isEmpty()) {
+        return directEntry.id.trimmed().toLower();
+    }
+    for (const WidgetRegistryEntry& entry : registry.entries()) {
+        const QString eId = entry.id.trimmed().toLower();
+        if (eId == lowerTarget) {
+            return eId;
+        }
+        if (entry.name.trimmed().compare(target, Qt::CaseInsensitive) == 0) {
+            return eId;
+        }
+        if (eId.endsWith(QLatin1Char('.') + lowerTarget) || lowerTarget.endsWith(QLatin1Char('.') + eId)) {
+            return eId;
+        }
+    }
+    return lowerTarget;
 }
 
 void WidgetManager::stopWidget(const QString& instanceId)

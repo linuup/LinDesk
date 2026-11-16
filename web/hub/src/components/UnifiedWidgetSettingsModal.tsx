@@ -242,6 +242,32 @@ export const UnifiedWidgetSettingsModal: React.FC<UnifiedWidgetSettingsModalProp
     }
   }, [isOpen, widget?.id, hasCustomSettings]);
 
+  // 监听来自自定义 iframe 设置面板（如天气、备忘录等）派发的消息
+  useEffect(() => {
+    if (!isOpen || !widget) return;
+
+    const handleFrameMessage = (e: MessageEvent) => {
+      const data = e.data;
+      if (!data || typeof data !== 'object') return;
+      if (
+        data.type === 'linwidget_settings_changed' ||
+        data.type === 'save_widget_settings' ||
+        data.action === 'save_widget_settings' ||
+        data.type === 'settings_updated'
+      ) {
+        const settings = data.settings || {};
+        if (typeof onSaveSettings === 'function') {
+          onSaveSettings(widget.id, settings);
+        }
+        setIsSaved(true);
+        setTimeout(() => setIsSaved(false), 2500);
+      }
+    };
+
+    window.addEventListener('message', handleFrameMessage);
+    return () => window.removeEventListener('message', handleFrameMessage);
+  }, [isOpen, widget?.id, onSaveSettings]);
+
   // 锁定底座背景滚动，防止鼠标滚轮穿透滚动 Hub 页面
   useEffect(() => {
     if (!isOpen) return;

@@ -630,6 +630,9 @@
   <!-- 引入行政区划离线数据库 -->
   <script src="city_data.js"></script>
   <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const TARGET_WIDGET_ID = urlParams.get("widgetId") || "lindesk.weather";
+
     const STORAGE_KEY_CITIES = "lindesk_weather_cities";
     const STORAGE_KEY_CURRENT_ID = "lindesk_weather_current_city_id";
 
@@ -738,6 +741,49 @@
       display: "武汉市 · 湖北省"
     };
 
+    // 应用外部加载的配置项
+    function applyLoadedSettings(settings) {
+      if (!settings || typeof settings !== "object") return;
+      if (Array.isArray(settings.cities) && settings.cities.length > 0) {
+        const curId = settings.currentCityId || settings.cities[0].id;
+        const found = settings.cities.find(c => c.id === curId) || settings.cities[0];
+        if (found) {
+          savedCity = { ...found };
+          draftCity = { ...savedCity };
+          try {
+            localStorage.setItem(STORAGE_KEY_CITIES, JSON.stringify([savedCity]));
+            localStorage.setItem(STORAGE_KEY_CURRENT_ID, savedCity.id);
+          } catch (_) {}
+          renderCurrentUI();
+          syncCascadeToLoadedCity(savedCity);
+        }
+      }
+    }
+
+    // 主动向底座查询持久化配置
+    function fetchHostSettings() {
+      const queryMsg = {
+        type: "widget_manager_request",
+        action: "info",
+        widgetId: TARGET_WIDGET_ID
+      };
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "linwidget://bridge/postMessage", true);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify(queryMsg));
+      } catch (_) {}
+      if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
+        try { chrome.webview.postMessage(queryMsg); } catch (_) {}
+      }
+      try {
+        window.parent.postMessage({
+          type: "request_widget_settings",
+          widgetId: TARGET_WIDGET_ID
+        }, "*");
+      } catch (_) {}
+    }
+
     // 读取本地存储
     function loadSavedCity() {
       try {
@@ -773,6 +819,7 @@
       if (savedCity) {
         syncCascadeToLoadedCity(savedCity);
       }
+      fetchHostSettings();
     }
 
     // 渲染当前配置地区与修改状态
@@ -1287,13 +1334,20 @@
       const saveRpcMsg = {
         type: "widget_manager_request",
         action: "save_widget_settings",
+        widgetId: TARGET_WIDGET_ID,
+        settings: settingsPayload
+      };
+
+      const saveLegacyMsg = {
+        type: "widget_manager_request",
+        action: "save_widget_settings",
         widgetId: "Weather",
         settings: settingsPayload
       };
 
       const settingsNotification = {
         type: "linwidget_settings_changed",
-        widgetId: "Weather",
+        widgetId: TARGET_WIDGET_ID,
         settings: settingsPayload
       };
 
@@ -1301,6 +1355,7 @@
       if (window.linwidget && typeof window.linwidget.postMessage === "function") {
         try {
           window.linwidget.postMessage(saveRpcMsg);
+          window.linwidget.postMessage(saveLegacyMsg);
           window.linwidget.postMessage(settingsNotification);
         } catch (_) {}
       }
@@ -1309,27 +1364,34 @@
       if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
         try {
           chrome.webview.postMessage(saveRpcMsg);
+          chrome.webview.postMessage(saveLegacyMsg);
           chrome.webview.postMessage(settingsNotification);
           chrome.webview.postMessage({
             type: "linwidget_settings_changed_request",
-            widgetId: "Weather"
+            widgetId: TARGET_WIDGET_ID
           });
         } catch (_) {}
       }
 
-      // 3. XMLHttpRequest bridge
+      // 3. XMLHttpRequest bridge 跨域直连 C++ 宿主
       try {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "linwidget://bridge/postMessage", true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.send(JSON.stringify(saveRpcMsg));
       } catch (_) {}
+      try {
+        const xhr2 = new XMLHttpRequest();
+        xhr2.open("POST", "linwidget://bridge/postMessage", true);
+        xhr2.setRequestHeader("Content-Type", "application/json");
+        xhr2.send(JSON.stringify(saveLegacyMsg));
+      } catch (_) {}
 
       // 4. Hub 父页面 iframe 消息
       try {
         window.parent.postMessage({
           type: "linwidget_settings_changed",
-          widgetId: "Weather",
+          widgetId: TARGET_WIDGET_ID,
           settings: settingsPayload
         }, "*");
       } catch (_) {}
@@ -1389,6 +1451,27 @@
 
       el.saveBtn.addEventListener("click", handleSave);
       el.resetBtn.addEventListener("click", handleReset);
+
+      // 监听来自底座或宿主返回的配置信息
+      window.addEventListener("message", (event) => {
+        const data = event && event.data;
+        if (!data || typeof data !== "object") return;
+        if (data.action === "info" && data.widget && data.widget.settingsValues) {
+          applyLoadedSettings(data.widget.settingsValues);
+        } else if (data.settings && Array.isArray(data.settings.cities)) {
+          applyLoadedSettings(data.settings);
+        }
+      });
+      if (window.chrome && window.chrome.webview && typeof window.chrome.webview.addEventListener === "function") {
+        window.chrome.webview.addEventListener("message", (event) => {
+          const data = event && event.data;
+          if (data && typeof data === "object") {
+            if (data.action === "info" && data.widget && data.widget.settingsValues) {
+              applyLoadedSettings(data.widget.settingsValues);
+            }
+          }
+        });
+      }
     }
 
     // 页面启动
