@@ -11,11 +11,11 @@
 #endif
 
 #ifndef MyArch
-#define MyArch "x64"
+#define MyArch "x86"
 #endif
 
 #ifndef BuildDir
-#define BuildDir "D:/Desktop/LinDesk/build/Release"
+#define BuildDir "D:/Desktop/LinDesk/build/build_32/Release"
 #endif
 
 #ifndef PackageOutputDir

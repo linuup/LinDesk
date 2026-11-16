@@ -107,3 +107,42 @@ AI 修改或新增 UI 页面与功能时，**必须严格按以下步骤闭环**
 ### 4.2 直陈式工程表达
 - 剔除所有修饰性套话与同义反复，采用最直接、干练的工程语言；
 - 避免模糊指代，陈述结论、数据与方案时必须直截了当。
+
+---
+
+## 5. 版本发布与打包铁律
+
+凡涉及版本发布、安装包生成、双架构编译与 GitHub Release 发版，**必须且仅通过工程统一发布脚本执行**。
+权威脚本绝对路径为 `D:\Desktop\LinDesk\scripts\publish_release.py`。
+
+### 5.1 发布脚本核心机制
+- **配置依托**：优先读取本地 `scripts/release_config.ini` 中的工具链路径与 GitHub 令牌；
+- **全自动化闭环**：脚本依次自动化执行 Qt 翻译更新、Release 双架构编译、windeployqt 依赖部署、PE 机器码架构校验、Inno Setup 安装包打包、SHA256 哈希校验码计算、更新元数据写入与 GitHub Release 产物上传。
+
+### 5.2 权威发布命令集
+执行发版操作时，统一在工程根目录调用以下命令：
+- **中版本发布**：
+  ```powershell
+  python scripts/publish_release.py --bump minor --notes "版本更新简要说明"
+  ```
+- **小版本修复发布**：
+  ```powershell
+  python scripts/publish_release.py --bump patch --notes "版本更新简要说明"
+  ```
+- **指定明确版本发布**：
+  ```powershell
+  python scripts/publish_release.py --version X.Y.Z --notes "版本更新简要说明"
+  ```
+- **仅本地构建打包而不上传远端**：
+  ```powershell
+  python scripts/publish_release.py --version X.Y.Z --skip-upload --notes "版本更新简要说明"
+  ```
+- **重编并上传独立组件运行时**：
+  ```powershell
+  python scripts/publish_release.py --package-runtime
+  ```
+
+### 5.3 发版绝对禁止项
+- 绝对禁止仅手动修改部分源文件中的版本字符串后打 Git 标签结案；
+- 绝对禁止绕过发布脚本直接手动执行 Inno Setup 编译器生成缺少依赖或架构未校验的安装包；
+- 所有正式版本必须由发布脚本完整走通构建、测试、安装包产出与更新元数据同步。

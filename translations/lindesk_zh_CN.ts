@@ -1385,30 +1385,6 @@ Do you want to re map this box to another folder?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>授权:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>点击撤销 %1 权限</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>点击授予 %1 权限</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>🌐 网络</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>📁 存储</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>🖥 桌面</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>多实例运行:</source>
         <translation type="unfinished"></translation>
     </message>
