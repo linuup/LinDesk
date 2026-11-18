@@ -4,6 +4,7 @@
 #include "desktop/RenameManager.h"
 #include "desktop/widgets/runtime_export.h"
 #include "box/BoxManager.h"
+#include "box/LinBox_Internal.h"
 #include "ui/Fluent/FluentDialog.h"
 #include "ui/Fluent/FluentInfoTip.h"
 #include <QLocalServer>
@@ -213,7 +214,7 @@ void CALLBACK desktopHostWindowEventProc(HWINEVENTHOOK,
     }
 }
 
-QRect nativeWindowRect(HWND hwnd)
+QRect nativeDesktopWindowRect(HWND hwnd)
 {
     RECT rect = {};
     if (!hwnd || !GetWindowRect(hwnd, &rect)) {
@@ -235,7 +236,7 @@ void logDesktopDpiTrace(const char* source, QWidget* widget, const QRect& sugges
              << "source=" << source
              << "qtGeometry=" << (widget ? widget->geometry() : QRect())
              << "qtFrameGeometry=" << (widget ? widget->frameGeometry() : QRect())
-             << "nativeWindowRect=" << nativeWindowRect(hwnd)
+             << "nativeWindowRect=" << nativeDesktopWindowRect(hwnd)
              << "suggestedNativeRect=" << suggestedNativeRect
              << "nativeDpi=" << (hwnd ? GetDpiForWindow(hwnd) : 0)
              << "widgetDpr=" << (widget ? widget->devicePixelRatioF() : 0.0)
@@ -403,6 +404,7 @@ void LinDesktop::setShowDefaultWallpaper(bool show)
     } else {
         m_backImagePixmap = QPixmap();
         m_scaledBackImagePixmap = QPixmap();
+        m_blurredWallpaperPixmap = QPixmap();
         m_prevBackImagePixmap = QPixmap();
         m_prevScaledBackImagePixmap = QPixmap();
         m_currentWallpaperPath.clear();
@@ -436,6 +438,7 @@ void LinDesktop::loadBackImageInternal(bool sync)
     if (!showDefaultWallpaper()) {
         m_backImagePixmap = QPixmap();
         m_scaledBackImagePixmap = QPixmap();
+        m_blurredWallpaperPixmap = QPixmap();
         m_prevBackImagePixmap = QPixmap();
         m_prevScaledBackImagePixmap = QPixmap();
         m_currentWallpaperPath.clear();
@@ -562,6 +565,7 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
     const QSize targetLogicalSize = size();
     if (!targetLogicalSize.isValid()) {
         m_scaledBackImagePixmap = QPixmap();
+        m_blurredWallpaperPixmap = QPixmap();
         m_prevScaledBackImagePixmap = QPixmap();
         m_backImagePixmap = QPixmap();
         m_prevBackImagePixmap = QPixmap();
@@ -623,6 +627,33 @@ void LinDesktop::rebuildScaledWallpaperPixmaps()
         // 生成 m_scaledBackImagePixmap 之后释放 m_backImagePixmap 原图，避免常驻占用多份显存/内存
         m_backImagePixmap = QPixmap();
         m_prevBackImagePixmap = QPixmap();
+        rebuildBlurredWallpaperPixmap();
+    }
+}
+
+void LinDesktop::rebuildBlurredWallpaperPixmap()
+{
+    if (m_scaledBackImagePixmap.isNull()) {
+        m_blurredWallpaperPixmap = QPixmap();
+        return;
+    }
+
+    QPixmap composite = m_scaledBackImagePixmap.copy();
+    if (listView) {
+        QPainter painter(&composite);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter.setRenderHint(QPainter::TextAntialiasing, true);
+        listView->paintDesktopIconsTo(painter);
+    }
+
+    m_blurredWallpaperPixmap = buildAcrylicWallpaperBase(composite);
+    if (BoxManager* bm = BoxManager::instance()) {
+        for (const auto& boxPtr : bm->allBoxes()) {
+            if (LinBox* box = boxPtr.data()) {
+                box->update();
+            }
+        }
     }
 }
 

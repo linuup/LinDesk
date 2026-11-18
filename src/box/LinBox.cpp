@@ -38,6 +38,8 @@ LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     m_titleEdit->setMouseTracking(true);
     m_titleEdit->setVisible(false);
     m_titleEdit->setText(m_title);
+    m_titleEdit->setToolTip(m_title);
+    connect(m_titleEdit, &QLineEdit::textChanged, m_titleEdit, &QLineEdit::setToolTip);
     m_titleEdit->setAlignment(Qt::AlignCenter);
     m_titleEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_titleEdit->setFixedHeight(scaledPx(this, 22));
@@ -640,7 +642,7 @@ void LinBox::moveEvent(QMoveEvent* event) {
     }
 
     QWidget::moveEvent(event);
-    if (!m_isCapturingBackground && m_glassEffect && event->oldPos() != pos()) {
+    if (!m_isCapturingBackground && m_glassEffect && !m_isMoving && event->oldPos() != pos()) {
         scheduleBlurRefresh();
     }
 }

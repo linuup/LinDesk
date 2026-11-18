@@ -434,7 +434,7 @@ QStringList toNativeQStringListPaths(const QStringList& paths)
     return nativePaths;
 }
 
-QVector<qreal> gaussianKernel(int radius)
+inline QVector<qreal> gaussianKernel(int radius)
 {
     if (radius <= 0) {
         return {1.0};
@@ -455,53 +455,127 @@ QVector<qreal> gaussianKernel(int radius)
     return kernel;
 }
 
-QImage gaussianBlurImage(const QImage& source, int radius)
+inline QImage gaussianBlurImageFast(const QImage& source, int radius)
 {
     if (source.isNull() || radius <= 0) {
         return source;
     }
 
     const QImage input = source.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const int w = input.width();
+    const int h = input.height();
+    if (w <= 0 || h <= 0) {
+        return input;
+    }
+
     QImage horizontal(input.size(), QImage::Format_ARGB32_Premultiplied);
     QImage output(input.size(), QImage::Format_ARGB32_Premultiplied);
     const QVector<qreal> kernel = gaussianKernel(radius);
+    const qreal* kData = kernel.constData();
 
-    for (int y = 0; y < input.height(); ++y) {
-        for (int x = 0; x < input.width(); ++x) {
-            qreal a = 0, r = 0, g = 0, b = 0;
+    // Horizontal 1D Convolution with scanLine
+    for (int y = 0; y < h; ++y) {
+        const QRgb* srcLine = reinterpret_cast<const QRgb*>(input.constScanLine(y));
+        QRgb* dstLine = reinterpret_cast<QRgb*>(horizontal.scanLine(y));
+        for (int x = 0; x < w; ++x) {
+            qreal a = 0.0, r = 0.0, g = 0.0, b = 0.0;
             for (int k = -radius; k <= radius; ++k) {
-                const int sx = qBound(0, x + k, input.width() - 1);
-                const QRgb px = input.pixel(sx, y);
-                const qreal w = kernel[k + radius];
-                a += qAlpha(px) * w;
-                r += qRed(px) * w;
-                g += qGreen(px) * w;
-                b += qBlue(px) * w;
+                const int sx = qBound(0, x + k, w - 1);
+                const QRgb px = srcLine[sx];
+                const qreal weight = kData[k + radius];
+                a += qAlpha(px) * weight;
+                r += qRed(px) * weight;
+                g += qGreen(px) * weight;
+                b += qBlue(px) * weight;
             }
-            horizontal.setPixel(x, y, qRgba(qRound(r), qRound(g), qRound(b), qRound(a)));
+            dstLine[x] = qRgba(qBound(0, qRound(r), 255),
+                               qBound(0, qRound(g), 255),
+                               qBound(0, qRound(b), 255),
+                               qBound(0, qRound(a), 255));
         }
     }
 
-    for (int y = 0; y < input.height(); ++y) {
-        for (int x = 0; x < input.width(); ++x) {
-            qreal a = 0, r = 0, g = 0, b = 0;
+    // Vertical 1D Convolution with scanLine
+    for (int y = 0; y < h; ++y) {
+        QRgb* dstLine = reinterpret_cast<QRgb*>(output.scanLine(y));
+        for (int x = 0; x < w; ++x) {
+            qreal a = 0.0, r = 0.0, g = 0.0, b = 0.0;
             for (int k = -radius; k <= radius; ++k) {
-                const int sy = qBound(0, y + k, input.height() - 1);
-                const QRgb px = horizontal.pixel(x, sy);
-                const qreal w = kernel[k + radius];
-                a += qAlpha(px) * w;
-                r += qRed(px) * w;
-                g += qGreen(px) * w;
-                b += qBlue(px) * w;
+                const int sy = qBound(0, y + k, h - 1);
+                const QRgb* srcLine = reinterpret_cast<const QRgb*>(horizontal.constScanLine(sy));
+                const QRgb px = srcLine[x];
+                const qreal weight = kData[k + radius];
+                a += qAlpha(px) * weight;
+                r += qRed(px) * weight;
+                g += qGreen(px) * weight;
+                b += qBlue(px) * weight;
             }
-            output.setPixel(x, y, qRgba(qRound(r), qRound(g), qRound(b), qRound(a)));
+            dstLine[x] = qRgba(qBound(0, qRound(r), 255),
+                               qBound(0, qRound(g), 255),
+                               qBound(0, qRound(b), 255),
+                               qBound(0, qRound(a), 255));
         }
     }
 
     return output;
 }
 
-QColor blendTowardWhite(const QColor& color, qreal amount)
+inline void boostColorSaturation(QImage& image, qreal saturationFactor = 1.45, qreal contrastFactor = 1.05)
+{
+    const int w = image.width();
+    const int h = image.height();
+    for (int y = 0; y < h; ++y) {
+        QRgb* line = reinterpret_cast<QRgb*>(image.scanLine(y));
+        for (int x = 0; x < w; ++x) {
+            const QRgb px = line[x];
+            const int alpha = qAlpha(px);
+            if (alpha == 0) continue;
+
+            QColor col(qRed(px), qGreen(px), qBlue(px));
+            int hVal, sVal, vVal;
+            col.getHsv(&hVal, &sVal, &vVal);
+
+            if (sVal > 8) {
+                sVal = qBound(0, qRound(sVal * saturationFactor), 255);
+            }
+            if (vVal > 20) {
+                const qreal centered = (vVal - 128) * contrastFactor + 128;
+                vVal = qBound(0, qRound(centered), 255);
+            }
+
+            col.setHsv(hVal, sVal, vVal);
+            line[x] = qRgba(col.red(), col.green(), col.blue(), alpha);
+        }
+    }
+}
+
+inline void applyMicroNoiseLayer(QImage& image, int maxDelta = 6)
+{
+    if (image.isNull() || maxDelta <= 0) {
+        return;
+    }
+    const int w = image.width();
+    const int h = image.height();
+    for (int y = 0; y < h; ++y) {
+        QRgb* line = reinterpret_cast<QRgb*>(image.scanLine(y));
+        for (int x = 0; x < w; ++x) {
+            const uint hash = static_cast<uint>((x * 1664525) ^ (y * 1013904223) ^ 0x4f1bbcd);
+            const int delta = static_cast<int>(hash % (2 * maxDelta + 1)) - maxDelta;
+            const QRgb px = line[x];
+            const int r = qBound(0, qRed(px) + delta, 255);
+            const int g = qBound(0, qGreen(px) + delta, 255);
+            const int b = qBound(0, qBlue(px) + delta, 255);
+            line[x] = qRgba(r, g, b, qAlpha(px));
+        }
+    }
+}
+
+inline QImage gaussianBlurImage(const QImage& source, int radius)
+{
+    return gaussianBlurImageFast(source, radius);
+}
+
+inline QColor blendTowardWhite(const QColor& color, qreal amount)
 {
     const qreal t = qBound<qreal>(0.0, amount, 1.0);
     return QColor(
@@ -510,110 +584,48 @@ QColor blendTowardWhite(const QColor& color, qreal amount)
         qRound(color.blue() + (255 - color.blue()) * t));
 }
 
-void applyNoiseLayer(QImage& image, int alpha)
+inline void applyNoiseLayer(QImage& image, int alpha)
 {
-    if (image.isNull() || alpha <= 0) {
-        return;
-    }
-
-    alpha = qBound(0, alpha, 255);
-    const QSize noiseSampleSize(qMax(8, image.width() / 10), qMax(8, image.height() / 10));
-    QImage noise(noiseSampleSize, QImage::Format_ARGB32_Premultiplied);
-    noise.fill(Qt::transparent);
-
-    for (int y = 0; y < noise.height(); ++y) {
-        QRgb* scanLine = reinterpret_cast<QRgb*>(noise.scanLine(y));
-        for (int x = 0; x < noise.width(); ++x) {
-            const uint hash = static_cast<uint>((x * 73856093) ^ (y * 19349663) ^ 0x9e3779b9);
-            const int shade = 128 + static_cast<int>(hash % 13) - 6;
-            scanLine[x] = qRgba(shade, shade, shade, alpha);
-        }
-    }
-
-    noise = gaussianBlurImage(noise, 1);
-    const QImage scaledNoise = noise.scaled(
-        image.size(),
-        Qt::IgnoreAspectRatio,
-        Qt::SmoothTransformation);
-
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    painter.setOpacity(0.045);
-    painter.drawImage(QPoint(0, 0), scaledNoise);
-    painter.end();
+    Q_UNUSED(alpha);
+    applyMicroNoiseLayer(image, 6);
 }
 
-QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float tintOpacity)
+// Build pure, highly vibrant Windows 11 Fluent Acrylic wallpaper base
+inline QPixmap buildAcrylicWallpaperBase(const QPixmap& source)
 {
     if (source.isNull()) {
         return QPixmap();
     }
-
-    constexpr int kBaseDownsample = 5;
-    constexpr int kWideDownsample = 8;
-    constexpr int kBaseBlurRadius = 9;
-    constexpr int kWideBlurRadius = 14;
-    constexpr qreal kBaseBlendOpacity = 0.84;
-    constexpr qreal kWideBlendOpacity = 0.24;
-    constexpr int kExclusionAlpha = 10;
-    constexpr int kScreenAlpha = 32;
-    constexpr int kNoiseAlpha = 20;
-
     const qreal dpr = source.devicePixelRatio();
     const QImage sourceImage = source.toImage();
     const QSize originalSize = sourceImage.size();
+    if (originalSize.isEmpty()) {
+        return QPixmap();
+    }
 
-    // Acrylic recipe from Microsoft guidance:
-    // background, blur, exclusion blend, tint overlay, noise.
-    // This local fallback keeps that ordering and adds a very light brightening pass
-    // to approximate the transient Desktop Acrylic look.
-    const QSize baseSampleSize(qMax(1, originalSize.width() / kBaseDownsample),
-                               qMax(1, originalSize.height() / kBaseDownsample));
-    QImage baseSample = sourceImage.scaled(baseSampleSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    baseSample = gaussianBlurImage(baseSample, kBaseBlurRadius);
-    const QImage baseRestored = baseSample.scaled(originalSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    constexpr int kDownsample = 4;
+    const QSize downSize(qMax(1, originalSize.width() / kDownsample),
+                         qMax(1, originalSize.height() / kDownsample));
+    QImage downSampled = sourceImage.scaled(downSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
-    const QSize wideSampleSize(qMax(1, originalSize.width() / kWideDownsample),
-                               qMax(1, originalSize.height() / kWideDownsample));
-    QImage wideSample = sourceImage.scaled(wideSampleSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    wideSample = gaussianBlurImage(wideSample, kWideBlurRadius);
-    QImage restored = wideSample.scaled(originalSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    // Fast 1D Separable Gaussian Convolution (equivalent to ~28px radius at full scale)
+    constexpr int kBlurRadius = 7;
+    downSampled = gaussianBlurImageFast(downSampled, kBlurRadius);
 
-    QPainter blurBlendPainter(&restored);
-    blurBlendPainter.setRenderHint(QPainter::SmoothPixmapTransform);
-    blurBlendPainter.setOpacity(kBaseBlendOpacity);
-    blurBlendPainter.drawImage(QPoint(0, 0), baseRestored);
-    blurBlendPainter.setOpacity(kWideBlendOpacity);
-    blurBlendPainter.drawImage(QPoint(0, 0), restored);
-    blurBlendPainter.setCompositionMode(QPainter::CompositionMode_Screen);
-    blurBlendPainter.setOpacity(0.18);
-    blurBlendPainter.fillRect(restored.rect(), QColor(255, 255, 255, 20));
-    blurBlendPainter.end();
+    // Saturation Boost: recover color vibrancy lost during convolution blur
+    boostColorSaturation(downSampled, 1.45, 1.05);
 
+    // Smooth bilinear upsampling back to original size
+    QImage restored = downSampled.scaled(originalSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    // Authentic Windows Fluent Exclusion Blend: balance dynamic range and bring out pure color tone
     QPainter overlayPainter(&restored);
-    overlayPainter.setRenderHint(QPainter::Antialiasing);
-
     overlayPainter.setCompositionMode(QPainter::CompositionMode_Exclusion);
-    overlayPainter.fillRect(restored.rect(), QColor(244, 244, 244, kExclusionAlpha));
-
-    overlayPainter.setCompositionMode(QPainter::CompositionMode_Screen);
-    overlayPainter.fillRect(restored.rect(), QColor(255, 255, 255, kScreenAlpha));
-
-    // Inference from the transient Desktop Acrylic appearance:
-    // a subtle cool highlight keeps the material bright and translucent.
-    QLinearGradient acrylicSheen(0, 0, 0, restored.height());
-    acrylicSheen.setColorAt(0.0, QColor(236, 246, 255, 34));
-    acrylicSheen.setColorAt(0.30, QColor(244, 249, 255, 16));
-    acrylicSheen.setColorAt(1.0, QColor(255, 255, 255, 6));
-    overlayPainter.fillRect(restored.rect(), acrylicSheen);
-
-    overlayPainter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    const QColor softenedTint = blendTowardWhite(tintColor, 0.18);
-    const int tintAlpha = qBound(0, qRound(qBound(0.0f, tintOpacity, 1.0f) * 56.0f), 56);
-    overlayPainter.fillRect(restored.rect(), QColor(softenedTint.red(), softenedTint.green(), softenedTint.blue(), tintAlpha));
+    overlayPainter.fillRect(restored.rect(), QColor(235, 235, 235, 36));
     overlayPainter.end();
 
-    applyNoiseLayer(restored, kNoiseAlpha);
+    // Apply micro-crystalline frosted noise
+    applyMicroNoiseLayer(restored, 6);
 
     if (dpr > 1.0) {
         restored.setDevicePixelRatio(dpr);
@@ -621,7 +633,41 @@ QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float 
     return QPixmap::fromImage(restored);
 }
 
-QIcon buildWhiteSvgIcon(const QString& resourcePath, const QSize& iconSize)
+inline QPixmap buildBlurredGlass(const QPixmap& source, const QColor& tintColor, float tintOpacity)
+{
+    if (source.isNull()) {
+        return QPixmap();
+    }
+
+    QPixmap base = buildAcrylicWallpaperBase(source);
+    if (base.isNull()) {
+        return QPixmap();
+    }
+
+    // Apply Acrylic Tint & Subtle Mica Edge Reflection
+    QPainter p(&base);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    if (tintColor.isValid()) {
+        const int tintAlpha = qBound(0, qRound(qBound(0.0f, tintOpacity, 1.0f) * 160.0f), 210);
+        p.fillRect(base.rect(), QColor(tintColor.red(), tintColor.green(), tintColor.blue(), tintAlpha));
+    }
+
+    // Subtle top edge specular reflection
+    const int sheenHeight = qMin(24, base.height());
+    if (sheenHeight > 0) {
+        QLinearGradient specular(0, 0, 0, sheenHeight);
+        specular.setColorAt(0.0, QColor(255, 255, 255, 28));
+        specular.setColorAt(0.4, QColor(255, 255, 255, 10));
+        specular.setColorAt(1.0, QColor(255, 255, 255, 0));
+        p.fillRect(QRect(0, 0, base.width(), sheenHeight), specular);
+    }
+    p.end();
+
+    return base;
+}
+
+inline QIcon buildWhiteSvgIcon(const QString& resourcePath, const QSize& iconSize)
 {
     QSvgRenderer renderer(resourcePath);
     if (!renderer.isValid()) {

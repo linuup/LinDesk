@@ -1338,67 +1338,30 @@
         settings: settingsPayload
       };
 
-      const saveLegacyMsg = {
-        type: "widget_manager_request",
-        action: "save_widget_settings",
-        widgetId: "Weather",
-        settings: settingsPayload
-      };
-
-      const settingsNotification = {
-        type: "linwidget_settings_changed",
-        widgetId: TARGET_WIDGET_ID,
-        settings: settingsPayload
-      };
-
-      // 1. window.linwidget
-      if (window.linwidget && typeof window.linwidget.postMessage === "function") {
-        try {
-          window.linwidget.postMessage(saveRpcMsg);
-          window.linwidget.postMessage(saveLegacyMsg);
-          window.linwidget.postMessage(settingsNotification);
-        } catch (_) {}
-      }
-
-      // 2. CEF 宿主 IPC
-      if (window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
-        try {
-          chrome.webview.postMessage(saveRpcMsg);
-          chrome.webview.postMessage(saveLegacyMsg);
-          chrome.webview.postMessage(settingsNotification);
-          chrome.webview.postMessage({
-            type: "linwidget_settings_changed_request",
-            widgetId: TARGET_WIDGET_ID
-          });
-        } catch (_) {}
-      }
-
-      // 3. XMLHttpRequest bridge 跨域直连 C++ 宿主
+      // 1. 标准 XMLHttpRequest bridge 直通 C++ 底座
+      let sent = false;
       try {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "linwidget://bridge/postMessage", true);
         xhr.setRequestHeader("Content-Type", "application/json");
         xhr.send(JSON.stringify(saveRpcMsg));
-      } catch (_) {}
-      try {
-        const xhr2 = new XMLHttpRequest();
-        xhr2.open("POST", "linwidget://bridge/postMessage", true);
-        xhr2.setRequestHeader("Content-Type", "application/json");
-        xhr2.send(JSON.stringify(saveLegacyMsg));
+        sent = true;
       } catch (_) {}
 
-      // 4. Hub 父页面 iframe 消息
+      // 2. CEF 宿主 IPC 备用通道
+      if (!sent && window.chrome && chrome.webview && typeof chrome.webview.postMessage === "function") {
+        try {
+          chrome.webview.postMessage(saveRpcMsg);
+          sent = true;
+        } catch (_) {}
+      }
+
+      // 3. 向 Hub 父级窗口派发轻量保存完成反馈，严禁携带让 Hub 重新触发保存的消息
       try {
         window.parent.postMessage({
-          type: "linwidget_settings_changed",
-          widgetId: TARGET_WIDGET_ID,
-          settings: settingsPayload
+          type: "__lindesk_custom_settings_saved_feedback__",
+          widgetId: TARGET_WIDGET_ID
         }, "*");
-      } catch (_) {}
-
-      // 5. 跨窗口 storage 事件
-      try {
-        window.dispatchEvent(new Event("storage"));
       } catch (_) {}
     }
 

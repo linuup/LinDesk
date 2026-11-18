@@ -154,6 +154,48 @@ QRect LinBox::mappedTitleTextRect() const
     return textRect;
 }
 
+QRect LinBox::actualTitleTextRect() const
+{
+    if (!m_titleBar) {
+        return QRect();
+    }
+
+    const QString title = displayTitleText();
+    if (title.isEmpty()) {
+        return QRect();
+    }
+
+    const QFont titleFont = AppFonts::uiFont(9, QFont::Bold);
+    const QFontMetrics fm(titleFont);
+    const int textW = fm.horizontalAdvance(title);
+    const int textH = fm.height();
+    const QRect availRect = mappedTitleTextRect();
+    if (availRect.isEmpty()) {
+        return QRect();
+    }
+
+    const int textY = (m_titleBar->height() - textH) / 2;
+    QRect actualRect;
+
+    if (isFolderMapped()) {
+        const QRect iconRect = mappedTitleIconRect();
+        if (!iconRect.isNull()) {
+            const int drawW = qMin(textW, availRect.width());
+            actualRect = QRect(availRect.left(), textY, drawW, textH);
+        } else {
+            const int drawW = qMin(textW, availRect.width());
+            const int startX = availRect.center().x() - drawW / 2;
+            actualRect = QRect(startX, textY, drawW, textH);
+        }
+    } else {
+        const int drawW = qMin(textW, availRect.width());
+        const int startX = availRect.center().x() - drawW / 2;
+        actualRect = QRect(startX, textY, drawW, textH);
+    }
+
+    return actualRect.adjusted(-4, -2, 4, 2).intersected(availRect);
+}
+
 bool LinBox::openMappedFolderInExplorer()
 {
     if (!isFolderMapped() || m_mappedFolderPath.isEmpty()) {

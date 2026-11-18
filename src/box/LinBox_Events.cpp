@@ -52,11 +52,23 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
             
             // Adjust rect to avoid buttons: collapseBtn(30px) and viewSwitchBtn(right)
             // Left gap for collapse button + padding
-            QRect textRect = mappedTitleTextRect();
+            const QRect textRect = mappedTitleTextRect();
+            const QString fullTitle = displayTitleText();
+            const QFontMetrics fm(p.font());
+            const bool isElided = fm.horizontalAdvance(fullTitle) > textRect.width();
+
+            if (isElided) {
+                if (m_titleBar->toolTip() != fullTitle) {
+                    m_titleBar->setToolTip(fullTitle);
+                }
+            } else {
+                if (!m_titleBar->toolTip().isEmpty()) {
+                    m_titleBar->setToolTip(QString());
+                }
+            }
             
             if (isFolderMapped()) {
                 const QRect iconRect = mappedTitleIconRect();
-                const QString title = displayTitleText();
                 bool iconDrawn = false;
                 QSvgRenderer renderer(mappedFolderTitleIconResourcePath(m_mappedFolderPath));
                 if (renderer.isValid()) {
@@ -70,16 +82,14 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                     }
                 }
 
+                const QString elidedTitle = fm.elidedText(fullTitle, Qt::ElideRight, textRect.width());
                 if (iconDrawn) {
-                    p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, title);
+                    p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, elidedTitle);
                 } else {
-                    QFontMetrics fm(p.font());
-                    QString elidedTitle = fm.elidedText(displayTitleText(), Qt::ElideRight, textRect.width());
                     p.drawText(textRect, Qt::AlignCenter, elidedTitle);
                 }
             } else {
-                QFontMetrics fm(p.font());
-                QString elidedTitle = fm.elidedText(displayTitleText(), Qt::ElideRight, textRect.width());
+                const QString elidedTitle = fm.elidedText(fullTitle, Qt::ElideRight, textRect.width());
                 p.drawText(textRect, Qt::AlignCenter, elidedTitle);
             }
         }
@@ -212,7 +222,7 @@ bool LinBox::eventFilter(QObject* watched, QEvent* event) {
                 openMappedFolderInExplorer();
                 return true;
             }
-            if (mappedTitleTextRect().contains(mouseEvent->pos())) {
+            if (actualTitleTextRect().contains(mouseEvent->pos())) {
                 beginTitleEditing();
                 return true;
             }

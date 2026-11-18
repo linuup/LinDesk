@@ -200,6 +200,7 @@ private:
     QString sanitizedTitleText(const QString& title) const;
     QRect mappedTitleIconRect() const;
     QRect mappedTitleTextRect() const;
+    QRect actualTitleTextRect() const;
     bool openMappedFolderInExplorer();
     QRect mappedPlaceholderRect() const;
     bool tryRefreshMappedFolderFromPlaceholderClick(const QPoint& boxPos);

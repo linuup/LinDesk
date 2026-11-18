@@ -1718,6 +1718,7 @@ void ListView::onFileSystemChanged(const FileSystemEventInfo& eventInfo)
     for (const auto& box : BoxManager::instance()->allBoxes()) {
         if (box) box->raise();
     }
+    scheduleBlurredDesktopRefresh();
 }
 
 void ListView::onMenuQuitApp() {

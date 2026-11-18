@@ -242,31 +242,22 @@ export const UnifiedWidgetSettingsModal: React.FC<UnifiedWidgetSettingsModalProp
     }
   }, [isOpen, widget?.id, hasCustomSettings]);
 
-  // 监听来自自定义 iframe 设置面板（如天气、备忘录等）派发的消息
+  // 仅接收来自自定义 iframe 单向派发的保存完成反馈，严禁反向向底座重复触发存储与广播
   useEffect(() => {
     if (!isOpen || !widget) return;
 
-    const handleFrameMessage = (e: MessageEvent) => {
+    const handleFrameFeedback = (e: MessageEvent) => {
       const data = e.data;
       if (!data || typeof data !== 'object') return;
-      if (
-        data.type === 'linwidget_settings_changed' ||
-        data.type === 'save_widget_settings' ||
-        data.action === 'save_widget_settings' ||
-        data.type === 'settings_updated'
-      ) {
-        const settings = data.settings || {};
-        if (typeof onSaveSettings === 'function') {
-          onSaveSettings(widget.id, settings);
-        }
+      if (data.type === '__lindesk_custom_settings_saved_feedback__') {
         setIsSaved(true);
         setTimeout(() => setIsSaved(false), 2500);
       }
     };
 
-    window.addEventListener('message', handleFrameMessage);
-    return () => window.removeEventListener('message', handleFrameMessage);
-  }, [isOpen, widget?.id, onSaveSettings]);
+    window.addEventListener('message', handleFrameFeedback);
+    return () => window.removeEventListener('message', handleFrameFeedback);
+  }, [isOpen, widget?.id]);
 
   // 锁定底座背景滚动，防止鼠标滚轮穿透滚动 Hub 页面
   useEffect(() => {

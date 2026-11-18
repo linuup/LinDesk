@@ -25,45 +25,101 @@ void LinBox::paintEvent(QPaintEvent* event) {
         p.setPen(QPen(QColor(255, 255, 255, 50), 1.0));
         p.setBrush(Qt::NoBrush);
         p.drawRect(contentRect.adjusted(0, 0, -1, -1));
-    } else if (m_glassEffect && !m_blurCache.isNull()) {
-        p.drawPixmap(contentRect.topLeft(), m_blurCache);
-        p.fillRect(contentRect, QColor(255, 255, 255, 8));
+    } else if (m_glassEffect) {
+        LinDesktop* desktop = nullptr;
+        for (QWidget* w = parentWidget(); w; w = w->parentWidget()) {
+            if (auto* d = qobject_cast<LinDesktop*>(w)) {
+                desktop = d;
+                break;
+            }
+        }
 
-        if (m_layeredZDepth) {
-            const int titleH = m_titleBar ? m_titleBar->height() : scaledPx(this, kBaseBoxTitleHeight);
-            const QRect titleRect(contentRect.x(), contentRect.y(), contentRect.width(), titleH);
+        QPixmap glassBase;
+        if (m_isMoving && desktop && !desktop->blurredWallpaperPixmap().isNull()) {
+            const QPixmap& fullBlurred = desktop->blurredWallpaperPixmap();
+            const qreal dpr = qMax<qreal>(1.0, fullBlurred.devicePixelRatio());
+            const QPoint posInDesktop = mapTo(desktop, QPoint(0, 0));
+            const QRect cropPhysical(qRound((posInDesktop.x() + m_borderWidth) * dpr),
+                                     qRound((posInDesktop.y() + m_borderWidth) * dpr),
+                                     qRound(contentRect.width() * dpr),
+                                     qRound(contentRect.height() * dpr));
+            const QRect validCrop = cropPhysical.intersected(QRect(0, 0, fullBlurred.width(), fullBlurred.height()));
+            if (!validCrop.isEmpty()) {
+                glassBase = fullBlurred.copy(validCrop);
+            }
+        }
 
-            QLinearGradient titleSheen(titleRect.topLeft(), titleRect.bottomLeft());
-            titleSheen.setColorAt(0.0, QColor(255, 255, 255, 42));
-            titleSheen.setColorAt(0.3, QColor(255, 255, 255, 14));
-            titleSheen.setColorAt(1.0, QColor(255, 255, 255, 4));
-            p.fillRect(titleRect, titleSheen);
+        if (glassBase.isNull()) {
+            glassBase = m_blurCache;
+        }
 
-            p.setPen(QPen(QColor(255, 255, 255, 140), 1.0));
-            p.drawLine(titleRect.left() + 1, titleRect.top(), titleRect.right() - 1, titleRect.top());
+        if (glassBase.isNull() && desktop && !desktop->blurredWallpaperPixmap().isNull()) {
+            const QPixmap& fullBlurred = desktop->blurredWallpaperPixmap();
+            const qreal dpr = qMax<qreal>(1.0, fullBlurred.devicePixelRatio());
+            const QPoint posInDesktop = mapTo(desktop, QPoint(0, 0));
+            const QRect cropPhysical(qRound((posInDesktop.x() + m_borderWidth) * dpr),
+                                     qRound((posInDesktop.y() + m_borderWidth) * dpr),
+                                     qRound(contentRect.width() * dpr),
+                                     qRound(contentRect.height() * dpr));
+            const QRect validCrop = cropPhysical.intersected(QRect(0, 0, fullBlurred.width(), fullBlurred.height()));
+            if (!validCrop.isEmpty()) {
+                glassBase = fullBlurred.copy(validCrop);
+            }
+        }
 
-            p.setPen(QPen(QColor(255, 255, 255, 28), 1.0));
-            p.drawLine(titleRect.left(), titleRect.bottom(), titleRect.right(), titleRect.bottom());
+        if (!glassBase.isNull()) {
+            p.drawPixmap(contentRect.topLeft(), glassBase);
 
-            const QRect bodyRect(contentRect.x(), contentRect.y() + titleH, contentRect.width(), contentRect.height() - titleH);
-            if (!m_isCollapsed && bodyRect.height() > 0) {
-                QLinearGradient innerShadow(bodyRect.topLeft(), bodyRect.topLeft() + QPoint(0, 16));
-                innerShadow.setColorAt(0.0, QColor(0, 0, 0, 36));
-                innerShadow.setColorAt(1.0, QColor(0, 0, 0, 0));
-                p.fillRect(QRect(bodyRect.left(), bodyRect.top(), bodyRect.width(), qMin(16, bodyRect.height())), innerShadow);
+            if (baseColor.isValid() && baseColor.alpha() > 0) {
+                const int tintAlpha = qBound(0, qRound(qBound(0.0f, m_bgOpacity, 1.0f) * 160.0f), 210);
+                p.fillRect(contentRect, QColor(r, g, b, tintAlpha));
             }
 
-            QLinearGradient borderSheen(contentRect.topLeft(), contentRect.bottomRight());
-            borderSheen.setColorAt(0.0, QColor(255, 255, 255, 160));
-            borderSheen.setColorAt(0.4, QColor(255, 255, 255, 75));
-            borderSheen.setColorAt(1.0, QColor(255, 255, 255, 130));
-            p.setPen(QPen(QBrush(borderSheen), 1.0));
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(contentRect.adjusted(0, 0, -1, -1));
-        } else {
-            p.setPen(QPen(QColor(255, 255, 255, 110), 1.0));
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+            const int sheenH = qMin(20, contentRect.height());
+            if (sheenH > 0) {
+                QLinearGradient edgeSheen(contentRect.topLeft(), contentRect.topLeft() + QPoint(0, sheenH));
+                edgeSheen.setColorAt(0.0, QColor(255, 255, 255, 24));
+                edgeSheen.setColorAt(0.4, QColor(255, 255, 255, 8));
+                edgeSheen.setColorAt(1.0, QColor(255, 255, 255, 0));
+                p.fillRect(QRect(contentRect.left(), contentRect.top(), contentRect.width(), sheenH), edgeSheen);
+            }
+
+            if (m_layeredZDepth) {
+                const int titleH = m_titleBar ? m_titleBar->height() : scaledPx(this, kBaseBoxTitleHeight);
+                const QRect titleRect(contentRect.x(), contentRect.y(), contentRect.width(), titleH);
+
+                QLinearGradient titleSheen(titleRect.topLeft(), titleRect.bottomLeft());
+                titleSheen.setColorAt(0.0, QColor(255, 255, 255, 30));
+                titleSheen.setColorAt(0.4, QColor(255, 255, 255, 10));
+                titleSheen.setColorAt(1.0, QColor(255, 255, 255, 0));
+                p.fillRect(titleRect, titleSheen);
+
+                p.setPen(QPen(QColor(255, 255, 255, 110), 1.0));
+                p.drawLine(titleRect.left() + 1, titleRect.top(), titleRect.right() - 1, titleRect.top());
+
+                p.setPen(QPen(QColor(255, 255, 255, 24), 1.0));
+                p.drawLine(titleRect.left(), titleRect.bottom(), titleRect.right(), titleRect.bottom());
+
+                const QRect bodyRect(contentRect.x(), contentRect.y() + titleH, contentRect.width(), contentRect.height() - titleH);
+                if (!m_isCollapsed && bodyRect.height() > 0) {
+                    QLinearGradient innerShadow(bodyRect.topLeft(), bodyRect.topLeft() + QPoint(0, 14));
+                    innerShadow.setColorAt(0.0, QColor(0, 0, 0, 24));
+                    innerShadow.setColorAt(1.0, QColor(0, 0, 0, 0));
+                    p.fillRect(QRect(bodyRect.left(), bodyRect.top(), bodyRect.width(), qMin(14, bodyRect.height())), innerShadow);
+                }
+
+                QLinearGradient borderSheen(contentRect.topLeft(), contentRect.bottomRight());
+                borderSheen.setColorAt(0.0, QColor(255, 255, 255, 130));
+                borderSheen.setColorAt(0.4, QColor(255, 255, 255, 55));
+                borderSheen.setColorAt(1.0, QColor(255, 255, 255, 100));
+                p.setPen(QPen(QBrush(borderSheen), 1.0));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+            } else {
+                p.setPen(QPen(QColor(255, 255, 255, 90), 1.0));
+                p.setBrush(Qt::NoBrush);
+                p.drawRect(contentRect.adjusted(0, 0, -1, -1));
+            }
         }
     } else {
         QStyleOption opt;
@@ -513,7 +569,26 @@ QPixmap LinBox::captureBackgroundPixmap() const
         background.fill(QColor(30, 30, 30));
     }
 
-    // 3. Render sibling widgets underneath (strictly excluding this LinBox!)
+    // 3. Render desktop icons underneath this LinBox
+    ListView* lv = nullptr;
+    for (QWidget* w = parentWidget(); w; w = w->parentWidget()) {
+        if (auto* l = qobject_cast<ListView*>(w)) {
+            lv = l;
+            break;
+        }
+    }
+    if (lv) {
+        QPainter iconPainter(&background);
+        iconPainter.setRenderHint(QPainter::Antialiasing, true);
+        iconPainter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        iconPainter.setRenderHint(QPainter::TextAntialiasing, true);
+        const QPoint posInLv = mapTo(lv, QPoint(0, 0));
+        iconPainter.translate(-posInLv);
+        const QRect boxRectInLv(posInLv, size());
+        lv->paintDesktopIconsTo(iconPainter, boxRectInLv);
+    }
+
+    // 4. Render sibling widgets underneath (strictly excluding this LinBox!)
     QWidget* sourceParent = parentWidget();
     if (sourceParent) {
         LinBox* self = const_cast<LinBox*>(this);
@@ -567,7 +642,7 @@ void LinBox::updateBlurCache()
     }
 
     const QPixmap contentCapture = captured.copy(contentRect);
-    m_blurCache = buildBlurredGlass(contentCapture, effectiveBackgroundColor(), m_bgOpacity);
+    m_blurCache = buildAcrylicWallpaperBase(contentCapture);
     if (isPixmapEffectivelyTransparent(m_blurCache, 40)) {
         m_blurCache = QPixmap();
     }

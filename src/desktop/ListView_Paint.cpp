@@ -314,6 +314,59 @@ void ListView::paintEvent(QPaintEvent* event)
 }
 
 
+void ListView::paintDesktopIconsTo(QPainter& painter, const QRect& targetRect)
+{
+    if (m_hideDesktopItemsForRefresh) {
+        return;
+    }
+
+    const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);
+    const qreal currentOpacity = isFading ? m_desktopElementsOpacity : (m_iconShowRule.showDesktopIcons ? 1.0 : 0.0);
+    if (currentOpacity <= 0.0 && !isFading) {
+        return;
+    }
+
+    const bool hasClip = !targetRect.isEmpty();
+
+    for (const auto& state : m_itemStates) {
+        if (!shouldPaintDesktopModelState(state)) {
+            continue;
+        }
+
+        if (hasClip) {
+            const QRect totalRect = state.model.renderData.itemRect.united(state.model.renderData.textRect);
+            if (!targetRect.intersects(totalRect)) {
+                continue;
+            }
+        }
+
+        paintDesktopRootItemDynamic(painter, state.model.renderData);
+        paintDesktopRootItemStatic(painter, state.model.renderData);
+    }
+}
+
+void ListView::scheduleBlurredDesktopRefresh()
+{
+    if (!m_blurDesktopRefreshTimer) {
+        m_blurDesktopRefreshTimer = new QTimer(this);
+        m_blurDesktopRefreshTimer->setSingleShot(true);
+        m_blurDesktopRefreshTimer->setInterval(150);
+        connect(m_blurDesktopRefreshTimer, &QTimer::timeout, this, [this]() {
+            if (LinDesktop* desk = findLinDesktopAncestor(parentWidget())) {
+                desk->rebuildBlurredWallpaperPixmap();
+            }
+            if (BoxManager* bm = BoxManager::instance()) {
+                for (const auto& boxPtr : bm->allBoxes()) {
+                    if (LinBox* box = boxPtr.data()) {
+                        box->scheduleBlurRefresh();
+                    }
+                }
+            }
+        });
+    }
+    m_blurDesktopRefreshTimer->start();
+}
+
 bool ListView::shouldPaintDesktopModelState(const DesktopRootItemState& state) const
 {
     const bool isFading = (m_desktopHideAnim && m_desktopHideAnim->state() == QAbstractAnimation::Running);

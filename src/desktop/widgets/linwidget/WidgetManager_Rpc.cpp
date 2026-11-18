@@ -1606,22 +1606,31 @@ QJsonObject WidgetManager::handleWidgetManagerRequest(const QJsonObject& request
         const QString settingsFile = QDir(modeDir).filePath(QStringLiteral("widget.json"));
         QJsonObject existing;
         loadStorageObject(settingsFile, &existing, nullptr);
+
+        bool changed = false;
         for (auto it = settingsObj.begin(); it != settingsObj.end(); ++it) {
-            existing.insert(it.key(), it.value());
+            auto exIt = existing.find(it.key());
+            if (exIt == existing.end() || exIt.value() != it.value()) {
+                existing.insert(it.key(), it.value());
+                changed = true;
+            }
         }
-        saveStorageObject(settingsFile, existing, nullptr);
 
-        QJsonObject notifyMsg = makeWidgetMessage(QStringLiteral("settings_updated"), resolvedId);
-        notifyMsg.insert(QStringLiteral("settings"), existing);
-        broadcastToWidgetInstances(resolvedId, notifyMsg);
+        if (changed || !QFileInfo::exists(settingsFile)) {
+            saveStorageObject(settingsFile, existing, nullptr);
 
-        QJsonObject changedMsg = makeWidgetMessage(QStringLiteral("settings_changed"), resolvedId);
-        changedMsg.insert(QStringLiteral("settings"), existing);
-        broadcastToWidgetInstances(resolvedId, changedMsg);
+            QJsonObject notifyMsg = makeWidgetMessage(QStringLiteral("settings_updated"), resolvedId);
+            notifyMsg.insert(QStringLiteral("settings"), existing);
+            broadcastToWidgetInstances(resolvedId, notifyMsg);
 
-        QJsonObject syncMsg = makeWidgetMessage(QStringLiteral("linwidget_settings_changed_notification"), resolvedId);
-        syncMsg.insert(QStringLiteral("settings"), existing);
-        broadcastToWidgetInstances(resolvedId, syncMsg);
+            QJsonObject changedMsg = makeWidgetMessage(QStringLiteral("settings_changed"), resolvedId);
+            changedMsg.insert(QStringLiteral("settings"), existing);
+            broadcastToWidgetInstances(resolvedId, changedMsg);
+
+            QJsonObject syncMsg = makeWidgetMessage(QStringLiteral("linwidget_settings_changed_notification"), resolvedId);
+            syncMsg.insert(QStringLiteral("settings"), existing);
+            broadcastToWidgetInstances(resolvedId, syncMsg);
+        }
 
         response.insert(QStringLiteral("ok"), true);
         response.insert(QStringLiteral("settings"), existing);

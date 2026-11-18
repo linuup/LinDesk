@@ -54,6 +54,8 @@ public:
     bool showDefaultWallpaper() const;
     void setShowDefaultWallpaper(bool show);
     const QPixmap& scaledWallpaperPixmap() const { return m_scaledBackImagePixmap; }
+    const QPixmap& blurredWallpaperPixmap() const { return m_blurredWallpaperPixmap; }
+    void rebuildBlurredWallpaperPixmap();
 
     void onWallpaperChanged();
 
@@ -113,6 +115,7 @@ private:
     QPixmap m_prevBackImagePixmap;
     QPixmap m_scaledBackImagePixmap;
     QPixmap m_prevScaledBackImagePixmap;
+    QPixmap m_blurredWallpaperPixmap;
     float m_transitionOpacity = 1.0f;
     int m_transitionDuration = 1000; // Default 500ms
     QPointer<QVariantAnimation> m_transitionAnimation;

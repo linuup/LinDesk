@@ -302,6 +302,8 @@ public:
 	void clearCheckedItem();
 	void clearSelectionState();
 	QVector<const DesktopRootItemState*> queryItemsInRect(const QRect& rect) const;
+	void paintDesktopIconsTo(QPainter& painter, const QRect& targetRect = QRect());
+	void scheduleBlurredDesktopRefresh();
 	bool IsSelecting() const { return m_isSelecting; }
 	void DisableSelecting() { endBackgroundSelection(); }
 	void setItemFullNameExpanded(const QString& filePath, bool expanded);
@@ -702,6 +704,7 @@ private:
 	QRect m_spatialIndexBounds;
 	bool m_spatialIndexDirty = true;
 	bool m_desktopStateIndexDirty = true;
+	QTimer* m_blurDesktopRefreshTimer = nullptr;
 
 	// 指针和引用
 	QString m_hoveredDesktopPath;

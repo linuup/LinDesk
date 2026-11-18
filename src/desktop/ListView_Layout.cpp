@@ -1042,6 +1042,7 @@ void ListView::loadGridLayout()
         updateAllItemRenderData();
         rebuildSpatialIndex();
         update();
+        scheduleBlurredDesktopRefresh();
         return;
     }
 }
@@ -1999,6 +2000,7 @@ void ListView::loadPersistentLayout() {
         updateAllItemRenderData();
         rebuildSpatialIndex();
         update();
+        scheduleBlurredDesktopRefresh();
         return;
     }
 }
