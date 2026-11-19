@@ -8,7 +8,17 @@
 LinBox::LinBox(QWidget* parent) : QWidget(parent) {
     setWindowFlags(Qt::Widget);
     setFocusPolicy(Qt::StrongFocus);
-    setStyleSheet("LinBox { background: transparent; }");
+    setStyleSheet(
+        "LinBox { background: transparent; }"
+        "QToolTip {"
+        "  color: #1b1b1b;"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e5e5e5;"
+        "  border-radius: 6px;"
+        "  padding: 4px 8px;"
+        "  font-size: 12px;"
+        "}"
+    );
     setMouseTracking(true);
     
     updateDpiMetrics();

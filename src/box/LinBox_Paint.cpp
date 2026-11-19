@@ -417,11 +417,31 @@ void LinBox::setGlassEffect(bool enabled) {
 }
 
 void LinBox::refreshStyles() {
-    this->setStyleSheet("background: transparent; border: none;");
+    this->setStyleSheet(
+        "LinBox { background: transparent; border: none; }"
+        "QToolTip {"
+        "  color: #1b1b1b;"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e5e5e5;"
+        "  border-radius: 6px;"
+        "  padding: 4px 8px;"
+        "  font-size: 12px;"
+        "}"
+    );
 
     // Let LinBox::paintEvent render one unified background for the full box.
     // Keeping title/content transparent avoids subtle alpha/color mismatches.
-    m_titleBar->setStyleSheet("QWidget#titleBar { background: transparent; border-radius: 0px; }");
+    m_titleBar->setStyleSheet(
+        "QWidget#titleBar { background: transparent; border-radius: 0px; }"
+        "QToolTip {"
+        "  color: #1b1b1b;"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e5e5e5;"
+        "  border-radius: 6px;"
+        "  padding: 4px 8px;"
+        "  font-size: 12px;"
+        "}"
+    );
     m_contentArea->setStyleSheet("QWidget#contentArea { background: transparent; border-radius: 0px; }");
     update();
     if (QWidget* parent = parentWidget()) {

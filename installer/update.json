@@ -1,10 +1,10 @@
 {
-  "version": "2.1.0",
+  "version": "2.1.1",
   "channel": "stable",
-  "url": "https://github.com/linuup/LinDesk/releases/download/v2.1.0/LinDesk_Setup_2.1.0_x64.exe",
-  "sha256": "4cc0081a50020df00ab7679f564f95f18a79c31f852859232954322b91e1a66d",
-  "notes": "组件与壁纸能力全量直通，彻底移除权限门控与冗余鉴权；优化设置交互与硬件监控面板。",
-  "publishedAt": "2026-11-16T15:27:28Z",
+  "url": "https://github.com/linuup/LinDesk/releases/download/v2.1.1/LinDesk_Setup_2.1.1_x64.exe",
+  "sha256": "27341ffb7ef882f091aa97ae750c8fa2b0e18c74da15f1b08c290923edb1745d",
+  "notes": "优化收纳盒视觉样式与工具提示展示",
+  "publishedAt": "2026-11-19T14:33:50Z",
   "minSupportedVersion": "1.0.0",
   "runtime": {
     "version": "1.0.0",

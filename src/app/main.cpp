@@ -137,6 +137,22 @@ int main(int argc, char *argv[])
     // Set Windows 1:1 Desktop Standard font
     QFont defaultFont = AppFonts::uiFont(9);
     app.setFont(defaultFont);
+
+    QPalette appPalette = app.palette();
+    appPalette.setColor(QPalette::ToolTipBase, QColor(255, 255, 255));
+    appPalette.setColor(QPalette::ToolTipText, QColor(27, 27, 27));
+    app.setPalette(appPalette);
+
+    app.setStyleSheet(
+        "QToolTip {"
+        "  color: #1b1b1b;"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e5e5e5;"
+        "  border-radius: 6px;"
+        "  padding: 4px 8px;"
+        "  font-size: 12px;"
+        "}"
+    );
 	//qDebug() << "Application Dir:" << app.applicationDirPath();
     //LinDesk *lindesk = LinDesk::instance();
     //lindesk->show();
